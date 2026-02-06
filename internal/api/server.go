@@ -62,9 +62,6 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 	audiobookRepo := repository.NewAudiobookRepository(database.DB)
 	galleryRepo := repository.NewGalleryRepository(database.DB)
 
-	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo)
-	transcoder := stream.NewTranscoder(cfg.FFmpeg.FFmpegPath, cfg.Paths.Preview)
-
 	// Initialize metadata scrapers
 	var scrapers []metadata.Scraper
 	tmdbKey := cfg.TMDBAPIKey
@@ -73,6 +70,10 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 	}
 	scrapers = append(scrapers, metadata.NewMusicBrainzScraper())
 	scrapers = append(scrapers, metadata.NewOpenLibraryScraper())
+
+	posterDir := cfg.Paths.Preview
+	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo, scrapers, posterDir)
+	transcoder := stream.NewTranscoder(cfg.FFmpeg.FFmpegPath, cfg.Paths.Preview)
 
 	wsHub := NewWSHub()
 

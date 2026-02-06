@@ -94,6 +94,13 @@ func (r *TVRepository) FindShowByTitle(libraryID uuid.UUID, title string) (*mode
 	return show, err
 }
 
+func (r *TVRepository) UpdateShowMetadata(id uuid.UUID, title string, year *int, description *string, rating *float64, posterPath *string) error {
+	query := `UPDATE tv_shows SET title = $1, year = $2, description = $3,
+		poster_path = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5`
+	_, err := r.db.Exec(query, title, year, description, posterPath, id)
+	return err
+}
+
 func (r *TVRepository) DeleteShow(id uuid.UUID) error {
 	result, err := r.db.Exec(`DELETE FROM tv_shows WHERE id = $1`, id)
 	if err != nil {

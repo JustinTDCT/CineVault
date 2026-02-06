@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/JustinTDCT/CineVault/internal/ffmpeg"
+	"github.com/JustinTDCT/CineVault/internal/metadata"
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/JustinTDCT/CineVault/internal/repository"
 	"github.com/google/uuid"
@@ -22,6 +23,10 @@ type Scanner struct {
 	musicRepo     *repository.MusicRepository
 	audiobookRepo *repository.AudiobookRepository
 	galleryRepo   *repository.GalleryRepository
+	scrapers      []metadata.Scraper
+	posterDir     string
+	// matchedShows tracks TV show IDs already matched this scan to avoid duplicate lookups
+	matchedShows  map[uuid.UUID]bool
 }
 
 // Extension sets per media type
@@ -53,9 +58,17 @@ var tvPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(.+?)[/\\]Season\s*(\d{1,2})[/\\].*E(\d{1,3})`), // Show/Season 1/E02
 }
 
+// Year extraction patterns for filenames
+var yearPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`\((\d{4})\)`),          // Movie Title (2020)
+	regexp.MustCompile(`\[(\d{4})\]`),          // Movie Title [2020]
+	regexp.MustCompile(`[.\s_-](\d{4})[.\s_-]`), // Movie.Title.2020.1080p
+}
+
 func NewScanner(ffprobePath string, mediaRepo *repository.MediaRepository,
 	tvRepo *repository.TVRepository, musicRepo *repository.MusicRepository,
 	audiobookRepo *repository.AudiobookRepository, galleryRepo *repository.GalleryRepository,
+	scrapers []metadata.Scraper, posterDir string,
 ) *Scanner {
 	return &Scanner{
 		ffprobe:       ffmpeg.NewFFprobe(ffprobePath),
@@ -64,6 +77,9 @@ func NewScanner(ffprobePath string, mediaRepo *repository.MediaRepository,
 		musicRepo:     musicRepo,
 		audiobookRepo: audiobookRepo,
 		galleryRepo:   galleryRepo,
+		scrapers:      scrapers,
+		posterDir:     posterDir,
+		matchedShows:  make(map[uuid.UUID]bool),
 	}
 }
 
@@ -101,6 +117,7 @@ func (s *Scanner) ScanLibrary(library *models.Library) (*models.ScanResult, erro
 			FileName:  info.Name(),
 			FileSize:  info.Size(),
 			Title:     s.titleFromFilename(info.Name()),
+			Year:      s.extractYear(info.Name()),
 		}
 
 		// Probe with ffprobe for video/audio types
@@ -132,9 +149,15 @@ func (s *Scanner) ScanLibrary(library *models.Library) (*models.ScanResult, erro
 			_ = s.tvRepo.IncrementEpisodeCount(*item.TVSeasonID)
 		}
 
+		// Auto-populate metadata from external sources
+		s.autoPopulateMetadata(library, item)
+
 		result.FilesAdded++
 		return nil
 	})
+
+	// Reset matched shows tracker for next scan
+	s.matchedShows = make(map[uuid.UUID]bool)
 
 	return result, err
 }
@@ -293,4 +316,141 @@ func (s *Scanner) titleFromFilename(filename string) string {
 	name = strings.ReplaceAll(name, ".", " ")
 	name = strings.ReplaceAll(name, "_", " ")
 	return strings.TrimSpace(name)
+}
+
+// ──────────────────── Auto Metadata Population ────────────────────
+
+// autoPopulateMetadata searches external sources and applies the best match.
+func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.MediaItem) {
+	if len(s.scrapers) == 0 || !metadata.ShouldAutoMatch(item.MediaType) {
+		return
+	}
+
+	// For TV shows, match at the show level (not per-episode)
+	if item.MediaType == models.MediaTypeTVShows && item.TVShowID != nil {
+		s.autoMatchTVShow(*item.TVShowID)
+		return
+	}
+
+	// Build search query from cleaned title
+	searchQuery := s.cleanTitleForSearch(item.Title)
+	if searchQuery == "" {
+		return
+	}
+
+	match := metadata.FindBestMatch(s.scrapers, searchQuery, item.MediaType)
+	if match == nil {
+		log.Printf("Auto-match: no match for %q", searchQuery)
+		return
+	}
+
+	log.Printf("Auto-match: %q → %q (source=%s, confidence=%.2f)",
+		item.Title, match.Title, match.Source, match.Confidence)
+
+	// Download poster if available
+	var posterPath *string
+	if match.PosterURL != nil && s.posterDir != "" {
+		filename := item.ID.String() + ".jpg"
+		saved, err := metadata.DownloadPoster(*match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+		if err != nil {
+			log.Printf("Auto-match: poster download failed for %s: %v", item.ID, err)
+		} else {
+			// Store as web-accessible path relative to preview root
+			webPath := "/previews/posters/" + filename
+			posterPath = &webPath
+			_ = saved
+		}
+	}
+
+	// Update the media item with matched metadata
+	if err := s.mediaRepo.UpdateMetadata(item.ID, match.Title, match.Year,
+		match.Description, match.Rating, posterPath); err != nil {
+		log.Printf("Auto-match: DB update failed for %s: %v", item.ID, err)
+	}
+}
+
+// autoMatchTVShow searches for a TV show and applies metadata to the show record.
+// Only runs once per show per scan.
+func (s *Scanner) autoMatchTVShow(showID uuid.UUID) {
+	if s.matchedShows[showID] {
+		return
+	}
+	s.matchedShows[showID] = true
+
+	show, err := s.tvRepo.GetShowByID(showID)
+	if err != nil {
+		return
+	}
+
+	// Skip if show already has metadata (description populated)
+	if show.Description != nil && *show.Description != "" {
+		return
+	}
+
+	searchQuery := s.cleanTitleForSearch(show.Title)
+	if searchQuery == "" {
+		return
+	}
+
+	match := metadata.FindBestMatch(s.scrapers, searchQuery, models.MediaTypeTVShows)
+	if match == nil {
+		log.Printf("Auto-match: no TV match for %q", searchQuery)
+		return
+	}
+
+	log.Printf("Auto-match TV: %q → %q (source=%s, confidence=%.2f)",
+		show.Title, match.Title, match.Source, match.Confidence)
+
+	// Download poster for the show
+	var posterPath *string
+	if match.PosterURL != nil && s.posterDir != "" {
+		filename := "tvshow_" + showID.String() + ".jpg"
+		saved, err := metadata.DownloadPoster(*match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+		if err != nil {
+			log.Printf("Auto-match: TV poster download failed for %s: %v", showID, err)
+		} else {
+			webPath := "/previews/posters/" + filename
+			posterPath = &webPath
+			_ = saved
+		}
+	}
+
+	if err := s.tvRepo.UpdateShowMetadata(showID, match.Title, match.Year,
+		match.Description, match.Rating, posterPath); err != nil {
+		log.Printf("Auto-match: TV show DB update failed for %s: %v", showID, err)
+	}
+}
+
+// cleanTitleForSearch strips common junk from titles to improve search accuracy.
+// Removes resolution tags, codec info, release group names, and year in brackets.
+func (s *Scanner) cleanTitleForSearch(title string) string {
+	// Remove common resolution/quality tags
+	junkPatterns := regexp.MustCompile(`(?i)\b(1080p|720p|480p|2160p|4k|uhd|bluray|blu-ray|brrip|bdrip|dvdrip|webrip|web-dl|webdl|hdtv|hdrip|x264|x265|h264|h265|hevc|aac|ac3|dts|atmos|remux|proper|repack|extended|unrated|directors cut|dc)\b`)
+	cleaned := junkPatterns.ReplaceAllString(title, "")
+
+	// Remove year in parentheses/brackets but capture it
+	cleaned = regexp.MustCompile(`[\(\[\{]\d{4}[\)\]\}]`).ReplaceAllString(cleaned, "")
+
+	// Remove release group tags like [YTS] or -SPARKS
+	cleaned = regexp.MustCompile(`\[.*?\]`).ReplaceAllString(cleaned, "")
+	cleaned = regexp.MustCompile(`-\w+$`).ReplaceAllString(cleaned, "")
+
+	// Collapse multiple spaces
+	cleaned = regexp.MustCompile(`\s+`).ReplaceAllString(cleaned, " ")
+
+	return strings.TrimSpace(cleaned)
+}
+
+// extractYear tries to find a 4-digit year in a filename.
+func (s *Scanner) extractYear(filename string) *int {
+	for _, pattern := range yearPatterns {
+		matches := pattern.FindStringSubmatch(filename)
+		if len(matches) >= 2 {
+			year, err := strconv.Atoi(matches[1])
+			if err == nil && year >= 1900 && year <= 2100 {
+				return &year
+			}
+		}
+	}
+	return nil
 }

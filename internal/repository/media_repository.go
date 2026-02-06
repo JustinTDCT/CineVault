@@ -170,6 +170,13 @@ func (r *MediaRepository) Delete(id uuid.UUID) error {
 	return nil
 }
 
+func (r *MediaRepository) UpdateMetadata(id uuid.UUID, title string, year *int, description *string, rating *float64, posterPath *string) error {
+	query := `UPDATE media_items SET title = $1, year = $2, description = $3, rating = $4,
+		poster_path = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6`
+	_, err := r.db.Exec(query, title, year, description, rating, posterPath, id)
+	return err
+}
+
 func (r *MediaRepository) UpdateLastScanned(id uuid.UUID) error {
 	_, err := r.db.Exec(
 		`UPDATE media_items SET last_scanned_at = CURRENT_TIMESTAMP WHERE id = $1`, id)

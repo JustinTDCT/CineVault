@@ -1,6 +1,6 @@
 {
-  "version": "0.3.0",
+  "version": "0.4.0",
   "phase": 3,
   "released": "2026-02-06",
-  "notes": "Phase 3 - Complete Systems: Asynq job queue, WebSocket real-time updates, HLS streaming with FFmpeg transcoding, direct play with range requests, HLS.js video player, thumbnail/sprite/animated preview generation, pHash + audio fingerprinting duplicate detection, TMDB/MusicBrainz/OpenLibrary metadata scraping, performers/people, tags/genres with hierarchy, studios/labels/publishers, sort order system with drag-and-drop, full UI overhaul with media detail pages, settings, admin panel, duplicate review queue"
+  "notes": "Auto-populate metadata on scan: automatic TMDB/MusicBrainz/OpenLibrary matching when new files are picked up, poster image download, year extraction from filenames, TV show-level metadata matching"
 }
