@@ -389,17 +389,8 @@
                 <div class="nav-item" data-view="libraries"><span class="nav-icon">&#128218;</span><span>Libraries</span></div>
             </div>
 
-            <div class="nav-section" id="mediaNav">
-                <div class="nav-label">Media</div>
-                <div class="nav-item" data-view="media" data-type="movies"><span class="nav-icon">&#127916;</span><span>Movies</span><span class="nav-badge" id="badge-movies"></span></div>
-                <div class="nav-item" data-view="media" data-type="adult_movies"><span class="nav-icon">&#128274;</span><span>Adult</span><span class="nav-badge" id="badge-adult_movies"></span></div>
-                <div class="nav-item" data-view="media" data-type="tv_shows"><span class="nav-icon">&#128250;</span><span>TV Shows</span><span class="nav-badge" id="badge-tv_shows"></span></div>
-                <div class="nav-item" data-view="media" data-type="music"><span class="nav-icon">&#127925;</span><span>Music</span><span class="nav-badge" id="badge-music"></span></div>
-                <div class="nav-item" data-view="media" data-type="music_videos"><span class="nav-icon">&#127911;</span><span>Music Videos</span><span class="nav-badge" id="badge-music_videos"></span></div>
-                <div class="nav-item" data-view="media" data-type="home_videos"><span class="nav-icon">&#127909;</span><span>Home Videos</span><span class="nav-badge" id="badge-home_videos"></span></div>
-                <div class="nav-item" data-view="media" data-type="other_videos"><span class="nav-icon">&#128253;</span><span>Other Videos</span><span class="nav-badge" id="badge-other_videos"></span></div>
-                <div class="nav-item" data-view="media" data-type="images"><span class="nav-icon">&#128247;</span><span>Photos</span><span class="nav-badge" id="badge-images"></span></div>
-                <div class="nav-item" data-view="media" data-type="audiobooks"><span class="nav-icon">&#128214;</span><span>Audiobooks</span><span class="nav-badge" id="badge-audiobooks"></span></div>
+            <div class="nav-section" id="librariesNav">
+                <div class="nav-label">Libraries</div>
             </div>
 
             <div class="nav-section">
@@ -569,22 +560,33 @@
 
     document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.clear(); currentUser=null; if(ws)ws.close(); document.getElementById('loginModal').classList.add('active'); });
 
-    // ──── Sidebar Counts ────
+    // ──── Sidebar Libraries ────
     async function loadSidebarCounts() {
         try {
             const data = await api('GET', '/libraries');
             if (!data.success) return;
             allLibraries = data.data || [];
-            // Reset badges
-            document.querySelectorAll('.nav-badge').forEach(b => { b.textContent = ''; b.style.display = 'none'; });
+            const nav = document.getElementById('librariesNav');
+            // Keep the label, rebuild items
+            nav.innerHTML = '<div class="nav-label">Libraries</div>';
+            for (const lib of allLibraries) {
+                const icon = MEDIA_ICONS[lib.media_type] || '&#128218;';
+                const item = document.createElement('div');
+                item.className = 'nav-item';
+                item.dataset.view = 'library';
+                item.dataset.id = lib.id;
+                item.innerHTML = `<span class="nav-icon">${icon}</span><span>${lib.name}</span><span class="nav-badge" id="badge-lib-${lib.id}" style="display:none;"></span>`;
+                item.addEventListener('click', () => navigate('library', lib.id));
+                nav.appendChild(item);
+            }
+            // Load counts
             for (const lib of allLibraries) {
                 const countData = await api('GET', '/libraries/' + lib.id + '/media');
                 if (countData.success) {
-                    const badge = document.getElementById('badge-' + lib.media_type);
+                    const badge = document.getElementById('badge-lib-' + lib.id);
                     if (badge) {
-                        const cur = parseInt(badge.textContent) || 0;
-                        badge.textContent = cur + (countData.data.total || 0);
-                        if (parseInt(badge.textContent) > 0) badge.style.display = '';
+                        const total = countData.data.total || 0;
+                        if (total > 0) { badge.textContent = total; badge.style.display = ''; }
                     }
                 }
             }
@@ -594,11 +596,17 @@
     // ──── Navigation ────
     function navigate(view, extra) {
         document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-        const navItem = document.querySelector(`.nav-item[data-view="${view}"]`);
-        if (navItem) navItem.classList.add('active');
+        if (view === 'library' && extra) {
+            const navItem = document.querySelector(`.nav-item[data-view="library"][data-id="${extra}"]`);
+            if (navItem) navItem.classList.add('active');
+        } else {
+            const navItem = document.querySelector(`.nav-item[data-view="${view}"]`);
+            if (navItem) navItem.classList.add('active');
+        }
         switch(view) {
             case 'home': loadHomeView(); break;
             case 'libraries': loadLibrariesView(); break;
+            case 'library': loadLibraryView(extra); break;
             case 'media': loadMediaTypeView(extra); break;
             case 'editions': loadEditionsView(); break;
             case 'sisters': loadSistersView(); break;
@@ -753,6 +761,21 @@
         grid.innerHTML = items.length > 0
             ? items.map(renderMediaCard).join('')
             : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">${mediaIcon(mediaType)}</div><div class="empty-state-title">No ${label.toLowerCase()} yet</div><p>Add a ${label.toLowerCase()} library and scan it</p></div>`;
+    }
+
+    async function loadLibraryView(libraryId) {
+        const mc = document.getElementById('mainContent');
+        const lib = allLibraries.find(l => l.id === libraryId);
+        const label = lib ? lib.name : 'Library';
+        const type = lib ? lib.media_type : '';
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2><span class="tag tag-cyan" style="margin-left:12px;">${MEDIA_LABELS[type]||type}</span></div>
+            <div class="media-grid" id="libGrid"><div class="spinner"></div> Loading...</div>`;
+        const m = await api('GET', '/libraries/' + libraryId + '/media');
+        const items = (m.success && m.data && m.data.items) ? m.data.items : [];
+        const grid = document.getElementById('libGrid');
+        grid.innerHTML = items.length > 0
+            ? items.map(renderMediaCard).join('')
+            : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">${mediaIcon(type)}</div><div class="empty-state-title">No items in this library</div><p>Scan the library to populate it with media</p></div>`;
     }
 
     async function loadSearchView(query) {
