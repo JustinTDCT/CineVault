@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/JustinTDCT/CineVault/internal/stream"
@@ -84,10 +83,9 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// All formats are now playable: native formats (MP4/WebM) serve directly,
-	// others (MKV/AVI/etc.) get remuxed on-the-fly to MP4 (video copied, no re-encoding)
 	needsRemux := stream.NeedsRemux(media.FilePath)
-	directPlayable := true // Always playable now via remux
+	// Native formats (MP4/WebM) can direct play; MKV/AVI/etc. use HLS-based remux
+	directPlayable := !needsRemux
 
 	codec := ""
 	if media.Codec != nil {
@@ -136,12 +134,12 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 	quality := r.PathValue("quality")
 	segmentFile := r.PathValue("segment")
 
-	// Find or start transcode session
+	// Find or start session
 	sessionKey := fmt.Sprintf("%s-%s", mediaID, quality)
 	session := s.transcoder.GetSession(sessionKey)
 
 	if session == nil {
-		// Start new transcode
+		// Start new session (transcode or remux)
 		mid, err := uuid.Parse(mediaID)
 		if err != nil {
 			s.respondError(w, http.StatusBadRequest, "invalid media id")
@@ -154,12 +152,28 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 		}
 
 		userID := s.getUserID(r).String()
-		sess, err := s.transcoder.StartTranscode(mediaID, userID, media.FilePath, quality)
-		if err != nil {
-			s.respondError(w, http.StatusInternalServerError, "transcode failed: "+err.Error())
-			return
+
+		if quality == "remux" {
+			// HLS-based remux: video copied, audio transcoded if needed
+			audioCodec := ""
+			if media.AudioCodec != nil {
+				audioCodec = *media.AudioCodec
+			}
+			sess, err := s.transcoder.StartRemux(mediaID, userID, media.FilePath, audioCodec)
+			if err != nil {
+				s.respondError(w, http.StatusInternalServerError, "remux failed: "+err.Error())
+				return
+			}
+			session = sess
+		} else {
+			// Standard HLS transcode (re-encode to target quality)
+			sess, err := s.transcoder.StartTranscode(mediaID, userID, media.FilePath, quality)
+			if err != nil {
+				s.respondError(w, http.StatusInternalServerError, "transcode failed: "+err.Error())
+				return
+			}
+			session = sess
 		}
-		session = sess
 	}
 
 	// Check if requesting the m3u8 playlist
@@ -171,6 +185,7 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		http.ServeFile(w, r, playlistPath)
 		return
 	}
@@ -182,7 +197,12 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "video/mp2t")
+	// Use correct MIME type based on segment format
+	if strings.HasSuffix(segmentFile, ".mp4") {
+		w.Header().Set("Content-Type", "video/mp4")
+	} else {
+		w.Header().Set("Content-Type", "video/mp2t")
+	}
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	http.ServeFile(w, r, segPath)
 }
@@ -197,28 +217,6 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 	media, err := s.mediaRepo.GetByID(mediaID)
 	if err != nil {
 		s.respondError(w, http.StatusNotFound, "media not found")
-		return
-	}
-
-	// Parse optional seek position (in seconds)
-	startSeconds := 0.0
-	if startParam := r.URL.Query().Get("start"); startParam != "" {
-		if s, err := strconv.ParseFloat(startParam, 64); err == nil && s > 0 {
-			startSeconds = s
-		}
-	}
-
-	// If the file needs remuxing (MKV, AVI, etc.) remux on-the-fly to MP4
-	// This is how Plex/Jellyfin handle "direct stream" - video is copied as-is,
-	// only the container changes. No quality loss, minimal CPU usage.
-	if stream.NeedsRemux(media.FilePath) {
-		audioCodec := ""
-		if media.AudioCodec != nil {
-			audioCodec = *media.AudioCodec
-		}
-		if err := stream.ServeRemuxed(w, r, s.config.FFmpeg.FFmpegPath, media.FilePath, audioCodec, startSeconds); err != nil {
-			s.respondError(w, http.StatusInternalServerError, "remux failed: "+err.Error())
-		}
 		return
 	}
 
@@ -248,4 +246,3 @@ func normalizeResolution(height int) int {
 	// Return as-is for non-standard
 	return height
 }
-
