@@ -1042,13 +1042,13 @@
         let options = '';
 
         if (currentStreamInfo) {
-            // Add "Original" direct play option
+            // Add "Original" direct play/remux option (always available now)
             const nativeLabel = currentStreamInfo.native_resolution
-                ? `Original (${currentStreamInfo.native_resolution})`
+                ? `Original (${currentStreamInfo.native_resolution}${currentStreamInfo.needs_remux ? ' \u00b7 remux' : ''})`
                 : 'Original';
             options += `<option value="direct" selected>${nativeLabel}</option>`;
 
-            // Add transcode qualities (only those below native res)
+            // Add transcode qualities as alternatives
             if (currentStreamInfo.transcode_qualities) {
                 currentStreamInfo.transcode_qualities.forEach(q => {
                     options += `<option value="transcode:${q}">${q} (transcode)</option>`;
@@ -1059,20 +1059,8 @@
         }
         sel.innerHTML = options;
 
-        // Default: try direct play first for browser-compatible formats, else transcode
-        if (currentStreamInfo && currentStreamInfo.direct_playable) {
-            startDirectPlay(mediaId, token);
-        } else {
-            // MKV/AVI etc. - need transcoding. Pick best transcode quality.
-            const bestQ = pickBestTranscodeQuality();
-            if (bestQ && Hls.isSupported()) {
-                startHLSPlay(mediaId, bestQ, token);
-                sel.value = 'transcode:' + bestQ;
-            } else {
-                // Last resort: try direct play anyway (some browsers handle more than expected)
-                startDirectPlay(mediaId, token);
-            }
-        }
+        // Always default to direct play/remux (server handles MKV->MP4 remux transparently)
+        startDirectPlay(mediaId, token);
 
         video.addEventListener('timeupdate', updatePlayerUI);
     }
@@ -1098,15 +1086,14 @@
         currentPlayMode = 'direct';
         video.src = `/api/v1/stream/${mediaId}/direct?token=${encodeURIComponent(token)}`;
         video.play().catch(e => {
-            console.warn('Direct play failed, trying transcode...', e);
-            // If direct play fails, try transcoding
-            const bestQ = pickBestTranscodeQuality();
-            if (bestQ && Hls.isSupported()) {
-                startHLSPlay(mediaId, bestQ, token);
-                document.getElementById('qualitySelect').value = 'transcode:' + bestQ;
-            } else {
-                toast('Playback not supported for this format', 'error');
-            }
+            console.warn('Direct play/remux starting...', e);
+            // Retry after a brief delay (remux needs a moment to start streaming)
+            setTimeout(() => {
+                video.play().catch(e2 => {
+                    console.error('Playback failed:', e2);
+                    toast('Playback failed - try a transcode quality instead', 'error');
+                });
+            }, 1500);
         });
     }
 

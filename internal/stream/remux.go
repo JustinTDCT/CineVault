@@ -1,0 +1,108 @@
+package stream
+
+import (
+	"log"
+	"net/http"
+	"os/exec"
+	"strings"
+)
+
+// NeedsRemux returns true if the container isn't browser-native (MP4/WebM)
+func NeedsRemux(filePath string) bool {
+	lower := strings.ToLower(filePath)
+	// Browsers can play MP4/WebM/M4V natively
+	if strings.HasSuffix(lower, ".mp4") || strings.HasSuffix(lower, ".webm") || strings.HasSuffix(lower, ".m4v") {
+		return false
+	}
+	return true
+}
+
+// NeedsAudioTranscode checks if the audio codec needs transcoding to AAC
+// Browsers support: AAC, MP3, Opus, Vorbis, FLAC
+// Browsers do NOT support: DTS, AC3, EAC3, TrueHD
+func NeedsAudioTranscode(audioCodec string) bool {
+	lower := strings.ToLower(audioCodec)
+	switch lower {
+	case "aac", "mp3", "opus", "vorbis", "flac":
+		return false
+	default:
+		return true
+	}
+}
+
+// ServeRemuxed streams a video file remuxed to fragmented MP4 on-the-fly.
+// Video is copied as-is (no transcoding), audio is converted to AAC if needed.
+// This is how Plex/Jellyfin handle "direct stream" for MKV files.
+func ServeRemuxed(w http.ResponseWriter, r *http.Request, ffmpegPath, filePath, audioCodec string) error {
+	// Determine audio handling
+	audioArgs := []string{"-c:a", "copy"}
+	if NeedsAudioTranscode(audioCodec) {
+		audioArgs = []string{"-c:a", "aac", "-b:a", "192k"}
+	}
+
+	// Build FFmpeg command for on-the-fly remux
+	args := []string{
+		"-i", filePath,
+		"-c:v", "copy", // Copy video stream as-is (no re-encoding)
+	}
+	args = append(args, audioArgs...)
+	args = append(args,
+		"-movflags", "frag_keyframe+empty_moov+default_base_moof", // Fragmented MP4 for streaming
+		"-f", "mp4",  // Output as MP4 container
+		"-map", "0",  // Map all streams
+		"-map", "-0:s", // Exclude subtitle streams (they break MP4)
+		"-map", "-0:d", // Exclude data streams
+		"-map", "-0:t", // Exclude attachment streams
+		"pipe:1",     // Output to stdout
+	)
+
+	cmd := exec.Command(ffmpegPath, args...)
+
+	// Pipe FFmpeg stdout directly to HTTP response
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+
+	// Set headers before starting
+	w.Header().Set("Content-Type", "video/mp4")
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	log.Printf("Remux starting: %s (audio: %s -> %s)", filePath, audioCodec, audioArgs[1])
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	// Stream the output - use a generous buffer for smooth playback
+	buf := make([]byte, 256*1024) // 256KB buffer
+	flusher, canFlush := w.(http.Flusher)
+
+	for {
+		n, readErr := stdout.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				// Client disconnected, kill FFmpeg
+				cmd.Process.Kill()
+				cmd.Wait()
+				log.Printf("Remux: client disconnected, killed FFmpeg")
+				return nil
+			}
+			if canFlush {
+				flusher.Flush()
+			}
+		}
+		if readErr != nil {
+			break
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		// FFmpeg may exit with error if client disconnects early - that's OK
+		log.Printf("Remux FFmpeg exited: %v", err)
+	}
+
+	return nil
+}

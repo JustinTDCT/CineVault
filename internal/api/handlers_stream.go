@@ -83,15 +83,10 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Determine if direct play is possible (mp4/webm work in browsers)
-	ext := ""
-	if media.FilePath != "" {
-		parts := strings.Split(media.FilePath, ".")
-		if len(parts) > 1 {
-			ext = strings.ToLower(parts[len(parts)-1])
-		}
-	}
-	directPlayable := ext == "mp4" || ext == "webm" || ext == "m4v"
+	// All formats are now playable: native formats (MP4/WebM) serve directly,
+	// others (MKV/AVI/etc.) get remuxed on-the-fly to MP4 (video copied, no re-encoding)
+	needsRemux := stream.NeedsRemux(media.FilePath)
+	directPlayable := true // Always playable now via remux
 
 	codec := ""
 	if media.Codec != nil {
@@ -107,6 +102,11 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 		nativeRes = fmt.Sprintf("%dp", standardHeight)
 	}
 
+	audioCodec := ""
+	if media.AudioCodec != nil {
+		audioCodec = *media.AudioCodec
+	}
+
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data: map[string]interface{}{
@@ -115,8 +115,10 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 			"height":              height,
 			"native_resolution":   nativeRes,
 			"codec":               codec,
+			"audio_codec":         audioCodec,
 			"container":           container,
 			"direct_playable":     directPlayable,
+			"needs_remux":         needsRemux,
 			"transcode_qualities": transcodeQualities,
 		},
 	})
@@ -191,6 +193,21 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If the file needs remuxing (MKV, AVI, etc.) remux on-the-fly to MP4
+	// This is how Plex/Jellyfin handle "direct stream" - video is copied as-is,
+	// only the container changes. No quality loss, minimal CPU usage.
+	if stream.NeedsRemux(media.FilePath) {
+		audioCodec := ""
+		if media.AudioCodec != nil {
+			audioCodec = *media.AudioCodec
+		}
+		if err := stream.ServeRemuxed(w, r, s.config.FFmpeg.FFmpegPath, media.FilePath, audioCodec); err != nil {
+			s.respondError(w, http.StatusInternalServerError, "remux failed: "+err.Error())
+		}
+		return
+	}
+
+	// Native browser format (MP4/WebM) - serve directly with range support
 	if err := stream.ServeDirectFile(w, r, media.FilePath); err != nil {
 		s.respondError(w, http.StatusInternalServerError, err.Error())
 	}
