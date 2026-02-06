@@ -56,3 +56,31 @@ func (a *Auth) GenerateToken(user *models.User) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(a.jwtSecret)
 }
+
+func (a *Auth) ValidateToken(tokenString string) (*Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, ErrInvalidToken
+		}
+		return a.jwtSecret, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, ErrInvalidToken
+}
+
+func (a *Auth) CheckPermission(userRole models.UserRole, requiredRole models.UserRole) bool {
+	roleHierarchy := map[models.UserRole]int{
+		models.RoleGuest: 1,
+		models.RoleUser:  2,
+		models.RoleAdmin: 3,
+	}
+	return roleHierarchy[userRole] >= roleHierarchy[requiredRole]
+}

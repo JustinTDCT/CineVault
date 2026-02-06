@@ -1,6 +1,6 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "phase": 1,
   "released": "2026-02-06",
-  "notes": "Phase 1 foundation - Movies & TV Shows support, basic auth, library scanning"
+  "notes": "Phase 1 complete - Full REST API, repository layer, auth system, web UI"
 }

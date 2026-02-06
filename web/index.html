@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CineVault - Media Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #0A1628;
+            color: #B8C5D6;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: rgba(10, 22, 40, 0.95);
+            border-bottom: 1px solid rgba(0, 217, 255, 0.1);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #00D9FF;
+        }
+
+        .nav a {
+            color: #B8C5D6;
+            text-decoration: none;
+            margin-left: 2rem;
+            transition: color 0.2s;
+        }
+
+        .nav a:hover {
+            color: #00D9FF;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .hero {
+            text-align: center;
+            padding: 4rem 2rem;
+        }
+
+        .hero h1 {
+            font-size: 3rem;
+            color: #00D9FF;
+            margin-bottom: 1rem;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: #8A9BAE;
+            max-width: 700px;
+            margin: 0 auto 2rem;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin: 3rem 0;
+        }
+
+        .stat-card {
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(0, 217, 255, 0.4);
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #00D9FF;
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: #8A9BAE;
+            font-size: 1rem;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 2rem;
+            background: #00D9FF;
+            color: #0A1628;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .btn:hover {
+            background: #00B8DB;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 2px solid #00D9FF;
+            color: #00D9FF;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(0, 217, 255, 0.1);
+        }
+
+        .section {
+            margin: 4rem 0;
+        }
+
+        .section-title {
+            font-size: 2rem;
+            color: #00D9FF;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 2rem;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 217, 255, 0.1);
+        }
+
+        .feature-card h3 {
+            color: #00D9FF;
+            margin-bottom: 1rem;
+        }
+
+        .auth-section {
+            max-width: 400px;
+            margin: 3rem auto;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            border: 1px solid rgba(0, 217, 255, 0.2);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            color: #8A9BAE;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.75rem;
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 6px;
+            color: #B8C5D6;
+            font-size: 1rem;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #00D9FF;
+        }
+
+        .error {
+            color: #FF6B6B;
+            margin-top: 1rem;
+            text-align: center;
+        }
+
+        .success {
+            color: #51CF66;
+            margin-top: 1rem;
+            text-align: center;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: #6B7B8E;
+            border-top: 1px solid rgba(0, 217, 255, 0.1);
+            margin-top: 4rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">CineVault</div>
+            <nav class="nav">
+                <a href="#home">Home</a>
+                <a href="#libraries">Libraries</a>
+                <a href="#media">Media</a>
+                <a href="#login">Login</a>
+            </nav>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <h1>Self-Hosted Media Server</h1>
+            <p>Organize, stream, and manage your entire media collection with AI-powered duplicate detection and intelligent organization.</p>
+            <div style="margin-top: 2rem;">
+                <button class="btn" onclick="showSection('login')">Get Started</button>
+                <button class="btn btn-secondary" onclick="showSection('features')">Learn More</button>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <span class="stat-number" id="movieCount">0</span>
+                <span class="stat-label">Movies</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number" id="tvCount">0</span>
+                <span class="stat-label">TV Shows</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number" id="libraryCount">0</span>
+                <span class="stat-label">Libraries</span>
+            </div>
+        </div>
+
+        <div id="features" class="section">
+            <h2 class="section-title">Features</h2>
+            <div class="features">
+                <div class="feature-card">
+                    <h3>🎬 Multi-Format Support</h3>
+                    <p>Movies, TV Shows, and more. Intelligent organization with metadata extraction.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🔍 Duplicate Detection</h3>
+                    <p>Perceptual hash-based duplicate detection finds similar files automatically.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🎨 Edition Management</h3>
+                    <p>Group multiple versions (Director's Cut, 4K, etc.) with smart version picking.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🔐 Multi-User Access</h3>
+                    <p>Role-based permissions with Admin, User, and Guest roles.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>📺 On-the-Fly Transcoding</h3>
+                    <p>Hardware-accelerated streaming to any device.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🐳 Self-Hosted</h3>
+                    <p>Complete control with Docker deployment. Your data stays yours.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="login" class="section" style="display:none;">
+            <div class="auth-section">
+                <h2 class="section-title" style="text-align: center;">Login</h2>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" required>
+                    </div>
+                    <button type="submit" class="btn" style="width: 100%;">Login</button>
+                    <div id="loginError" class="error"></div>
+                    <div id="loginSuccess" class="success"></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>CineVault v0.1.0 - Phase 1 | Self-Hosted Media Server</p>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1';
+
+        function showSection(sectionId) {
+            document.querySelectorAll('.section').forEach(section => {
+                section.style.display = 'none';
+            });
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.style.display = 'block';
+            }
+        }
+
+        // Login form handler
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('loginError');
+            const successDiv = document.getElementById('loginSuccess');
+
+            errorDiv.textContent = '';
+            successDiv.textContent = '';
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    localStorage.setItem('token', data.data.token);
+                    localStorage.setItem('user', JSON.stringify(data.data.user));
+                    successDiv.textContent = 'Login successful!';
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    errorDiv.textContent = data.error || 'Login failed';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Connection error. Is the server running?';
+            }
+        });
+
+        // Check for stored token
+        if (localStorage.getItem('token')) {
+            const user = JSON.parse(localStorage.getItem('user'));
+            console.log('Logged in as:', user.username);
+        }
+    </script>
+</body>
+</html>
