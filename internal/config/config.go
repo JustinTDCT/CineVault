@@ -86,7 +86,7 @@ func Load() (*Config, error) {
 			FFmpegPath:  getEnv("FFMPEG_PATH", "/usr/bin/ffmpeg"),
 			FFprobePath: getEnv("FFPROBE_PATH", "/usr/bin/ffprobe"),
 		},
-		TMDBAPIKey: getEnv("TMDB_API_KEY", ""),
+		TMDBAPIKey: getEnv("TMDB_API_KEY", "ca12f0b4ddc375cc34dd9ae9e4fe94e0"),
 	}, nil
 }
 
