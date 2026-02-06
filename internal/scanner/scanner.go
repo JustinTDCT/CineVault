@@ -333,7 +333,7 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 	}
 
 	// Build search query from cleaned title
-	searchQuery := s.cleanTitleForSearch(item.Title)
+	searchQuery := metadata.CleanTitleForSearch(item.Title)
 	if searchQuery == "" {
 		return
 	}
@@ -387,7 +387,7 @@ func (s *Scanner) autoMatchTVShow(showID uuid.UUID) {
 		return
 	}
 
-	searchQuery := s.cleanTitleForSearch(show.Title)
+	searchQuery := metadata.CleanTitleForSearch(show.Title)
 	if searchQuery == "" {
 		return
 	}
@@ -419,26 +419,6 @@ func (s *Scanner) autoMatchTVShow(showID uuid.UUID) {
 		match.Description, match.Rating, posterPath); err != nil {
 		log.Printf("Auto-match: TV show DB update failed for %s: %v", showID, err)
 	}
-}
-
-// cleanTitleForSearch strips common junk from titles to improve search accuracy.
-// Removes resolution tags, codec info, release group names, and year in brackets.
-func (s *Scanner) cleanTitleForSearch(title string) string {
-	// Remove common resolution/quality tags
-	junkPatterns := regexp.MustCompile(`(?i)\b(1080p|720p|480p|2160p|4k|uhd|bluray|blu-ray|brrip|bdrip|dvdrip|webrip|web-dl|webdl|hdtv|hdrip|x264|x265|h264|h265|hevc|aac|ac3|dts|atmos|remux|proper|repack|extended|unrated|directors cut|dc)\b`)
-	cleaned := junkPatterns.ReplaceAllString(title, "")
-
-	// Remove year in parentheses/brackets but capture it
-	cleaned = regexp.MustCompile(`[\(\[\{]\d{4}[\)\]\}]`).ReplaceAllString(cleaned, "")
-
-	// Remove release group tags like [YTS] or -SPARKS
-	cleaned = regexp.MustCompile(`\[.*?\]`).ReplaceAllString(cleaned, "")
-	cleaned = regexp.MustCompile(`-\w+$`).ReplaceAllString(cleaned, "")
-
-	// Collapse multiple spaces
-	cleaned = regexp.MustCompile(`\s+`).ReplaceAllString(cleaned, " ")
-
-	return strings.TrimSpace(cleaned)
 }
 
 // extractYear tries to find a 4-digit year in a filename.

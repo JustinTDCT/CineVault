@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/JustinTDCT/CineVault/internal/metadata"
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
 )
@@ -23,10 +24,20 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Search across all configured scrapers
+	// Clean the title and search applicable scrapers
+	query := metadata.CleanTitleForSearch(media.Title)
+	if query == "" {
+		query = media.Title
+	}
+
+	scrapers := metadata.ScrapersForMediaType(s.scrapers, media.MediaType)
+	if len(scrapers) == 0 {
+		scrapers = s.scrapers // fallback to all if no type-specific match
+	}
+
 	var allMatches []*models.MetadataMatch
-	for _, scraper := range s.scrapers {
-		matches, err := scraper.Search(media.Title, media.MediaType)
+	for _, scraper := range scrapers {
+		matches, err := scraper.Search(query, media.MediaType)
 		if err != nil {
 			continue
 		}

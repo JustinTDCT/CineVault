@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
@@ -22,7 +24,7 @@ const (
 // FindBestMatch searches all applicable scrapers for the best metadata match.
 // It selects scrapers based on media type and returns the highest-confidence result.
 func FindBestMatch(scrapers []Scraper, query string, mediaType models.MediaType) *models.MetadataMatch {
-	applicable := scrapersForMediaType(scrapers, mediaType)
+	applicable := ScrapersForMediaType(scrapers, mediaType)
 	if len(applicable) == 0 {
 		return nil
 	}
@@ -45,8 +47,8 @@ func FindBestMatch(scrapers []Scraper, query string, mediaType models.MediaType)
 	return best
 }
 
-// scrapersForMediaType returns the scrapers relevant to a given media type.
-func scrapersForMediaType(scrapers []Scraper, mediaType models.MediaType) []Scraper {
+// ScrapersForMediaType returns the scrapers relevant to a given media type.
+func ScrapersForMediaType(scrapers []Scraper, mediaType models.MediaType) []Scraper {
 	var result []Scraper
 	for _, s := range scrapers {
 		switch mediaType {
@@ -78,6 +80,18 @@ func ShouldAutoMatch(mediaType models.MediaType) bool {
 		// home_videos, other_videos, images - skip
 		return false
 	}
+}
+
+// CleanTitleForSearch strips common junk from titles to improve search accuracy.
+// Removes resolution tags, codec info, release group names, and year in brackets.
+func CleanTitleForSearch(title string) string {
+	junkPatterns := regexp.MustCompile(`(?i)\b(1080p|720p|480p|2160p|4k|uhd|bluray|blu-ray|brrip|bdrip|dvdrip|webrip|web-dl|webdl|hdtv|hdrip|x264|x265|h264|h265|hevc|aac|ac3|dts|atmos|remux|proper|repack|extended|unrated|directors cut|dc)\b`)
+	cleaned := junkPatterns.ReplaceAllString(title, "")
+	cleaned = regexp.MustCompile(`[\(\[\{]\d{4}[\)\]\}]`).ReplaceAllString(cleaned, "")
+	cleaned = regexp.MustCompile(`\[.*?\]`).ReplaceAllString(cleaned, "")
+	cleaned = regexp.MustCompile(`-\w+$`).ReplaceAllString(cleaned, "")
+	cleaned = regexp.MustCompile(`\s+`).ReplaceAllString(cleaned, " ")
+	return strings.TrimSpace(cleaned)
 }
 
 // DownloadPoster fetches an image from a URL and saves it to destPath.
