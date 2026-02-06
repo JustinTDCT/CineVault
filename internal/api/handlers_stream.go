@@ -85,9 +85,8 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// All formats playable: native formats direct play, MKV/AVI remuxed on-the-fly
+	// All formats playable: native formats direct play, MKV/AVI transcoded on-the-fly
 	needsRemux := stream.NeedsRemux(media.FilePath)
-	directPlayable := true
 
 	codec := ""
 	if media.Codec != nil {
@@ -123,7 +122,7 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 			"codec":               codec,
 			"audio_codec":         audioCodec,
 			"container":           container,
-			"direct_playable":     directPlayable,
+			"direct_playable":     true, // Always playable (native or transcoded)
 			"needs_remux":         needsRemux,
 			"duration_seconds":    duration,
 			"transcode_qualities": transcodeQualities,
@@ -141,7 +140,7 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 	session := s.transcoder.GetSession(sessionKey)
 
 	if session == nil {
-		// Start new session
+		// Start new HLS transcode session (for quality-specific transcodes)
 		mid, err := uuid.Parse(mediaID)
 		if err != nil {
 			s.respondError(w, http.StatusBadRequest, "invalid media id")
@@ -154,28 +153,12 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 		}
 
 		userID := s.getUserID(r).String()
-
-		if quality == "remux" {
-			// HLS-based remux (kept for future use / fallback)
-			audioCodec := ""
-			if media.AudioCodec != nil {
-				audioCodec = *media.AudioCodec
-			}
-			sess, err := s.transcoder.StartRemux(mediaID, userID, media.FilePath, audioCodec)
-			if err != nil {
-				s.respondError(w, http.StatusInternalServerError, "remux failed: "+err.Error())
-				return
-			}
-			session = sess
-		} else {
-			// Standard HLS transcode
-			sess, err := s.transcoder.StartTranscode(mediaID, userID, media.FilePath, quality)
-			if err != nil {
-				s.respondError(w, http.StatusInternalServerError, "transcode failed: "+err.Error())
-				return
-			}
-			session = sess
+		sess, err := s.transcoder.StartTranscode(mediaID, userID, media.FilePath, quality)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, "transcode failed: "+err.Error())
+			return
 		}
+		session = sess
 	}
 
 	// Check if requesting the m3u8 playlist
@@ -214,6 +197,11 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, segPath)
 }
 
+// handleStreamDirect handles direct play and on-the-fly transcoding.
+// Native formats (MP4/WebM) are served directly with range request support.
+// Non-native formats (MKV/AVI/etc.) are transcoded to fragmented MP4 on-the-fly
+// following StashApp's approach: video re-encoded with libx264 veryfast,
+// audio to AAC, piped directly to the HTTP response.
 func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 	mediaID, err := uuid.Parse(r.PathValue("mediaId"))
 	if err != nil {
@@ -235,14 +223,13 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// If the file needs remuxing (MKV, AVI, etc.) remux on-the-fly to MP4
+	// If the file needs transcoding (MKV, AVI, etc.) → transcode on-the-fly
 	if stream.NeedsRemux(media.FilePath) {
-		audioCodec := ""
-		if media.AudioCodec != nil {
-			audioCodec = *media.AudioCodec
-		}
-		if err := stream.ServeRemuxed(w, r, s.config.FFmpeg.FFmpegPath, media.FilePath, audioCodec, startSeconds); err != nil {
-			s.respondError(w, http.StatusInternalServerError, "remux failed: "+err.Error())
+		if err := stream.ServeTranscoded(r.Context(), w, s.config.FFmpeg.FFmpegPath, media.FilePath, startSeconds); err != nil {
+			// Don't try to send error response if headers already sent
+			if r.Context().Err() == nil {
+				s.respondError(w, http.StatusInternalServerError, "transcode failed: "+err.Error())
+			}
 		}
 		return
 	}

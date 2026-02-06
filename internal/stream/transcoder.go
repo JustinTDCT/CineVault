@@ -147,105 +147,10 @@ func (t *Transcoder) StartTranscode(mediaItemID, userID, filePath, quality strin
 	return session, nil
 }
 
-// StartRemux creates an HLS session that remuxes video (copy) with optional audio transcoding.
-// This is the same approach Jellyfin uses: HLS with fMP4 segments, video copied as-is.
-// Audio codecs not supported by browsers (DTS, AC3, etc.) are transcoded to AAC.
-func (t *Transcoder) StartRemux(mediaItemID, userID, filePath, audioCodec string) (*Session, error) {
-	sessionKey := fmt.Sprintf("%s-remux", mediaItemID)
-
-	// Return existing session if already running
-	t.mu.Lock()
-	if existing, ok := t.sessions[sessionKey]; ok {
-		existing.LastAccess = time.Now()
-		t.mu.Unlock()
-		return existing, nil
-	}
-	t.mu.Unlock()
-
-	outputID := uuid.New().String()
-	outputDir := filepath.Join(t.outputBase, outputID)
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return nil, fmt.Errorf("create output dir: %w", err)
-	}
-
-	playlistPath := filepath.Join(outputDir, "stream.m3u8")
-
-	// Build FFmpeg args matching Jellyfin's proven approach:
-	// HLS with fMP4 segments, video copied, audio transcoded if needed
-	args := []string{
-		"-nostdin",
-		"-fflags", "+genpts",
-		"-i", filePath,
-		"-map", "0:v:0",
-		"-map", "0:a:0",
-		"-map", "-0:s", // Drop subtitle streams
-		"-c:v", "copy", // Copy video as-is (no re-encoding)
-	}
-
-	// Audio handling: transcode incompatible codecs (DTS, AC3, etc.) to AAC
-	if NeedsAudioTranscode(audioCodec) {
-		args = append(args,
-			"-c:a", "aac",
-			"-ac", "2",
-			"-b:a", "192k",
-		)
-	} else {
-		args = append(args, "-c:a", "copy")
-	}
-
-	args = append(args,
-		"-start_at_zero",
-		"-copyts",
-		"-avoid_negative_ts", "disabled",
-		"-max_muxing_queue_size", "2048",
-		"-f", "hls",
-		"-hls_time", "6",
-		"-hls_segment_type", "fmp4",
-		"-hls_fmp4_init_filename", "init.mp4",
-		"-hls_segment_filename", filepath.Join(outputDir, "segment_%05d.mp4"),
-		"-hls_playlist_type", "event", // "event" writes playlist progressively (playable immediately)
-		"-hls_list_size", "0",
-		"-hls_flags", "independent_segments",
-		"-y",
-		playlistPath,
-	)
-
-	cmd := exec.Command(t.ffmpegPath, args...)
-	cmd.Stderr = nil
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start ffmpeg remux: %w", err)
-	}
-
-	session := &Session{
-		ID:          sessionKey,
-		MediaItemID: mediaItemID,
-		UserID:      userID,
-		Quality:     "remux",
-		OutputDir:   outputDir,
-		Cmd:         cmd,
-		StartedAt:   time.Now(),
-		LastAccess:  time.Now(),
-	}
-
-	t.mu.Lock()
-	t.sessions[sessionKey] = session
-	t.mu.Unlock()
-
-	audioAction := "copy"
-	if NeedsAudioTranscode(audioCodec) {
-		audioAction = "aac"
-	}
-	log.Printf("Remux HLS session started: %s (audio: %s -> %s)", sessionKey, audioCodec, audioAction)
-
-	// Wait for FFmpeg in background
-	go func() {
-		if err := cmd.Wait(); err != nil {
-			log.Printf("FFmpeg remux ended: %v", err)
-		}
-	}()
-
-	return session, nil
-}
+// Note: HLS-based remux (StartRemux) has been removed.
+// Non-native formats are now handled via piped on-the-fly transcoding
+// in ServeTranscoded (remux.go), following StashApp's approach.
+// This gives instant start and instant seeking (restart FFmpeg with -ss).
 
 func (t *Transcoder) GetSession(sessionID string) *Session {
 	t.mu.Lock()

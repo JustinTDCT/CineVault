@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -18,7 +19,7 @@ func NeedsRemux(filePath string) bool {
 	return true
 }
 
-// NeedsAudioTranscode checks if the audio codec needs transcoding to AAC
+// NeedsAudioTranscode checks if the audio codec needs transcoding to AAC.
 // Browser-compatible codecs (AAC, MP3, Opus, Vorbis, FLAC) can be copied;
 // everything else (DTS, AC3, EAC3, TrueHD, etc.) must be transcoded.
 func NeedsAudioTranscode(audioCodec string) bool {
@@ -31,16 +32,22 @@ func NeedsAudioTranscode(audioCodec string) bool {
 	}
 }
 
-// ServeRemuxed streams a video file remuxed to fragmented MP4 on-the-fly.
-// Video is copied as-is, incompatible audio is transcoded to AAC.
+// ServeTranscoded streams a video file transcoded to fragmented MP4 on-the-fly.
+// This follows StashApp's proven approach:
+//   - Video is RE-ENCODED to H264 (not copied) — this guarantees A/V timestamp
+//     alignment when converting from MKV/AVI containers. StashApp only uses
+//     -c:v copy for files already in MP4 container.
+//   - Audio is transcoded to AAC stereo.
+//   - Output is fragmented MP4 piped directly to the HTTP response.
+//   - Uses exec.CommandContext tied to the HTTP request for automatic cleanup.
+//   - Uses io.Copy for clean stdout→response piping.
 //
-// This uses the absolute minimum FFmpeg flags with ZERO timestamp manipulation.
-// Previous attempts with -copyts, -async, -vsync, -start_at_zero, -fflags +genpts
-// all caused audio/video desync because the flags conflicted with each other.
-// FFmpeg's default behavior handles timestamp normalization correctly when
-// simply copying video + transcoding audio to a new container.
-func ServeRemuxed(w http.ResponseWriter, r *http.Request, ffmpegPath, filePath, audioCodec string, startSeconds float64) error {
-	args := []string{"-nostdin"}
+// Reference: https://github.com/stashapp/stash — pkg/ffmpeg/stream_transcode.go
+func ServeTranscoded(ctx context.Context, w http.ResponseWriter, ffmpegPath, filePath string, startSeconds float64) error {
+	args := []string{
+		"-hide_banner",
+		"-v", "error",
+	}
 
 	// Input seeking (before -i for fast keyframe seek)
 	if startSeconds > 0 {
@@ -49,95 +56,73 @@ func ServeRemuxed(w http.ResponseWriter, r *http.Request, ffmpegPath, filePath, 
 
 	args = append(args,
 		"-i", filePath,
-		"-map", "0:v:0",  // First video stream only
-		"-map", "0:a:0",  // First audio stream only
-		"-c:v", "copy",   // Copy video as-is (no re-encoding)
-	)
-
-	// Audio: transcode incompatible codecs to AAC, copy compatible ones
-	if NeedsAudioTranscode(audioCodec) {
-		args = append(args,
-			"-c:a", "aac",
-			"-ac", "2",
-			"-b:a", "192k",
-		)
-	} else {
-		args = append(args, "-c:a", "copy")
-	}
-
-	// Output: fragmented MP4 for streaming (no seeking support needed in container)
-	args = append(args,
-		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
-		"-max_muxing_queue_size", "4096",
+		// Video: re-encode to H264 (guarantees timestamp sync)
+		"-c:v", "libx264",
+		"-pix_fmt", "yuv420p",
+		"-preset", "veryfast",
+		"-crf", "22",
+		"-sc_threshold", "0",
+		// Audio: AAC stereo
+		"-c:a", "aac",
+		"-ac", "2",
+		"-b:a", "192k",
+		// Output: fragmented MP4 for streaming
+		"-movflags", "frag_keyframe+empty_moov",
 		"-f", "mp4",
-		"pipe:1",
+		"pipe:",
 	)
 
-	cmd := exec.Command(ffmpegPath, args...)
+	cmd := exec.CommandContext(ctx, ffmpegPath, args...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return err
+		return fmt.Errorf("stdout pipe: %w", err)
 	}
 
-	// Capture stderr for debugging
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return err
+		return fmt.Errorf("stderr pipe: %w", err)
 	}
 
-	w.Header().Set("Content-Type", "video/mp4")
-	w.Header().Set("Transfer-Encoding", "chunked")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	audioAction := "copy"
-	if NeedsAudioTranscode(audioCodec) {
-		audioAction = "aac"
-	}
-	log.Printf("Remux: %s (audio: %s->%s, seek: %.1fs)", filePath, audioCodec, audioAction, startSeconds)
-	log.Printf("Remux cmd: %s %s", ffmpegPath, strings.Join(args, " "))
+	log.Printf("Transcode stream: %s (seek: %.1fs)", filePath, startSeconds)
+	log.Printf("Transcode cmd: %s %s", ffmpegPath, strings.Join(args, " "))
 
 	if err := cmd.Start(); err != nil {
-		return err
+		return fmt.Errorf("start ffmpeg: %w", err)
 	}
 
-	// Log stderr in background (for debugging sync issues)
+	// Must consume stderr in a goroutine to prevent deadlock (StashApp pattern)
 	go func() {
 		stderrBytes, _ := io.ReadAll(stderr)
-		if len(stderrBytes) > 0 {
-			// Only log last 500 chars to avoid flooding
-			s := string(stderrBytes)
-			if len(s) > 500 {
-				s = s[len(s)-500:]
+		if err := cmd.Wait(); err != nil {
+			// Only log if NOT a context cancellation (client disconnect)
+			if ctx.Err() == nil {
+				errStr := string(stderrBytes)
+				if len(errStr) > 500 {
+					errStr = errStr[len(errStr)-500:]
+				}
+				log.Printf("FFmpeg transcode error: %v | stderr: %s", err, errStr)
 			}
-			log.Printf("Remux FFmpeg stderr (last): %s", s)
 		}
 	}()
 
-	buf := make([]byte, 256*1024) // 256KB buffer
-	flusher, canFlush := w.(http.Flusher)
+	// Set headers (StashApp pattern: no Content-Length, chunked transfer)
+	w.Header().Set("Content-Type", "video/mp4")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
 
-	for {
-		n, readErr := stdout.Read(buf)
-		if n > 0 {
-			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-				cmd.Process.Kill()
-				cmd.Wait()
-				log.Printf("Remux: client disconnected")
-				return nil
-			}
-			if canFlush {
-				flusher.Flush()
-			}
+	// Pipe FFmpeg stdout directly to HTTP response
+	if _, err := io.Copy(w, stdout); err != nil {
+		// Ignore write errors from client disconnect (EPIPE, connection reset)
+		if ctx.Err() != nil {
+			return nil
 		}
-		if readErr != nil {
-			break
-		}
+		log.Printf("Transcode stream write error: %v", err)
 	}
 
-	if err := cmd.Wait(); err != nil {
-		log.Printf("Remux FFmpeg exited: %v", err)
+	// Flush if possible
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
 	}
 
 	return nil
