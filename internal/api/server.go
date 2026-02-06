@@ -8,9 +8,12 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/auth"
 	"github.com/JustinTDCT/CineVault/internal/config"
 	"github.com/JustinTDCT/CineVault/internal/db"
+	"github.com/JustinTDCT/CineVault/internal/jobs"
+	"github.com/JustinTDCT/CineVault/internal/metadata"
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/JustinTDCT/CineVault/internal/repository"
 	"github.com/JustinTDCT/CineVault/internal/scanner"
+	"github.com/JustinTDCT/CineVault/internal/stream"
 	"github.com/google/uuid"
 )
 
@@ -29,7 +32,15 @@ type Server struct {
 	sisterRepo     *repository.SisterRepository
 	collectionRepo *repository.CollectionRepository
 	watchRepo      *repository.WatchHistoryRepository
+	performerRepo  *repository.PerformerRepository
+	tagRepo        *repository.TagRepository
+	studioRepo     *repository.StudioRepository
+	jobRepo        *repository.JobRepository
 	scanner        *scanner.Scanner
+	transcoder     *stream.Transcoder
+	jobQueue       *jobs.Queue
+	wsHub          *WSHub
+	scrapers       []metadata.Scraper
 	router         *http.ServeMux
 }
 
@@ -39,7 +50,7 @@ type Response struct {
 	Error   string      `json:"error,omitempty"`
 }
 
-func NewServer(cfg *config.Config, database *db.DB) (*Server, error) {
+func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Server, error) {
 	authService, err := auth.NewAuth(cfg.JWT.Secret, cfg.JWT.ExpiresIn)
 	if err != nil {
 		return nil, err
@@ -52,6 +63,18 @@ func NewServer(cfg *config.Config, database *db.DB) (*Server, error) {
 	galleryRepo := repository.NewGalleryRepository(database.DB)
 
 	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo)
+	transcoder := stream.NewTranscoder(cfg.FFmpeg.FFmpegPath, cfg.Paths.Preview)
+
+	// Initialize metadata scrapers
+	var scrapers []metadata.Scraper
+	tmdbKey := cfg.TMDBAPIKey
+	if tmdbKey != "" {
+		scrapers = append(scrapers, metadata.NewTMDBScraper(tmdbKey))
+	}
+	scrapers = append(scrapers, metadata.NewMusicBrainzScraper())
+	scrapers = append(scrapers, metadata.NewOpenLibraryScraper())
+
+	wsHub := NewWSHub()
 
 	s := &Server{
 		config:         cfg,
@@ -68,7 +91,15 @@ func NewServer(cfg *config.Config, database *db.DB) (*Server, error) {
 		sisterRepo:     repository.NewSisterRepository(database.DB),
 		collectionRepo: repository.NewCollectionRepository(database.DB),
 		watchRepo:      repository.NewWatchHistoryRepository(database.DB),
+		performerRepo:  repository.NewPerformerRepository(database.DB),
+		tagRepo:        repository.NewTagRepository(database.DB),
+		studioRepo:     repository.NewStudioRepository(database.DB),
+		jobRepo:        repository.NewJobRepository(database.DB),
 		scanner:        sc,
+		transcoder:     transcoder,
+		jobQueue:       jobQueue,
+		wsHub:          wsHub,
+		scrapers:       scrapers,
 		router:         http.NewServeMux(),
 	}
 
@@ -76,16 +107,43 @@ func NewServer(cfg *config.Config, database *db.DB) (*Server, error) {
 	return s, nil
 }
 
+func (s *Server) WSHub() *WSHub {
+	return s.wsHub
+}
+
+func (s *Server) Scanner() *scanner.Scanner {
+	return s.scanner
+}
+
+func (s *Server) LibRepo() *repository.LibraryRepository {
+	return s.libRepo
+}
+
+func (s *Server) MediaRepo() *repository.MediaRepository {
+	return s.mediaRepo
+}
+
+func (s *Server) JobRepo() *repository.JobRepository {
+	return s.jobRepo
+}
+
 func (s *Server) setupRoutes() {
 	// Static files
 	fs := http.FileServer(http.Dir("web"))
 	s.router.Handle("/", fs)
+
+	// Preview files
+	previewFS := http.StripPrefix("/previews/", http.FileServer(http.Dir(s.config.Paths.Preview)))
+	s.router.Handle("/previews/", previewFS)
 
 	// Public
 	s.router.HandleFunc("GET /health", s.handleHealth)
 	s.router.HandleFunc("GET /api/v1/status", s.handleStatus)
 	s.router.HandleFunc("POST /api/v1/auth/register", s.handleRegister)
 	s.router.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
+
+	// WebSocket
+	s.router.HandleFunc("GET /api/v1/ws", s.handleWebSocket)
 
 	// Users (admin)
 	s.router.HandleFunc("GET /api/v1/users", s.authMiddleware(s.handleListUsers, models.RoleAdmin))
@@ -97,11 +155,31 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("PUT /api/v1/libraries/{id}", s.authMiddleware(s.handleUpdateLibrary, models.RoleAdmin))
 	s.router.HandleFunc("DELETE /api/v1/libraries/{id}", s.authMiddleware(s.handleDeleteLibrary, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/libraries/{id}/scan", s.authMiddleware(s.handleScanLibrary, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/libraries/{id}/auto-match", s.authMiddleware(s.handleAutoMatch, models.RoleAdmin))
 
 	// Media
 	s.router.HandleFunc("GET /api/v1/libraries/{id}/media", s.authMiddleware(s.handleListMedia, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/media/{id}", s.authMiddleware(s.handleGetMedia, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/media/search", s.authMiddleware(s.handleSearchMedia, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/media/{id}/identify", s.authMiddleware(s.handleIdentifyMedia, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/media/{id}/apply-meta", s.authMiddleware(s.handleApplyMetadata, models.RoleAdmin))
+
+	// Media - Performers
+	s.router.HandleFunc("POST /api/v1/media/{id}/performers", s.authMiddleware(s.handleLinkPerformer, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/media/{id}/performers/{performerId}", s.authMiddleware(s.handleUnlinkPerformer, models.RoleAdmin))
+
+	// Media - Tags
+	s.router.HandleFunc("POST /api/v1/media/{id}/tags", s.authMiddleware(s.handleAssignTags, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/media/{id}/tags/{tagId}", s.authMiddleware(s.handleRemoveTag, models.RoleAdmin))
+
+	// Media - Studios
+	s.router.HandleFunc("POST /api/v1/media/{id}/studios", s.authMiddleware(s.handleLinkStudio, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/media/{id}/studios/{studioId}", s.authMiddleware(s.handleUnlinkStudio, models.RoleAdmin))
+
+	// Streaming
+	s.router.HandleFunc("GET /api/v1/stream/{mediaId}/master.m3u8", s.authMiddleware(s.handleStreamMaster, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/stream/{mediaId}/{quality}/{segment}", s.authMiddleware(s.handleStreamSegment, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/stream/{mediaId}/direct", s.authMiddleware(s.handleStreamDirect, models.RoleUser))
 
 	// Edition groups
 	s.router.HandleFunc("GET /api/v1/editions", s.authMiddleware(s.handleListEditions, models.RoleUser))
@@ -131,6 +209,41 @@ func (s *Server) setupRoutes() {
 	// Watch history
 	s.router.HandleFunc("POST /api/v1/watch/{mediaId}/progress", s.authMiddleware(s.handleUpdateProgress, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/watch/continue", s.authMiddleware(s.handleContinueWatching, models.RoleUser))
+
+	// Performers
+	s.router.HandleFunc("GET /api/v1/performers", s.authMiddleware(s.handleListPerformers, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/performers", s.authMiddleware(s.handleCreatePerformer, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/performers/{id}", s.authMiddleware(s.handleGetPerformer, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/performers/{id}", s.authMiddleware(s.handleUpdatePerformer, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/performers/{id}", s.authMiddleware(s.handleDeletePerformer, models.RoleAdmin))
+
+	// Tags
+	s.router.HandleFunc("GET /api/v1/tags", s.authMiddleware(s.handleListTags, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/tags", s.authMiddleware(s.handleCreateTag, models.RoleAdmin))
+	s.router.HandleFunc("PUT /api/v1/tags/{id}", s.authMiddleware(s.handleUpdateTag, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/tags/{id}", s.authMiddleware(s.handleDeleteTag, models.RoleAdmin))
+
+	// Studios
+	s.router.HandleFunc("GET /api/v1/studios", s.authMiddleware(s.handleListStudios, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/studios", s.authMiddleware(s.handleCreateStudio, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/studios/{id}", s.authMiddleware(s.handleGetStudio, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/studios/{id}", s.authMiddleware(s.handleUpdateStudio, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/studios/{id}", s.authMiddleware(s.handleDeleteStudio, models.RoleAdmin))
+
+	// Duplicates
+	s.router.HandleFunc("GET /api/v1/duplicates", s.authMiddleware(s.handleListDuplicates, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/duplicates/resolve", s.authMiddleware(s.handleResolveDuplicate, models.RoleAdmin))
+
+	// Sort order
+	s.router.HandleFunc("PATCH /api/v1/sort", s.authMiddleware(s.handleUpdateSortOrder, models.RoleAdmin))
+
+	// Jobs
+	s.router.HandleFunc("GET /api/v1/jobs", s.authMiddleware(s.handleListJobs, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/jobs/{id}", s.authMiddleware(s.handleGetJob, models.RoleAdmin))
+
+	// Playback preferences
+	s.router.HandleFunc("GET /api/v1/settings/playback", s.authMiddleware(s.handleGetPlaybackPrefs, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/settings/playback", s.authMiddleware(s.handleUpdatePlaybackPrefs, models.RoleUser))
 }
 
 // ──────────────────── Middleware ────────────────────

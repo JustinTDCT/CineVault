@@ -7,12 +7,13 @@ import (
 )
 
 type Config struct {
-	Database DatabaseConfig
-	Redis    RedisConfig
-	Server   ServerConfig
-	JWT      JWTConfig
-	Paths    PathsConfig
-	FFmpeg   FFmpegConfig
+	Database   DatabaseConfig
+	Redis      RedisConfig
+	Server     ServerConfig
+	JWT        JWTConfig
+	Paths      PathsConfig
+	FFmpeg     FFmpegConfig
+	TMDBAPIKey string
 }
 
 type DatabaseConfig struct {
@@ -85,6 +86,7 @@ func Load() (*Config, error) {
 			FFmpegPath:  getEnv("FFMPEG_PATH", "/usr/bin/ffmpeg"),
 			FFprobePath: getEnv("FFPROBE_PATH", "/usr/bin/ffprobe"),
 		},
+		TMDBAPIKey: getEnv("TMDB_API_KEY", ""),
 	}, nil
 }
 

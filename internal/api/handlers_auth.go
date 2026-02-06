@@ -34,7 +34,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
-		Data:    map[string]string{"version": "0.2.0", "phase": "2"},
+		Data: map[string]interface{}{
+			"version":    "0.3.0",
+			"phase":      "3",
+			"ws_clients": s.wsHub.ClientCount(),
+		},
 	})
 }
 

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/JustinTDCT/CineVault/internal/jobs"
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
 )
@@ -100,7 +101,26 @@ func (s *Server) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Starting scan for library %q (%s) at %s", library.Name, library.MediaType, library.Path)
+	// If job queue is available, enqueue async scan
+	if s.jobQueue != nil {
+		jobID, err := s.jobQueue.Enqueue(jobs.TaskScanLibrary, jobs.ScanPayload{
+			LibraryID: id.String(),
+		})
+		if err != nil {
+			// Fallback to synchronous scan
+			log.Printf("Failed to enqueue scan job, falling back to sync: %v", err)
+		} else {
+			log.Printf("Scan job enqueued for library %q: %s", library.Name, jobID)
+			s.respondJSON(w, http.StatusAccepted, Response{Success: true, Data: map[string]string{
+				"job_id":  jobID,
+				"message": "scan job enqueued",
+			}})
+			return
+		}
+	}
+
+	// Synchronous fallback
+	log.Printf("Starting sync scan for library %q (%s) at %s", library.Name, library.MediaType, library.Path)
 
 	result, err := s.scanner.ScanLibrary(library)
 	if err != nil {
@@ -108,9 +128,7 @@ func (s *Server) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update last scan timestamp
 	_ = s.libRepo.UpdateLastScan(id)
-
 	log.Printf("Scan complete: %d found, %d added, %d skipped, %d errors",
 		result.FilesFound, result.FilesAdded, result.FilesSkipped, len(result.Errors))
 

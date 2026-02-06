@@ -374,3 +374,178 @@ type ScanResult struct {
 	FilesUpdated int      `json:"files_updated"`
 	Errors       []string `json:"errors,omitempty"`
 }
+
+// ──────────────────── Performers ────────────────────
+
+type PerformerType string
+
+const (
+	PerformerActor        PerformerType = "actor"
+	PerformerDirector     PerformerType = "director"
+	PerformerProducer     PerformerType = "producer"
+	PerformerMusician     PerformerType = "musician"
+	PerformerNarrator     PerformerType = "narrator"
+	PerformerAdult        PerformerType = "adult_performer"
+	PerformerOther        PerformerType = "other"
+)
+
+type Performer struct {
+	ID            uuid.UUID     `json:"id" db:"id"`
+	Name          string        `json:"name" db:"name"`
+	SortName      *string       `json:"sort_name,omitempty" db:"sort_name"`
+	PerformerType PerformerType `json:"performer_type" db:"performer_type"`
+	PhotoPath     *string       `json:"photo_path,omitempty" db:"photo_path"`
+	Bio           *string       `json:"bio,omitempty" db:"bio"`
+	BirthDate     *time.Time    `json:"birth_date,omitempty" db:"birth_date"`
+	DeathDate     *time.Time    `json:"death_date,omitempty" db:"death_date"`
+	SortPosition  int           `json:"sort_position" db:"sort_position"`
+	CreatedAt     time.Time     `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at" db:"updated_at"`
+	// Aggregated
+	MediaCount int `json:"media_count,omitempty" db:"-"`
+}
+
+type MediaPerformer struct {
+	ID            uuid.UUID `json:"id" db:"id"`
+	MediaItemID   uuid.UUID `json:"media_item_id" db:"media_item_id"`
+	PerformerID   uuid.UUID `json:"performer_id" db:"performer_id"`
+	Role          string    `json:"role" db:"role"`
+	CharacterName *string   `json:"character_name,omitempty" db:"character_name"`
+	SortOrder     int       `json:"sort_order" db:"sort_order"`
+}
+
+// ──────────────────── Tags ────────────────────
+
+type TagCategory string
+
+const (
+	TagCategoryGenre  TagCategory = "genre"
+	TagCategoryTag    TagCategory = "tag"
+	TagCategoryCustom TagCategory = "custom"
+)
+
+type Tag struct {
+	ID           uuid.UUID   `json:"id" db:"id"`
+	Name         string      `json:"name" db:"name"`
+	Slug         string      `json:"slug" db:"slug"`
+	ParentID     *uuid.UUID  `json:"parent_id,omitempty" db:"parent_id"`
+	Category     TagCategory `json:"category" db:"category"`
+	Description  *string     `json:"description,omitempty" db:"description"`
+	SortPosition int         `json:"sort_position" db:"sort_position"`
+	CreatedAt    time.Time   `json:"created_at" db:"created_at"`
+	// Aggregated
+	MediaCount int    `json:"media_count,omitempty" db:"-"`
+	Children   []*Tag `json:"children,omitempty" db:"-"`
+}
+
+// ──────────────────── Studios ────────────────────
+
+type StudioType string
+
+const (
+	StudioTypeStudio      StudioType = "studio"
+	StudioTypeLabel       StudioType = "label"
+	StudioTypePublisher   StudioType = "publisher"
+	StudioTypeNetwork     StudioType = "network"
+	StudioTypeDistributor StudioType = "distributor"
+)
+
+type Studio struct {
+	ID           uuid.UUID  `json:"id" db:"id"`
+	Name         string     `json:"name" db:"name"`
+	StudioType   StudioType `json:"studio_type" db:"studio_type"`
+	LogoPath     *string    `json:"logo_path,omitempty" db:"logo_path"`
+	Description  *string    `json:"description,omitempty" db:"description"`
+	Website      *string    `json:"website,omitempty" db:"website"`
+	SortPosition int        `json:"sort_position" db:"sort_position"`
+	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
+	// Aggregated
+	MediaCount int `json:"media_count,omitempty" db:"-"`
+}
+
+// ──────────────────── Streaming ────────────────────
+
+type TranscodeSession struct {
+	ID            uuid.UUID  `json:"id" db:"id"`
+	MediaItemID   uuid.UUID  `json:"media_item_id" db:"media_item_id"`
+	UserID        uuid.UUID  `json:"user_id" db:"user_id"`
+	Quality       string     `json:"quality" db:"quality"`
+	Status        string     `json:"status" db:"status"`
+	OutputDir     string     `json:"output_dir" db:"output_dir"`
+	Pid           *int       `json:"pid,omitempty" db:"pid"`
+	SegmentsReady int        `json:"segments_ready" db:"segments_ready"`
+	StartedAt     time.Time  `json:"started_at" db:"started_at"`
+	LastAccessAt  time.Time  `json:"last_access_at" db:"last_access_at"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty" db:"expires_at"`
+}
+
+// ──────────────────── Playback Preferences ────────────────────
+
+type PlaybackMode string
+
+const (
+	PlaybackAlwaysAsk      PlaybackMode = "always_ask"
+	PlaybackPlayDefault    PlaybackMode = "play_default"
+	PlaybackHighestQuality PlaybackMode = "highest_quality"
+	PlaybackLowestQuality  PlaybackMode = "lowest_quality"
+	PlaybackLastPlayed     PlaybackMode = "last_played"
+)
+
+type UserPlaybackPreference struct {
+	ID               uuid.UUID    `json:"id" db:"id"`
+	UserID           uuid.UUID    `json:"user_id" db:"user_id"`
+	PlaybackMode     PlaybackMode `json:"playback_mode" db:"playback_mode"`
+	PreferredQuality string       `json:"preferred_quality" db:"preferred_quality"`
+	AutoPlayNext     bool         `json:"auto_play_next" db:"auto_play_next"`
+	SubtitleLanguage *string      `json:"subtitle_language,omitempty" db:"subtitle_language"`
+	AudioLanguage    *string      `json:"audio_language,omitempty" db:"audio_language"`
+	CreatedAt        time.Time    `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time    `json:"updated_at" db:"updated_at"`
+}
+
+// ──────────────────── Job History ────────────────────
+
+type JobStatus string
+
+const (
+	JobPending   JobStatus = "pending"
+	JobRunning   JobStatus = "running"
+	JobCompleted JobStatus = "completed"
+	JobFailed    JobStatus = "failed"
+	JobCancelled JobStatus = "cancelled"
+)
+
+type JobRecord struct {
+	ID           uuid.UUID  `json:"id" db:"id"`
+	JobType      string     `json:"job_type" db:"job_type"`
+	Status       JobStatus  `json:"status" db:"status"`
+	Progress     int        `json:"progress" db:"progress"`
+	ErrorMessage *string    `json:"error_message,omitempty" db:"error_message"`
+	StartedBy    *uuid.UUID `json:"started_by,omitempty" db:"started_by"`
+	StartedAt    time.Time  `json:"started_at" db:"started_at"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty" db:"completed_at"`
+	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// ──────────────────── Metadata Match ────────────────────
+
+type MetadataMatch struct {
+	Source      string  `json:"source"`
+	ExternalID  string  `json:"external_id"`
+	Title       string  `json:"title"`
+	Year        *int    `json:"year,omitempty"`
+	Description *string `json:"description,omitempty"`
+	PosterURL   *string `json:"poster_url,omitempty"`
+	Rating      *float64 `json:"rating,omitempty"`
+	Confidence  float64 `json:"confidence"`
+}
+
+// ──────────────────── Duplicate Pair ────────────────────
+
+type DuplicatePair struct {
+	ID              uuid.UUID  `json:"id"`
+	MediaA          *MediaItem `json:"media_a"`
+	MediaB          *MediaItem `json:"media_b"`
+	SimilarityScore float64    `json:"similarity_score"`
+}

@@ -4,12 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CineVault</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
@@ -19,752 +17,409 @@
             overflow-x: hidden;
         }
 
-        .app-container {
-            display: flex;
-            height: 100vh;
-        }
+        .app-container { display: flex; height: 100vh; }
 
-        /* Sidebar */
+        /* ── Sidebar ── */
         .sidebar {
-            width: 260px;
-            min-width: 260px;
-            background: linear-gradient(180deg, rgba(13, 27, 42, 0.95) 0%, rgba(10, 25, 41, 0.98) 100%);
+            width: 260px; min-width: 260px;
+            background: linear-gradient(180deg, rgba(13,27,42,0.95) 0%, rgba(10,25,41,0.98) 100%);
             backdrop-filter: blur(20px);
-            border-right: 1px solid rgba(0, 217, 255, 0.15);
-            padding: 25px 0;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
-            overflow-y: auto;
+            border-right: 1px solid rgba(0,217,255,0.15);
+            padding: 25px 0; display: flex; flex-direction: column;
+            box-shadow: 4px 0 20px rgba(0,0,0,0.3); overflow-y: auto;
         }
 
         .logo {
-            padding: 0 25px 30px;
-            font-size: 1.9rem;
-            font-weight: 700;
+            padding: 0 25px 30px; font-size: 1.9rem; font-weight: 700;
             background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            display: flex;
-            align-items: center;
-            gap: 12px;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; display: flex; align-items: center; gap: 12px;
         }
-
         .logo::before {
-            content: "\25B6";
-            font-size: 1.6rem;
+            content: "\25B6"; font-size: 1.6rem;
             background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0 0 10px rgba(0, 217, 255, 0.5));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 10px rgba(0,217,255,0.5));
         }
 
         .nav-label {
-            padding: 8px 25px;
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            color: #5a6a7f;
-            font-weight: 600;
-            margin-top: 8px;
+            padding: 8px 25px; font-size: 0.7rem; text-transform: uppercase;
+            letter-spacing: 1.5px; color: #5a6a7f; font-weight: 600; margin-top: 8px;
         }
-
-        .nav-section {
-            margin-bottom: 8px;
-        }
+        .nav-section { margin-bottom: 8px; }
 
         .nav-item {
-            padding: 12px 25px;
-            margin: 2px 12px;
-            color: #b8c5d6;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            font-size: 0.9rem;
-            border-radius: 12px;
-            position: relative;
+            padding: 12px 25px; margin: 2px 12px; color: #b8c5d6; cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+            display: flex; align-items: center; gap: 14px;
+            font-size: 0.9rem; border-radius: 12px; position: relative;
         }
-
         .nav-item::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 4px;
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
             background: linear-gradient(180deg, #00D9FF 0%, #0099CC 100%);
-            border-radius: 0 4px 4px 0;
-            opacity: 0;
-            transition: opacity 0.3s;
+            border-radius: 0 4px 4px 0; opacity: 0; transition: opacity 0.3s;
         }
-
         .nav-item:hover {
-            background: linear-gradient(135deg, rgba(0, 217, 255, 0.12) 0%, rgba(0, 153, 204, 0.08) 100%);
-            color: #00D9FF;
-            transform: translateX(4px);
+            background: linear-gradient(135deg, rgba(0,217,255,0.12) 0%, rgba(0,153,204,0.08) 100%);
+            color: #00D9FF; transform: translateX(4px);
         }
-
         .nav-item.active {
-            background: linear-gradient(135deg, rgba(0, 217, 255, 0.18) 0%, rgba(0, 153, 204, 0.12) 100%);
-            color: #00D9FF;
-            box-shadow: 0 4px 12px rgba(0, 217, 255, 0.2);
+            background: linear-gradient(135deg, rgba(0,217,255,0.18) 0%, rgba(0,153,204,0.12) 100%);
+            color: #00D9FF; box-shadow: 0 4px 12px rgba(0,217,255,0.2);
         }
-
-        .nav-item.active::before {
-            opacity: 1;
-        }
-
-        .nav-icon {
-            width: 22px;
-            text-align: center;
-            font-size: 1rem;
-        }
-
+        .nav-item.active::before { opacity: 1; }
+        .nav-icon { width: 22px; text-align: center; font-size: 1rem; }
         .nav-badge {
             margin-left: auto;
-            background: linear-gradient(135deg, rgba(0, 217, 255, 0.25) 0%, rgba(0, 153, 204, 0.2) 100%);
-            color: #00D9FF;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 0.7rem;
-            font-weight: 600;
+            background: linear-gradient(135deg, rgba(0,217,255,0.25) 0%, rgba(0,153,204,0.2) 100%);
+            color: #00D9FF; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600;
         }
 
-        /* Main Content */
-        .main-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 35px 45px;
-        }
+        /* ── Main Content ── */
+        .main-content { flex: 1; overflow-y: auto; padding: 35px 45px; }
 
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 22px;
-        }
-
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; }
         .section-title {
-            font-size: 1.5rem;
-            font-weight: 700;
+            font-size: 1.5rem; font-weight: 700;
             background: linear-gradient(135deg, #00D9FF 0%, #00B8DB 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
         }
+        .view-all { color: #8a9bae; font-size: 0.9rem; cursor: pointer; padding: 8px 16px; border-radius: 8px; transition: all 0.3s; }
+        .view-all:hover { color: #00D9FF; background: rgba(0,217,255,0.1); }
 
-        .view-all {
-            color: #8a9bae;
-            font-size: 0.9rem;
-            cursor: pointer;
-            padding: 8px 16px;
-            border-radius: 8px;
-            transition: all 0.3s;
-        }
-
-        .view-all:hover {
-            color: #00D9FF;
-            background: rgba(0, 217, 255, 0.1);
-        }
-
-        /* Media Grid */
-        .media-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 22px;
-            margin-bottom: 40px;
-        }
-
-        .media-card {
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-        }
-
-        .media-card:hover {
-            transform: translateY(-8px);
-        }
+        /* ── Media Grid ── */
+        .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 22px; margin-bottom: 40px; }
+        .media-card { cursor: pointer; transition: all 0.3s cubic-bezier(0.4,0,0.2,1); position: relative; }
+        .media-card:hover { transform: translateY(-8px); }
 
         .media-poster {
-            width: 100%;
-            aspect-ratio: 2/3;
-            background: linear-gradient(135deg, rgba(26, 35, 50, 0.8) 0%, rgba(13, 27, 42, 0.9) 100%);
-            border-radius: 16px;
-            overflow: hidden;
-            position: relative;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 217, 255, 0.1);
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2.5rem;
+            width: 100%; aspect-ratio: 2/3;
+            background: linear-gradient(135deg, rgba(26,35,50,0.8) 0%, rgba(13,27,42,0.9) 100%);
+            border-radius: 16px; overflow: hidden; position: relative;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,217,255,0.1);
+            transition: all 0.3s; display: flex; align-items: center; justify-content: center; font-size: 2.5rem;
         }
-
-        .media-card:hover .media-poster {
-            box-shadow: 0 12px 32px rgba(0, 217, 255, 0.3), 0 0 0 2px rgba(0, 217, 255, 0.3);
-        }
-
-        .media-poster img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
+        .media-card:hover .media-poster { box-shadow: 0 12px 32px rgba(0,217,255,0.3), 0 0 0 2px rgba(0,217,255,0.3); }
+        .media-poster img { width: 100%; height: 100%; object-fit: cover; }
 
         .quality-badge {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: linear-gradient(135deg, rgba(0, 217, 255, 0.95) 0%, rgba(0, 153, 204, 0.95) 100%);
-            color: #0a1929;
-            padding: 4px 9px;
-            border-radius: 8px;
-            font-size: 0.7rem;
-            font-weight: 700;
-            box-shadow: 0 4px 12px rgba(0, 217, 255, 0.4);
+            position: absolute; top: 10px; right: 10px;
+            background: linear-gradient(135deg, rgba(0,217,255,0.95) 0%, rgba(0,153,204,0.95) 100%);
+            color: #0a1929; padding: 4px 9px; border-radius: 8px; font-size: 0.7rem; font-weight: 700;
+            box-shadow: 0 4px 12px rgba(0,217,255,0.4);
         }
 
         .progress-bar {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 5px;
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 0 0 16px 16px;
-            overflow: hidden;
+            position: absolute; bottom: 0; left: 0; right: 0; height: 5px;
+            background: rgba(255,255,255,0.15); border-radius: 0 0 16px 16px; overflow: hidden;
         }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #00D9FF 0%, #0099CC 100%);
-            box-shadow: 0 0 10px rgba(0, 217, 255, 0.6);
-        }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #00D9FF 0%, #0099CC 100%); box-shadow: 0 0 10px rgba(0,217,255,0.6); }
 
         .play-overlay {
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(135deg, rgba(0, 217, 255, 0.15) 0%, rgba(10, 25, 41, 0.8) 100%);
-            backdrop-filter: blur(8px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.3s;
-            border-radius: 16px;
+            position: absolute; inset: 0;
+            background: linear-gradient(135deg, rgba(0,217,255,0.15) 0%, rgba(10,25,41,0.8) 100%);
+            backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.3s; border-radius: 16px;
         }
-
-        .media-card:hover .play-overlay {
-            opacity: 1;
-        }
+        .media-card:hover .play-overlay { opacity: 1; }
 
         .play-button {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
+            width: 60px; height: 60px; border-radius: 50%;
             background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            color: #0a1929;
-            box-shadow: 0 8px 24px rgba(0, 217, 255, 0.5);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; color: #0a1929; box-shadow: 0 8px 24px rgba(0,217,255,0.5);
         }
 
-        .media-info {
-            padding: 10px 2px;
-        }
+        .media-info { padding: 10px 2px; }
+        .media-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #e5e5e5; }
+        .media-meta { font-size: 0.78rem; color: #8a9bae; }
 
-        .media-title {
-            font-size: 0.9rem;
-            font-weight: 600;
-            margin-bottom: 4px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            color: #e5e5e5;
-        }
-
-        .media-meta {
-            font-size: 0.78rem;
-            color: #8a9bae;
-        }
-
-        /* Top Bar */
+        /* ── Top Bar ── */
         .top-bar {
-            position: sticky;
-            top: 0;
-            background: linear-gradient(180deg, rgba(10, 25, 41, 0.95) 0%, rgba(13, 27, 42, 0.9) 100%);
-            backdrop-filter: blur(20px);
-            padding: 18px 45px;
-            border-bottom: 1px solid rgba(0, 217, 255, 0.15);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            z-index: 10;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            position: sticky; top: 0;
+            background: linear-gradient(180deg, rgba(10,25,41,0.95) 0%, rgba(13,27,42,0.9) 100%);
+            backdrop-filter: blur(20px); padding: 18px 45px;
+            border-bottom: 1px solid rgba(0,217,255,0.15);
+            display: flex; justify-content: space-between; align-items: center; z-index: 10;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
         }
 
-        .search-box {
-            position: relative;
-            width: 420px;
-        }
-
+        .search-box { position: relative; width: 420px; }
         .search-box input {
-            width: 100%;
-            padding: 12px 18px;
-            background: linear-gradient(135deg, rgba(26, 35, 50, 0.6) 0%, rgba(13, 27, 42, 0.8) 100%);
-            border: 1px solid rgba(0, 217, 255, 0.2);
-            border-radius: 12px;
-            color: #e5e5e5;
-            font-size: 0.9rem;
-            transition: all 0.3s;
+            width: 100%; padding: 12px 18px;
+            background: linear-gradient(135deg, rgba(26,35,50,0.6) 0%, rgba(13,27,42,0.8) 100%);
+            border: 1px solid rgba(0,217,255,0.2); border-radius: 12px;
+            color: #e5e5e5; font-size: 0.9rem; transition: all 0.3s;
         }
+        .search-box input:focus { outline: none; border-color: #00D9FF; background: linear-gradient(135deg, rgba(26,35,50,0.8) 0%, rgba(13,27,42,0.95) 100%); box-shadow: 0 0 20px rgba(0,217,255,0.2); }
 
-        .search-box input:focus {
-            outline: none;
-            border-color: #00D9FF;
-            background: linear-gradient(135deg, rgba(26, 35, 50, 0.8) 0%, rgba(13, 27, 42, 0.95) 100%);
-            box-shadow: 0 0 20px rgba(0, 217, 255, 0.2);
-        }
-
-        .user-menu {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
+        .user-menu { display: flex; align-items: center; gap: 15px; }
         .user-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
+            width: 40px; height: 40px; border-radius: 50%;
             background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            color: #0a1929;
-            cursor: pointer;
-            box-shadow: 0 4px 16px rgba(0, 217, 255, 0.4);
-            transition: all 0.3s;
-            font-size: 0.95rem;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; color: #0a1929; cursor: pointer;
+            box-shadow: 0 4px 16px rgba(0,217,255,0.4); transition: all 0.3s; font-size: 0.95rem;
         }
+        .user-avatar:hover { transform: scale(1.05); box-shadow: 0 6px 20px rgba(0,217,255,0.6); }
 
-        .user-avatar:hover {
-            transform: scale(1.05);
-            box-shadow: 0 6px 20px rgba(0, 217, 255, 0.6);
-        }
+        /* ── Empty State ── */
+        .empty-state { text-align: center; padding: 60px 25px; color: #8a9bae; background: linear-gradient(135deg, rgba(26,35,50,0.4) 0%, rgba(13,27,42,0.6) 100%); border-radius: 20px; border: 1px solid rgba(0,217,255,0.1); margin: 10px 0 30px; }
+        .empty-state-icon { font-size: 3.5rem; margin-bottom: 18px; }
+        .empty-state-title { font-size: 1.2rem; margin-bottom: 8px; color: #b8c5d6; font-weight: 600; }
 
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 60px 25px;
-            color: #8a9bae;
-            background: linear-gradient(135deg, rgba(26, 35, 50, 0.4) 0%, rgba(13, 27, 42, 0.6) 100%);
-            border-radius: 20px;
-            border: 1px solid rgba(0, 217, 255, 0.1);
-            margin: 10px 0 30px;
-        }
-
-        .empty-state-icon {
-            font-size: 3.5rem;
-            margin-bottom: 18px;
-        }
-
-        .empty-state-title {
-            font-size: 1.2rem;
-            margin-bottom: 8px;
-            color: #b8c5d6;
-            font-weight: 600;
-        }
-
+        /* ── Buttons ── */
         .btn-primary {
             background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
-            color: #0a1929;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 0.9rem;
-            box-shadow: 0 6px 20px rgba(0, 217, 255, 0.3);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            color: #0a1929; padding: 12px 24px; border: none; border-radius: 12px;
+            font-weight: 600; cursor: pointer; font-size: 0.9rem;
+            box-shadow: 0 6px 20px rgba(0,217,255,0.3); transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
         }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 28px rgba(0, 217, 255, 0.5);
-        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(0,217,255,0.5); }
 
         .btn-secondary {
-            background: linear-gradient(135deg, rgba(0, 217, 255, 0.15) 0%, rgba(0, 153, 204, 0.1) 100%);
-            color: #00D9FF;
-            padding: 10px 20px;
-            border: 1px solid rgba(0, 217, 255, 0.3);
-            border-radius: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: all 0.3s;
+            background: linear-gradient(135deg, rgba(0,217,255,0.15) 0%, rgba(0,153,204,0.1) 100%);
+            color: #00D9FF; padding: 10px 20px; border: 1px solid rgba(0,217,255,0.3);
+            border-radius: 12px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: all 0.3s;
         }
-
-        .btn-secondary:hover {
-            background: linear-gradient(135deg, rgba(0, 217, 255, 0.25) 0%, rgba(0, 153, 204, 0.2) 100%);
-            box-shadow: 0 4px 16px rgba(0, 217, 255, 0.3);
-        }
+        .btn-secondary:hover { background: linear-gradient(135deg, rgba(0,217,255,0.25) 0%, rgba(0,153,204,0.2) 100%); box-shadow: 0 4px 16px rgba(0,217,255,0.3); }
 
         .btn-danger {
-            background: linear-gradient(135deg, rgba(255, 59, 48, 0.15) 0%, rgba(255, 59, 48, 0.1) 100%);
-            color: #ff6b6b;
-            padding: 10px 20px;
-            border: 1px solid rgba(255, 59, 48, 0.3);
-            border-radius: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: all 0.3s;
+            background: linear-gradient(135deg, rgba(255,59,48,0.15) 0%, rgba(255,59,48,0.1) 100%);
+            color: #ff6b6b; padding: 10px 20px; border: 1px solid rgba(255,59,48,0.3);
+            border-radius: 12px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: all 0.3s;
         }
+        .btn-danger:hover { background: linear-gradient(135deg, rgba(255,59,48,0.25) 0%, rgba(255,59,48,0.2) 100%); }
 
-        .btn-danger:hover {
-            background: linear-gradient(135deg, rgba(255, 59, 48, 0.25) 0%, rgba(255, 59, 48, 0.2) 100%);
-        }
+        .btn-small { padding: 6px 14px; font-size: 0.78rem; }
 
-        /* Login Modal */
+        /* ── Modal ── */
         .modal {
-            position: fixed;
-            inset: 0;
-            background: linear-gradient(135deg, rgba(10, 25, 41, 0.95) 0%, rgba(13, 27, 42, 0.97) 100%);
-            backdrop-filter: blur(12px);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
+            position: fixed; inset: 0;
+            background: linear-gradient(135deg, rgba(10,25,41,0.95) 0%, rgba(13,27,42,0.97) 100%);
+            backdrop-filter: blur(12px); display: none; align-items: center; justify-content: center; z-index: 1000;
         }
-
-        .modal.active {
-            display: flex;
-        }
+        .modal.active { display: flex; }
 
         .modal-content {
-            background: linear-gradient(135deg, rgba(26, 35, 50, 0.95) 0%, rgba(13, 27, 42, 0.98) 100%);
-            border: 1px solid rgba(0, 217, 255, 0.3);
-            border-radius: 20px;
-            padding: 40px;
-            max-width: 440px;
-            width: 90%;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 217, 255, 0.2);
+            background: linear-gradient(135deg, rgba(26,35,50,0.95) 0%, rgba(13,27,42,0.98) 100%);
+            border: 1px solid rgba(0,217,255,0.3); border-radius: 20px;
+            padding: 40px; max-width: 600px; width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,217,255,0.2);
+            max-height: 90vh; overflow-y: auto;
         }
-
         .modal-title {
             font-size: 1.6rem;
             background: linear-gradient(135deg, #00D9FF 0%, #00B8DB 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 30px;
-            text-align: center;
-            font-weight: 700;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+            margin-bottom: 30px; text-align: center; font-weight: 700;
         }
 
-        .form-group {
-            margin-bottom: 18px;
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #b8c5d6; font-size: 0.85rem; font-weight: 500; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%; padding: 12px 14px;
+            background: linear-gradient(135deg, rgba(10,25,41,0.6) 0%, rgba(13,27,42,0.8) 100%);
+            border: 1px solid rgba(0,217,255,0.2); border-radius: 12px;
+            color: #e5e5e5; font-size: 0.9rem; transition: all 0.3s; font-family: inherit;
         }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #00D9FF; box-shadow: 0 0 20px rgba(0,217,255,0.2); }
+        .form-group select option { background: #1a2332; color: #e5e5e5; }
 
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            color: #b8c5d6;
-            font-size: 0.85rem;
-            font-weight: 500;
-        }
+        .message { padding: 12px; border-radius: 12px; margin-bottom: 18px; font-size: 0.85rem; }
+        .message.error { background: linear-gradient(135deg, rgba(255,59,48,0.15) 0%, rgba(255,59,48,0.1) 100%); border: 1px solid rgba(255,59,48,0.4); color: #ff6b6b; }
+        .message.success { background: linear-gradient(135deg, rgba(52,199,89,0.15) 0%, rgba(52,199,89,0.1) 100%); border: 1px solid rgba(52,199,89,0.4); color: #51cf66; }
 
-        .form-group input, .form-group select {
-            width: 100%;
-            padding: 12px 14px;
-            background: linear-gradient(135deg, rgba(10, 25, 41, 0.6) 0%, rgba(13, 27, 42, 0.8) 100%);
-            border: 1px solid rgba(0, 217, 255, 0.2);
-            border-radius: 12px;
-            color: #e5e5e5;
-            font-size: 0.9rem;
-            transition: all 0.3s;
-        }
-
-        .form-group input:focus, .form-group select:focus {
-            outline: none;
-            border-color: #00D9FF;
-            box-shadow: 0 0 20px rgba(0, 217, 255, 0.2);
-        }
-
-        .form-group select option {
-            background: #1a2332;
-            color: #e5e5e5;
-        }
-
-        .message {
-            padding: 12px;
-            border-radius: 12px;
-            margin-bottom: 18px;
-            font-size: 0.85rem;
-        }
-
-        .message.error {
-            background: linear-gradient(135deg, rgba(255, 59, 48, 0.15) 0%, rgba(255, 59, 48, 0.1) 100%);
-            border: 1px solid rgba(255, 59, 48, 0.4);
-            color: #ff6b6b;
-        }
-
-        .message.success {
-            background: linear-gradient(135deg, rgba(52, 199, 89, 0.15) 0%, rgba(52, 199, 89, 0.1) 100%);
-            border: 1px solid rgba(52, 199, 89, 0.4);
-            color: #51cf66;
-        }
-
-        /* Library Card */
+        /* ── Cards ── */
         .library-card {
             padding: 22px;
-            background: linear-gradient(135deg, rgba(26, 35, 50, 0.6) 0%, rgba(13, 27, 42, 0.8) 100%);
-            border: 1px solid rgba(0, 217, 255, 0.2);
-            border-radius: 16px;
-            margin-bottom: 14px;
-            transition: all 0.3s;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            background: linear-gradient(135deg, rgba(26,35,50,0.6) 0%, rgba(13,27,42,0.8) 100%);
+            border: 1px solid rgba(0,217,255,0.2); border-radius: 16px; margin-bottom: 14px;
+            transition: all 0.3s; box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            display: flex; justify-content: space-between; align-items: center;
         }
-
-        .library-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 24px rgba(0, 217, 255, 0.2);
-            border-color: rgba(0, 217, 255, 0.4);
-        }
-
+        .library-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,217,255,0.2); border-color: rgba(0,217,255,0.4); }
         .library-card h3 {
             background: linear-gradient(135deg, #00D9FF 0%, #00B8DB 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 8px;
-            font-size: 1.1rem;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+            margin-bottom: 8px; font-size: 1.1rem;
         }
+        .library-actions { display: flex; gap: 10px; align-items: center; }
 
-        .library-actions {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        /* Group Cards */
         .group-card {
             padding: 20px;
-            background: linear-gradient(135deg, rgba(26, 35, 50, 0.6) 0%, rgba(13, 27, 42, 0.8) 100%);
-            border: 1px solid rgba(0, 217, 255, 0.15);
-            border-radius: 16px;
-            margin-bottom: 12px;
-            transition: all 0.3s;
+            background: linear-gradient(135deg, rgba(26,35,50,0.6) 0%, rgba(13,27,42,0.8) 100%);
+            border: 1px solid rgba(0,217,255,0.15); border-radius: 16px;
+            margin-bottom: 12px; transition: all 0.3s;
         }
+        .group-card:hover { border-color: rgba(0,217,255,0.35); box-shadow: 0 4px 16px rgba(0,217,255,0.15); }
+        .group-card h4 { color: #00D9FF; margin-bottom: 6px; }
+        .group-card p { color: #8a9bae; font-size: 0.85rem; }
 
-        .group-card:hover {
-            border-color: rgba(0, 217, 255, 0.35);
-            box-shadow: 0 4px 16px rgba(0, 217, 255, 0.15);
-        }
+        .tag { display: inline-block; padding: 3px 10px; border-radius: 8px; font-size: 0.72rem; font-weight: 600; margin-right: 6px; margin-top: 8px; }
+        .tag-cyan { background: rgba(0,217,255,0.15); color: #00D9FF; border: 1px solid rgba(0,217,255,0.3); }
+        .tag-purple { background: rgba(168,85,247,0.15); color: #a78bfa; border: 1px solid rgba(168,85,247,0.3); }
+        .tag-green { background: rgba(52,199,89,0.15); color: #51cf66; border: 1px solid rgba(52,199,89,0.3); }
+        .tag-orange { background: rgba(255,159,64,0.15); color: #ffa94d; border: 1px solid rgba(255,159,64,0.3); }
+        .tag-red { background: rgba(255,59,48,0.15); color: #ff6b6b; border: 1px solid rgba(255,59,48,0.3); }
 
-        .group-card h4 {
-            color: #00D9FF;
-            margin-bottom: 6px;
-        }
+        /* ── Toast ── */
+        .toast-container { position: fixed; bottom: 30px; right: 30px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+        .toast { padding: 14px 24px; border-radius: 12px; font-size: 0.9rem; animation: slideInRight 0.3s ease-out; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+        @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-        .group-card p {
-            color: #8a9bae;
-            font-size: 0.85rem;
-        }
+        /* ── Continue Watching ── */
+        .continue-row { display: flex; gap: 18px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 30px; }
+        .continue-row .media-card { min-width: 180px; flex-shrink: 0; }
 
-        .tag {
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 8px;
-            font-size: 0.72rem;
-            font-weight: 600;
-            margin-right: 6px;
-            margin-top: 8px;
-        }
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(13,27,42,0.5); }
+        ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(0,217,255,0.4) 0%, rgba(0,153,204,0.4) 100%); border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(0,217,255,0.6) 0%, rgba(0,153,204,0.6) 100%); }
 
-        .tag-cyan {
-            background: rgba(0, 217, 255, 0.15);
-            color: #00D9FF;
-            border: 1px solid rgba(0, 217, 255, 0.3);
-        }
+        .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(0,217,255,0.3); border-top: 2px solid #00D9FF; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        .tag-purple {
-            background: rgba(168, 85, 247, 0.15);
-            color: #a78bfa;
-            border: 1px solid rgba(168, 85, 247, 0.3);
+        /* ── Video Player ── */
+        .video-player-overlay {
+            position: fixed; inset: 0; background: #000; z-index: 5000;
+            display: none; flex-direction: column;
         }
+        .video-player-overlay.active { display: flex; }
 
-        .tag-green {
-            background: rgba(52, 199, 89, 0.15);
-            color: #51cf66;
-            border: 1px solid rgba(52, 199, 89, 0.3);
+        .player-top-bar {
+            position: absolute; top: 0; left: 0; right: 0; padding: 20px 30px;
+            background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+            z-index: 5010; display: flex; justify-content: space-between; align-items: center;
+            opacity: 0; transition: opacity 0.3s;
         }
+        .video-player-overlay:hover .player-top-bar { opacity: 1; }
 
-        /* Toast */
-        .toast {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            padding: 14px 24px;
-            border-radius: 12px;
-            font-size: 0.9rem;
-            z-index: 2000;
-            animation: slideInRight 0.3s ease-out;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-        }
+        .player-title { color: #fff; font-size: 1.2rem; font-weight: 600; }
+        .player-close { color: #fff; font-size: 1.5rem; cursor: pointer; padding: 8px 14px; border-radius: 8px; background: rgba(255,255,255,0.1); border: none; transition: all 0.3s; }
+        .player-close:hover { background: rgba(255,59,48,0.4); }
 
-        @keyframes slideInRight {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
+        #videoPlayer { width: 100%; height: 100%; background: #000; }
 
-        /* Continue watching horizontal scroll */
-        .continue-row {
-            display: flex;
-            gap: 18px;
-            overflow-x: auto;
-            padding-bottom: 10px;
-            margin-bottom: 30px;
+        .player-controls {
+            position: absolute; bottom: 0; left: 0; right: 0; padding: 16px 30px 24px;
+            background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+            z-index: 5010; opacity: 0; transition: opacity 0.3s;
         }
+        .video-player-overlay:hover .player-controls { opacity: 1; }
 
-        .continue-row .media-card {
-            min-width: 180px;
-            flex-shrink: 0;
-        }
+        .player-progress { width: 100%; height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; cursor: pointer; margin-bottom: 14px; position: relative; }
+        .player-progress-fill { height: 100%; background: linear-gradient(90deg, #00D9FF, #0099CC); border-radius: 3px; width: 0; transition: width 0.1s; }
 
-        /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
+        .player-btns { display: flex; align-items: center; gap: 18px; }
+        .player-btn { background: none; border: none; color: #fff; font-size: 1.3rem; cursor: pointer; padding: 6px; transition: color 0.2s; }
+        .player-btn:hover { color: #00D9FF; }
+        .player-time { color: #ccc; font-size: 0.85rem; }
+        .player-quality-select { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: #fff; padding: 4px 10px; font-size: 0.8rem; margin-left: auto; }
 
-        ::-webkit-scrollbar-track {
-            background: rgba(13, 27, 42, 0.5);
+        /* ── Detail Page ── */
+        .detail-hero {
+            display: flex; gap: 35px; margin-bottom: 30px;
+            background: linear-gradient(135deg, rgba(26,35,50,0.4) 0%, rgba(13,27,42,0.6) 100%);
+            border-radius: 20px; padding: 30px; border: 1px solid rgba(0,217,255,0.1);
         }
+        .detail-poster { width: 220px; min-width: 220px; aspect-ratio: 2/3; border-radius: 16px; overflow: hidden; box-shadow: 0 12px 32px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; font-size: 4rem; background: linear-gradient(135deg, rgba(26,35,50,0.8) 0%, rgba(13,27,42,0.9) 100%); }
+        .detail-poster img { width: 100%; height: 100%; object-fit: cover; }
+        .detail-info { flex: 1; }
+        .detail-info h1 { font-size: 2rem; margin-bottom: 8px; color: #fff; }
+        .detail-info .meta-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; color: #8a9bae; font-size: 0.95rem; }
+        .detail-info .description { color: #b8c5d6; line-height: 1.7; margin-bottom: 20px; }
+        .detail-actions { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+        .detail-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+        .detail-tab { padding: 10px 20px; border-radius: 10px; cursor: pointer; color: #8a9bae; font-size: 0.9rem; transition: all 0.2s; border: none; background: none; }
+        .detail-tab.active { color: #00D9FF; background: rgba(0,217,255,0.12); }
+        .detail-tab:hover { color: #00D9FF; }
+        .detail-tab-content { min-height: 100px; }
 
-        ::-webkit-scrollbar-thumb {
-            background: linear-gradient(180deg, rgba(0, 217, 255, 0.4) 0%, rgba(0, 153, 204, 0.4) 100%);
-            border-radius: 5px;
-        }
+        /* ── Person Grid ── */
+        .person-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 18px; }
+        .person-card { text-align: center; cursor: pointer; transition: transform 0.2s; }
+        .person-card:hover { transform: translateY(-4px); }
+        .person-avatar { width: 100px; height: 100px; border-radius: 50%; margin: 0 auto 10px; background: linear-gradient(135deg, rgba(0,217,255,0.2) 0%, rgba(0,153,204,0.15) 100%); display: flex; align-items: center; justify-content: center; font-size: 2rem; border: 2px solid rgba(0,217,255,0.2); overflow: hidden; }
+        .person-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .person-name { font-size: 0.85rem; color: #e5e5e5; font-weight: 500; }
+        .person-role { font-size: 0.75rem; color: #5a6a7f; }
 
-        ::-webkit-scrollbar-thumb:hover {
-            background: linear-gradient(180deg, rgba(0, 217, 255, 0.6) 0%, rgba(0, 153, 204, 0.6) 100%);
+        /* ── Settings / Admin Grid ── */
+        .settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .settings-card {
+            padding: 25px; border-radius: 16px;
+            background: linear-gradient(135deg, rgba(26,35,50,0.6) 0%, rgba(13,27,42,0.8) 100%);
+            border: 1px solid rgba(0,217,255,0.15);
         }
+        .settings-card h3 { color: #00D9FF; margin-bottom: 16px; font-size: 1.1rem; }
 
-        .spinner {
-            display: inline-block;
-            width: 18px;
-            height: 18px;
-            border: 2px solid rgba(0, 217, 255, 0.3);
-            border-top: 2px solid #00D9FF;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
-        }
+        /* ── Status indicator ── */
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+        .status-dot.green { background: #51cf66; box-shadow: 0 0 8px rgba(52,199,89,0.5); }
+        .status-dot.red { background: #ff6b6b; box-shadow: 0 0 8px rgba(255,59,48,0.5); }
+        .status-dot.yellow { background: #ffa94d; box-shadow: 0 0 8px rgba(255,159,64,0.5); }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        /* ── Job list ── */
+        .job-item { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 10px; background: rgba(0,0,0,0.2); margin-bottom: 8px; }
+        .job-progress-bar { flex: 1; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+        .job-progress-fill { height: 100%; background: linear-gradient(90deg, #00D9FF, #0099CC); border-radius: 3px; transition: width 0.3s; }
+
+        /* ── Duplicate Review ── */
+        .dup-pair { display: flex; gap: 20px; padding: 20px; border-radius: 16px; background: linear-gradient(135deg, rgba(26,35,50,0.6) 0%, rgba(13,27,42,0.8) 100%); border: 1px solid rgba(0,217,255,0.15); margin-bottom: 14px; align-items: center; }
+        .dup-item { flex: 1; }
+        .dup-vs { font-size: 1.2rem; color: #ffa94d; font-weight: 700; }
+        .dup-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        /* ── WS status ── */
+        .ws-status { font-size: 0.7rem; padding: 4px 10px; border-radius: 8px; }
     </style>
 </head>
 <body>
     <div class="app-container">
         <!-- Sidebar -->
-        <div class="sidebar">
+        <div class="sidebar" id="sidebar">
             <div class="logo">CineVault</div>
 
             <div class="nav-section">
                 <div class="nav-label">Main</div>
-                <div class="nav-item active" data-view="home">
-                    <span class="nav-icon">&#127968;</span>
-                    <span>Home</span>
-                </div>
-                <div class="nav-item" data-view="libraries">
-                    <span class="nav-icon">&#128218;</span>
-                    <span>Libraries</span>
-                </div>
+                <div class="nav-item active" data-view="home"><span class="nav-icon">&#127968;</span><span>Home</span></div>
+                <div class="nav-item" data-view="libraries"><span class="nav-icon">&#128218;</span><span>Libraries</span></div>
             </div>
 
-            <div class="nav-section">
+            <div class="nav-section" id="mediaNav">
                 <div class="nav-label">Media</div>
-                <div class="nav-item" data-view="movies" data-type="movies">
-                    <span class="nav-icon">&#127916;</span>
-                    <span>Movies</span>
-                    <span class="nav-badge" id="badge-movies"></span>
-                </div>
-                <div class="nav-item" data-view="media" data-type="adult_movies">
-                    <span class="nav-icon">&#128274;</span>
-                    <span>Adult</span>
-                    <span class="nav-badge" id="badge-adult_movies"></span>
-                </div>
-                <div class="nav-item" data-view="tv" data-type="tv_shows">
-                    <span class="nav-icon">&#128250;</span>
-                    <span>TV Shows</span>
-                    <span class="nav-badge" id="badge-tv_shows"></span>
-                </div>
-                <div class="nav-item" data-view="media" data-type="music">
-                    <span class="nav-icon">&#127925;</span>
-                    <span>Music</span>
-                    <span class="nav-badge" id="badge-music"></span>
-                </div>
-                <div class="nav-item" data-view="media" data-type="music_videos">
-                    <span class="nav-icon">&#127911;</span>
-                    <span>Music Videos</span>
-                    <span class="nav-badge" id="badge-music_videos"></span>
-                </div>
-                <div class="nav-item" data-view="media" data-type="home_videos">
-                    <span class="nav-icon">&#127909;</span>
-                    <span>Home Videos</span>
-                    <span class="nav-badge" id="badge-home_videos"></span>
-                </div>
-                <div class="nav-item" data-view="media" data-type="other_videos">
-                    <span class="nav-icon">&#128253;</span>
-                    <span>Other Videos</span>
-                    <span class="nav-badge" id="badge-other_videos"></span>
-                </div>
-                <div class="nav-item" data-view="media" data-type="images">
-                    <span class="nav-icon">&#128247;</span>
-                    <span>Photos</span>
-                    <span class="nav-badge" id="badge-images"></span>
-                </div>
-                <div class="nav-item" data-view="media" data-type="audiobooks">
-                    <span class="nav-icon">&#128214;</span>
-                    <span>Audiobooks</span>
-                    <span class="nav-badge" id="badge-audiobooks"></span>
-                </div>
+                <div class="nav-item" data-view="media" data-type="movies"><span class="nav-icon">&#127916;</span><span>Movies</span><span class="nav-badge" id="badge-movies"></span></div>
+                <div class="nav-item" data-view="media" data-type="adult_movies"><span class="nav-icon">&#128274;</span><span>Adult</span><span class="nav-badge" id="badge-adult_movies"></span></div>
+                <div class="nav-item" data-view="media" data-type="tv_shows"><span class="nav-icon">&#128250;</span><span>TV Shows</span><span class="nav-badge" id="badge-tv_shows"></span></div>
+                <div class="nav-item" data-view="media" data-type="music"><span class="nav-icon">&#127925;</span><span>Music</span><span class="nav-badge" id="badge-music"></span></div>
+                <div class="nav-item" data-view="media" data-type="music_videos"><span class="nav-icon">&#127911;</span><span>Music Videos</span><span class="nav-badge" id="badge-music_videos"></span></div>
+                <div class="nav-item" data-view="media" data-type="home_videos"><span class="nav-icon">&#127909;</span><span>Home Videos</span><span class="nav-badge" id="badge-home_videos"></span></div>
+                <div class="nav-item" data-view="media" data-type="other_videos"><span class="nav-icon">&#128253;</span><span>Other Videos</span><span class="nav-badge" id="badge-other_videos"></span></div>
+                <div class="nav-item" data-view="media" data-type="images"><span class="nav-icon">&#128247;</span><span>Photos</span><span class="nav-badge" id="badge-images"></span></div>
+                <div class="nav-item" data-view="media" data-type="audiobooks"><span class="nav-icon">&#128214;</span><span>Audiobooks</span><span class="nav-badge" id="badge-audiobooks"></span></div>
             </div>
 
             <div class="nav-section">
                 <div class="nav-label">Organize</div>
-                <div class="nav-item" data-view="editions">
-                    <span class="nav-icon">&#128191;</span>
-                    <span>Editions</span>
-                </div>
-                <div class="nav-item" data-view="sisters">
-                    <span class="nav-icon">&#128279;</span>
-                    <span>Sister Groups</span>
-                </div>
-                <div class="nav-item" data-view="collections">
-                    <span class="nav-icon">&#11088;</span>
-                    <span>Collections</span>
-                </div>
+                <div class="nav-item" data-view="editions"><span class="nav-icon">&#128191;</span><span>Editions</span></div>
+                <div class="nav-item" data-view="sisters"><span class="nav-icon">&#128279;</span><span>Sister Groups</span></div>
+                <div class="nav-item" data-view="collections"><span class="nav-icon">&#11088;</span><span>Collections</span></div>
+                <div class="nav-item" data-view="performers"><span class="nav-icon">&#128100;</span><span>Performers</span></div>
+                <div class="nav-item" data-view="tags"><span class="nav-icon">&#127991;</span><span>Tags</span></div>
+                <div class="nav-item" data-view="studios"><span class="nav-icon">&#127980;</span><span>Studios</span></div>
+                <div class="nav-item" data-view="duplicates"><span class="nav-icon">&#128257;</span><span>Duplicates</span></div>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-label">System</div>
+                <div class="nav-item" data-view="settings"><span class="nav-icon">&#9881;</span><span>Settings</span></div>
+                <div class="nav-item" data-view="admin"><span class="nav-icon">&#128736;</span><span>Admin</span></div>
             </div>
 
             <div style="margin-top: auto; padding: 15px 0;">
-                <div class="nav-item" id="logoutBtn" style="color: #ff6b6b;">
-                    <span class="nav-icon">&#128682;</span>
-                    <span>Logout</span>
-                </div>
+                <div class="nav-item" id="logoutBtn" style="color: #ff6b6b;"><span class="nav-icon">&#128682;</span><span>Logout</span></div>
             </div>
         </div>
 
@@ -775,12 +430,11 @@
                     <input type="text" placeholder="Search your media..." id="searchInput">
                 </div>
                 <div class="user-menu">
+                    <span class="ws-status" id="wsStatus" style="display:none;"></span>
                     <div class="user-avatar" id="userAvatar">?</div>
                 </div>
             </div>
-
-            <div class="main-content" id="mainContent">
-            </div>
+            <div class="main-content" id="mainContent"></div>
         </div>
     </div>
 
@@ -790,56 +444,100 @@
             <h2 class="modal-title">Welcome to CineVault</h2>
             <div id="authMessage"></div>
             <form id="loginForm">
-                <div class="form-group">
-                    <label>Username</label>
-                    <input type="text" id="loginUsername" required>
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" id="loginPassword" required>
-                </div>
+                <div class="form-group"><label>Username</label><input type="text" id="loginUsername" required></div>
+                <div class="form-group"><label>Password</label><input type="password" id="loginPassword" required></div>
                 <button type="submit" class="btn-primary" style="width: 100%; margin-top: 10px;">Login</button>
             </form>
         </div>
     </div>
 
+    <!-- Video Player Overlay -->
+    <div class="video-player-overlay" id="playerOverlay">
+        <div class="player-top-bar">
+            <span class="player-title" id="playerTitle"></span>
+            <button class="player-close" onclick="closePlayer()">&#10005;</button>
+        </div>
+        <video id="videoPlayer"></video>
+        <div class="player-controls">
+            <div class="player-progress" id="playerProgress" onclick="seekPlayer(event)">
+                <div class="player-progress-fill" id="playerProgressFill"></div>
+            </div>
+            <div class="player-btns">
+                <button class="player-btn" onclick="togglePlay()">&#9654;&#10074;&#10074;</button>
+                <button class="player-btn" onclick="skipBack()">&#9194;</button>
+                <button class="player-btn" onclick="skipForward()">&#9193;</button>
+                <span class="player-time" id="playerTime">0:00 / 0:00</span>
+                <button class="player-btn" onclick="toggleMute()">&#128266;</button>
+                <select class="player-quality-select" id="qualitySelect" onchange="changeQuality(this.value)"></select>
+                <button class="player-btn" onclick="toggleFullscreen()" style="margin-left:auto;">&#9974;</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
     <script>
     const API = '/api/v1';
     let currentUser = null;
     let allLibraries = [];
+    let ws = null;
+    let hlsPlayer = null;
+    let currentMediaId = null;
 
-    function headers() {
-        return { 'Authorization': 'Bearer ' + localStorage.getItem('token'), 'Content-Type': 'application/json' };
-    }
+    function headers() { return { 'Authorization': 'Bearer ' + localStorage.getItem('token'), 'Content-Type': 'application/json' }; }
 
     async function api(method, path, body) {
         const opts = { method, headers: headers() };
         if (body) opts.body = JSON.stringify(body);
-        const res = await fetch(API + path, opts);
-        return res.json();
+        try { const res = await fetch(API + path, opts); return res.json(); } catch(e) { return { success: false, error: e.message }; }
     }
 
-    function toast(msg, type = 'success') {
+    function toast(msg, type='success') {
+        const c = document.getElementById('toastContainer');
         const t = document.createElement('div');
         t.className = 'toast message ' + type;
         t.textContent = msg;
-        document.body.appendChild(t);
-        setTimeout(() => t.remove(), 3500);
+        c.appendChild(t);
+        setTimeout(() => t.remove(), 4000);
     }
 
-    const MEDIA_ICONS = {
-        movies: '&#127916;', adult_movies: '&#128274;', tv_shows: '&#128250;',
-        music: '&#127925;', music_videos: '&#127911;', home_videos: '&#127909;',
-        other_videos: '&#128253;', images: '&#128247;', audiobooks: '&#128214;'
-    };
-
-    const MEDIA_LABELS = {
-        movies: 'Movies', adult_movies: 'Adult Movies', tv_shows: 'TV Shows',
-        music: 'Music', music_videos: 'Music Videos', home_videos: 'Home Videos',
-        other_videos: 'Other Videos', images: 'Photos', audiobooks: 'Audiobooks'
-    };
-
+    const MEDIA_ICONS = { movies:'&#127916;', adult_movies:'&#128274;', tv_shows:'&#128250;', music:'&#127925;', music_videos:'&#127911;', home_videos:'&#127909;', other_videos:'&#128253;', images:'&#128247;', audiobooks:'&#128214;' };
+    const MEDIA_LABELS = { movies:'Movies', adult_movies:'Adult Movies', tv_shows:'TV Shows', music:'Music', music_videos:'Music Videos', home_videos:'Home Videos', other_videos:'Other Videos', images:'Photos', audiobooks:'Audiobooks' };
     function mediaIcon(type) { return MEDIA_ICONS[type] || '&#128191;'; }
+    function formatDuration(sec) { if (!sec) return ''; const m = Math.floor(sec/60); const s = sec%60; return m + ':' + String(s).padStart(2,'0'); }
+    function formatTime(sec) { const h = Math.floor(sec/3600); const m = Math.floor((sec%3600)/60); const s = Math.floor(sec%60); return (h>0?h+':':'')+String(m).padStart(h>0?2:1,'0')+':'+String(s).padStart(2,'0'); }
+
+    // ──── WebSocket ────
+    function connectWS() {
+        if (ws) ws.close();
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${proto}//${location.host}/api/v1/ws?token=${token}`);
+        const badge = document.getElementById('wsStatus');
+        ws.onopen = () => { badge.style.display=''; badge.className='ws-status tag tag-green'; badge.textContent='Live'; };
+        ws.onclose = () => { badge.className='ws-status tag tag-red'; badge.textContent='Offline'; setTimeout(connectWS, 5000); };
+        ws.onmessage = (e) => {
+            try {
+                const msg = JSON.parse(e.data);
+                handleWSEvent(msg);
+            } catch {}
+        };
+    }
+
+    function handleWSEvent(msg) {
+        switch(msg.event) {
+            case 'scan:start': toast('Scanning: ' + (msg.data?.name || ''), 'success'); break;
+            case 'scan:complete':
+                const r = msg.data?.result;
+                toast(`Scan complete: ${r?.files_added||0} added, ${r?.files_found||0} found`);
+                loadSidebarCounts();
+                break;
+            case 'job:progress': break; // Could update progress bars
+            default: break;
+        }
+    }
 
     // ──── Auth ────
     function checkAuth() {
@@ -851,6 +549,7 @@
             document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
             loadHomeView();
             loadSidebarCounts();
+            connectWS();
         } else {
             document.getElementById('loginModal').classList.add('active');
         }
@@ -860,36 +559,22 @@
         e.preventDefault();
         const msgDiv = document.getElementById('authMessage');
         try {
-            const data = await api('POST', '/auth/login', {
-                username: document.getElementById('loginUsername').value,
-                password: document.getElementById('loginPassword').value
-            });
-            if (data.success) {
-                localStorage.setItem('token', data.data.token);
-                localStorage.setItem('user', JSON.stringify(data.data.user));
-                msgDiv.innerHTML = '<div class="message success">Login successful!</div>';
-                setTimeout(checkAuth, 400);
-            } else {
-                msgDiv.innerHTML = '<div class="message error">' + (data.error || 'Login failed') + '</div>';
-            }
-        } catch {
-            msgDiv.innerHTML = '<div class="message error">Connection error</div>';
-        }
+            const data = await api('POST', '/auth/login', { username: document.getElementById('loginUsername').value, password: document.getElementById('loginPassword').value });
+            if (data.success) { localStorage.setItem('token', data.data.token); localStorage.setItem('user', JSON.stringify(data.data.user)); msgDiv.innerHTML='<div class="message success">Login successful!</div>'; setTimeout(checkAuth, 400); }
+            else msgDiv.innerHTML='<div class="message error">'+(data.error||'Login failed')+'</div>';
+        } catch { msgDiv.innerHTML='<div class="message error">Connection error</div>'; }
     });
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
-        localStorage.clear();
-        currentUser = null;
-        document.getElementById('loginModal').classList.add('active');
-    });
+    document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.clear(); currentUser=null; if(ws)ws.close(); document.getElementById('loginModal').classList.add('active'); });
 
-    // ──── Sidebar counts ────
+    // ──── Sidebar Counts ────
     async function loadSidebarCounts() {
         try {
             const data = await api('GET', '/libraries');
             if (!data.success) return;
             allLibraries = data.data || [];
-            // Group media counts by type -- we'll count media per type
+            // Reset badges
+            document.querySelectorAll('.nav-badge').forEach(b => { b.textContent = ''; b.style.display = 'none'; });
             for (const lib of allLibraries) {
                 const countData = await api('GET', '/libraries/' + lib.id + '/media');
                 if (countData.success) {
@@ -897,66 +582,58 @@
                     if (badge) {
                         const cur = parseInt(badge.textContent) || 0;
                         badge.textContent = cur + (countData.data.total || 0);
+                        if (parseInt(badge.textContent) > 0) badge.style.display = '';
                     }
                 }
             }
-            // Hide empty badges
-            document.querySelectorAll('.nav-badge').forEach(b => {
-                if (!b.textContent || b.textContent === '0') b.style.display = 'none';
-                else b.style.display = '';
-            });
         } catch {}
     }
 
     // ──── Navigation ────
+    function navigate(view, extra) {
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        const navItem = document.querySelector(`.nav-item[data-view="${view}"]`);
+        if (navItem) navItem.classList.add('active');
+        switch(view) {
+            case 'home': loadHomeView(); break;
+            case 'libraries': loadLibrariesView(); break;
+            case 'media': loadMediaTypeView(extra); break;
+            case 'editions': loadEditionsView(); break;
+            case 'sisters': loadSistersView(); break;
+            case 'collections': loadCollectionsView(); break;
+            case 'performers': loadPerformersView(); break;
+            case 'tags': loadTagsView(); break;
+            case 'studios': loadStudiosView(); break;
+            case 'duplicates': loadDuplicatesView(); break;
+            case 'settings': loadSettingsView(); break;
+            case 'admin': loadAdminView(); break;
+        }
+    }
+
     document.querySelectorAll('.nav-item[data-view]').forEach(item => {
-        item.addEventListener('click', () => {
-            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-            item.classList.add('active');
-            const view = item.dataset.view;
-            const type = item.dataset.type;
-            switch(view) {
-                case 'home': loadHomeView(); break;
-                case 'libraries': loadLibrariesView(); break;
-                case 'movies': loadMediaTypeView('movies'); break;
-                case 'tv': loadMediaTypeView('tv_shows'); break;
-                case 'media': loadMediaTypeView(type); break;
-                case 'editions': loadEditionsView(); break;
-                case 'sisters': loadSistersView(); break;
-                case 'collections': loadCollectionsView(); break;
-            }
-        });
+        item.addEventListener('click', () => navigate(item.dataset.view, item.dataset.type));
     });
 
-    // Search
     let searchTimeout;
     document.getElementById('searchInput').addEventListener('input', (e) => {
         clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {
-            if (e.target.value.length >= 2) loadSearchView(e.target.value);
-        }, 400);
+        searchTimeout = setTimeout(() => { if (e.target.value.length >= 2) loadSearchView(e.target.value); }, 400);
     });
 
-    // ──── Media card renderer ────
+    // ──── Media Card ────
     function renderMediaCard(item) {
-        const dur = item.duration_seconds ? Math.floor(item.duration_seconds / 60) + 'min' : '';
+        const dur = item.duration_seconds ? Math.floor(item.duration_seconds/60)+'min' : '';
         const year = item.year || '';
         const res = item.resolution || '';
-        const meta = [year, dur, res].filter(Boolean).join(' &middot; ');
-        return `
-            <div class="media-card" data-id="${item.id}">
-                <div class="media-poster">
-                    ${item.poster_path
-                        ? '<img src="' + item.poster_path + '" alt="">'
-                        : mediaIcon(item.media_type)}
-                    ${res ? '<span class="quality-badge">' + res + '</span>' : ''}
-                    <div class="play-overlay"><div class="play-button">&#9654;</div></div>
-                </div>
-                <div class="media-info">
-                    <div class="media-title">${item.title}</div>
-                    <div class="media-meta">${meta}</div>
-                </div>
-            </div>`;
+        const meta = [year, dur, res].filter(Boolean).join(' \u00b7 ');
+        return `<div class="media-card" onclick="loadMediaDetail('${item.id}')">
+            <div class="media-poster">
+                ${item.poster_path ? '<img src="'+item.poster_path+'" alt="">' : mediaIcon(item.media_type)}
+                ${res ? '<span class="quality-badge">'+res+'</span>' : ''}
+                <div class="play-overlay"><div class="play-button">&#9654;</div></div>
+            </div>
+            <div class="media-info"><div class="media-title">${item.title}</div><div class="media-meta">${meta}</div></div>
+        </div>`;
     }
 
     // ──── Home View ────
@@ -967,427 +644,433 @@
             <div id="continueRow" class="continue-row"></div>
             <div class="section-header"><h2 class="section-title">Recently Added</h2></div>
             <div class="media-grid" id="recentGrid"></div>`;
-
-        // Continue watching
         try {
             const cw = await api('GET', '/watch/continue');
             const row = document.getElementById('continueRow');
             if (cw.success && cw.data && cw.data.length > 0) {
                 row.innerHTML = cw.data.map(wh => {
                     const item = wh.media_item || {};
-                    const pct = wh.duration_seconds ? Math.round(wh.progress_seconds / wh.duration_seconds * 100) : 0;
-                    return `
-                        <div class="media-card">
-                            <div class="media-poster">
-                                ${item.poster_path ? '<img src="' + item.poster_path + '">' : mediaIcon(item.media_type || 'movies')}
-                                <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
-                                <div class="play-overlay"><div class="play-button">&#9654;</div></div>
-                            </div>
-                            <div class="media-info">
-                                <div class="media-title">${item.title || 'Unknown'}</div>
-                                <div class="media-meta">${Math.floor(wh.progress_seconds/60)}/${wh.duration_seconds ? Math.floor(wh.duration_seconds/60) : '?'} min</div>
-                            </div>
-                        </div>`;
+                    const pct = wh.duration_seconds ? Math.round(wh.progress_seconds/wh.duration_seconds*100) : 0;
+                    return `<div class="media-card" onclick="playMedia('${item.id}','${item.title||''}')">
+                        <div class="media-poster">
+                            ${item.poster_path ? '<img src="'+item.poster_path+'">' : mediaIcon(item.media_type||'movies')}
+                            <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+                            <div class="play-overlay"><div class="play-button">&#9654;</div></div>
+                        </div>
+                        <div class="media-info"><div class="media-title">${item.title||'Unknown'}</div><div class="media-meta">${Math.floor(wh.progress_seconds/60)}/${wh.duration_seconds?Math.floor(wh.duration_seconds/60):'?'} min</div></div>
+                    </div>`;
                 }).join('');
-            } else {
-                row.innerHTML = '<div style="color:#5a6a7f;padding:20px;">No items in progress</div>';
-            }
+            } else row.innerHTML = '<div style="color:#5a6a7f;padding:20px;">No items in progress</div>';
         } catch { document.getElementById('continueRow').innerHTML = ''; }
-
-        // Recent media from all libraries
         try {
             const libs = await api('GET', '/libraries');
             const grid = document.getElementById('recentGrid');
             if (libs.success && libs.data) {
                 let allItems = [];
-                for (const lib of libs.data.slice(0, 5)) {
-                    const m = await api('GET', '/libraries/' + lib.id + '/media');
-                    if (m.success && m.data.items) allItems = allItems.concat(m.data.items);
+                for (const lib of libs.data.slice(0,5)) {
+                    const m = await api('GET', '/libraries/'+lib.id+'/media');
+                    if (m.success && m.data && m.data.items) allItems = allItems.concat(m.data.items);
                 }
                 allItems.sort((a,b) => new Date(b.added_at) - new Date(a.added_at));
-                if (allItems.length > 0) {
-                    grid.innerHTML = allItems.slice(0, 12).map(renderMediaCard).join('');
-                } else {
-                    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
-                        <div class="empty-state-icon">&#128253;</div>
-                        <div class="empty-state-title">No media yet</div>
-                        <p>Add libraries and scan them to populate your media</p>
-                        <button class="btn-primary" style="margin-top:18px;" onclick="navigate('libraries')">Manage Libraries</button>
-                    </div>`;
-                }
+                grid.innerHTML = allItems.length > 0
+                    ? allItems.slice(0,12).map(renderMediaCard).join('')
+                    : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">&#128253;</div><div class="empty-state-title">No media yet</div><p>Add libraries and scan them to populate your media</p><button class="btn-primary" style="margin-top:18px;" onclick="navigate('libraries')">Manage Libraries</button></div>`;
             }
         } catch {}
     }
 
-    function navigate(view) {
-        document.querySelectorAll('.nav-item').forEach(i => {
-            i.classList.toggle('active', i.dataset.view === view);
-        });
-        switch(view) {
-            case 'libraries': loadLibrariesView(); break;
-            case 'home': loadHomeView(); break;
-        }
+    // ──── Media Detail ────
+    async function loadMediaDetail(id) {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = '<div class="spinner"></div> Loading...';
+        const data = await api('GET', '/media/' + id);
+        if (!data.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Media not found</div></div>'; return; }
+        const m = data.data;
+        const dur = m.duration_seconds ? formatDuration(m.duration_seconds) : '';
+        const meta = [m.year, dur, m.resolution, m.codec].filter(Boolean).join(' \u00b7 ');
+
+        mc.innerHTML = `
+            <div class="detail-hero">
+                <div class="detail-poster">${m.poster_path ? '<img src="'+m.poster_path+'">' : mediaIcon(m.media_type)}</div>
+                <div class="detail-info">
+                    <h1>${m.title}</h1>
+                    <div class="meta-row">${meta}</div>
+                    ${m.description ? '<p class="description">'+m.description+'</p>' : ''}
+                    <div class="detail-actions">
+                        <button class="btn-primary" onclick="playMedia('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#9654; Play</button>
+                        <button class="btn-secondary" onclick="playDirect('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#128190; Direct Play</button>
+                        <button class="btn-secondary" onclick="identifyMedia('${m.id}')">&#128270; Identify</button>
+                    </div>
+                    <div style="margin-bottom:10px;">
+                        <span class="tag tag-cyan">${MEDIA_LABELS[m.media_type]||m.media_type}</span>
+                        ${m.file_size ? '<span class="tag tag-purple">'+(m.file_size/1024/1024).toFixed(0)+' MB</span>' : ''}
+                        ${m.audio_codec ? '<span class="tag tag-green">'+m.audio_codec+'</span>' : ''}
+                        ${m.bitrate ? '<span class="tag tag-orange">'+(m.bitrate/1000).toFixed(0)+' kbps</span>' : ''}
+                    </div>
+                    <div class="detail-tabs">
+                        <button class="detail-tab active" onclick="showDetailTab(this,'info')">Info</button>
+                        <button class="detail-tab" onclick="showDetailTab(this,'cast')">Cast</button>
+                        <button class="detail-tab" onclick="showDetailTab(this,'tags-tab')">Tags</button>
+                        <button class="detail-tab" onclick="showDetailTab(this,'file')">File</button>
+                    </div>
+                    <div class="detail-tab-content" id="detailTabContent">
+                        <table style="width:100%;font-size:0.85rem;">
+                            <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">File</td><td>${m.file_name}</td></tr>
+                            <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Path</td><td style="word-break:break-all;">${m.file_path}</td></tr>
+                            ${m.width ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Resolution</td><td>'+m.width+'x'+m.height+'</td></tr>' : ''}
+                            ${m.codec ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Video Codec</td><td>'+m.codec+'</td></tr>' : ''}
+                            <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Added</td><td>${new Date(m.added_at).toLocaleString()}</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <button class="btn-secondary" onclick="navigate('home')">&#8592; Back</button>`;
+    }
+
+    function showDetailTab(btn, tab) {
+        btn.parentElement.querySelectorAll('.detail-tab').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        // Tab content would load dynamically here - for now just switch label
     }
 
     // ──── Media Type View ────
     async function loadMediaTypeView(mediaType) {
         const mc = document.getElementById('mainContent');
         const label = MEDIA_LABELS[mediaType] || mediaType;
-        mc.innerHTML = `
-            <div class="section-header">
-                <h2 class="section-title">${label}</h2>
-                <span class="view-all">Sort &#9660;</span>
-            </div>
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2></div>
             <div class="media-grid" id="typeGrid"><div class="spinner"></div> Loading...</div>`;
-
-        // Find libraries of this type
         const libs = await api('GET', '/libraries');
         let items = [];
         if (libs.success && libs.data) {
             for (const lib of libs.data.filter(l => l.media_type === mediaType)) {
-                const m = await api('GET', '/libraries/' + lib.id + '/media');
-                if (m.success && m.data.items) items = items.concat(m.data.items);
+                const m = await api('GET', '/libraries/'+lib.id+'/media');
+                if (m.success && m.data && m.data.items) items = items.concat(m.data.items);
             }
         }
-
         const grid = document.getElementById('typeGrid');
-        if (items.length > 0) {
-            grid.innerHTML = items.map(renderMediaCard).join('');
-        } else {
-            grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
-                <div class="empty-state-icon">${mediaIcon(mediaType)}</div>
-                <div class="empty-state-title">No ${label.toLowerCase()} yet</div>
-                <p>Add a ${label.toLowerCase()} library and scan it</p>
-            </div>`;
-        }
+        grid.innerHTML = items.length > 0
+            ? items.map(renderMediaCard).join('')
+            : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">${mediaIcon(mediaType)}</div><div class="empty-state-title">No ${label.toLowerCase()} yet</div><p>Add a ${label.toLowerCase()} library and scan it</p></div>`;
     }
 
-    // ──── Search View ────
     async function loadSearchView(query) {
         const mc = document.getElementById('mainContent');
-        mc.innerHTML = `
-            <div class="section-header"><h2 class="section-title">Search: "${query}"</h2></div>
-            <div class="media-grid" id="searchGrid"><div class="spinner"></div> Searching...</div>`;
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Search: "${query}"</h2></div><div class="media-grid" id="searchGrid"><div class="spinner"></div> Searching...</div>`;
         const data = await api('GET', '/media/search?q=' + encodeURIComponent(query));
         const grid = document.getElementById('searchGrid');
-        if (data.success && data.data && data.data.length > 0) {
-            grid.innerHTML = data.data.map(renderMediaCard).join('');
-        } else {
-            grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-title">No results</div></div>';
-        }
+        grid.innerHTML = (data.success && data.data && data.data.length > 0) ? data.data.map(renderMediaCard).join('') : '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-title">No results</div></div>';
     }
 
-    // ──── Libraries View ────
+    // ──── Libraries ────
     async function loadLibrariesView() {
         const mc = document.getElementById('mainContent');
         const isAdmin = currentUser && currentUser.role === 'admin';
-        mc.innerHTML = `
-            <div class="section-header">
-                <h2 class="section-title">Libraries</h2>
-                ${isAdmin ? '<button class="btn-primary" onclick="showCreateLibrary()">+ Add Library</button>' : ''}
-            </div>
-            <div id="libList"><div class="spinner"></div> Loading...</div>`;
-
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Libraries</h2>${isAdmin?'<button class="btn-primary" onclick="showCreateLibrary()">+ Add Library</button>':''}</div><div id="libList"><div class="spinner"></div> Loading...</div>`;
         const data = await api('GET', '/libraries');
         const div = document.getElementById('libList');
         if (data.success && data.data && data.data.length > 0) {
-            div.innerHTML = data.data.map(lib => `
-                <div class="library-card">
-                    <div>
-                        <h3>${lib.name}</h3>
-                        <p style="color:#8a9bae;font-size:0.85rem;">
-                            <span class="tag tag-cyan">${MEDIA_LABELS[lib.media_type] || lib.media_type}</span>
-                            <span style="margin-left:8px;">${lib.path}</span>
-                        </p>
-                        <p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">
-                            ${lib.last_scan_at ? 'Last scan: ' + new Date(lib.last_scan_at).toLocaleString() : 'Never scanned'}
-                        </p>
-                    </div>
-                    <div class="library-actions">
-                        ${isAdmin ? `<button class="btn-secondary" onclick="scanLibrary('${lib.id}', this)">&#128269; Scan</button>
-                        <button class="btn-danger" onclick="deleteLibrary('${lib.id}')">Delete</button>` : ''}
-                    </div>
-                </div>`).join('');
-        } else {
-            div.innerHTML = `<div class="empty-state">
-                <div class="empty-state-icon">&#128218;</div>
-                <div class="empty-state-title">No libraries configured</div>
-                <p>Create your first library to start organizing media</p>
-            </div>`;
-        }
+            div.innerHTML = data.data.map(lib => `<div class="library-card"><div><h3>${lib.name}</h3><p style="color:#8a9bae;font-size:0.85rem;"><span class="tag tag-cyan">${MEDIA_LABELS[lib.media_type]||lib.media_type}</span><span style="margin-left:8px;">${lib.path}</span></p><p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">${lib.last_scan_at?'Last scan: '+new Date(lib.last_scan_at).toLocaleString():'Never scanned'}</p></div><div class="library-actions">${isAdmin?`<button class="btn-secondary" onclick="scanLibrary('${lib.id}',this)">&#128269; Scan</button><button class="btn-danger btn-small" onclick="deleteLibrary('${lib.id}')">Delete</button>`:''}</div></div>`).join('');
+        } else div.innerHTML = `<div class="empty-state"><div class="empty-state-icon">&#128218;</div><div class="empty-state-title">No libraries configured</div><p>Create your first library to start organizing media</p></div>`;
     }
 
     async function scanLibrary(id, btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner"></span>Scanning...';
+        btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Scanning...';
         try {
-            const data = await api('POST', '/libraries/' + id + '/scan');
+            const data = await api('POST', '/libraries/'+id+'/scan');
             if (data.success) {
-                const r = data.data;
-                toast(`Scan complete: ${r.files_added} added, ${r.files_skipped} skipped, ${r.files_found} total`);
-                loadLibrariesView();
-                loadSidebarCounts();
-            } else {
-                toast('Scan failed: ' + (data.error || 'Unknown error'), 'error');
-            }
-        } catch (e) {
-            toast('Scan error: ' + e.message, 'error');
-        }
-        btn.disabled = false;
-        btn.innerHTML = '&#128269; Scan';
+                if (data.data.job_id) toast('Scan job enqueued!');
+                else { const r = data.data; toast(`Scan: ${r.files_added} added, ${r.files_found} total`); }
+                loadLibrariesView(); loadSidebarCounts();
+            } else toast('Scan failed: '+(data.error||'Unknown'), 'error');
+        } catch(e) { toast('Scan error: '+e.message, 'error'); }
+        btn.disabled = false; btn.innerHTML = '&#128269; Scan';
     }
 
-    async function deleteLibrary(id) {
-        if (!confirm('Delete this library and all its media?')) return;
-        const data = await api('DELETE', '/libraries/' + id);
-        if (data.success) {
-            toast('Library deleted');
-            loadLibrariesView();
-        } else {
-            toast('Failed to delete: ' + data.error, 'error');
-        }
-    }
+    async function deleteLibrary(id) { if (!confirm('Delete this library and all its media?')) return; const d=await api('DELETE','/libraries/'+id); if(d.success){toast('Library deleted');loadLibrariesView();}else toast('Failed: '+d.error,'error'); }
 
     function showCreateLibrary() {
         const mc = document.getElementById('mainContent');
-        const types = Object.entries(MEDIA_LABELS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('');
-        mc.innerHTML = `
-            <div class="section-header"><h2 class="section-title">Create Library</h2></div>
-            <div style="max-width:500px;">
-                <div class="form-group">
-                    <label>Name</label>
-                    <input type="text" id="libName" placeholder="My Movies">
-                </div>
-                <div class="form-group">
-                    <label>Media Type</label>
-                    <select id="libType">${types}</select>
-                </div>
-                <div class="form-group">
-                    <label>Path</label>
-                    <input type="text" id="libPath" placeholder="/media/movies">
-                </div>
-                <button class="btn-primary" onclick="createLibrary()">Create Library</button>
-                <button class="btn-secondary" style="margin-left:12px;" onclick="loadLibrariesView()">Cancel</button>
-            </div>`;
+        const types = Object.entries(MEDIA_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Create Library</h2></div><div style="max-width:500px;"><div class="form-group"><label>Name</label><input type="text" id="libName" placeholder="My Movies"></div><div class="form-group"><label>Media Type</label><select id="libType">${types}</select></div><div class="form-group"><label>Path</label><input type="text" id="libPath" placeholder="/media/movies"></div><button class="btn-primary" onclick="createLibrary()">Create Library</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadLibrariesView()">Cancel</button></div>`;
     }
 
     async function createLibrary() {
-        const name = document.getElementById('libName').value;
-        const media_type = document.getElementById('libType').value;
-        const path = document.getElementById('libPath').value;
-        if (!name || !path) { toast('Name and path required', 'error'); return; }
-        const data = await api('POST', '/libraries', { name, media_type, path, is_enabled: true });
-        if (data.success) {
-            toast('Library created!');
-            loadLibrariesView();
-        } else {
-            toast('Failed: ' + data.error, 'error');
-        }
+        const name=document.getElementById('libName').value, media_type=document.getElementById('libType').value, path=document.getElementById('libPath').value;
+        if(!name||!path){toast('Name and path required','error');return;}
+        const d=await api('POST','/libraries',{name,media_type,path,is_enabled:true});
+        if(d.success){toast('Library created!');loadLibrariesView();}else toast('Failed: '+d.error,'error');
     }
 
-    // ──── Editions View ────
+    // ──── Editions / Sisters / Collections (same as Phase 2 but with navigate()) ────
     async function loadEditionsView() {
-        const mc = document.getElementById('mainContent');
-        const isAdmin = currentUser && currentUser.role === 'admin';
-        mc.innerHTML = `
-            <div class="section-header">
-                <h2 class="section-title">Edition Groups</h2>
-                ${isAdmin ? '<button class="btn-primary" onclick="showCreateEdition()">+ Create Group</button>' : ''}
-            </div>
-            <p style="color:#8a9bae;margin-bottom:20px;">Group different versions of the same content (Director's Cut, Remastered, etc.)</p>
-            <div id="editionsList"><div class="spinner"></div> Loading...</div>`;
+        const mc=document.getElementById('mainContent'); const isAdmin=currentUser&&currentUser.role==='admin';
+        mc.innerHTML=`<div class="section-header"><h2 class="section-title">Edition Groups</h2>${isAdmin?'<button class="btn-primary" onclick="showCreateEdition()">+ Create Group</button>':''}</div><p style="color:#8a9bae;margin-bottom:20px;">Group different versions of the same content</p><div id="editionsList"><div class="spinner"></div></div>`;
+        const data=await api('GET','/editions'); const div=document.getElementById('editionsList');
+        if(data.success&&data.data&&data.data.length>0){div.innerHTML=data.data.map(g=>`<div class="group-card"><div style="display:flex;justify-content:space-between;align-items:start;"><div><h4>${g.title}</h4><p>${g.year?g.year+' \u00b7 ':''}${MEDIA_LABELS[g.media_type]||g.media_type}</p><span class="tag tag-cyan">${g.items?g.items.length:0} editions</span></div>${isAdmin?`<button class="btn-danger btn-small" onclick="deleteEdition('${g.id}')">Delete</button>`:''}</div></div>`).join('');}
+        else div.innerHTML=`<div class="empty-state"><div class="empty-state-icon">&#128191;</div><div class="empty-state-title">No edition groups</div></div>`;
+    }
+    function showCreateEdition(){const mc=document.getElementById('mainContent');const types=Object.entries(MEDIA_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');mc.innerHTML=`<div class="section-header"><h2 class="section-title">Create Edition Group</h2></div><div style="max-width:500px;"><div class="form-group"><label>Title</label><input type="text" id="edTitle"></div><div class="form-group"><label>Year</label><input type="number" id="edYear"></div><div class="form-group"><label>Type</label><select id="edType">${types}</select></div><div class="form-group"><label>Library</label><select id="edLib"><option value="">Select...</option></select></div><button class="btn-primary" onclick="createEdition()">Create</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadEditionsView()">Cancel</button></div>`;api('GET','/libraries').then(d=>{if(d.success&&d.data)document.getElementById('edLib').innerHTML+= d.data.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');});}
+    async function createEdition(){const t=document.getElementById('edTitle').value,y=parseInt(document.getElementById('edYear').value)||null,mt=document.getElementById('edType').value,li=document.getElementById('edLib').value;if(!t||!li){toast('Title and library required','error');return;}const d=await api('POST','/editions',{title:t,year:y,media_type:mt,library_id:li});if(d.success){toast('Created!');loadEditionsView();}else toast('Failed: '+d.error,'error');}
+    async function deleteEdition(id){if(!confirm('Delete?'))return;const d=await api('DELETE','/editions/'+id);if(d.success){toast('Deleted');loadEditionsView();}else toast(d.error,'error');}
 
-        const data = await api('GET', '/editions');
-        const div = document.getElementById('editionsList');
-        if (data.success && data.data && data.data.length > 0) {
-            div.innerHTML = data.data.map(g => `
-                <div class="group-card">
-                    <div style="display:flex;justify-content:space-between;align-items:start;">
-                        <div>
-                            <h4>${g.title}</h4>
-                            <p>${g.year ? g.year + ' &middot; ' : ''}${MEDIA_LABELS[g.media_type] || g.media_type}</p>
-                            <span class="tag tag-cyan">${g.items ? g.items.length : 0} editions</span>
-                        </div>
-                        ${isAdmin ? `<button class="btn-danger" onclick="deleteEdition('${g.id}')" style="padding:6px 14px;font-size:0.78rem;">Delete</button>` : ''}
-                    </div>
-                </div>`).join('');
-        } else {
-            div.innerHTML = `<div class="empty-state">
-                <div class="empty-state-icon">&#128191;</div>
-                <div class="empty-state-title">No edition groups</div>
-                <p>Create edition groups to organize different versions of the same media</p>
-            </div>`;
-        }
+    async function loadSistersView(){const mc=document.getElementById('mainContent');const isAdmin=currentUser&&currentUser.role==='admin';mc.innerHTML=`<div class="section-header"><h2 class="section-title">Sister Groups</h2>${isAdmin?'<button class="btn-primary" onclick="showCreateSister()">+ Create</button>':''}</div><div id="sistersList"><div class="spinner"></div></div>`;const data=await api('GET','/sisters');const div=document.getElementById('sistersList');if(data.success&&data.data&&data.data.length>0){div.innerHTML=data.data.map(g=>`<div class="group-card"><div style="display:flex;justify-content:space-between;"><div><h4>${g.name}</h4>${g.notes?'<p>'+g.notes+'</p>':''}<span class="tag tag-purple">${g.members?g.members.length:0} members</span></div>${isAdmin?`<button class="btn-danger btn-small" onclick="deleteSister('${g.id}')">Delete</button>`:''}</div></div>`).join('');}else div.innerHTML='<div class="empty-state"><div class="empty-state-icon">&#128279;</div><div class="empty-state-title">No sister groups</div></div>';}
+    function showCreateSister(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">Create Sister Group</h2></div><div style="max-width:500px;"><div class="form-group"><label>Name</label><input type="text" id="sisName"></div><div class="form-group"><label>Notes</label><input type="text" id="sisNotes"></div><button class="btn-primary" onclick="createSister()">Create</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadSistersView()">Cancel</button></div>`;}
+    async function createSister(){const n=document.getElementById('sisName').value,no=document.getElementById('sisNotes').value||null;if(!n){toast('Name required','error');return;}const d=await api('POST','/sisters',{name:n,notes:no});if(d.success){toast('Created!');loadSistersView();}else toast(d.error,'error');}
+    async function deleteSister(id){if(!confirm('Delete?'))return;const d=await api('DELETE','/sisters/'+id);if(d.success){toast('Deleted');loadSistersView();}else toast(d.error,'error');}
+
+    async function loadCollectionsView(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">Collections</h2><button class="btn-primary" onclick="showCreateCollection()">+ New</button></div><div id="collList"><div class="spinner"></div></div>`;const data=await api('GET','/collections');const div=document.getElementById('collList');if(data.success&&data.data&&data.data.length>0){div.innerHTML=data.data.map(c=>`<div class="group-card"><div style="display:flex;justify-content:space-between;"><div><h4>${c.name}</h4>${c.description?'<p>'+c.description+'</p>':''}<span class="tag tag-green">${c.item_count||0} items</span><span class="tag tag-cyan">${c.visibility}</span></div><button class="btn-danger btn-small" onclick="deleteCollection('${c.id}')">Delete</button></div></div>`).join('');}else div.innerHTML='<div class="empty-state"><div class="empty-state-icon">&#11088;</div><div class="empty-state-title">No collections</div></div>';}
+    function showCreateCollection(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">New Collection</h2></div><div style="max-width:500px;"><div class="form-group"><label>Name</label><input type="text" id="collName"></div><div class="form-group"><label>Description</label><input type="text" id="collDesc"></div><div class="form-group"><label>Visibility</label><select id="collVis"><option value="private">Private</option><option value="shared">Shared</option><option value="public">Public</option></select></div><button class="btn-primary" onclick="createCollection()">Create</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadCollectionsView()">Cancel</button></div>`;}
+    async function createCollection(){const n=document.getElementById('collName').value,d=document.getElementById('collDesc').value||null,v=document.getElementById('collVis').value;if(!n){toast('Name required','error');return;}const r=await api('POST','/collections',{name:n,description:d,visibility:v});if(r.success){toast('Created!');loadCollectionsView();}else toast(r.error,'error');}
+    async function deleteCollection(id){if(!confirm('Delete?'))return;const d=await api('DELETE','/collections/'+id);if(d.success){toast('Deleted');loadCollectionsView();}else toast(d.error,'error');}
+
+    // ──── Performers ────
+    async function loadPerformersView() {
+        const mc=document.getElementById('mainContent'); const isAdmin=currentUser&&currentUser.role==='admin';
+        mc.innerHTML=`<div class="section-header"><h2 class="section-title">Performers</h2>${isAdmin?'<button class="btn-primary" onclick="showCreatePerformer()">+ Add Performer</button>':''}</div><div class="person-grid" id="performerGrid"><div class="spinner"></div></div>`;
+        const data=await api('GET','/performers');
+        const grid=document.getElementById('performerGrid');
+        if(data.success&&data.data&&data.data.length>0){
+            grid.innerHTML=data.data.map(p=>`<div class="person-card" onclick="loadPerformerDetail('${p.id}')"><div class="person-avatar">${p.photo_path?'<img src="'+p.photo_path+'">':'&#128100;'}</div><div class="person-name">${p.name}</div><div class="person-role">${p.performer_type} \u00b7 ${p.media_count||0} media</div></div>`).join('');
+        } else grid.innerHTML='<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">&#128100;</div><div class="empty-state-title">No performers</div><p>Add performers to link them to your media</p></div>';
     }
 
-    function showCreateEdition() {
-        const mc = document.getElementById('mainContent');
-        const types = Object.entries(MEDIA_LABELS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('');
-        mc.innerHTML = `
-            <div class="section-header"><h2 class="section-title">Create Edition Group</h2></div>
-            <div style="max-width:500px;">
-                <div class="form-group"><label>Title</label><input type="text" id="edTitle" placeholder="The Matrix"></div>
-                <div class="form-group"><label>Year</label><input type="number" id="edYear" placeholder="1999"></div>
-                <div class="form-group"><label>Media Type</label><select id="edType">${types}</select></div>
-                <div class="form-group"><label>Library</label><select id="edLib"><option value="">Select library...</option></select></div>
-                <button class="btn-primary" onclick="createEdition()">Create</button>
-                <button class="btn-secondary" style="margin-left:12px;" onclick="loadEditionsView()">Cancel</button>
+    async function loadPerformerDetail(id) {
+        const mc=document.getElementById('mainContent');
+        mc.innerHTML='<div class="spinner"></div> Loading...';
+        const data=await api('GET','/performers/'+id);
+        if(!data.success){mc.innerHTML='<div class="empty-state"><div class="empty-state-title">Performer not found</div></div>';return;}
+        const p=data.data.performer; const media=data.data.media||[];
+        mc.innerHTML=`<div class="detail-hero"><div class="detail-poster">${p.photo_path?'<img src="'+p.photo_path+'">':'&#128100;'}</div><div class="detail-info"><h1>${p.name}</h1><div class="meta-row">${p.performer_type}${p.birth_date?' \u00b7 Born: '+new Date(p.birth_date).toLocaleDateString():''}</div>${p.bio?'<p class="description">'+p.bio+'</p>':''}<span class="tag tag-cyan">${p.media_count||0} media items</span></div></div>
+        ${media.length>0?'<h3 style="color:#00D9FF;margin-bottom:16px;">Linked Media</h3><div class="media-grid">'+media.map(renderMediaCard).join('')+'</div>':''}
+        <button class="btn-secondary" onclick="loadPerformersView()">&#8592; Back</button>`;
+    }
+
+    function showCreatePerformer(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">Add Performer</h2></div><div style="max-width:500px;"><div class="form-group"><label>Name</label><input type="text" id="perfName"></div><div class="form-group"><label>Type</label><select id="perfType"><option value="actor">Actor</option><option value="director">Director</option><option value="producer">Producer</option><option value="musician">Musician</option><option value="narrator">Narrator</option><option value="adult_performer">Adult Performer</option><option value="other">Other</option></select></div><div class="form-group"><label>Bio</label><textarea id="perfBio" rows="3"></textarea></div><button class="btn-primary" onclick="createPerformer()">Create</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadPerformersView()">Cancel</button></div>`;}
+    async function createPerformer(){const n=document.getElementById('perfName').value,t=document.getElementById('perfType').value,b=document.getElementById('perfBio').value||null;if(!n){toast('Name required','error');return;}const d=await api('POST','/performers',{name:n,performer_type:t,bio:b});if(d.success){toast('Created!');loadPerformersView();}else toast(d.error,'error');}
+
+    // ──── Tags ────
+    async function loadTagsView() {
+        const mc=document.getElementById('mainContent'); const isAdmin=currentUser&&currentUser.role==='admin';
+        mc.innerHTML=`<div class="section-header"><h2 class="section-title">Tags & Genres</h2>${isAdmin?'<button class="btn-primary" onclick="showCreateTag()">+ Add Tag</button>':''}</div><div id="tagsList"><div class="spinner"></div></div>`;
+        const data=await api('GET','/tags?tree=true');
+        const div=document.getElementById('tagsList');
+        if(data.success&&data.data&&data.data.length>0){
+            div.innerHTML=data.data.map(t=>renderTag(t,0)).join('');
+        } else div.innerHTML='<div class="empty-state"><div class="empty-state-icon">&#127991;</div><div class="empty-state-title">No tags</div></div>';
+    }
+
+    function renderTag(tag, depth) {
+        const indent = depth * 24;
+        let html = `<div class="group-card" style="margin-left:${indent}px;display:flex;justify-content:space-between;align-items:center;"><div><h4>${tag.name}</h4><span class="tag tag-${tag.category==='genre'?'purple':tag.category==='custom'?'orange':'cyan'}">${tag.category}</span><span class="tag tag-green">${tag.media_count||0} media</span></div><button class="btn-danger btn-small" onclick="deleteTag('${tag.id}')">Delete</button></div>`;
+        if (tag.children) tag.children.forEach(c => html += renderTag(c, depth+1));
+        return html;
+    }
+
+    function showCreateTag(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">Add Tag</h2></div><div style="max-width:500px;"><div class="form-group"><label>Name</label><input type="text" id="tagName"></div><div class="form-group"><label>Category</label><select id="tagCat"><option value="genre">Genre</option><option value="tag">Tag</option><option value="custom">Custom</option></select></div><div class="form-group"><label>Description</label><input type="text" id="tagDesc"></div><button class="btn-primary" onclick="createTag()">Create</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadTagsView()">Cancel</button></div>`;}
+    async function createTag(){const n=document.getElementById('tagName').value,c=document.getElementById('tagCat').value,d=document.getElementById('tagDesc').value||null;if(!n){toast('Name required','error');return;}const r=await api('POST','/tags',{name:n,category:c,description:d});if(r.success){toast('Created!');loadTagsView();}else toast(r.error,'error');}
+    async function deleteTag(id){if(!confirm('Delete?'))return;const d=await api('DELETE','/tags/'+id);if(d.success){toast('Deleted');loadTagsView();}else toast(d.error,'error');}
+
+    // ──── Studios ────
+    async function loadStudiosView() {
+        const mc=document.getElementById('mainContent'); const isAdmin=currentUser&&currentUser.role==='admin';
+        mc.innerHTML=`<div class="section-header"><h2 class="section-title">Studios / Labels</h2>${isAdmin?'<button class="btn-primary" onclick="showCreateStudio()">+ Add Studio</button>':''}</div><div id="studiosList"><div class="spinner"></div></div>`;
+        const data=await api('GET','/studios');
+        const div=document.getElementById('studiosList');
+        if(data.success&&data.data&&data.data.length>0){
+            div.innerHTML=data.data.map(s=>`<div class="group-card"><div style="display:flex;justify-content:space-between;align-items:center;"><div><h4>${s.name}</h4><span class="tag tag-cyan">${s.studio_type}</span><span class="tag tag-green">${s.media_count||0} media</span></div>${isAdmin?`<button class="btn-danger btn-small" onclick="deleteStudio('${s.id}')">Delete</button>`:''}</div></div>`).join('');
+        } else div.innerHTML='<div class="empty-state"><div class="empty-state-icon">&#127980;</div><div class="empty-state-title">No studios</div></div>';
+    }
+    function showCreateStudio(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">Add Studio</h2></div><div style="max-width:500px;"><div class="form-group"><label>Name</label><input type="text" id="studioName"></div><div class="form-group"><label>Type</label><select id="studioType"><option value="studio">Studio</option><option value="label">Label</option><option value="publisher">Publisher</option><option value="network">Network</option><option value="distributor">Distributor</option></select></div><div class="form-group"><label>Website</label><input type="text" id="studioWeb"></div><button class="btn-primary" onclick="createStudio()">Create</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadStudiosView()">Cancel</button></div>`;}
+    async function createStudio(){const n=document.getElementById('studioName').value,t=document.getElementById('studioType').value,w=document.getElementById('studioWeb').value||null;if(!n){toast('Name required','error');return;}const d=await api('POST','/studios',{name:n,studio_type:t,website:w});if(d.success){toast('Created!');loadStudiosView();}else toast(d.error,'error');}
+    async function deleteStudio(id){if(!confirm('Delete?'))return;const d=await api('DELETE','/studios/'+id);if(d.success){toast('Deleted');loadStudiosView();}else toast(d.error,'error');}
+
+    // ──── Duplicates ────
+    async function loadDuplicatesView() {
+        const mc=document.getElementById('mainContent');
+        mc.innerHTML=`<div class="section-header"><h2 class="section-title">Duplicate Review</h2></div><p style="color:#8a9bae;margin-bottom:20px;">Review potential duplicate media detected by perceptual hashing</p><div id="dupList"><div class="spinner"></div></div>`;
+        const data=await api('GET','/duplicates');
+        const div=document.getElementById('dupList');
+        if(data.success&&data.data&&data.data.length>0){
+            div.innerHTML=data.data.map(p=>`<div class="dup-pair"><div class="dup-item"><h4 style="color:#00D9FF;">${p.media_a_title}</h4><span class="tag tag-cyan">${p.media_a}</span></div><div class="dup-vs">${Math.round(p.similarity_score*100)}%</div><div class="dup-item"><h4 style="color:#00D9FF;">${p.media_b_title}</h4><span class="tag tag-cyan">${p.media_b}</span></div><div class="dup-actions"><button class="btn-secondary btn-small" onclick="resolveDup('${p.media_a}','${p.media_b}','ignored')">Ignore</button><button class="btn-secondary btn-small" onclick="resolveDup('${p.media_a}','${p.media_b}','merged')">Merge</button><button class="btn-danger btn-small" onclick="resolveDup('${p.media_a}','${p.media_b}','deleted')">Delete B</button><button class="btn-secondary btn-small" onclick="resolveDup('${p.media_a}','${p.media_b}','split_as_sister')">Sister</button></div></div>`).join('');
+        } else div.innerHTML='<div class="empty-state"><div class="empty-state-icon">&#128257;</div><div class="empty-state-title">No duplicates found</div><p>Scan libraries to detect potential duplicates via perceptual hashing</p></div>';
+    }
+
+    async function resolveDup(a,b,action) {
+        const d=await api('POST','/duplicates/resolve',{media_id_a:a,media_id_b:b,action:action});
+        if(d.success){toast('Resolved!');loadDuplicatesView();}else toast(d.error,'error');
+    }
+
+    // ──── Metadata Identify ────
+    async function identifyMedia(id) {
+        const mc=document.getElementById('mainContent');
+        mc.innerHTML='<div class="section-header"><h2 class="section-title">Identify Media</h2></div><div id="matchList"><div class="spinner"></div> Searching external sources...</div>';
+        const data=await api('POST','/media/'+id+'/identify');
+        const div=document.getElementById('matchList');
+        if(data.success&&data.data&&data.data.length>0){
+            div.innerHTML=data.data.map(m=>`<div class="group-card"><div style="display:flex;gap:16px;align-items:start;"><div style="width:80px;min-width:80px;aspect-ratio:2/3;border-radius:10px;overflow:hidden;background:rgba(0,0,0,0.3);">${m.poster_url?'<img src="'+m.poster_url+'" style="width:100%;height:100%;object-fit:cover;">':'&#128247;'}</div><div><h4>${m.title}${m.year?' ('+m.year+')':''}</h4><p>${m.description?m.description.substring(0,200)+'...':''}</p><span class="tag tag-cyan">${m.source}</span><span class="tag tag-green">${Math.round(m.confidence*100)}% match</span><button class="btn-primary btn-small" style="margin-top:8px;" onclick="applyMeta('${id}',${JSON.stringify(m).replace(/'/g,"\\'")})">Apply</button></div></div></div>`).join('');
+        } else div.innerHTML='<div class="empty-state"><div class="empty-state-title">No matches found</div></div>';
+        div.innerHTML+='<button class="btn-secondary" style="margin-top:16px;" onclick="loadMediaDetail(\''+id+'\')">&#8592; Back</button>';
+    }
+
+    async function applyMeta(id, match) {
+        const d=await api('POST','/media/'+id+'/apply-meta',match);
+        if(d.success){toast('Metadata applied!');loadMediaDetail(id);}else toast(d.error,'error');
+    }
+
+    // ──── Settings ────
+    async function loadSettingsView() {
+        const mc=document.getElementById('mainContent');
+        mc.innerHTML=`<div class="section-header"><h2 class="section-title">Settings</h2></div><div class="settings-grid" id="settingsGrid"><div class="spinner"></div></div>`;
+        const prefs=await api('GET','/settings/playback');
+        const p=prefs.success?prefs.data:{playback_mode:'always_ask',preferred_quality:'1080p',auto_play_next:true};
+        document.getElementById('settingsGrid').innerHTML=`
+            <div class="settings-card">
+                <h3>Playback Preferences</h3>
+                <div class="form-group"><label>Edition Playback Mode</label><select id="setPbMode"><option value="always_ask" ${p.playback_mode==='always_ask'?'selected':''}>Always Ask</option><option value="play_default" ${p.playback_mode==='play_default'?'selected':''}>Play Default</option><option value="highest_quality" ${p.playback_mode==='highest_quality'?'selected':''}>Highest Quality</option><option value="lowest_quality" ${p.playback_mode==='lowest_quality'?'selected':''}>Lowest Quality</option><option value="last_played" ${p.playback_mode==='last_played'?'selected':''}>Last Played</option></select></div>
+                <div class="form-group"><label>Preferred Quality</label><select id="setPbQuality"><option value="360p" ${p.preferred_quality==='360p'?'selected':''}>360p</option><option value="480p" ${p.preferred_quality==='480p'?'selected':''}>480p</option><option value="720p" ${p.preferred_quality==='720p'?'selected':''}>720p</option><option value="1080p" ${p.preferred_quality==='1080p'?'selected':''}>1080p</option><option value="4K" ${p.preferred_quality==='4K'?'selected':''}>4K</option></select></div>
+                <div class="form-group"><label><input type="checkbox" id="setPbAutoPlay" ${p.auto_play_next?'checked':''}> Auto-play next</label></div>
+                <button class="btn-primary" onclick="savePlaybackPrefs()">Save</button>
+            </div>
+            <div class="settings-card">
+                <h3>Account</h3>
+                <p style="color:#8a9bae;margin-bottom:12px;">Logged in as <strong style="color:#00D9FF;">${currentUser?.username}</strong></p>
+                <p style="color:#8a9bae;">Role: <span class="tag tag-cyan">${currentUser?.role}</span></p>
             </div>`;
-        // populate libraries
-        api('GET', '/libraries').then(d => {
-            if (d.success && d.data) {
-                document.getElementById('edLib').innerHTML += d.data.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
-            }
+    }
+
+    async function savePlaybackPrefs() {
+        const d=await api('PUT','/settings/playback',{
+            playback_mode: document.getElementById('setPbMode').value,
+            preferred_quality: document.getElementById('setPbQuality').value,
+            auto_play_next: document.getElementById('setPbAutoPlay').checked
         });
+        if(d.success) toast('Settings saved!'); else toast(d.error,'error');
     }
 
-    async function createEdition() {
-        const title = document.getElementById('edTitle').value;
-        const year = parseInt(document.getElementById('edYear').value) || null;
-        const media_type = document.getElementById('edType').value;
-        const library_id = document.getElementById('edLib').value;
-        if (!title || !library_id) { toast('Title and library required', 'error'); return; }
-        const data = await api('POST', '/editions', { title, year, media_type, library_id });
-        if (data.success) { toast('Edition group created!'); loadEditionsView(); }
-        else toast('Failed: ' + data.error, 'error');
+    // ──── Admin ────
+    async function loadAdminView() {
+        if(!currentUser||currentUser.role!=='admin'){document.getElementById('mainContent').innerHTML='<div class="empty-state"><div class="empty-state-title">Admin access required</div></div>';return;}
+        const mc=document.getElementById('mainContent');
+        mc.innerHTML=`<div class="section-header"><h2 class="section-title">Admin Panel</h2></div><div class="settings-grid"><div class="settings-card"><h3>System Status</h3><div id="sysStatus"><div class="spinner"></div></div></div><div class="settings-card"><h3>Users</h3><div id="userList"><div class="spinner"></div></div></div><div class="settings-card" style="grid-column:1/-1;"><h3>Job Queue</h3><div id="jobList"><div class="spinner"></div></div></div></div>`;
+
+        // System status
+        const status=await api('GET','/status');
+        document.getElementById('sysStatus').innerHTML=status.success?`<p><span class="status-dot green"></span>Server Online</p><p style="color:#8a9bae;margin-top:8px;">Version: ${status.data?.version||'0.3.0'}</p><p style="color:#8a9bae;">WebSocket clients: <span id="wsCount">${status.data?.ws_clients||0}</span></p>`:'<p><span class="status-dot red"></span>Error</p>';
+
+        // Users
+        const users=await api('GET','/users');
+        const ul=document.getElementById('userList');
+        if(users.success&&users.data){ul.innerHTML=users.data.map(u=>`<div class="job-item"><span class="status-dot ${u.is_active?'green':'red'}"></span><strong>${u.username}</strong><span class="tag tag-cyan">${u.role}</span><span style="color:#5a6a7f;margin-left:auto;font-size:0.78rem;">${u.email}</span></div>`).join('');}
+
+        // Jobs
+        const jobs=await api('GET','/jobs');
+        const jl=document.getElementById('jobList');
+        if(jobs.success&&jobs.data&&jobs.data.length>0){
+            jl.innerHTML=jobs.data.map(j=>{
+                const statusColor=j.status==='completed'?'green':j.status==='failed'?'red':j.status==='running'?'yellow':'';
+                return `<div class="job-item"><span class="status-dot ${statusColor}"></span><strong>${j.job_type}</strong><span class="tag tag-${j.status==='completed'?'green':j.status==='failed'?'red':'cyan'}">${j.status}</span><div class="job-progress-bar"><div class="job-progress-fill" style="width:${j.progress}%"></div></div><span style="color:#5a6a7f;font-size:0.78rem;">${new Date(j.started_at).toLocaleString()}</span></div>`;
+            }).join('');
+        } else jl.innerHTML='<p style="color:#5a6a7f;">No recent jobs</p>';
     }
 
-    async function deleteEdition(id) {
-        if (!confirm('Delete this edition group?')) return;
-        const d = await api('DELETE', '/editions/' + id);
-        if (d.success) { toast('Deleted'); loadEditionsView(); }
-        else toast('Failed: ' + d.error, 'error');
-    }
+    // ──── Video Player ────
+    function playMedia(mediaId, title) {
+        currentMediaId = mediaId;
+        const overlay = document.getElementById('playerOverlay');
+        const video = document.getElementById('videoPlayer');
+        document.getElementById('playerTitle').textContent = title;
+        overlay.classList.add('active');
 
-    // ──── Sisters View ────
-    async function loadSistersView() {
-        const mc = document.getElementById('mainContent');
-        const isAdmin = currentUser && currentUser.role === 'admin';
-        mc.innerHTML = `
-            <div class="section-header">
-                <h2 class="section-title">Sister Groups</h2>
-                ${isAdmin ? '<button class="btn-primary" onclick="showCreateSister()">+ Create Group</button>' : ''}
-            </div>
-            <p style="color:#8a9bae;margin-bottom:20px;">Link related but distinct content together (e.g. a movie and its documentary)</p>
-            <div id="sistersList"><div class="spinner"></div> Loading...</div>`;
+        const masterUrl = `/api/v1/stream/${mediaId}/master.m3u8`;
+        const token = localStorage.getItem('token');
 
-        const data = await api('GET', '/sisters');
-        const div = document.getElementById('sistersList');
-        if (data.success && data.data && data.data.length > 0) {
-            div.innerHTML = data.data.map(g => `
-                <div class="group-card">
-                    <div style="display:flex;justify-content:space-between;align-items:start;">
-                        <div>
-                            <h4>${g.name}</h4>
-                            ${g.notes ? '<p>' + g.notes + '</p>' : ''}
-                            <span class="tag tag-purple">${g.members ? g.members.length : 0} members</span>
-                        </div>
-                        ${isAdmin ? `<button class="btn-danger" onclick="deleteSister('${g.id}')" style="padding:6px 14px;font-size:0.78rem;">Delete</button>` : ''}
-                    </div>
-                </div>`).join('');
+        if (Hls.isSupported()) {
+            if (hlsPlayer) hlsPlayer.destroy();
+            hlsPlayer = new Hls({
+                xhrSetup: (xhr) => { xhr.setRequestHeader('Authorization', 'Bearer ' + token); }
+            });
+            hlsPlayer.loadSource(masterUrl);
+            hlsPlayer.attachMedia(video);
+            hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
+                video.play();
+                // Populate quality selector
+                const sel = document.getElementById('qualitySelect');
+                sel.innerHTML = hlsPlayer.levels.map((l,i) => `<option value="${i}">${l.height}p</option>`).join('');
+            });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = masterUrl;
+            video.play();
         } else {
-            div.innerHTML = `<div class="empty-state">
-                <div class="empty-state-icon">&#128279;</div>
-                <div class="empty-state-title">No sister groups</div>
-                <p>Create sister groups to link related content together</p>
-            </div>`;
+            // Fallback to direct play
+            playDirect(mediaId, title);
+            return;
+        }
+
+        video.addEventListener('timeupdate', updatePlayerUI);
+    }
+
+    function playDirect(mediaId, title) {
+        currentMediaId = mediaId;
+        const overlay = document.getElementById('playerOverlay');
+        const video = document.getElementById('videoPlayer');
+        document.getElementById('playerTitle').textContent = title;
+        overlay.classList.add('active');
+
+        const token = localStorage.getItem('token');
+        video.src = `/api/v1/stream/${mediaId}/direct`;
+        // Cannot set auth header on video src, so direct play works for open endpoints
+        video.play().catch(() => {});
+        video.addEventListener('timeupdate', updatePlayerUI);
+    }
+
+    function closePlayer() {
+        const overlay = document.getElementById('playerOverlay');
+        const video = document.getElementById('videoPlayer');
+        overlay.classList.remove('active');
+        video.pause();
+        video.src = '';
+        if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
+
+        // Save progress
+        if (currentMediaId && video.currentTime > 0) {
+            api('POST', '/watch/'+currentMediaId+'/progress', {
+                progress_seconds: Math.floor(video.currentTime),
+                duration_seconds: Math.floor(video.duration || 0)
+            });
+        }
+        currentMediaId = null;
+    }
+
+    function updatePlayerUI() {
+        const video = document.getElementById('videoPlayer');
+        const fill = document.getElementById('playerProgressFill');
+        const timeEl = document.getElementById('playerTime');
+        if (video.duration) {
+            fill.style.width = (video.currentTime / video.duration * 100) + '%';
+            timeEl.textContent = formatTime(video.currentTime) + ' / ' + formatTime(video.duration);
         }
     }
 
-    function showCreateSister() {
-        const mc = document.getElementById('mainContent');
-        mc.innerHTML = `
-            <div class="section-header"><h2 class="section-title">Create Sister Group</h2></div>
-            <div style="max-width:500px;">
-                <div class="form-group"><label>Name</label><input type="text" id="sisName" placeholder="The Matrix Collection"></div>
-                <div class="form-group"><label>Notes</label><input type="text" id="sisNotes" placeholder="Optional notes..."></div>
-                <button class="btn-primary" onclick="createSister()">Create</button>
-                <button class="btn-secondary" style="margin-left:12px;" onclick="loadSistersView()">Cancel</button>
-            </div>`;
-    }
+    function togglePlay() { const v=document.getElementById('videoPlayer'); v.paused?v.play():v.pause(); }
+    function skipBack() { document.getElementById('videoPlayer').currentTime -= 10; }
+    function skipForward() { document.getElementById('videoPlayer').currentTime += 10; }
+    function toggleMute() { const v=document.getElementById('videoPlayer'); v.muted=!v.muted; }
+    function toggleFullscreen() { const o=document.getElementById('playerOverlay'); document.fullscreenElement?document.exitFullscreen():o.requestFullscreen(); }
+    function seekPlayer(e) { const v=document.getElementById('videoPlayer'); const bar=document.getElementById('playerProgress'); const pct=e.offsetX/bar.offsetWidth; v.currentTime=pct*v.duration; }
+    function changeQuality(level) { if(hlsPlayer) hlsPlayer.currentLevel=parseInt(level); }
 
-    async function createSister() {
-        const name = document.getElementById('sisName').value;
-        const notes = document.getElementById('sisNotes').value || null;
-        if (!name) { toast('Name required', 'error'); return; }
-        const d = await api('POST', '/sisters', { name, notes });
-        if (d.success) { toast('Sister group created!'); loadSistersView(); }
-        else toast('Failed: ' + d.error, 'error');
-    }
-
-    async function deleteSister(id) {
-        if (!confirm('Delete this sister group?')) return;
-        const d = await api('DELETE', '/sisters/' + id);
-        if (d.success) { toast('Deleted'); loadSistersView(); }
-        else toast('Failed: ' + d.error, 'error');
-    }
-
-    // ──── Collections View ────
-    async function loadCollectionsView() {
-        const mc = document.getElementById('mainContent');
-        mc.innerHTML = `
-            <div class="section-header">
-                <h2 class="section-title">My Collections</h2>
-                <button class="btn-primary" onclick="showCreateCollection()">+ New Collection</button>
-            </div>
-            <div id="collList"><div class="spinner"></div> Loading...</div>`;
-
-        const data = await api('GET', '/collections');
-        const div = document.getElementById('collList');
-        if (data.success && data.data && data.data.length > 0) {
-            div.innerHTML = data.data.map(c => `
-                <div class="group-card">
-                    <div style="display:flex;justify-content:space-between;align-items:start;">
-                        <div>
-                            <h4>${c.name}</h4>
-                            ${c.description ? '<p>' + c.description + '</p>' : ''}
-                            <span class="tag tag-green">${c.item_count || 0} items</span>
-                            <span class="tag tag-cyan">${c.visibility}</span>
-                        </div>
-                        <button class="btn-danger" onclick="deleteCollection('${c.id}')" style="padding:6px 14px;font-size:0.78rem;">Delete</button>
-                    </div>
-                </div>`).join('');
-        } else {
-            div.innerHTML = `<div class="empty-state">
-                <div class="empty-state-icon">&#11088;</div>
-                <div class="empty-state-title">No collections yet</div>
-                <p>Create collections to curate your favorite media</p>
-            </div>`;
+    // Keyboard shortcuts for player
+    document.addEventListener('keydown', (e) => {
+        if (!document.getElementById('playerOverlay').classList.contains('active')) return;
+        switch(e.key) {
+            case ' ': e.preventDefault(); togglePlay(); break;
+            case 'ArrowLeft': skipBack(); break;
+            case 'ArrowRight': skipForward(); break;
+            case 'f': toggleFullscreen(); break;
+            case 'm': toggleMute(); break;
+            case 'Escape': closePlayer(); break;
         }
-    }
-
-    function showCreateCollection() {
-        const mc = document.getElementById('mainContent');
-        mc.innerHTML = `
-            <div class="section-header"><h2 class="section-title">New Collection</h2></div>
-            <div style="max-width:500px;">
-                <div class="form-group"><label>Name</label><input type="text" id="collName" placeholder="My Favorites"></div>
-                <div class="form-group"><label>Description</label><input type="text" id="collDesc" placeholder="Optional description..."></div>
-                <div class="form-group">
-                    <label>Visibility</label>
-                    <select id="collVis"><option value="private">Private</option><option value="shared">Shared</option><option value="public">Public</option></select>
-                </div>
-                <button class="btn-primary" onclick="createCollection()">Create</button>
-                <button class="btn-secondary" style="margin-left:12px;" onclick="loadCollectionsView()">Cancel</button>
-            </div>`;
-    }
-
-    async function createCollection() {
-        const name = document.getElementById('collName').value;
-        const description = document.getElementById('collDesc').value || null;
-        const visibility = document.getElementById('collVis').value;
-        if (!name) { toast('Name required', 'error'); return; }
-        const d = await api('POST', '/collections', { name, description, visibility });
-        if (d.success) { toast('Collection created!'); loadCollectionsView(); }
-        else toast('Failed: ' + d.error, 'error');
-    }
-
-    async function deleteCollection(id) {
-        if (!confirm('Delete this collection?')) return;
-        const d = await api('DELETE', '/collections/' + id);
-        if (d.success) { toast('Deleted'); loadCollectionsView(); }
-        else toast('Failed: ' + d.error, 'error');
-    }
+    });
 
     // ──── Init ────
     checkAuth();
