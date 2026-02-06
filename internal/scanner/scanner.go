@@ -27,6 +27,8 @@ type Scanner struct {
 	posterDir     string
 	// matchedShows tracks TV show IDs already matched this scan to avoid duplicate lookups
 	matchedShows  map[uuid.UUID]bool
+	// pendingEpisodeMeta tracks show IDs → TMDB external IDs for post-scan episode metadata fetch
+	pendingEpisodeMeta map[uuid.UUID]string
 }
 
 // Extension sets per media type
@@ -71,15 +73,16 @@ func NewScanner(ffprobePath string, mediaRepo *repository.MediaRepository,
 	scrapers []metadata.Scraper, posterDir string,
 ) *Scanner {
 	return &Scanner{
-		ffprobe:       ffmpeg.NewFFprobe(ffprobePath),
-		mediaRepo:     mediaRepo,
-		tvRepo:        tvRepo,
-		musicRepo:     musicRepo,
-		audiobookRepo: audiobookRepo,
-		galleryRepo:   galleryRepo,
-		scrapers:      scrapers,
-		posterDir:     posterDir,
-		matchedShows:  make(map[uuid.UUID]bool),
+		ffprobe:            ffmpeg.NewFFprobe(ffprobePath),
+		mediaRepo:          mediaRepo,
+		tvRepo:             tvRepo,
+		musicRepo:          musicRepo,
+		audiobookRepo:      audiobookRepo,
+		galleryRepo:        galleryRepo,
+		scrapers:           scrapers,
+		posterDir:          posterDir,
+		matchedShows:       make(map[uuid.UUID]bool),
+		pendingEpisodeMeta: make(map[uuid.UUID]string),
 	}
 }
 
@@ -156,8 +159,17 @@ func (s *Scanner) ScanLibrary(library *models.Library) (*models.ScanResult, erro
 		return nil
 	})
 
-	// Reset matched shows tracker for next scan
+	// Post-scan: fetch episode-level metadata for matched TV shows
+	if len(s.pendingEpisodeMeta) > 0 {
+		log.Printf("Fetching episode metadata for %d TV show(s)...", len(s.pendingEpisodeMeta))
+		for showID, tmdbID := range s.pendingEpisodeMeta {
+			s.fetchEpisodeMetadata(showID, tmdbID)
+		}
+	}
+
+	// Reset trackers for next scan
 	s.matchedShows = make(map[uuid.UUID]bool)
+	s.pendingEpisodeMeta = make(map[uuid.UUID]string)
 
 	return result, err
 }
@@ -398,7 +410,8 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 	}
 }
 
-// autoMatchTVShow searches for a TV show and applies metadata to the show record.
+// autoMatchTVShow searches for a TV show and applies metadata to the show record,
+// then fetches episode-level metadata from TMDB for each season.
 // Only runs once per show per scan.
 func (s *Scanner) autoMatchTVShow(showID uuid.UUID) {
 	if s.matchedShows[showID] {
@@ -413,6 +426,8 @@ func (s *Scanner) autoMatchTVShow(showID uuid.UUID) {
 
 	// Skip if show already has metadata (description populated)
 	if show.Description != nil && *show.Description != "" {
+		// Still try to populate episode metadata if episodes lack it
+		s.populateEpisodeMetadata(showID, show)
 		return
 	}
 
@@ -427,8 +442,8 @@ func (s *Scanner) autoMatchTVShow(showID uuid.UUID) {
 		return
 	}
 
-	log.Printf("Auto-match TV: %q → %q (source=%s, confidence=%.2f)",
-		show.Title, match.Title, match.Source, match.Confidence)
+	log.Printf("Auto-match TV: %q → %q (source=%s, id=%s, confidence=%.2f)",
+		show.Title, match.Title, match.Source, match.ExternalID, match.Confidence)
 
 	// Download poster for the show
 	var posterPath *string
@@ -448,6 +463,120 @@ func (s *Scanner) autoMatchTVShow(showID uuid.UUID) {
 		match.Description, match.Rating, posterPath); err != nil {
 		log.Printf("Auto-match: TV show DB update failed for %s: %v", showID, err)
 	}
+
+	// Queue episode-level metadata fetch for after all files are scanned
+	if match.Source == "tmdb" && match.ExternalID != "" {
+		s.pendingEpisodeMeta[showID] = match.ExternalID
+	}
+}
+
+// fetchEpisodeMetadata uses the TMDB show ID to fetch season details and apply
+// episode titles, descriptions, and still images to individual media items.
+func (s *Scanner) fetchEpisodeMetadata(showID uuid.UUID, tmdbShowID string) {
+	// Get the TMDB scraper
+	var tmdb *metadata.TMDBScraper
+	for _, sc := range s.scrapers {
+		if t, ok := sc.(*metadata.TMDBScraper); ok {
+			tmdb = t
+			break
+		}
+	}
+	if tmdb == nil {
+		return
+	}
+
+	// Get all seasons for this show
+	seasons, err := s.tvRepo.ListSeasonsByShow(showID)
+	if err != nil {
+		log.Printf("Auto-match: failed to list seasons for show %s: %v", showID, err)
+		return
+	}
+
+	// Get all episodes for this show
+	episodes, err := s.mediaRepo.ListByTVShow(showID)
+	if err != nil {
+		log.Printf("Auto-match: failed to list episodes for show %s: %v", showID, err)
+		return
+	}
+
+	for _, season := range seasons {
+		tmdbEpisodes, err := tmdb.GetTVSeasonEpisodes(tmdbShowID, season.SeasonNumber)
+		if err != nil {
+			log.Printf("Auto-match: TMDB season %d fetch failed for show %s: %v", season.SeasonNumber, tmdbShowID, err)
+			continue
+		}
+
+		// Build a map of TMDB episodes by episode number
+		tmdbMap := make(map[int]metadata.TMDBEpisode)
+		for _, ep := range tmdbEpisodes {
+			tmdbMap[ep.EpisodeNumber] = ep
+		}
+
+		// Match local episodes to TMDB episodes
+		for _, ep := range episodes {
+			if ep.TVSeasonID == nil || *ep.TVSeasonID != season.ID || ep.EpisodeNumber == nil {
+				continue
+			}
+
+			tmdbEp, ok := tmdbMap[*ep.EpisodeNumber]
+			if !ok {
+				continue
+			}
+
+			// Build episode title: "Episode Name" or keep original if TMDB has none
+			epTitle := tmdbEp.Name
+			if epTitle == "" {
+				continue
+			}
+
+			var desc *string
+			if tmdbEp.Overview != "" {
+				desc = &tmdbEp.Overview
+			}
+
+			var rating *float64
+			if tmdbEp.VoteAverage > 0 {
+				rating = &tmdbEp.VoteAverage
+			}
+
+			// Download episode still image
+			var posterPath *string
+			if tmdbEp.StillPath != "" && s.posterDir != "" {
+				stillURL := "https://image.tmdb.org/t/p/w500" + tmdbEp.StillPath
+				filename := "ep_" + ep.ID.String() + ".jpg"
+				saved, dlErr := metadata.DownloadPoster(stillURL, filepath.Join(s.posterDir, "posters"), filename)
+				if dlErr != nil {
+					log.Printf("Auto-match: episode still download failed: %v", dlErr)
+				} else {
+					webPath := "/previews/posters/" + filename
+					posterPath = &webPath
+					_ = saved
+				}
+			}
+
+			if err := s.mediaRepo.UpdateMetadata(ep.ID, epTitle, nil, desc, rating, posterPath); err != nil {
+				log.Printf("Auto-match: episode metadata update failed for %s: %v", ep.ID, err)
+			} else {
+				log.Printf("Auto-match episode: S%02dE%02d → %q", season.SeasonNumber, *ep.EpisodeNumber, epTitle)
+			}
+		}
+	}
+}
+
+// populateEpisodeMetadata is called when the show already has metadata but episodes may not.
+// It re-searches TMDB to get the show ID and queues episode metadata for post-scan.
+func (s *Scanner) populateEpisodeMetadata(showID uuid.UUID, show *models.TVShow) {
+	// Search TMDB to get the show's external ID
+	searchQuery := metadata.CleanTitleForSearch(show.Title)
+	if searchQuery == "" {
+		return
+	}
+	match := metadata.FindBestMatch(s.scrapers, searchQuery, models.MediaTypeTVShows)
+	if match == nil || match.Source != "tmdb" || match.ExternalID == "" {
+		return
+	}
+
+	s.pendingEpisodeMeta[showID] = match.ExternalID
 }
 
 // extractYear tries to find a 4-digit year in a filename.

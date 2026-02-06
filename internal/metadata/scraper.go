@@ -156,6 +156,47 @@ func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, erro
 	}, nil
 }
 
+// ──────────────────── TMDB TV Episode Details ────────────────────
+
+// TMDBEpisode holds metadata for a single TV episode from TMDB.
+type TMDBEpisode struct {
+	EpisodeNumber int     `json:"episode_number"`
+	Name          string  `json:"name"`
+	Overview      string  `json:"overview"`
+	AirDate       string  `json:"air_date"`
+	StillPath     string  `json:"still_path"`
+	VoteAverage   float64 `json:"vote_average"`
+}
+
+// GetTVSeasonEpisodes fetches episode details for a specific season of a TV show from TMDB.
+func (s *TMDBScraper) GetTVSeasonEpisodes(tmdbShowID string, seasonNumber int) ([]TMDBEpisode, error) {
+	if s.apiKey == "" {
+		return nil, fmt.Errorf("TMDB API key not configured")
+	}
+
+	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/tv/%s/season/%d?api_key=%s",
+		tmdbShowID, seasonNumber, s.apiKey)
+
+	resp, err := s.client.Get(reqURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("TMDB season request returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Episodes []TMDBEpisode `json:"episodes"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return result.Episodes, nil
+}
+
 // ──────────────────── MusicBrainz ────────────────────
 
 type MusicBrainzScraper struct {

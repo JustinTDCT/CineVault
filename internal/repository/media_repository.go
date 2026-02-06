@@ -182,3 +182,25 @@ func (r *MediaRepository) UpdateLastScanned(id uuid.UUID) error {
 		`UPDATE media_items SET last_scanned_at = CURRENT_TIMESTAMP WHERE id = $1`, id)
 	return err
 }
+
+// ListByTVShow returns all episodes for a TV show, ordered by season and episode number.
+func (r *MediaRepository) ListByTVShow(showID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + `
+		FROM media_items WHERE tv_show_id = $1
+		ORDER BY COALESCE(episode_number, 0)`
+	rows, err := r.db.Query(query, showID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
