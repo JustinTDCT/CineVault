@@ -1025,6 +1025,7 @@
     // ──── Video Player ────
     let currentStreamInfo = null;
     let currentPlayMode = null; // 'direct', 'hls'
+    let knownDuration = 0; // Total duration from DB (HLS event playlists report partial duration)
 
     async function playMedia(mediaId, title) {
         currentMediaId = mediaId;
@@ -1037,6 +1038,7 @@
         // Fetch stream info to determine best playback method
         const info = await api('GET', `/stream/${mediaId}/info`);
         currentStreamInfo = info.success ? info.data : null;
+        knownDuration = currentStreamInfo ? (currentStreamInfo.duration_seconds || 0) : 0;
 
         const sel = document.getElementById('qualitySelect');
         let options = '';
@@ -1200,6 +1202,7 @@
         currentMediaId = null;
         currentStreamInfo = null;
         currentPlayMode = null;
+        knownDuration = 0;
     }
 
     function updatePlayerUI() {
@@ -1207,7 +1210,9 @@
         const fill = document.getElementById('playerProgressFill');
         const timeEl = document.getElementById('playerTime');
 
-        const totalDuration = isFinite(video.duration) ? video.duration : 0;
+        // Use known duration from DB when available (HLS event playlists only report partial duration)
+        const totalDuration = (knownDuration > 0) ? knownDuration
+            : (isFinite(video.duration) ? video.duration : 0);
         const currentTime = video.currentTime;
 
         if (totalDuration > 0) {
@@ -1226,7 +1231,8 @@
         const bar = document.getElementById('playerProgress');
         const pct = e.offsetX / bar.offsetWidth;
 
-        const totalDuration = isFinite(video.duration) ? video.duration : 0;
+        const totalDuration = (knownDuration > 0) ? knownDuration
+            : (isFinite(video.duration) ? video.duration : 0);
         if (totalDuration <= 0) return;
 
         video.currentTime = pct * totalDuration;
