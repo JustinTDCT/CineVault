@@ -1,6 +1,6 @@
 {
   "version": "0.2.0",
-  "phase": 1,
+  "phase": 2,
   "released": "2026-02-06",
-  "notes": "Phase 1 complete - Full REST API, repository layer, auth system, web UI"
+  "notes": "Phase 2 - Advanced Organization: All 9 media types, edition groups, sister groups, collections, watch history, scanner with DB persistence, split API handlers"
 }

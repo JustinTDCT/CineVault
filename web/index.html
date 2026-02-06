@@ -27,6 +27,7 @@
         /* Sidebar */
         .sidebar {
             width: 260px;
+            min-width: 260px;
             background: linear-gradient(180deg, rgba(13, 27, 42, 0.95) 0%, rgba(10, 25, 41, 0.98) 100%);
             backdrop-filter: blur(20px);
             border-right: 1px solid rgba(0, 217, 255, 0.15);
@@ -34,10 +35,11 @@
             display: flex;
             flex-direction: column;
             box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
+            overflow-y: auto;
         }
 
         .logo {
-            padding: 0 25px 35px;
+            padding: 0 25px 30px;
             font-size: 1.9rem;
             font-weight: 700;
             background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
@@ -50,7 +52,7 @@
         }
 
         .logo::before {
-            content: "▶";
+            content: "\25B6";
             font-size: 1.6rem;
             background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
             -webkit-background-clip: text;
@@ -58,20 +60,30 @@
             filter: drop-shadow(0 0 10px rgba(0, 217, 255, 0.5));
         }
 
+        .nav-label {
+            padding: 8px 25px;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #5a6a7f;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+
         .nav-section {
-            margin-bottom: 25px;
+            margin-bottom: 8px;
         }
 
         .nav-item {
-            padding: 14px 25px;
-            margin: 4px 15px;
+            padding: 12px 25px;
+            margin: 2px 12px;
             color: #b8c5d6;
             cursor: pointer;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
             align-items: center;
             gap: 14px;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             border-radius: 12px;
             position: relative;
         }
@@ -108,7 +120,17 @@
         .nav-icon {
             width: 22px;
             text-align: center;
-            filter: drop-shadow(0 0 4px rgba(0, 217, 255, 0.3));
+            font-size: 1rem;
+        }
+
+        .nav-badge {
+            margin-left: auto;
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.25) 0%, rgba(0, 153, 204, 0.2) 100%);
+            color: #00D9FF;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
         }
 
         /* Main Content */
@@ -122,17 +144,16 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 25px;
+            margin-bottom: 22px;
         }
 
         .section-title {
-            font-size: 1.6rem;
+            font-size: 1.5rem;
             font-weight: 700;
             background: linear-gradient(135deg, #00D9FF 0%, #00B8DB 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            text-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
         }
 
         .view-all {
@@ -152,9 +173,9 @@
         /* Media Grid */
         .media-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-            gap: 24px;
-            margin-bottom: 45px;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 22px;
+            margin-bottom: 40px;
         }
 
         .media-card {
@@ -176,6 +197,10 @@
             position: relative;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 217, 255, 0.1);
             transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
         }
 
         .media-card:hover .media-poster {
@@ -194,12 +219,11 @@
             right: 10px;
             background: linear-gradient(135deg, rgba(0, 217, 255, 0.95) 0%, rgba(0, 153, 204, 0.95) 100%);
             color: #0a1929;
-            padding: 5px 10px;
+            padding: 4px 9px;
             border-radius: 8px;
             font-size: 0.7rem;
             font-weight: 700;
             box-shadow: 0 4px 12px rgba(0, 217, 255, 0.4);
-            backdrop-filter: blur(10px);
         }
 
         .progress-bar {
@@ -216,7 +240,6 @@
         .progress-fill {
             height: 100%;
             background: linear-gradient(90deg, #00D9FF 0%, #0099CC 100%);
-            width: 0%;
             box-shadow: 0 0 10px rgba(0, 217, 255, 0.6);
         }
 
@@ -238,32 +261,26 @@
         }
 
         .play-button {
-            width: 70px;
-            height: 70px;
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
             background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 28px;
+            font-size: 24px;
             color: #0a1929;
             box-shadow: 0 8px 24px rgba(0, 217, 255, 0.5);
-            transition: all 0.3s;
-        }
-
-        .play-button:hover {
-            transform: scale(1.1);
-            box-shadow: 0 12px 32px rgba(0, 217, 255, 0.7);
         }
 
         .media-info {
-            padding: 12px 0;
+            padding: 10px 2px;
         }
 
         .media-title {
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             font-weight: 600;
-            margin-bottom: 5px;
+            margin-bottom: 4px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -271,7 +288,7 @@
         }
 
         .media-meta {
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             color: #8a9bae;
         }
 
@@ -281,7 +298,7 @@
             top: 0;
             background: linear-gradient(180deg, rgba(10, 25, 41, 0.95) 0%, rgba(13, 27, 42, 0.9) 100%);
             backdrop-filter: blur(20px);
-            padding: 22px 45px;
+            padding: 18px 45px;
             border-bottom: 1px solid rgba(0, 217, 255, 0.15);
             display: flex;
             justify-content: space-between;
@@ -292,17 +309,17 @@
 
         .search-box {
             position: relative;
-            width: 450px;
+            width: 420px;
         }
 
         .search-box input {
             width: 100%;
-            padding: 13px 45px 13px 18px;
+            padding: 12px 18px;
             background: linear-gradient(135deg, rgba(26, 35, 50, 0.6) 0%, rgba(13, 27, 42, 0.8) 100%);
             border: 1px solid rgba(0, 217, 255, 0.2);
             border-radius: 12px;
             color: #e5e5e5;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             transition: all 0.3s;
         }
 
@@ -316,12 +333,12 @@
         .user-menu {
             display: flex;
             align-items: center;
-            gap: 18px;
+            gap: 15px;
         }
 
         .user-avatar {
-            width: 42px;
-            height: 42px;
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
             background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
             display: flex;
@@ -332,6 +349,7 @@
             cursor: pointer;
             box-shadow: 0 4px 16px rgba(0, 217, 255, 0.4);
             transition: all 0.3s;
+            font-size: 0.95rem;
         }
 
         .user-avatar:hover {
@@ -342,23 +360,22 @@
         /* Empty State */
         .empty-state {
             text-align: center;
-            padding: 70px 25px;
+            padding: 60px 25px;
             color: #8a9bae;
             background: linear-gradient(135deg, rgba(26, 35, 50, 0.4) 0%, rgba(13, 27, 42, 0.6) 100%);
             border-radius: 20px;
             border: 1px solid rgba(0, 217, 255, 0.1);
-            margin: 20px 0;
+            margin: 10px 0 30px;
         }
 
         .empty-state-icon {
-            font-size: 4.5rem;
-            margin-bottom: 25px;
-            filter: drop-shadow(0 0 20px rgba(0, 217, 255, 0.3));
+            font-size: 3.5rem;
+            margin-bottom: 18px;
         }
 
         .empty-state-title {
-            font-size: 1.3rem;
-            margin-bottom: 12px;
+            font-size: 1.2rem;
+            margin-bottom: 8px;
             color: #b8c5d6;
             font-weight: 600;
         }
@@ -366,13 +383,12 @@
         .btn-primary {
             background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
             color: #0a1929;
-            padding: 14px 28px;
+            padding: 12px 24px;
             border: none;
             border-radius: 12px;
             font-weight: 600;
             cursor: pointer;
-            margin-top: 25px;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             box-shadow: 0 6px 20px rgba(0, 217, 255, 0.3);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
@@ -380,6 +396,39 @@
         .btn-primary:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 28px rgba(0, 217, 255, 0.5);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.15) 0%, rgba(0, 153, 204, 0.1) 100%);
+            color: #00D9FF;
+            padding: 10px 20px;
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.3s;
+        }
+
+        .btn-secondary:hover {
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.25) 0%, rgba(0, 153, 204, 0.2) 100%);
+            box-shadow: 0 4px 16px rgba(0, 217, 255, 0.3);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, rgba(255, 59, 48, 0.15) 0%, rgba(255, 59, 48, 0.1) 100%);
+            color: #ff6b6b;
+            padding: 10px 20px;
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.3s;
+        }
+
+        .btn-danger:hover {
+            background: linear-gradient(135deg, rgba(255, 59, 48, 0.25) 0%, rgba(255, 59, 48, 0.2) 100%);
         }
 
         /* Login Modal */
@@ -402,59 +451,62 @@
             background: linear-gradient(135deg, rgba(26, 35, 50, 0.95) 0%, rgba(13, 27, 42, 0.98) 100%);
             border: 1px solid rgba(0, 217, 255, 0.3);
             border-radius: 20px;
-            padding: 45px;
+            padding: 40px;
             max-width: 440px;
             width: 90%;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 217, 255, 0.2);
         }
 
         .modal-title {
-            font-size: 1.8rem;
+            font-size: 1.6rem;
             background: linear-gradient(135deg, #00D9FF 0%, #00B8DB 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            margin-bottom: 35px;
+            margin-bottom: 30px;
             text-align: center;
             font-weight: 700;
         }
 
         .form-group {
-            margin-bottom: 22px;
+            margin-bottom: 18px;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             color: #b8c5d6;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             font-weight: 500;
         }
 
-        .form-group input {
+        .form-group input, .form-group select {
             width: 100%;
-            padding: 14px 16px;
+            padding: 12px 14px;
             background: linear-gradient(135deg, rgba(10, 25, 41, 0.6) 0%, rgba(13, 27, 42, 0.8) 100%);
             border: 1px solid rgba(0, 217, 255, 0.2);
             border-radius: 12px;
             color: #e5e5e5;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             transition: all 0.3s;
         }
 
-        .form-group input:focus {
+        .form-group input:focus, .form-group select:focus {
             outline: none;
             border-color: #00D9FF;
-            background: linear-gradient(135deg, rgba(10, 25, 41, 0.8) 0%, rgba(13, 27, 42, 0.95) 100%);
             box-shadow: 0 0 20px rgba(0, 217, 255, 0.2);
         }
 
+        .form-group select option {
+            background: #1a2332;
+            color: #e5e5e5;
+        }
+
         .message {
-            padding: 14px;
+            padding: 12px;
             border-radius: 12px;
-            margin-bottom: 22px;
-            font-size: 0.9rem;
-            backdrop-filter: blur(10px);
+            margin-bottom: 18px;
+            font-size: 0.85rem;
         }
 
         .message.error {
@@ -471,17 +523,20 @@
 
         /* Library Card */
         .library-card {
-            padding: 25px;
+            padding: 22px;
             background: linear-gradient(135deg, rgba(26, 35, 50, 0.6) 0%, rgba(13, 27, 42, 0.8) 100%);
             border: 1px solid rgba(0, 217, 255, 0.2);
             border-radius: 16px;
-            margin-bottom: 18px;
+            margin-bottom: 14px;
             transition: all 0.3s;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .library-card:hover {
-            transform: translateY(-4px);
+            transform: translateY(-3px);
             box-shadow: 0 8px 24px rgba(0, 217, 255, 0.2);
             border-color: rgba(0, 217, 255, 0.4);
         }
@@ -491,13 +546,105 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+
+        .library-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* Group Cards */
+        .group-card {
+            padding: 20px;
+            background: linear-gradient(135deg, rgba(26, 35, 50, 0.6) 0%, rgba(13, 27, 42, 0.8) 100%);
+            border: 1px solid rgba(0, 217, 255, 0.15);
+            border-radius: 16px;
             margin-bottom: 12px;
-            font-size: 1.2rem;
+            transition: all 0.3s;
+        }
+
+        .group-card:hover {
+            border-color: rgba(0, 217, 255, 0.35);
+            box-shadow: 0 4px 16px rgba(0, 217, 255, 0.15);
+        }
+
+        .group-card h4 {
+            color: #00D9FF;
+            margin-bottom: 6px;
+        }
+
+        .group-card p {
+            color: #8a9bae;
+            font-size: 0.85rem;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 8px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            margin-right: 6px;
+            margin-top: 8px;
+        }
+
+        .tag-cyan {
+            background: rgba(0, 217, 255, 0.15);
+            color: #00D9FF;
+            border: 1px solid rgba(0, 217, 255, 0.3);
+        }
+
+        .tag-purple {
+            background: rgba(168, 85, 247, 0.15);
+            color: #a78bfa;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+
+        .tag-green {
+            background: rgba(52, 199, 89, 0.15);
+            color: #51cf66;
+            border: 1px solid rgba(52, 199, 89, 0.3);
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            z-index: 2000;
+            animation: slideInRight 0.3s ease-out;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Continue watching horizontal scroll */
+        .continue-row {
+            display: flex;
+            gap: 18px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+
+        .continue-row .media-card {
+            min-width: 180px;
+            flex-shrink: 0;
         }
 
         /* Scrollbar */
         ::-webkit-scrollbar {
-            width: 10px;
+            width: 8px;
+            height: 8px;
         }
 
         ::-webkit-scrollbar-track {
@@ -512,6 +659,22 @@
         ::-webkit-scrollbar-thumb:hover {
             background: linear-gradient(180deg, rgba(0, 217, 255, 0.6) 0%, rgba(0, 153, 204, 0.6) 100%);
         }
+
+        .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(0, 217, 255, 0.3);
+            border-top: 2px solid #00D9FF;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -519,47 +682,104 @@
         <!-- Sidebar -->
         <div class="sidebar">
             <div class="logo">CineVault</div>
-            
+
             <div class="nav-section">
+                <div class="nav-label">Main</div>
                 <div class="nav-item active" data-view="home">
-                    <span class="nav-icon">🏠</span>
+                    <span class="nav-icon">&#127968;</span>
                     <span>Home</span>
                 </div>
-                <div class="nav-item" data-view="movies">
-                    <span class="nav-icon">🎬</span>
-                    <span>Movies</span>
-                </div>
-                <div class="nav-item" data-view="tv">
-                    <span class="nav-icon">📺</span>
-                    <span>TV Shows</span>
-                </div>
                 <div class="nav-item" data-view="libraries">
-                    <span class="nav-icon">📚</span>
+                    <span class="nav-icon">&#128218;</span>
                     <span>Libraries</span>
                 </div>
             </div>
 
-            <div style="margin-top: auto; padding: 20px;">
+            <div class="nav-section">
+                <div class="nav-label">Media</div>
+                <div class="nav-item" data-view="movies" data-type="movies">
+                    <span class="nav-icon">&#127916;</span>
+                    <span>Movies</span>
+                    <span class="nav-badge" id="badge-movies"></span>
+                </div>
+                <div class="nav-item" data-view="media" data-type="adult_movies">
+                    <span class="nav-icon">&#128274;</span>
+                    <span>Adult</span>
+                    <span class="nav-badge" id="badge-adult_movies"></span>
+                </div>
+                <div class="nav-item" data-view="tv" data-type="tv_shows">
+                    <span class="nav-icon">&#128250;</span>
+                    <span>TV Shows</span>
+                    <span class="nav-badge" id="badge-tv_shows"></span>
+                </div>
+                <div class="nav-item" data-view="media" data-type="music">
+                    <span class="nav-icon">&#127925;</span>
+                    <span>Music</span>
+                    <span class="nav-badge" id="badge-music"></span>
+                </div>
+                <div class="nav-item" data-view="media" data-type="music_videos">
+                    <span class="nav-icon">&#127911;</span>
+                    <span>Music Videos</span>
+                    <span class="nav-badge" id="badge-music_videos"></span>
+                </div>
+                <div class="nav-item" data-view="media" data-type="home_videos">
+                    <span class="nav-icon">&#127909;</span>
+                    <span>Home Videos</span>
+                    <span class="nav-badge" id="badge-home_videos"></span>
+                </div>
+                <div class="nav-item" data-view="media" data-type="other_videos">
+                    <span class="nav-icon">&#128253;</span>
+                    <span>Other Videos</span>
+                    <span class="nav-badge" id="badge-other_videos"></span>
+                </div>
+                <div class="nav-item" data-view="media" data-type="images">
+                    <span class="nav-icon">&#128247;</span>
+                    <span>Photos</span>
+                    <span class="nav-badge" id="badge-images"></span>
+                </div>
+                <div class="nav-item" data-view="media" data-type="audiobooks">
+                    <span class="nav-icon">&#128214;</span>
+                    <span>Audiobooks</span>
+                    <span class="nav-badge" id="badge-audiobooks"></span>
+                </div>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-label">Organize</div>
+                <div class="nav-item" data-view="editions">
+                    <span class="nav-icon">&#128191;</span>
+                    <span>Editions</span>
+                </div>
+                <div class="nav-item" data-view="sisters">
+                    <span class="nav-icon">&#128279;</span>
+                    <span>Sister Groups</span>
+                </div>
+                <div class="nav-item" data-view="collections">
+                    <span class="nav-icon">&#11088;</span>
+                    <span>Collections</span>
+                </div>
+            </div>
+
+            <div style="margin-top: auto; padding: 15px 0;">
                 <div class="nav-item" id="logoutBtn" style="color: #ff6b6b;">
-                    <span class="nav-icon">🚪</span>
+                    <span class="nav-icon">&#128682;</span>
                     <span>Logout</span>
                 </div>
             </div>
         </div>
 
         <!-- Main Content -->
-        <div style="flex: 1; display: flex; flex-direction: column;">
+        <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
             <div class="top-bar">
                 <div class="search-box">
-                    <input type="text" placeholder="Search movies, TV shows..." id="searchInput">
+                    <input type="text" placeholder="Search your media..." id="searchInput">
                 </div>
                 <div class="user-menu">
-                    <div class="user-avatar" id="userAvatar">A</div>
+                    <div class="user-avatar" id="userAvatar">?</div>
                 </div>
             </div>
 
             <div class="main-content" id="mainContent">
-                <!-- Content will be loaded here -->
             </div>
         </div>
     </div>
@@ -578,189 +798,599 @@
                     <label>Password</label>
                     <input type="password" id="loginPassword" required>
                 </div>
-                <button type="submit" class="btn-primary" style="width: 100%;">Login</button>
+                <button type="submit" class="btn-primary" style="width: 100%; margin-top: 10px;">Login</button>
             </form>
         </div>
     </div>
 
     <script>
-        const API_BASE = '/api/v1';
-        let currentUser = null;
+    const API = '/api/v1';
+    let currentUser = null;
+    let allLibraries = [];
 
-        // Check if user is logged in
-        function checkAuth() {
-            const token = localStorage.getItem('token');
-            const user = localStorage.getItem('user');
-            
-            if (token && user) {
-                currentUser = JSON.parse(user);
-                document.getElementById('loginModal').classList.remove('active');
-                document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
-                loadHomeView();
-            } else {
-                document.getElementById('loginModal').classList.add('active');
-            }
-        }
+    function headers() {
+        return { 'Authorization': 'Bearer ' + localStorage.getItem('token'), 'Content-Type': 'application/json' };
+    }
 
-        // Login
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('loginUsername').value;
-            const password = document.getElementById('loginPassword').value;
-            const messageDiv = document.getElementById('authMessage');
+    async function api(method, path, body) {
+        const opts = { method, headers: headers() };
+        if (body) opts.body = JSON.stringify(body);
+        const res = await fetch(API + path, opts);
+        return res.json();
+    }
 
-            try {
-                const response = await fetch(`${API_BASE}/auth/login`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({username, password})
-                });
+    function toast(msg, type = 'success') {
+        const t = document.createElement('div');
+        t.className = 'toast message ' + type;
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 3500);
+    }
 
-                const data = await response.json();
+    const MEDIA_ICONS = {
+        movies: '&#127916;', adult_movies: '&#128274;', tv_shows: '&#128250;',
+        music: '&#127925;', music_videos: '&#127911;', home_videos: '&#127909;',
+        other_videos: '&#128253;', images: '&#128247;', audiobooks: '&#128214;'
+    };
 
-                if (data.success) {
-                    localStorage.setItem('token', data.data.token);
-                    localStorage.setItem('user', JSON.stringify(data.data.user));
-                    messageDiv.innerHTML = '<div class="message success">Login successful!</div>';
-                    setTimeout(() => {
-                        checkAuth();
-                    }, 500);
-                } else {
-                    messageDiv.innerHTML = `<div class="message error">${data.error || 'Login failed'}</div>`;
-                }
-            } catch (error) {
-                messageDiv.innerHTML = '<div class="message error">Connection error. Is the server running?</div>';
-            }
-        });
+    const MEDIA_LABELS = {
+        movies: 'Movies', adult_movies: 'Adult Movies', tv_shows: 'TV Shows',
+        music: 'Music', music_videos: 'Music Videos', home_videos: 'Home Videos',
+        other_videos: 'Other Videos', images: 'Photos', audiobooks: 'Audiobooks'
+    };
 
-        // Logout
-        document.getElementById('logoutBtn').addEventListener('click', () => {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            currentUser = null;
+    function mediaIcon(type) { return MEDIA_ICONS[type] || '&#128191;'; }
+
+    // ──── Auth ────
+    function checkAuth() {
+        const token = localStorage.getItem('token');
+        const user = localStorage.getItem('user');
+        if (token && user) {
+            currentUser = JSON.parse(user);
+            document.getElementById('loginModal').classList.remove('active');
+            document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
+            loadHomeView();
+            loadSidebarCounts();
+        } else {
             document.getElementById('loginModal').classList.add('active');
-        });
+        }
+    }
 
-        // Navigation
-        document.querySelectorAll('.nav-item[data-view]').forEach(item => {
-            item.addEventListener('click', () => {
-                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-                item.classList.add('active');
-                const view = item.dataset.view;
-                
-                switch(view) {
-                    case 'home': loadHomeView(); break;
-                    case 'movies': loadMoviesView(); break;
-                    case 'tv': loadTVView(); break;
-                    case 'libraries': loadLibrariesView(); break;
-                }
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const msgDiv = document.getElementById('authMessage');
+        try {
+            const data = await api('POST', '/auth/login', {
+                username: document.getElementById('loginUsername').value,
+                password: document.getElementById('loginPassword').value
             });
-        });
-
-        // Load Views
-        function loadHomeView() {
-            const content = document.getElementById('mainContent');
-            content.innerHTML = `
-                <div class="section-header">
-                    <h2 class="section-title">Continue Watching</h2>
-                </div>
-                <div class="empty-state">
-                    <div class="empty-state-icon">▶️</div>
-                    <div class="empty-state-title">No content yet</div>
-                    <p>Start by adding libraries to organize your media collection</p>
-                    <button class="btn-primary" onclick="loadLibrariesView()">Add Library</button>
-                </div>
-
-                <div class="section-header" style="margin-top: 40px;">
-                    <h2 class="section-title">Recently Added</h2>
-                </div>
-                <div class="media-grid" id="recentMedia"></div>
-            `;
-            loadRecentMedia();
+            if (data.success) {
+                localStorage.setItem('token', data.data.token);
+                localStorage.setItem('user', JSON.stringify(data.data.user));
+                msgDiv.innerHTML = '<div class="message success">Login successful!</div>';
+                setTimeout(checkAuth, 400);
+            } else {
+                msgDiv.innerHTML = '<div class="message error">' + (data.error || 'Login failed') + '</div>';
+            }
+        } catch {
+            msgDiv.innerHTML = '<div class="message error">Connection error</div>';
         }
+    });
 
-        function loadMoviesView() {
-            const content = document.getElementById('mainContent');
-            content.innerHTML = `
-                <div class="section-header">
-                    <h2 class="section-title">Movies</h2>
-                    <span class="view-all">Filter ▼</span>
-                </div>
-                <div class="empty-state">
-                    <div class="empty-state-icon">🎬</div>
-                    <div class="empty-state-title">No movies yet</div>
-                    <p>Add movie libraries and scan your media to see content here</p>
-                </div>
-            `;
-        }
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+        localStorage.clear();
+        currentUser = null;
+        document.getElementById('loginModal').classList.add('active');
+    });
 
-        function loadTVView() {
-            const content = document.getElementById('mainContent');
-            content.innerHTML = `
-                <div class="section-header">
-                    <h2 class="section-title">TV Shows</h2>
-                    <span class="view-all">Filter ▼</span>
-                </div>
-                <div class="empty-state">
-                    <div class="empty-state-icon">📺</div>
-                    <div class="empty-state-title">No TV shows yet</div>
-                    <p>Add TV show libraries and scan your media to see content here</p>
-                </div>
-            `;
-        }
-
-        async function loadLibrariesView() {
-            const content = document.getElementById('mainContent');
-            content.innerHTML = `
-                <div class="section-header">
-                    <h2 class="section-title">Libraries</h2>
-                    <button class="btn-primary" onclick="createLibrary()">+ Add Library</button>
-                </div>
-                <div id="librariesList"></div>
-            `;
-            
-            const token = localStorage.getItem('token');
-            try {
-                const response = await fetch(`${API_BASE}/libraries`, {
-                    headers: {'Authorization': `Bearer ${token}`}
-                });
-                const data = await response.json();
-                
-                const listDiv = document.getElementById('librariesList');
-                if (data.success && data.data.length > 0) {
-                    listDiv.innerHTML = data.data.map(lib => `
-                        <div class="library-card">
-                            <h3>${lib.name}</h3>
-                            <p style="color: #8a9bae; margin-bottom: 8px;">Type: ${lib.media_type}</p>
-                            <p style="color: #8a9bae; margin-bottom: 8px;">Path: ${lib.path}</p>
-                            <p style="color: #8a9bae;">Status: ${lib.is_enabled ? '✅ Enabled' : '❌ Disabled'}</p>
-                        </div>
-                    `).join('');
-                } else {
-                    listDiv.innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-state-icon">📚</div>
-                            <div class="empty-state-title">No libraries configured</div>
-                            <p>Create your first library to start organizing your media</p>
-                        </div>
-                    `;
+    // ──── Sidebar counts ────
+    async function loadSidebarCounts() {
+        try {
+            const data = await api('GET', '/libraries');
+            if (!data.success) return;
+            allLibraries = data.data || [];
+            // Group media counts by type -- we'll count media per type
+            for (const lib of allLibraries) {
+                const countData = await api('GET', '/libraries/' + lib.id + '/media');
+                if (countData.success) {
+                    const badge = document.getElementById('badge-' + lib.media_type);
+                    if (badge) {
+                        const cur = parseInt(badge.textContent) || 0;
+                        badge.textContent = cur + (countData.data.total || 0);
+                    }
                 }
-            } catch (error) {
-                console.error('Failed to load libraries:', error);
+            }
+            // Hide empty badges
+            document.querySelectorAll('.nav-badge').forEach(b => {
+                if (!b.textContent || b.textContent === '0') b.style.display = 'none';
+                else b.style.display = '';
+            });
+        } catch {}
+    }
+
+    // ──── Navigation ────
+    document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+        item.addEventListener('click', () => {
+            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            const view = item.dataset.view;
+            const type = item.dataset.type;
+            switch(view) {
+                case 'home': loadHomeView(); break;
+                case 'libraries': loadLibrariesView(); break;
+                case 'movies': loadMediaTypeView('movies'); break;
+                case 'tv': loadMediaTypeView('tv_shows'); break;
+                case 'media': loadMediaTypeView(type); break;
+                case 'editions': loadEditionsView(); break;
+                case 'sisters': loadSistersView(); break;
+                case 'collections': loadCollectionsView(); break;
+            }
+        });
+    });
+
+    // Search
+    let searchTimeout;
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            if (e.target.value.length >= 2) loadSearchView(e.target.value);
+        }, 400);
+    });
+
+    // ──── Media card renderer ────
+    function renderMediaCard(item) {
+        const dur = item.duration_seconds ? Math.floor(item.duration_seconds / 60) + 'min' : '';
+        const year = item.year || '';
+        const res = item.resolution || '';
+        const meta = [year, dur, res].filter(Boolean).join(' &middot; ');
+        return `
+            <div class="media-card" data-id="${item.id}">
+                <div class="media-poster">
+                    ${item.poster_path
+                        ? '<img src="' + item.poster_path + '" alt="">'
+                        : mediaIcon(item.media_type)}
+                    ${res ? '<span class="quality-badge">' + res + '</span>' : ''}
+                    <div class="play-overlay"><div class="play-button">&#9654;</div></div>
+                </div>
+                <div class="media-info">
+                    <div class="media-title">${item.title}</div>
+                    <div class="media-meta">${meta}</div>
+                </div>
+            </div>`;
+    }
+
+    // ──── Home View ────
+    async function loadHomeView() {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = `
+            <div class="section-header"><h2 class="section-title">Continue Watching</h2></div>
+            <div id="continueRow" class="continue-row"></div>
+            <div class="section-header"><h2 class="section-title">Recently Added</h2></div>
+            <div class="media-grid" id="recentGrid"></div>`;
+
+        // Continue watching
+        try {
+            const cw = await api('GET', '/watch/continue');
+            const row = document.getElementById('continueRow');
+            if (cw.success && cw.data && cw.data.length > 0) {
+                row.innerHTML = cw.data.map(wh => {
+                    const item = wh.media_item || {};
+                    const pct = wh.duration_seconds ? Math.round(wh.progress_seconds / wh.duration_seconds * 100) : 0;
+                    return `
+                        <div class="media-card">
+                            <div class="media-poster">
+                                ${item.poster_path ? '<img src="' + item.poster_path + '">' : mediaIcon(item.media_type || 'movies')}
+                                <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+                                <div class="play-overlay"><div class="play-button">&#9654;</div></div>
+                            </div>
+                            <div class="media-info">
+                                <div class="media-title">${item.title || 'Unknown'}</div>
+                                <div class="media-meta">${Math.floor(wh.progress_seconds/60)}/${wh.duration_seconds ? Math.floor(wh.duration_seconds/60) : '?'} min</div>
+                            </div>
+                        </div>`;
+                }).join('');
+            } else {
+                row.innerHTML = '<div style="color:#5a6a7f;padding:20px;">No items in progress</div>';
+            }
+        } catch { document.getElementById('continueRow').innerHTML = ''; }
+
+        // Recent media from all libraries
+        try {
+            const libs = await api('GET', '/libraries');
+            const grid = document.getElementById('recentGrid');
+            if (libs.success && libs.data) {
+                let allItems = [];
+                for (const lib of libs.data.slice(0, 5)) {
+                    const m = await api('GET', '/libraries/' + lib.id + '/media');
+                    if (m.success && m.data.items) allItems = allItems.concat(m.data.items);
+                }
+                allItems.sort((a,b) => new Date(b.added_at) - new Date(a.added_at));
+                if (allItems.length > 0) {
+                    grid.innerHTML = allItems.slice(0, 12).map(renderMediaCard).join('');
+                } else {
+                    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
+                        <div class="empty-state-icon">&#128253;</div>
+                        <div class="empty-state-title">No media yet</div>
+                        <p>Add libraries and scan them to populate your media</p>
+                        <button class="btn-primary" style="margin-top:18px;" onclick="navigate('libraries')">Manage Libraries</button>
+                    </div>`;
+                }
+            }
+        } catch {}
+    }
+
+    function navigate(view) {
+        document.querySelectorAll('.nav-item').forEach(i => {
+            i.classList.toggle('active', i.dataset.view === view);
+        });
+        switch(view) {
+            case 'libraries': loadLibrariesView(); break;
+            case 'home': loadHomeView(); break;
+        }
+    }
+
+    // ──── Media Type View ────
+    async function loadMediaTypeView(mediaType) {
+        const mc = document.getElementById('mainContent');
+        const label = MEDIA_LABELS[mediaType] || mediaType;
+        mc.innerHTML = `
+            <div class="section-header">
+                <h2 class="section-title">${label}</h2>
+                <span class="view-all">Sort &#9660;</span>
+            </div>
+            <div class="media-grid" id="typeGrid"><div class="spinner"></div> Loading...</div>`;
+
+        // Find libraries of this type
+        const libs = await api('GET', '/libraries');
+        let items = [];
+        if (libs.success && libs.data) {
+            for (const lib of libs.data.filter(l => l.media_type === mediaType)) {
+                const m = await api('GET', '/libraries/' + lib.id + '/media');
+                if (m.success && m.data.items) items = items.concat(m.data.items);
             }
         }
 
-        async function loadRecentMedia() {
-            const grid = document.getElementById('recentMedia');
-            grid.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;"><p>No recent media</p></div>';
+        const grid = document.getElementById('typeGrid');
+        if (items.length > 0) {
+            grid.innerHTML = items.map(renderMediaCard).join('');
+        } else {
+            grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
+                <div class="empty-state-icon">${mediaIcon(mediaType)}</div>
+                <div class="empty-state-title">No ${label.toLowerCase()} yet</div>
+                <p>Add a ${label.toLowerCase()} library and scan it</p>
+            </div>`;
         }
+    }
 
-        function createLibrary() {
-            alert('Library creation UI coming soon! Use the API to create libraries for now.');
+    // ──── Search View ────
+    async function loadSearchView(query) {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = `
+            <div class="section-header"><h2 class="section-title">Search: "${query}"</h2></div>
+            <div class="media-grid" id="searchGrid"><div class="spinner"></div> Searching...</div>`;
+        const data = await api('GET', '/media/search?q=' + encodeURIComponent(query));
+        const grid = document.getElementById('searchGrid');
+        if (data.success && data.data && data.data.length > 0) {
+            grid.innerHTML = data.data.map(renderMediaCard).join('');
+        } else {
+            grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-title">No results</div></div>';
         }
+    }
 
-        // Initialize
-        checkAuth();
+    // ──── Libraries View ────
+    async function loadLibrariesView() {
+        const mc = document.getElementById('mainContent');
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        mc.innerHTML = `
+            <div class="section-header">
+                <h2 class="section-title">Libraries</h2>
+                ${isAdmin ? '<button class="btn-primary" onclick="showCreateLibrary()">+ Add Library</button>' : ''}
+            </div>
+            <div id="libList"><div class="spinner"></div> Loading...</div>`;
+
+        const data = await api('GET', '/libraries');
+        const div = document.getElementById('libList');
+        if (data.success && data.data && data.data.length > 0) {
+            div.innerHTML = data.data.map(lib => `
+                <div class="library-card">
+                    <div>
+                        <h3>${lib.name}</h3>
+                        <p style="color:#8a9bae;font-size:0.85rem;">
+                            <span class="tag tag-cyan">${MEDIA_LABELS[lib.media_type] || lib.media_type}</span>
+                            <span style="margin-left:8px;">${lib.path}</span>
+                        </p>
+                        <p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">
+                            ${lib.last_scan_at ? 'Last scan: ' + new Date(lib.last_scan_at).toLocaleString() : 'Never scanned'}
+                        </p>
+                    </div>
+                    <div class="library-actions">
+                        ${isAdmin ? `<button class="btn-secondary" onclick="scanLibrary('${lib.id}', this)">&#128269; Scan</button>
+                        <button class="btn-danger" onclick="deleteLibrary('${lib.id}')">Delete</button>` : ''}
+                    </div>
+                </div>`).join('');
+        } else {
+            div.innerHTML = `<div class="empty-state">
+                <div class="empty-state-icon">&#128218;</div>
+                <div class="empty-state-title">No libraries configured</div>
+                <p>Create your first library to start organizing media</p>
+            </div>`;
+        }
+    }
+
+    async function scanLibrary(id, btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>Scanning...';
+        try {
+            const data = await api('POST', '/libraries/' + id + '/scan');
+            if (data.success) {
+                const r = data.data;
+                toast(`Scan complete: ${r.files_added} added, ${r.files_skipped} skipped, ${r.files_found} total`);
+                loadLibrariesView();
+                loadSidebarCounts();
+            } else {
+                toast('Scan failed: ' + (data.error || 'Unknown error'), 'error');
+            }
+        } catch (e) {
+            toast('Scan error: ' + e.message, 'error');
+        }
+        btn.disabled = false;
+        btn.innerHTML = '&#128269; Scan';
+    }
+
+    async function deleteLibrary(id) {
+        if (!confirm('Delete this library and all its media?')) return;
+        const data = await api('DELETE', '/libraries/' + id);
+        if (data.success) {
+            toast('Library deleted');
+            loadLibrariesView();
+        } else {
+            toast('Failed to delete: ' + data.error, 'error');
+        }
+    }
+
+    function showCreateLibrary() {
+        const mc = document.getElementById('mainContent');
+        const types = Object.entries(MEDIA_LABELS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('');
+        mc.innerHTML = `
+            <div class="section-header"><h2 class="section-title">Create Library</h2></div>
+            <div style="max-width:500px;">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="libName" placeholder="My Movies">
+                </div>
+                <div class="form-group">
+                    <label>Media Type</label>
+                    <select id="libType">${types}</select>
+                </div>
+                <div class="form-group">
+                    <label>Path</label>
+                    <input type="text" id="libPath" placeholder="/media/movies">
+                </div>
+                <button class="btn-primary" onclick="createLibrary()">Create Library</button>
+                <button class="btn-secondary" style="margin-left:12px;" onclick="loadLibrariesView()">Cancel</button>
+            </div>`;
+    }
+
+    async function createLibrary() {
+        const name = document.getElementById('libName').value;
+        const media_type = document.getElementById('libType').value;
+        const path = document.getElementById('libPath').value;
+        if (!name || !path) { toast('Name and path required', 'error'); return; }
+        const data = await api('POST', '/libraries', { name, media_type, path, is_enabled: true });
+        if (data.success) {
+            toast('Library created!');
+            loadLibrariesView();
+        } else {
+            toast('Failed: ' + data.error, 'error');
+        }
+    }
+
+    // ──── Editions View ────
+    async function loadEditionsView() {
+        const mc = document.getElementById('mainContent');
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        mc.innerHTML = `
+            <div class="section-header">
+                <h2 class="section-title">Edition Groups</h2>
+                ${isAdmin ? '<button class="btn-primary" onclick="showCreateEdition()">+ Create Group</button>' : ''}
+            </div>
+            <p style="color:#8a9bae;margin-bottom:20px;">Group different versions of the same content (Director's Cut, Remastered, etc.)</p>
+            <div id="editionsList"><div class="spinner"></div> Loading...</div>`;
+
+        const data = await api('GET', '/editions');
+        const div = document.getElementById('editionsList');
+        if (data.success && data.data && data.data.length > 0) {
+            div.innerHTML = data.data.map(g => `
+                <div class="group-card">
+                    <div style="display:flex;justify-content:space-between;align-items:start;">
+                        <div>
+                            <h4>${g.title}</h4>
+                            <p>${g.year ? g.year + ' &middot; ' : ''}${MEDIA_LABELS[g.media_type] || g.media_type}</p>
+                            <span class="tag tag-cyan">${g.items ? g.items.length : 0} editions</span>
+                        </div>
+                        ${isAdmin ? `<button class="btn-danger" onclick="deleteEdition('${g.id}')" style="padding:6px 14px;font-size:0.78rem;">Delete</button>` : ''}
+                    </div>
+                </div>`).join('');
+        } else {
+            div.innerHTML = `<div class="empty-state">
+                <div class="empty-state-icon">&#128191;</div>
+                <div class="empty-state-title">No edition groups</div>
+                <p>Create edition groups to organize different versions of the same media</p>
+            </div>`;
+        }
+    }
+
+    function showCreateEdition() {
+        const mc = document.getElementById('mainContent');
+        const types = Object.entries(MEDIA_LABELS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('');
+        mc.innerHTML = `
+            <div class="section-header"><h2 class="section-title">Create Edition Group</h2></div>
+            <div style="max-width:500px;">
+                <div class="form-group"><label>Title</label><input type="text" id="edTitle" placeholder="The Matrix"></div>
+                <div class="form-group"><label>Year</label><input type="number" id="edYear" placeholder="1999"></div>
+                <div class="form-group"><label>Media Type</label><select id="edType">${types}</select></div>
+                <div class="form-group"><label>Library</label><select id="edLib"><option value="">Select library...</option></select></div>
+                <button class="btn-primary" onclick="createEdition()">Create</button>
+                <button class="btn-secondary" style="margin-left:12px;" onclick="loadEditionsView()">Cancel</button>
+            </div>`;
+        // populate libraries
+        api('GET', '/libraries').then(d => {
+            if (d.success && d.data) {
+                document.getElementById('edLib').innerHTML += d.data.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+            }
+        });
+    }
+
+    async function createEdition() {
+        const title = document.getElementById('edTitle').value;
+        const year = parseInt(document.getElementById('edYear').value) || null;
+        const media_type = document.getElementById('edType').value;
+        const library_id = document.getElementById('edLib').value;
+        if (!title || !library_id) { toast('Title and library required', 'error'); return; }
+        const data = await api('POST', '/editions', { title, year, media_type, library_id });
+        if (data.success) { toast('Edition group created!'); loadEditionsView(); }
+        else toast('Failed: ' + data.error, 'error');
+    }
+
+    async function deleteEdition(id) {
+        if (!confirm('Delete this edition group?')) return;
+        const d = await api('DELETE', '/editions/' + id);
+        if (d.success) { toast('Deleted'); loadEditionsView(); }
+        else toast('Failed: ' + d.error, 'error');
+    }
+
+    // ──── Sisters View ────
+    async function loadSistersView() {
+        const mc = document.getElementById('mainContent');
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        mc.innerHTML = `
+            <div class="section-header">
+                <h2 class="section-title">Sister Groups</h2>
+                ${isAdmin ? '<button class="btn-primary" onclick="showCreateSister()">+ Create Group</button>' : ''}
+            </div>
+            <p style="color:#8a9bae;margin-bottom:20px;">Link related but distinct content together (e.g. a movie and its documentary)</p>
+            <div id="sistersList"><div class="spinner"></div> Loading...</div>`;
+
+        const data = await api('GET', '/sisters');
+        const div = document.getElementById('sistersList');
+        if (data.success && data.data && data.data.length > 0) {
+            div.innerHTML = data.data.map(g => `
+                <div class="group-card">
+                    <div style="display:flex;justify-content:space-between;align-items:start;">
+                        <div>
+                            <h4>${g.name}</h4>
+                            ${g.notes ? '<p>' + g.notes + '</p>' : ''}
+                            <span class="tag tag-purple">${g.members ? g.members.length : 0} members</span>
+                        </div>
+                        ${isAdmin ? `<button class="btn-danger" onclick="deleteSister('${g.id}')" style="padding:6px 14px;font-size:0.78rem;">Delete</button>` : ''}
+                    </div>
+                </div>`).join('');
+        } else {
+            div.innerHTML = `<div class="empty-state">
+                <div class="empty-state-icon">&#128279;</div>
+                <div class="empty-state-title">No sister groups</div>
+                <p>Create sister groups to link related content together</p>
+            </div>`;
+        }
+    }
+
+    function showCreateSister() {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = `
+            <div class="section-header"><h2 class="section-title">Create Sister Group</h2></div>
+            <div style="max-width:500px;">
+                <div class="form-group"><label>Name</label><input type="text" id="sisName" placeholder="The Matrix Collection"></div>
+                <div class="form-group"><label>Notes</label><input type="text" id="sisNotes" placeholder="Optional notes..."></div>
+                <button class="btn-primary" onclick="createSister()">Create</button>
+                <button class="btn-secondary" style="margin-left:12px;" onclick="loadSistersView()">Cancel</button>
+            </div>`;
+    }
+
+    async function createSister() {
+        const name = document.getElementById('sisName').value;
+        const notes = document.getElementById('sisNotes').value || null;
+        if (!name) { toast('Name required', 'error'); return; }
+        const d = await api('POST', '/sisters', { name, notes });
+        if (d.success) { toast('Sister group created!'); loadSistersView(); }
+        else toast('Failed: ' + d.error, 'error');
+    }
+
+    async function deleteSister(id) {
+        if (!confirm('Delete this sister group?')) return;
+        const d = await api('DELETE', '/sisters/' + id);
+        if (d.success) { toast('Deleted'); loadSistersView(); }
+        else toast('Failed: ' + d.error, 'error');
+    }
+
+    // ──── Collections View ────
+    async function loadCollectionsView() {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = `
+            <div class="section-header">
+                <h2 class="section-title">My Collections</h2>
+                <button class="btn-primary" onclick="showCreateCollection()">+ New Collection</button>
+            </div>
+            <div id="collList"><div class="spinner"></div> Loading...</div>`;
+
+        const data = await api('GET', '/collections');
+        const div = document.getElementById('collList');
+        if (data.success && data.data && data.data.length > 0) {
+            div.innerHTML = data.data.map(c => `
+                <div class="group-card">
+                    <div style="display:flex;justify-content:space-between;align-items:start;">
+                        <div>
+                            <h4>${c.name}</h4>
+                            ${c.description ? '<p>' + c.description + '</p>' : ''}
+                            <span class="tag tag-green">${c.item_count || 0} items</span>
+                            <span class="tag tag-cyan">${c.visibility}</span>
+                        </div>
+                        <button class="btn-danger" onclick="deleteCollection('${c.id}')" style="padding:6px 14px;font-size:0.78rem;">Delete</button>
+                    </div>
+                </div>`).join('');
+        } else {
+            div.innerHTML = `<div class="empty-state">
+                <div class="empty-state-icon">&#11088;</div>
+                <div class="empty-state-title">No collections yet</div>
+                <p>Create collections to curate your favorite media</p>
+            </div>`;
+        }
+    }
+
+    function showCreateCollection() {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = `
+            <div class="section-header"><h2 class="section-title">New Collection</h2></div>
+            <div style="max-width:500px;">
+                <div class="form-group"><label>Name</label><input type="text" id="collName" placeholder="My Favorites"></div>
+                <div class="form-group"><label>Description</label><input type="text" id="collDesc" placeholder="Optional description..."></div>
+                <div class="form-group">
+                    <label>Visibility</label>
+                    <select id="collVis"><option value="private">Private</option><option value="shared">Shared</option><option value="public">Public</option></select>
+                </div>
+                <button class="btn-primary" onclick="createCollection()">Create</button>
+                <button class="btn-secondary" style="margin-left:12px;" onclick="loadCollectionsView()">Cancel</button>
+            </div>`;
+    }
+
+    async function createCollection() {
+        const name = document.getElementById('collName').value;
+        const description = document.getElementById('collDesc').value || null;
+        const visibility = document.getElementById('collVis').value;
+        if (!name) { toast('Name required', 'error'); return; }
+        const d = await api('POST', '/collections', { name, description, visibility });
+        if (d.success) { toast('Collection created!'); loadCollectionsView(); }
+        else toast('Failed: ' + d.error, 'error');
+    }
+
+    async function deleteCollection(id) {
+        if (!confirm('Delete this collection?')) return;
+        const d = await api('DELETE', '/collections/' + id);
+        if (d.success) { toast('Deleted'); loadCollectionsView(); }
+        else toast('Failed: ' + d.error, 'error');
+    }
+
+    // ──── Init ────
+    checkAuth();
     </script>
 </body>
 </html>

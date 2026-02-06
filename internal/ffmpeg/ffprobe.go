@@ -16,6 +16,7 @@ type FormatInfo struct {
 	Filename string `json:"filename"`
 	Duration string `json:"duration"`
 	Size     string `json:"size"`
+	Bitrate  string `json:"bit_rate"`
 }
 type StreamInfo struct {
 	CodecType string `json:"codec_type"`
@@ -54,4 +55,50 @@ func (r *ProbeResult) GetResolution() string {
 		}
 	}
 	return ""
+}
+
+func (r *ProbeResult) GetVideoCodec() string {
+	for _, s := range r.Streams {
+		if s.CodecType == "video" {
+			return s.CodecName
+		}
+	}
+	return ""
+}
+
+func (r *ProbeResult) GetAudioCodec() string {
+	for _, s := range r.Streams {
+		if s.CodecType == "audio" {
+			return s.CodecName
+		}
+	}
+	return ""
+}
+
+func (r *ProbeResult) GetWidth() int {
+	for _, s := range r.Streams {
+		if s.CodecType == "video" {
+			return s.Width
+		}
+	}
+	return 0
+}
+
+func (r *ProbeResult) GetHeight() int {
+	for _, s := range r.Streams {
+		if s.CodecType == "video" {
+			return s.Height
+		}
+	}
+	return 0
+}
+
+func (r *ProbeResult) GetFileSize() int64 {
+	size, _ := strconv.ParseInt(r.Format.Size, 10, 64)
+	return size
+}
+
+func (r *ProbeResult) GetBitrate() int64 {
+	br, _ := strconv.ParseInt(r.Format.Bitrate, 10, 64)
+	return br
 }
