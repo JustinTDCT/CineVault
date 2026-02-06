@@ -168,8 +168,17 @@ type TMDBEpisode struct {
 	VoteAverage   float64 `json:"vote_average"`
 }
 
-// GetTVSeasonEpisodes fetches episode details for a specific season of a TV show from TMDB.
-func (s *TMDBScraper) GetTVSeasonEpisodes(tmdbShowID string, seasonNumber int) ([]TMDBEpisode, error) {
+// TMDBSeasonResult holds season-level metadata plus episodes from TMDB.
+type TMDBSeasonResult struct {
+	Name       string        `json:"name"`
+	Overview   string        `json:"overview"`
+	PosterPath string        `json:"poster_path"`
+	AirDate    string        `json:"air_date"`
+	Episodes   []TMDBEpisode `json:"episodes"`
+}
+
+// GetTVSeasonDetails fetches season details including poster and episodes from TMDB.
+func (s *TMDBScraper) GetTVSeasonDetails(tmdbShowID string, seasonNumber int) (*TMDBSeasonResult, error) {
 	if s.apiKey == "" {
 		return nil, fmt.Errorf("TMDB API key not configured")
 	}
@@ -187,14 +196,12 @@ func (s *TMDBScraper) GetTVSeasonEpisodes(tmdbShowID string, seasonNumber int) (
 		return nil, fmt.Errorf("TMDB season request returned %d", resp.StatusCode)
 	}
 
-	var result struct {
-		Episodes []TMDBEpisode `json:"episodes"`
-	}
+	var result TMDBSeasonResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
 	}
 
-	return result.Episodes, nil
+	return &result, nil
 }
 
 // ──────────────────── MusicBrainz ────────────────────

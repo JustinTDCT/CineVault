@@ -190,6 +190,13 @@ func (r *TVRepository) IncrementEpisodeCount(seasonID uuid.UUID) error {
 	return err
 }
 
+func (r *TVRepository) UpdateSeasonMetadata(id uuid.UUID, title *string, description *string, posterPath *string) error {
+	query := `UPDATE tv_seasons SET title = COALESCE($1, title), description = COALESCE($2, description),
+		poster_path = COALESCE($3, poster_path), updated_at = CURRENT_TIMESTAMP WHERE id = $4`
+	_, err := r.db.Exec(query, title, description, posterPath, id)
+	return err
+}
+
 // ListEpisodesBySeason returns media items for a given season, ordered by episode number.
 func (r *TVRepository) ListEpisodesBySeason(seasonID uuid.UUID) ([]*models.MediaItem, error) {
 	query := `

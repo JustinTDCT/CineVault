@@ -811,29 +811,68 @@
         if (!data.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Show not found</div></div>'; return; }
         const show = data.data.show;
         const seasons = data.data.seasons || [];
-        mc.innerHTML = `
+        const totalEps = seasons.reduce((sum, s) => sum + (s.episode_count || 0), 0);
+
+        const heroHTML = `
             <div class="detail-hero">
                 <div class="detail-poster">${show.poster_path ? '<img src="'+show.poster_path+'">' : '&#128250;'}</div>
                 <div class="detail-info">
                     <h1>${show.title}</h1>
-                    <div class="meta-row">${show.year ? show.year + ' \u00b7 ' : ''}${seasons.length} Season${seasons.length !== 1 ? 's' : ''}</div>
+                    <div class="meta-row">${show.year ? show.year + ' \u00b7 ' : ''}${seasons.length} Season${seasons.length !== 1 ? 's' : ''} \u00b7 ${totalEps} Episode${totalEps !== 1 ? 's' : ''}</div>
                     ${show.description ? '<p class="description">'+show.description+'</p>' : ''}
                 </div>
+            </div>`;
+
+        if (seasons.length === 1) {
+            // Single season: show episodes directly (like Plex single-season view)
+            mc.innerHTML = heroHTML + `
+                <h3 style="color:#e5e5e5;margin:24px 0 16px;">${totalEps} Episode${totalEps !== 1 ? 's' : ''}</h3>
+                <div class="media-grid" id="season-${seasons[0].id}"><div class="spinner"></div></div>
+                <button class="btn-secondary" onclick="history.back(); return false;" style="margin-top:20px;">&#8592; Back</button>`;
+            loadSeasonEpisodes(seasons[0].id);
+        } else {
+            // Multiple seasons: show season cards (like Plex multi-season view)
+            mc.innerHTML = heroHTML + `
+                <h3 style="color:#e5e5e5;margin:24px 0 16px;">Seasons</h3>
+                <div class="media-grid" id="seasonsGrid">
+                    ${seasons.map(s => `<div class="media-card" onclick="loadSeasonView('${showId}','${s.id}', ${s.season_number})">
+                        <div class="media-poster">
+                            ${s.poster_path ? '<img src="'+s.poster_path+'" alt="">' : (show.poster_path ? '<img src="'+show.poster_path+'" alt="">' : '&#128250;')}
+                        </div>
+                        <div class="media-info">
+                            <div class="media-title">${s.title || 'Season ' + s.season_number}</div>
+                            <div class="media-meta">${s.episode_count} episode${s.episode_count !== 1 ? 's' : ''}</div>
+                        </div>
+                    </div>`).join('')}
+                </div>
+                <button class="btn-secondary" onclick="history.back(); return false;" style="margin-top:20px;">&#8592; Back</button>`;
+        }
+    }
+
+    async function loadSeasonView(showId, seasonId, seasonNum) {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = '<div class="spinner"></div> Loading...';
+        // Get show info for the hero
+        const showData = await api('GET', '/tv/shows/' + showId);
+        if (!showData.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Show not found</div></div>'; return; }
+        const show = showData.data.show;
+        const seasons = showData.data.seasons || [];
+        const season = seasons.find(s => s.id === seasonId);
+        const epCount = season ? season.episode_count : 0;
+
+        mc.innerHTML = `
+            <div class="detail-hero">
+                <div class="detail-poster">${season && season.poster_path ? '<img src="'+season.poster_path+'">' : (show.poster_path ? '<img src="'+show.poster_path+'">' : '&#128250;')}</div>
+                <div class="detail-info">
+                    <h1>${show.title}</h1>
+                    <div class="meta-row">Season ${seasonNum} \u00b7 ${epCount} Episode${epCount !== 1 ? 's' : ''}</div>
+                    ${season && season.description ? '<p class="description">'+season.description+'</p>' : (show.description ? '<p class="description">'+show.description+'</p>' : '')}
+                </div>
             </div>
-            <div id="seasonsContainer">
-                ${seasons.map(s => `
-                    <div style="margin-bottom:24px;">
-                        <h3 style="color:#00D9FF;margin-bottom:12px;cursor:pointer;" onclick="toggleSeason('${s.id}')">
-                            Season ${s.season_number} <span style="color:#5a6a7f;font-size:0.85rem;">(${s.episode_count} episode${s.episode_count !== 1 ? 's' : ''})</span>
-                            <span id="seasonArrow-${s.id}" style="margin-left:6px;font-size:0.8rem;">&#9660;</span>
-                        </h3>
-                        <div class="media-grid" id="season-${s.id}"><div class="spinner"></div></div>
-                    </div>
-                `).join('')}
-            </div>
-            <button class="btn-secondary" onclick="history.back(); return false;" style="margin-top:12px;">&#8592; Back</button>`;
-        // Auto-load episodes for each season
-        for (const s of seasons) { loadSeasonEpisodes(s.id); }
+            <h3 style="color:#e5e5e5;margin:24px 0 16px;">${epCount} Episode${epCount !== 1 ? 's' : ''}</h3>
+            <div class="media-grid" id="season-${seasonId}"><div class="spinner"></div></div>
+            <button class="btn-secondary" onclick="loadShowView('${showId}')" style="margin-top:20px;">&#8592; Back to ${show.title}</button>`;
+        loadSeasonEpisodes(seasonId);
     }
 
     async function loadSeasonEpisodes(seasonId) {
@@ -843,7 +882,7 @@
         const episodes = (data.success && data.data) ? data.data : [];
         container.innerHTML = episodes.length > 0
             ? episodes.map(ep => {
-                const epNum = ep.episode_number ? 'E' + String(ep.episode_number).padStart(2, '0') : '';
+                const epNum = ep.episode_number ? 'Episode ' + ep.episode_number : '';
                 const dur = ep.duration_seconds ? Math.floor(ep.duration_seconds/60)+'min' : '';
                 const res = ep.resolution || '';
                 const meta = [epNum, dur, res].filter(Boolean).join(' \u00b7 ');
@@ -857,19 +896,6 @@
                 </div>`;
             }).join('')
             : '<p style="color:#5a6a7f;">No episodes found</p>';
-    }
-
-    function toggleSeason(seasonId) {
-        const el = document.getElementById('season-' + seasonId);
-        const arrow = document.getElementById('seasonArrow-' + seasonId);
-        if (!el) return;
-        if (el.style.display === 'none') {
-            el.style.display = '';
-            if (arrow) arrow.innerHTML = '&#9660;';
-        } else {
-            el.style.display = 'none';
-            if (arrow) arrow.innerHTML = '&#9654;';
-        }
     }
 
     async function loadSearchView(query) {

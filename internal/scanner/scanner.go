@@ -500,15 +500,39 @@ func (s *Scanner) fetchEpisodeMetadata(showID uuid.UUID, tmdbShowID string) {
 	}
 
 	for _, season := range seasons {
-		tmdbEpisodes, err := tmdb.GetTVSeasonEpisodes(tmdbShowID, season.SeasonNumber)
+		seasonData, err := tmdb.GetTVSeasonDetails(tmdbShowID, season.SeasonNumber)
 		if err != nil {
 			log.Printf("Auto-match: TMDB season %d fetch failed for show %s: %v", season.SeasonNumber, tmdbShowID, err)
 			continue
 		}
 
+		// Download and save season poster
+		if seasonData.PosterPath != "" && s.posterDir != "" {
+			posterURL := "https://image.tmdb.org/t/p/w500" + seasonData.PosterPath
+			filename := "season_" + season.ID.String() + ".jpg"
+			if _, dlErr := metadata.DownloadPoster(posterURL, filepath.Join(s.posterDir, "posters"), filename); dlErr != nil {
+				log.Printf("Auto-match: season poster download failed: %v", dlErr)
+			} else {
+				webPath := "/previews/posters/" + filename
+				var title *string
+				if seasonData.Name != "" {
+					title = &seasonData.Name
+				}
+				var desc *string
+				if seasonData.Overview != "" {
+					desc = &seasonData.Overview
+				}
+				if err := s.tvRepo.UpdateSeasonMetadata(season.ID, title, desc, &webPath); err != nil {
+					log.Printf("Auto-match: season metadata update failed: %v", err)
+				} else {
+					log.Printf("Auto-match season: S%02d poster saved", season.SeasonNumber)
+				}
+			}
+		}
+
 		// Build a map of TMDB episodes by episode number
 		tmdbMap := make(map[int]metadata.TMDBEpisode)
-		for _, ep := range tmdbEpisodes {
+		for _, ep := range seasonData.Episodes {
 			tmdbMap[ep.EpisodeNumber] = ep
 		}
 
