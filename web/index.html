@@ -791,7 +791,56 @@
     function showCreateLibrary() {
         const mc = document.getElementById('mainContent');
         const types = Object.entries(MEDIA_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
-        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Create Library</h2></div><div style="max-width:500px;"><div class="form-group"><label>Name</label><input type="text" id="libName" placeholder="My Movies"></div><div class="form-group"><label>Media Type</label><select id="libType">${types}</select></div><div class="form-group"><label>Path</label><input type="text" id="libPath" placeholder="/media/movies"></div><button class="btn-primary" onclick="createLibrary()">Create Library</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadLibrariesView()">Cancel</button></div>`;
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Create Library</h2></div>
+        <div style="max-width:500px;">
+            <div class="form-group"><label>Name</label><input type="text" id="libName" placeholder="My Movies"></div>
+            <div class="form-group"><label>Media Type</label><select id="libType">${types}</select></div>
+            <div class="form-group"><label>Path</label>
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="libPath" placeholder="/media/movies" style="flex:1;">
+                    <button class="btn-secondary" onclick="openPathBrowser()" style="white-space:nowrap;padding:10px 16px;">&#128193; Browse</button>
+                </div>
+            </div>
+            <div id="pathBrowser" style="display:none;margin-bottom:18px;background:rgba(0,0,0,0.3);border:1px solid rgba(0,217,255,0.15);border-radius:12px;padding:14px;max-height:350px;overflow-y:auto;"></div>
+            <button class="btn-primary" onclick="createLibrary()">Create Library</button>
+            <button class="btn-secondary" style="margin-left:12px;" onclick="loadLibrariesView()">Cancel</button>
+        </div>`;
+    }
+
+    async function openPathBrowser(path) {
+        const browser = document.getElementById('pathBrowser');
+        browser.style.display = 'block';
+        await loadPathEntries(path || '/media');
+    }
+
+    async function loadPathEntries(path) {
+        const browser = document.getElementById('pathBrowser');
+        browser.innerHTML = '<div class="spinner" style="margin:10px auto;"></div>';
+        const data = await api('GET', '/browse?path=' + encodeURIComponent(path));
+        if (!data.success) { browser.innerHTML = '<p style="color:#ff5555;">Failed to browse</p>'; return; }
+        const d = data.data;
+        let html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(0,217,255,0.1);">
+            <span style="color:#00D9FF;font-size:0.8rem;font-weight:600;">&#128194; ${d.path}</span>
+            <button class="btn-secondary" style="margin-left:auto;padding:4px 12px;font-size:0.75rem;" onclick="selectBrowsePath('${d.path}')">&#10003; Select This</button>
+        </div>`;
+        if (d.parent) {
+            html += `<div onclick="loadPathEntries('${d.parent}')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-radius:8px;color:#8a9bae;font-size:0.85rem;transition:background 0.2s;" onmouseover="this.style.background='rgba(0,217,255,0.08)'" onmouseout="this.style.background='transparent'">&#11168; ..</div>`;
+        }
+        if (d.entries && d.entries.length > 0) {
+            d.entries.forEach(e => {
+                html += `<div onclick="loadPathEntries('${e.path}')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-radius:8px;color:#e5e5e5;font-size:0.85rem;transition:background 0.2s;" onmouseover="this.style.background='rgba(0,217,255,0.08)'" onmouseout="this.style.background='transparent'">&#128193; ${e.name}</div>`;
+            });
+        } else if (!d.parent) {
+            html += '<p style="color:#5a6a7f;font-size:0.8rem;text-align:center;margin:12px 0;">No subdirectories</p>';
+        } else {
+            html += '<p style="color:#5a6a7f;font-size:0.8rem;text-align:center;margin:12px 0;">Empty folder</p>';
+        }
+        browser.innerHTML = html;
+    }
+
+    function selectBrowsePath(path) {
+        document.getElementById('libPath').value = path;
+        document.getElementById('pathBrowser').style.display = 'none';
     }
 
     async function createLibrary() {

@@ -148,6 +148,9 @@ func (s *Server) setupRoutes() {
 	// Users (admin)
 	s.router.HandleFunc("GET /api/v1/users", s.authMiddleware(s.handleListUsers, models.RoleAdmin))
 
+	// Filesystem browse (admin only)
+	s.router.HandleFunc("GET /api/v1/browse", s.authMiddleware(s.handleBrowse, models.RoleAdmin))
+
 	// Libraries
 	s.router.HandleFunc("GET /api/v1/libraries", s.authMiddleware(s.handleListLibraries, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/libraries", s.authMiddleware(s.handleCreateLibrary, models.RoleAdmin))
