@@ -203,7 +203,7 @@ func (t *Transcoder) StartRemux(mediaItemID, userID, filePath, audioCodec string
 		"-hls_segment_type", "fmp4",
 		"-hls_fmp4_init_filename", "init.mp4",
 		"-hls_segment_filename", filepath.Join(outputDir, "segment_%05d.mp4"),
-		"-hls_playlist_type", "vod",
+		"-hls_playlist_type", "event", // "event" writes playlist progressively (playable immediately)
 		"-hls_list_size", "0",
 		"-hls_flags", "independent_segments",
 		"-y",

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/stream"
 	"github.com/google/uuid"
@@ -179,7 +180,13 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 	// Check if requesting the m3u8 playlist
 	if strings.HasSuffix(segmentFile, ".m3u8") {
 		playlistPath := filepath.Join(session.OutputDir, "stream.m3u8")
-		// Wait briefly for file to appear
+		// Poll briefly for the playlist to appear (FFmpeg needs a moment to write it)
+		for i := 0; i < 20; i++ {
+			if _, err := os.Stat(playlistPath); err == nil {
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
 		if _, err := os.Stat(playlistPath); err != nil {
 			s.respondError(w, http.StatusAccepted, "transcoding in progress")
 			return
