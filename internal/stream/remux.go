@@ -39,11 +39,18 @@ func ServeRemuxed(w http.ResponseWriter, r *http.Request, ffmpegPath, filePath, 
 	// Determine audio handling
 	audioArgs := []string{"-c:a", "copy"}
 	if NeedsAudioTranscode(audioCodec) {
-		audioArgs = []string{"-c:a", "aac", "-b:a", "192k"}
+		// Transcode audio to AAC with sync correction
+		audioArgs = []string{
+			"-c:a", "aac",
+			"-b:a", "192k",
+			"-af", "aresample=async=1:first_pts=0", // Force audio sync to video timestamps
+		}
 	}
 
 	// Build FFmpeg command for on-the-fly remux
-	args := []string{}
+	args := []string{
+		"-fflags", "+genpts+discardcorrupt", // Regenerate timestamps, discard corrupt frames
+	}
 
 	// Add seek position before input for fast seeking
 	if startSeconds > 0 {
@@ -56,13 +63,13 @@ func ServeRemuxed(w http.ResponseWriter, r *http.Request, ffmpegPath, filePath, 
 	)
 	args = append(args, audioArgs...)
 	args = append(args,
+		"-avoid_negative_ts", "make_zero",   // Normalize timestamps to start at 0
+		"-start_at_zero",                     // Ensure both streams start at timestamp 0
 		"-movflags", "frag_keyframe+empty_moov+default_base_moof", // Fragmented MP4 for streaming
-		"-f", "mp4",  // Output as MP4 container
-		"-map", "0",  // Map all streams
-		"-map", "-0:s", // Exclude subtitle streams (they break MP4)
-		"-map", "-0:d", // Exclude data streams
-		"-map", "-0:t", // Exclude attachment streams
-		"pipe:1",     // Output to stdout
+		"-f", "mp4",      // Output as MP4 container
+		"-map", "0:v:0",  // Map first video stream
+		"-map", "0:a:0",  // Map first audio stream (avoids subtitle/data issues)
+		"pipe:1",         // Output to stdout
 	)
 
 	cmd := exec.Command(ffmpegPath, args...)
