@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/JustinTDCT/CineVault/internal/stream"
@@ -107,6 +108,11 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 		audioCodec = *media.AudioCodec
 	}
 
+	duration := 0
+	if media.DurationSeconds != nil {
+		duration = *media.DurationSeconds
+	}
+
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data: map[string]interface{}{
@@ -119,6 +125,7 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 			"container":           container,
 			"direct_playable":     directPlayable,
 			"needs_remux":         needsRemux,
+			"duration_seconds":    duration,
 			"transcode_qualities": transcodeQualities,
 		},
 	})
@@ -193,6 +200,14 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse optional seek position (in seconds)
+	startSeconds := 0.0
+	if startParam := r.URL.Query().Get("start"); startParam != "" {
+		if s, err := strconv.ParseFloat(startParam, 64); err == nil && s > 0 {
+			startSeconds = s
+		}
+	}
+
 	// If the file needs remuxing (MKV, AVI, etc.) remux on-the-fly to MP4
 	// This is how Plex/Jellyfin handle "direct stream" - video is copied as-is,
 	// only the container changes. No quality loss, minimal CPU usage.
@@ -201,7 +216,7 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 		if media.AudioCodec != nil {
 			audioCodec = *media.AudioCodec
 		}
-		if err := stream.ServeRemuxed(w, r, s.config.FFmpeg.FFmpegPath, media.FilePath, audioCodec); err != nil {
+		if err := stream.ServeRemuxed(w, r, s.config.FFmpeg.FFmpegPath, media.FilePath, audioCodec, startSeconds); err != nil {
 			s.respondError(w, http.StatusInternalServerError, "remux failed: "+err.Error())
 		}
 		return

@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os/exec"
@@ -32,8 +33,9 @@ func NeedsAudioTranscode(audioCodec string) bool {
 
 // ServeRemuxed streams a video file remuxed to fragmented MP4 on-the-fly.
 // Video is copied as-is (no transcoding), audio is converted to AAC if needed.
+// startSeconds allows seeking - FFmpeg starts from that position.
 // This is how Plex/Jellyfin handle "direct stream" for MKV files.
-func ServeRemuxed(w http.ResponseWriter, r *http.Request, ffmpegPath, filePath, audioCodec string) error {
+func ServeRemuxed(w http.ResponseWriter, r *http.Request, ffmpegPath, filePath, audioCodec string, startSeconds float64) error {
 	// Determine audio handling
 	audioArgs := []string{"-c:a", "copy"}
 	if NeedsAudioTranscode(audioCodec) {
@@ -41,10 +43,17 @@ func ServeRemuxed(w http.ResponseWriter, r *http.Request, ffmpegPath, filePath, 
 	}
 
 	// Build FFmpeg command for on-the-fly remux
-	args := []string{
+	args := []string{}
+
+	// Add seek position before input for fast seeking
+	if startSeconds > 0 {
+		args = append(args, "-ss", fmt.Sprintf("%.3f", startSeconds))
+	}
+
+	args = append(args,
 		"-i", filePath,
 		"-c:v", "copy", // Copy video stream as-is (no re-encoding)
-	}
+	)
 	args = append(args, audioArgs...)
 	args = append(args,
 		"-movflags", "frag_keyframe+empty_moov+default_base_moof", // Fragmented MP4 for streaming

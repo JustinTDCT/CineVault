@@ -1025,6 +1025,8 @@
     // ──── Video Player ────
     let currentStreamInfo = null;
     let currentPlayMode = null; // 'direct', 'hls'
+    let knownDuration = 0; // Duration from DB (remuxed streams don't report duration)
+    let seekOffset = 0; // Offset when seeking in remux mode
 
     async function playMedia(mediaId, title) {
         currentMediaId = mediaId;
@@ -1037,6 +1039,8 @@
         // Fetch stream info to determine best playback method
         const info = await api('GET', `/stream/${mediaId}/info`);
         currentStreamInfo = info.success ? info.data : null;
+        knownDuration = currentStreamInfo ? (currentStreamInfo.duration_seconds || 0) : 0;
+        seekOffset = 0;
 
         const sel = document.getElementById('qualitySelect');
         let options = '';
@@ -1080,14 +1084,19 @@
         video.addEventListener('timeupdate', updatePlayerUI);
     }
 
-    function startDirectPlay(mediaId, token) {
+    function startDirectPlay(mediaId, token, startSec) {
         const video = document.getElementById('videoPlayer');
         if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
         currentPlayMode = 'direct';
-        video.src = `/api/v1/stream/${mediaId}/direct?token=${encodeURIComponent(token)}`;
+        seekOffset = startSec || 0;
+
+        let url = `/api/v1/stream/${mediaId}/direct?token=${encodeURIComponent(token)}`;
+        if (seekOffset > 0) {
+            url += `&start=${seekOffset}`;
+        }
+        video.src = url;
         video.play().catch(e => {
             console.warn('Direct play/remux starting...', e);
-            // Retry after a brief delay (remux needs a moment to start streaming)
             setTimeout(() => {
                 video.play().catch(e2 => {
                     console.error('Playback failed:', e2);
@@ -1175,24 +1184,70 @@
         currentMediaId = null;
         currentStreamInfo = null;
         currentPlayMode = null;
+        knownDuration = 0;
+        seekOffset = 0;
     }
 
     function updatePlayerUI() {
         const video = document.getElementById('videoPlayer');
         const fill = document.getElementById('playerProgressFill');
         const timeEl = document.getElementById('playerTime');
-        if (video.duration) {
-            fill.style.width = (video.currentTime / video.duration * 100) + '%';
-            timeEl.textContent = formatTime(video.currentTime) + ' / ' + formatTime(video.duration);
+
+        // For remuxed streams, video.duration may be Infinity or unknown
+        // Use knownDuration from the database instead
+        const totalDuration = (knownDuration > 0) ? knownDuration :
+            (isFinite(video.duration) ? video.duration : 0);
+        const currentTime = video.currentTime + seekOffset;
+
+        if (totalDuration > 0) {
+            fill.style.width = Math.min((currentTime / totalDuration * 100), 100) + '%';
+            timeEl.textContent = formatTime(currentTime) + ' / ' + formatTime(totalDuration);
         }
     }
 
     function togglePlay() { const v=document.getElementById('videoPlayer'); v.paused?v.play():v.pause(); }
-    function skipBack() { document.getElementById('videoPlayer').currentTime -= 10; }
-    function skipForward() { document.getElementById('videoPlayer').currentTime += 10; }
+    function skipBack() {
+        if (currentPlayMode === 'direct' && currentStreamInfo && currentStreamInfo.needs_remux) {
+            const currentAbsolute = document.getElementById('videoPlayer').currentTime + seekOffset;
+            const target = Math.max(0, currentAbsolute - 10);
+            const token = localStorage.getItem('token');
+            startDirectPlay(currentMediaId, token, target);
+        } else {
+            document.getElementById('videoPlayer').currentTime -= 10;
+        }
+    }
+    function skipForward() {
+        if (currentPlayMode === 'direct' && currentStreamInfo && currentStreamInfo.needs_remux) {
+            const currentAbsolute = document.getElementById('videoPlayer').currentTime + seekOffset;
+            const target = currentAbsolute + 10;
+            const token = localStorage.getItem('token');
+            startDirectPlay(currentMediaId, token, target);
+        } else {
+            document.getElementById('videoPlayer').currentTime += 10;
+        }
+    }
     function toggleMute() { const v=document.getElementById('videoPlayer'); v.muted=!v.muted; }
     function toggleFullscreen() { const o=document.getElementById('playerOverlay'); document.fullscreenElement?document.exitFullscreen():o.requestFullscreen(); }
-    function seekPlayer(e) { const v=document.getElementById('videoPlayer'); const bar=document.getElementById('playerProgress'); const pct=e.offsetX/bar.offsetWidth; v.currentTime=pct*v.duration; }
+    function seekPlayer(e) {
+        const video = document.getElementById('videoPlayer');
+        const bar = document.getElementById('playerProgress');
+        const pct = e.offsetX / bar.offsetWidth;
+
+        const totalDuration = (knownDuration > 0) ? knownDuration :
+            (isFinite(video.duration) ? video.duration : 0);
+        if (totalDuration <= 0) return;
+
+        const targetTime = pct * totalDuration;
+
+        if (currentPlayMode === 'direct' && currentStreamInfo && currentStreamInfo.needs_remux) {
+            // For remuxed streams: restart FFmpeg from seek position
+            const token = localStorage.getItem('token');
+            startDirectPlay(currentMediaId, token, targetTime);
+        } else {
+            // For native MP4 or HLS: use standard seeking
+            video.currentTime = targetTime - seekOffset;
+        }
+    }
 
     // Keyboard shortcuts for player
     document.addEventListener('keydown', (e) => {
