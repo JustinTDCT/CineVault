@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -84,9 +85,9 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// All formats playable: native formats direct play, MKV/AVI remuxed on-the-fly
 	needsRemux := stream.NeedsRemux(media.FilePath)
-	// Native formats (MP4/WebM) can direct play; MKV/AVI/etc. use HLS-based remux
-	directPlayable := !needsRemux
+	directPlayable := true
 
 	codec := ""
 	if media.Codec != nil {
@@ -140,7 +141,7 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 	session := s.transcoder.GetSession(sessionKey)
 
 	if session == nil {
-		// Start new session (transcode or remux)
+		// Start new session
 		mid, err := uuid.Parse(mediaID)
 		if err != nil {
 			s.respondError(w, http.StatusBadRequest, "invalid media id")
@@ -155,7 +156,7 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 		userID := s.getUserID(r).String()
 
 		if quality == "remux" {
-			// HLS-based remux: video copied, audio transcoded if needed
+			// HLS-based remux (kept for future use / fallback)
 			audioCodec := ""
 			if media.AudioCodec != nil {
 				audioCodec = *media.AudioCodec
@@ -167,7 +168,7 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 			}
 			session = sess
 		} else {
-			// Standard HLS transcode (re-encode to target quality)
+			// Standard HLS transcode
 			sess, err := s.transcoder.StartTranscode(mediaID, userID, media.FilePath, quality)
 			if err != nil {
 				s.respondError(w, http.StatusInternalServerError, "transcode failed: "+err.Error())
@@ -180,7 +181,7 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 	// Check if requesting the m3u8 playlist
 	if strings.HasSuffix(segmentFile, ".m3u8") {
 		playlistPath := filepath.Join(session.OutputDir, "stream.m3u8")
-		// Poll briefly for the playlist to appear (FFmpeg needs a moment to write it)
+		// Poll briefly for the playlist to appear
 		for i := 0; i < 20; i++ {
 			if _, err := os.Stat(playlistPath); err == nil {
 				break
@@ -204,7 +205,6 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use correct MIME type based on segment format
 	if strings.HasSuffix(segmentFile, ".mp4") {
 		w.Header().Set("Content-Type", "video/mp4")
 	} else {
@@ -227,6 +227,26 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse optional seek position (in seconds)
+	startSeconds := 0.0
+	if startParam := r.URL.Query().Get("start"); startParam != "" {
+		if parsed, err := strconv.ParseFloat(startParam, 64); err == nil && parsed > 0 {
+			startSeconds = parsed
+		}
+	}
+
+	// If the file needs remuxing (MKV, AVI, etc.) remux on-the-fly to MP4
+	if stream.NeedsRemux(media.FilePath) {
+		audioCodec := ""
+		if media.AudioCodec != nil {
+			audioCodec = *media.AudioCodec
+		}
+		if err := stream.ServeRemuxed(w, r, s.config.FFmpeg.FFmpegPath, media.FilePath, audioCodec, startSeconds); err != nil {
+			s.respondError(w, http.StatusInternalServerError, "remux failed: "+err.Error())
+		}
+		return
+	}
+
 	// Native browser format (MP4/WebM) - serve directly with range support
 	if err := stream.ServeDirectFile(w, r, media.FilePath); err != nil {
 		s.respondError(w, http.StatusInternalServerError, err.Error())
@@ -238,18 +258,14 @@ func normalizeResolution(height int) int {
 	if height <= 0 {
 		return 0
 	}
-	// Map to nearest standard resolution (with tolerance)
 	standards := []int{360, 480, 720, 1080, 2160}
 	for _, s := range standards {
-		// Within 15% tolerance of standard
 		if height >= s-s*15/100 && height <= s+s*15/100 {
 			return s
 		}
 	}
-	// If above 1080 but below 4K, call it 1080p
 	if height > 1080 && height < 2160 {
 		return 1080
 	}
-	// Return as-is for non-standard
 	return height
 }

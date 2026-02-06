@@ -1,6 +1,11 @@
 package stream
 
 import (
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os/exec"
 	"strings"
 )
 
@@ -24,4 +29,116 @@ func NeedsAudioTranscode(audioCodec string) bool {
 	default:
 		return true
 	}
+}
+
+// ServeRemuxed streams a video file remuxed to fragmented MP4 on-the-fly.
+// Video is copied as-is, incompatible audio is transcoded to AAC.
+//
+// This uses the absolute minimum FFmpeg flags with ZERO timestamp manipulation.
+// Previous attempts with -copyts, -async, -vsync, -start_at_zero, -fflags +genpts
+// all caused audio/video desync because the flags conflicted with each other.
+// FFmpeg's default behavior handles timestamp normalization correctly when
+// simply copying video + transcoding audio to a new container.
+func ServeRemuxed(w http.ResponseWriter, r *http.Request, ffmpegPath, filePath, audioCodec string, startSeconds float64) error {
+	args := []string{"-nostdin"}
+
+	// Input seeking (before -i for fast keyframe seek)
+	if startSeconds > 0 {
+		args = append(args, "-ss", fmt.Sprintf("%.3f", startSeconds))
+	}
+
+	args = append(args,
+		"-i", filePath,
+		"-map", "0:v:0",  // First video stream only
+		"-map", "0:a:0",  // First audio stream only
+		"-c:v", "copy",   // Copy video as-is (no re-encoding)
+	)
+
+	// Audio: transcode incompatible codecs to AAC, copy compatible ones
+	if NeedsAudioTranscode(audioCodec) {
+		args = append(args,
+			"-c:a", "aac",
+			"-ac", "2",
+			"-b:a", "192k",
+		)
+	} else {
+		args = append(args, "-c:a", "copy")
+	}
+
+	// Output: fragmented MP4 for streaming (no seeking support needed in container)
+	args = append(args,
+		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
+		"-max_muxing_queue_size", "4096",
+		"-f", "mp4",
+		"pipe:1",
+	)
+
+	cmd := exec.Command(ffmpegPath, args...)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+
+	// Capture stderr for debugging
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+
+	w.Header().Set("Content-Type", "video/mp4")
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	audioAction := "copy"
+	if NeedsAudioTranscode(audioCodec) {
+		audioAction = "aac"
+	}
+	log.Printf("Remux: %s (audio: %s->%s, seek: %.1fs)", filePath, audioCodec, audioAction, startSeconds)
+	log.Printf("Remux cmd: %s %s", ffmpegPath, strings.Join(args, " "))
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	// Log stderr in background (for debugging sync issues)
+	go func() {
+		stderrBytes, _ := io.ReadAll(stderr)
+		if len(stderrBytes) > 0 {
+			// Only log last 500 chars to avoid flooding
+			s := string(stderrBytes)
+			if len(s) > 500 {
+				s = s[len(s)-500:]
+			}
+			log.Printf("Remux FFmpeg stderr (last): %s", s)
+		}
+	}()
+
+	buf := make([]byte, 256*1024) // 256KB buffer
+	flusher, canFlush := w.(http.Flusher)
+
+	for {
+		n, readErr := stdout.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				cmd.Process.Kill()
+				cmd.Wait()
+				log.Printf("Remux: client disconnected")
+				return nil
+			}
+			if canFlush {
+				flusher.Flush()
+			}
+		}
+		if readErr != nil {
+			break
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		log.Printf("Remux FFmpeg exited: %v", err)
+	}
+
+	return nil
 }
