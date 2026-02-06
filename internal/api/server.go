@@ -180,6 +180,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("DELETE /api/v1/media/{id}/studios/{studioId}", s.authMiddleware(s.handleUnlinkStudio, models.RoleAdmin))
 
 	// Streaming
+	s.router.HandleFunc("GET /api/v1/stream/{mediaId}/info", s.authMiddleware(s.handleStreamInfo, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/stream/{mediaId}/master.m3u8", s.authMiddleware(s.handleStreamMaster, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/stream/{mediaId}/{quality}/{segment}", s.authMiddleware(s.handleStreamSegment, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/stream/{mediaId}/direct", s.authMiddleware(s.handleStreamDirect, models.RoleUser))
@@ -253,13 +254,18 @@ func (s *Server) setupRoutes() {
 
 func (s *Server) authMiddleware(next http.HandlerFunc, requiredRole models.UserRole) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		tokenString := ""
 		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			s.respondError(w, http.StatusUnauthorized, "missing authorization header")
+		if authHeader != "" {
+			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+		} else if t := r.URL.Query().Get("token"); t != "" {
+			// Allow token via query param for streaming endpoints (video elements can't set headers)
+			tokenString = t
+		} else {
+			s.respondError(w, http.StatusUnauthorized, "missing authorization")
 			return
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := s.auth.ValidateToken(tokenString)
 		if err != nil {
 			s.respondError(w, http.StatusUnauthorized, "invalid token")

@@ -48,9 +48,12 @@ func (r *ProbeResult) GetDurationSeconds() int {
 func (r *ProbeResult) GetResolution() string {
 	for _, s := range r.Streams {
 		if s.CodecType == "video" {
-			if s.Height >= 2160 { return "4K" } 
-			if s.Height >= 1080 { return "1080p" }
-			if s.Height >= 720 { return "720p" }
+			// Use both width and height for accurate resolution classification
+			// Some content is slightly letterboxed (e.g. 1920x1036 is still 1080p)
+			if s.Height >= 2160 || s.Width >= 3840 { return "4K" }
+			if s.Height >= 900 || s.Width >= 1800 { return "1080p" }
+			if s.Height >= 600 || s.Width >= 1200 { return "720p" }
+			if s.Height >= 400 { return "480p" }
 			return "SD"
 		}
 	}
