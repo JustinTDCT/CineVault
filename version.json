@@ -1,5 +1,5 @@
 {
-  "version": "0.5.0",
+  "version": "0.6.0",
   "phase": 3,
   "released": "2026-02-06",
   "notes": "Auto-populate metadata on scan: automatic TMDB/MusicBrainz/OpenLibrary matching when new files are picked up, poster image download, year extraction from filenames, TV show-level metadata matching"

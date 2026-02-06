@@ -30,6 +30,14 @@ const (
 	MediaTypeAudiobooks  MediaType = "audiobooks"
 )
 
+type LibraryAccess string
+
+const (
+	LibraryAccessEveryone    LibraryAccess = "everyone"
+	LibraryAccessSelectUsers LibraryAccess = "select_users"
+	LibraryAccessAdminOnly   LibraryAccess = "admin_only"
+)
+
 type DuplicateAction string
 
 const (
@@ -56,15 +64,24 @@ type User struct {
 // ──────────────────── Library ────────────────────
 
 type Library struct {
-	ID            uuid.UUID  `json:"id" db:"id"`
-	Name          string     `json:"name" db:"name"`
-	MediaType     MediaType  `json:"media_type" db:"media_type"`
-	Path          string     `json:"path" db:"path"`
-	IsEnabled     bool       `json:"is_enabled" db:"is_enabled"`
-	ScanOnStartup bool       `json:"scan_on_startup" db:"scan_on_startup"`
-	LastScanAt    *time.Time `json:"last_scan_at" db:"last_scan_at"`
-	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at" db:"updated_at"`
+	ID              uuid.UUID     `json:"id" db:"id"`
+	Name            string        `json:"name" db:"name"`
+	MediaType       MediaType     `json:"media_type" db:"media_type"`
+	Path            string        `json:"path" db:"path"`
+	IsEnabled       bool          `json:"is_enabled" db:"is_enabled"`
+	ScanOnStartup   bool          `json:"scan_on_startup" db:"scan_on_startup"`
+	SeasonGrouping  bool          `json:"season_grouping" db:"season_grouping"`
+	AccessLevel     LibraryAccess `json:"access_level" db:"access_level"`
+	LastScanAt      *time.Time    `json:"last_scan_at" db:"last_scan_at"`
+	CreatedAt       time.Time     `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at" db:"updated_at"`
+}
+
+type LibraryPermission struct {
+	ID        uuid.UUID `json:"id" db:"id"`
+	LibraryID uuid.UUID `json:"library_id" db:"library_id"`
+	UserID    uuid.UUID `json:"user_id" db:"user_id"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
 // ──────────────────── MediaItem ────────────────────

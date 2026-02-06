@@ -794,7 +794,11 @@
         const data = await api('GET', '/libraries');
         const div = document.getElementById('libList');
         if (data.success && data.data && data.data.length > 0) {
-            div.innerHTML = data.data.map(lib => `<div class="library-card"><div><h3>${lib.name}</h3><p style="color:#8a9bae;font-size:0.85rem;"><span class="tag tag-cyan">${MEDIA_LABELS[lib.media_type]||lib.media_type}</span><span style="margin-left:8px;">${lib.path}</span></p><p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">${lib.last_scan_at?'Last scan: '+new Date(lib.last_scan_at).toLocaleString():'Never scanned'}</p></div><div class="library-actions">${isAdmin?`<button class="btn-secondary" onclick="scanLibrary('${lib.id}',this)">&#128269; Scan</button><button class="btn-danger btn-small" onclick="deleteLibrary('${lib.id}')">Delete</button>`:''}</div></div>`).join('');
+            div.innerHTML = data.data.map(lib => {
+                const accessLabel = {everyone:'Everyone',select_users:'Select People',admin_only:'Admin Only'}[lib.access_level]||'Everyone';
+                const accessColor = {everyone:'tag-green',select_users:'tag-purple',admin_only:'tag-red'}[lib.access_level]||'tag-green';
+                return `<div class="library-card"><div><h3>${lib.name}</h3><p style="color:#8a9bae;font-size:0.85rem;"><span class="tag tag-cyan">${MEDIA_LABELS[lib.media_type]||lib.media_type}</span>${lib.season_grouping?'<span class="tag tag-purple" style="margin-left:6px;">Season Grouping</span>':''}<span class="tag ${accessColor}" style="margin-left:6px;">${accessLabel}</span><span style="margin-left:8px;">${lib.path}</span></p><p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">${lib.last_scan_at?'Last scan: '+new Date(lib.last_scan_at).toLocaleString():'Never scanned'}</p></div><div class="library-actions">${isAdmin?`<button class="btn-secondary" onclick="scanLibrary('${lib.id}',this)">&#128269; Scan</button><button class="btn-danger btn-small" onclick="deleteLibrary('${lib.id}')">Delete</button>`:''}</div></div>`;
+            }).join('');
         } else div.innerHTML = `<div class="empty-state"><div class="empty-state-icon">&#128218;</div><div class="empty-state-title">No libraries configured</div><p>Create your first library to start organizing media</p></div>`;
     }
 
@@ -819,7 +823,7 @@
         mc.innerHTML = `<div class="section-header"><h2 class="section-title">Create Library</h2></div>
         <div style="max-width:500px;">
             <div class="form-group"><label>Name</label><input type="text" id="libName" placeholder="My Movies"></div>
-            <div class="form-group"><label>Media Type</label><select id="libType">${types}</select></div>
+            <div class="form-group"><label>Media Type</label><select id="libType" onchange="onLibTypeChange()">${types}</select></div>
             <div class="form-group"><label>Path</label>
                 <div style="display:flex;gap:8px;">
                     <input type="text" id="libPath" placeholder="/media/movies" style="flex:1;">
@@ -827,9 +831,62 @@
                 </div>
             </div>
             <div id="pathBrowser" style="display:none;margin-bottom:18px;background:rgba(0,0,0,0.3);border:1px solid rgba(0,217,255,0.15);border-radius:12px;padding:14px;max-height:350px;overflow-y:auto;"></div>
+            <div id="seasonGroupingOpt" style="display:none;">
+                <div class="form-group">
+                    <label>Season Grouping</label>
+                    <p style="color:#8a9bae;font-size:0.8rem;margin-bottom:8px;">Parse SxxExx from filenames to group episodes by season</p>
+                    <div style="display:flex;gap:12px;">
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#e5e5e5;"><input type="radio" name="seasonGrouping" value="yes" checked> Yes</label>
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#e5e5e5;"><input type="radio" name="seasonGrouping" value="no"> No</label>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Library Permissions</label>
+                <select id="libAccess" onchange="onAccessChange()">
+                    <option value="everyone">Everyone</option>
+                    <option value="select_users">Select People</option>
+                    <option value="admin_only">Admin Only</option>
+                </select>
+            </div>
+            <div id="userSelectPanel" style="display:none;margin-bottom:18px;background:rgba(0,0,0,0.3);border:1px solid rgba(0,217,255,0.15);border-radius:12px;padding:14px;">
+                <p style="color:#8a9bae;font-size:0.8rem;margin-bottom:10px;">Select users who can access this library:</p>
+                <div id="userCheckboxList"><div class="spinner"></div></div>
+            </div>
             <button class="btn-primary" onclick="createLibrary()">Create Library</button>
             <button class="btn-secondary" style="margin-left:12px;" onclick="loadLibrariesView()">Cancel</button>
         </div>`;
+        onLibTypeChange();
+    }
+
+    function onLibTypeChange() {
+        const type = document.getElementById('libType').value;
+        const opt = document.getElementById('seasonGroupingOpt');
+        if (opt) opt.style.display = (type === 'tv_shows') ? '' : 'none';
+    }
+
+    async function onAccessChange() {
+        const val = document.getElementById('libAccess').value;
+        const panel = document.getElementById('userSelectPanel');
+        if (val === 'select_users') {
+            panel.style.display = '';
+            const data = await api('GET', '/users');
+            const list = document.getElementById('userCheckboxList');
+            if (data.success && data.data && data.data.length > 0) {
+                list.innerHTML = data.data
+                    .filter(u => u.role !== 'admin')
+                    .map(u => `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;color:#e5e5e5;">
+                        <input type="checkbox" class="user-perm-cb" value="${u.id}">
+                        <span>${u.username}</span>
+                        <span style="color:#5a6a7f;font-size:0.75rem;margin-left:auto;">${u.role}</span>
+                    </label>`).join('');
+                if (list.innerHTML === '') list.innerHTML = '<p style="color:#5a6a7f;font-size:0.85rem;">No non-admin users found</p>';
+            } else {
+                list.innerHTML = '<p style="color:#5a6a7f;font-size:0.85rem;">No users found</p>';
+            }
+        } else {
+            panel.style.display = 'none';
+        }
     }
 
     async function openPathBrowser(path) {
@@ -871,8 +928,11 @@
     async function createLibrary() {
         const name=document.getElementById('libName').value, media_type=document.getElementById('libType').value, path=document.getElementById('libPath').value;
         if(!name||!path){toast('Name and path required','error');return;}
-        const d=await api('POST','/libraries',{name,media_type,path,is_enabled:true});
-        if(d.success){toast('Library created!');loadLibrariesView();}else toast('Failed: '+d.error,'error');
+        const season_grouping = media_type === 'tv_shows' && document.querySelector('input[name="seasonGrouping"]:checked')?.value === 'yes';
+        const access_level = document.getElementById('libAccess').value;
+        const allowed_users = [...document.querySelectorAll('.user-perm-cb:checked')].map(cb => cb.value);
+        const d=await api('POST','/libraries',{name,media_type,path,is_enabled:true,season_grouping,access_level,allowed_users});
+        if(d.success){toast('Library created!');loadLibrariesView();loadSidebarCounts();}else toast('Failed: '+d.error,'error');
     }
 
     // ──── Editions / Sisters / Collections (same as Phase 2 but with navigate()) ────

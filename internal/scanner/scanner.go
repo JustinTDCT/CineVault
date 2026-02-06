@@ -131,8 +131,8 @@ func (s *Scanner) ScanLibrary(library *models.Library) (*models.ScanResult, erro
 			}
 		}
 
-		// Handle TV show hierarchy
-		if library.MediaType == models.MediaTypeTVShows {
+		// Handle TV show hierarchy (only when season grouping is enabled)
+		if library.MediaType == models.MediaTypeTVShows && library.SeasonGrouping {
 			if err := s.handleTVHierarchy(library, item, path); err != nil {
 				log.Printf("TV hierarchy error for %s: %v", path, err)
 			}
@@ -144,8 +144,8 @@ func (s *Scanner) ScanLibrary(library *models.Library) (*models.ScanResult, erro
 			return nil
 		}
 
-		// If TV, increment season episode count
-		if item.TVSeasonID != nil {
+		// If TV with season grouping, increment season episode count
+		if library.SeasonGrouping && item.TVSeasonID != nil {
 			_ = s.tvRepo.IncrementEpisodeCount(*item.TVSeasonID)
 		}
 
@@ -326,11 +326,12 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		return
 	}
 
-	// For TV shows, match at the show level (not per-episode)
+	// For TV shows with season grouping, match at the show level (not per-episode)
 	if item.MediaType == models.MediaTypeTVShows && item.TVShowID != nil {
 		s.autoMatchTVShow(*item.TVShowID)
 		return
 	}
+	// TV shows without season grouping fall through to per-item matching below
 
 	// Build search query from cleaned title
 	searchQuery := metadata.CleanTitleForSearch(item.Title)
