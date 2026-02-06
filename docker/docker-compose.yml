@@ -32,7 +32,7 @@ services:
       THUMBNAIL_PATH: /thumbnails
       MEDIA_PATH: /media
     volumes:
-      - ${MEDIA_PATH:-/media}:/media:ro
+      - /plexdata:/media:ro
       - previews_data:/previews
       - thumbnails_data:/thumbnails
 
