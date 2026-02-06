@@ -189,3 +189,45 @@ func (r *TVRepository) IncrementEpisodeCount(seasonID uuid.UUID) error {
 	_, err := r.db.Exec(`UPDATE tv_seasons SET episode_count = episode_count + 1 WHERE id = $1`, seasonID)
 	return err
 }
+
+// ListEpisodesBySeason returns media items for a given season, ordered by episode number.
+func (r *TVRepository) ListEpisodesBySeason(seasonID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `
+		SELECT id, library_id, media_type, file_path, file_name, file_size, file_hash,
+		       title, sort_title, original_title, description, year, release_date,
+		       duration_seconds, rating, resolution, width, height, codec, container,
+		       bitrate, framerate, audio_codec, audio_channels, poster_path, thumbnail_path,
+		       backdrop_path, tv_show_id, tv_season_id, episode_number,
+		       artist_id, album_id, track_number, disc_number,
+		       author_id, book_id, chapter_number, image_gallery_id,
+		       sister_group_id, phash, audio_fingerprint, sort_position, added_at, updated_at, last_scanned_at
+		FROM media_items WHERE tv_season_id = $1
+		ORDER BY COALESCE(episode_number, 0), title`
+	rows, err := r.db.Query(query, seasonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []*models.MediaItem
+	for rows.Next() {
+		item := &models.MediaItem{}
+		if err := rows.Scan(
+			&item.ID, &item.LibraryID, &item.MediaType, &item.FilePath, &item.FileName,
+			&item.FileSize, &item.FileHash, &item.Title, &item.SortTitle, &item.OriginalTitle,
+			&item.Description, &item.Year, &item.ReleaseDate, &item.DurationSeconds,
+			&item.Rating, &item.Resolution, &item.Width, &item.Height, &item.Codec,
+			&item.Container, &item.Bitrate, &item.Framerate, &item.AudioCodec,
+			&item.AudioChannels, &item.PosterPath, &item.ThumbnailPath, &item.BackdropPath,
+			&item.TVShowID, &item.TVSeasonID, &item.EpisodeNumber,
+			&item.ArtistID, &item.AlbumID, &item.TrackNumber, &item.DiscNumber,
+			&item.AuthorID, &item.BookID, &item.ChapterNumber, &item.ImageGalleryID,
+			&item.SisterGroupID, &item.Phash, &item.AudioFingerprint,
+			&item.SortPosition, &item.AddedAt, &item.UpdatedAt, &item.LastScannedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}

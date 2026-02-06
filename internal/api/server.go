@@ -161,6 +161,12 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("POST /api/v1/libraries/{id}/scan", s.authMiddleware(s.handleScanLibrary, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/libraries/{id}/auto-match", s.authMiddleware(s.handleAutoMatch, models.RoleAdmin))
 
+	// TV Shows
+	s.router.HandleFunc("GET /api/v1/libraries/{id}/shows", s.authMiddleware(s.handleListLibraryShows, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/tv/shows/{id}", s.authMiddleware(s.handleGetShow, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/tv/shows/{id}/seasons", s.authMiddleware(s.handleListShowSeasons, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/tv/seasons/{id}/episodes", s.authMiddleware(s.handleListSeasonEpisodes, models.RoleUser))
+
 	// Media
 	s.router.HandleFunc("GET /api/v1/libraries/{id}/media", s.authMiddleware(s.handleListMedia, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/media/{id}", s.authMiddleware(s.handleGetMedia, models.RoleUser))

@@ -768,6 +768,21 @@
         const lib = allLibraries.find(l => l.id === libraryId);
         const label = lib ? lib.name : 'Library';
         const type = lib ? lib.media_type : '';
+
+        // TV show library with season grouping → show TV shows instead of flat episodes
+        if (lib && lib.media_type === 'tv_shows' && lib.season_grouping) {
+            mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2><span class="tag tag-cyan" style="margin-left:12px;">TV Shows</span></div>
+                <div class="media-grid" id="libGrid"><div class="spinner"></div> Loading...</div>`;
+            const data = await api('GET', '/libraries/' + libraryId + '/shows');
+            const shows = (data.success && data.data) ? data.data : [];
+            const grid = document.getElementById('libGrid');
+            grid.innerHTML = shows.length > 0
+                ? shows.map(renderShowCard).join('')
+                : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">&#128250;</div><div class="empty-state-title">No TV shows yet</div><p>Scan the library to detect shows</p></div>`;
+            return;
+        }
+
+        // Default: flat media items
         mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2><span class="tag tag-cyan" style="margin-left:12px;">${MEDIA_LABELS[type]||type}</span></div>
             <div class="media-grid" id="libGrid"><div class="spinner"></div> Loading...</div>`;
         const m = await api('GET', '/libraries/' + libraryId + '/media');
@@ -776,6 +791,85 @@
         grid.innerHTML = items.length > 0
             ? items.map(renderMediaCard).join('')
             : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">${mediaIcon(type)}</div><div class="empty-state-title">No items in this library</div><p>Scan the library to populate it with media</p></div>`;
+    }
+
+    function renderShowCard(show) {
+        const year = show.year || '';
+        const desc = show.description ? show.description.substring(0, 100) + '...' : '';
+        return `<div class="media-card" onclick="loadShowView('${show.id}')">
+            <div class="media-poster">
+                ${show.poster_path ? '<img src="'+show.poster_path+'" alt="">' : '&#128250;'}
+            </div>
+            <div class="media-info"><div class="media-title">${show.title}</div><div class="media-meta">${year}</div></div>
+        </div>`;
+    }
+
+    async function loadShowView(showId) {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = '<div class="spinner"></div> Loading...';
+        const data = await api('GET', '/tv/shows/' + showId);
+        if (!data.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Show not found</div></div>'; return; }
+        const show = data.data.show;
+        const seasons = data.data.seasons || [];
+        mc.innerHTML = `
+            <div class="detail-hero">
+                <div class="detail-poster">${show.poster_path ? '<img src="'+show.poster_path+'">' : '&#128250;'}</div>
+                <div class="detail-info">
+                    <h1>${show.title}</h1>
+                    <div class="meta-row">${show.year ? show.year + ' \u00b7 ' : ''}${seasons.length} Season${seasons.length !== 1 ? 's' : ''}</div>
+                    ${show.description ? '<p class="description">'+show.description+'</p>' : ''}
+                </div>
+            </div>
+            <div id="seasonsContainer">
+                ${seasons.map(s => `
+                    <div style="margin-bottom:24px;">
+                        <h3 style="color:#00D9FF;margin-bottom:12px;cursor:pointer;" onclick="toggleSeason('${s.id}')">
+                            Season ${s.season_number} <span style="color:#5a6a7f;font-size:0.85rem;">(${s.episode_count} episode${s.episode_count !== 1 ? 's' : ''})</span>
+                            <span id="seasonArrow-${s.id}" style="margin-left:6px;font-size:0.8rem;">&#9660;</span>
+                        </h3>
+                        <div class="media-grid" id="season-${s.id}"><div class="spinner"></div></div>
+                    </div>
+                `).join('')}
+            </div>
+            <button class="btn-secondary" onclick="history.back(); return false;" style="margin-top:12px;">&#8592; Back</button>`;
+        // Auto-load episodes for each season
+        for (const s of seasons) { loadSeasonEpisodes(s.id); }
+    }
+
+    async function loadSeasonEpisodes(seasonId) {
+        const container = document.getElementById('season-' + seasonId);
+        if (!container) return;
+        const data = await api('GET', '/tv/seasons/' + seasonId + '/episodes');
+        const episodes = (data.success && data.data) ? data.data : [];
+        container.innerHTML = episodes.length > 0
+            ? episodes.map(ep => {
+                const epNum = ep.episode_number ? 'E' + String(ep.episode_number).padStart(2, '0') : '';
+                const dur = ep.duration_seconds ? Math.floor(ep.duration_seconds/60)+'min' : '';
+                const res = ep.resolution || '';
+                const meta = [epNum, dur, res].filter(Boolean).join(' \u00b7 ');
+                return `<div class="media-card" onclick="loadMediaDetail('${ep.id}')">
+                    <div class="media-poster">
+                        ${ep.poster_path ? '<img src="'+ep.poster_path+'" alt="">' : '&#128250;'}
+                        ${res ? '<span class="quality-badge">'+res+'</span>' : ''}
+                        <div class="play-overlay"><div class="play-button">&#9654;</div></div>
+                    </div>
+                    <div class="media-info"><div class="media-title">${ep.title}</div><div class="media-meta">${meta}</div></div>
+                </div>`;
+            }).join('')
+            : '<p style="color:#5a6a7f;">No episodes found</p>';
+    }
+
+    function toggleSeason(seasonId) {
+        const el = document.getElementById('season-' + seasonId);
+        const arrow = document.getElementById('seasonArrow-' + seasonId);
+        if (!el) return;
+        if (el.style.display === 'none') {
+            el.style.display = '';
+            if (arrow) arrow.innerHTML = '&#9660;';
+        } else {
+            el.style.display = 'none';
+            if (arrow) arrow.innerHTML = '&#9654;';
+        }
     }
 
     async function loadSearchView(query) {
