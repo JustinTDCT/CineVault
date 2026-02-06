@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CineVault</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -483,6 +484,7 @@
     let allLibraries = [];
     let ws = null;
     let hlsPlayer = null;
+    let mpegtsPlayer = null;
     let currentMediaId = null;
 
     function headers() { return { 'Authorization': 'Bearer ' + localStorage.getItem('token'), 'Content-Type': 'application/json' }; }
@@ -1023,14 +1025,27 @@
     }
 
     // ──── Video Player ────
-    // Follows StashApp's streaming pattern:
-    // - Native formats (MP4/WebM): served directly with range request support (native seeking)
-    // - Non-native formats (MKV/AVI): transcoded on-the-fly to fragmented MP4 via FFmpeg pipe
-    // - Seeking in transcoded streams: restart stream with ?start= parameter
+    // Plex-style streaming:
+    // - Native formats (MP4/WebM): served directly with range requests (native seeking)
+    // - Non-native formats (MKV/AVI): remuxed to MPEG-TS on-the-fly via FFmpeg pipe
+    //   Video copied as-is, audio transcoded to AAC if needed. mpegts.js handles playback.
+    // - Seeking in MPEGTS streams: restart stream with ?start= parameter
     let currentStreamInfo = null;
-    let currentPlayMode = null; // 'direct', 'hls'
+    let currentPlayMode = null; // 'direct', 'mpegts', 'hls'
     let knownDuration = 0; // Total duration from DB
-    let seekOffset = 0; // Seek offset for transcoded streams (FFmpeg -ss position)
+    let seekOffset = 0; // FFmpeg -ss offset for MPEGTS streams
+
+    // Destroy all active players
+    function destroyPlayers() {
+        if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
+        if (mpegtsPlayer) {
+            mpegtsPlayer.pause();
+            mpegtsPlayer.unload();
+            mpegtsPlayer.detachMediaElement();
+            mpegtsPlayer.destroy();
+            mpegtsPlayer = null;
+        }
+    }
 
     async function playMedia(mediaId, title) {
         currentMediaId = mediaId;
@@ -1040,7 +1055,7 @@
         overlay.classList.add('active');
         const token = localStorage.getItem('token');
 
-        // Fetch stream info to determine best playback method
+        // Fetch stream info
         const info = await api('GET', `/stream/${mediaId}/info`);
         currentStreamInfo = info.success ? info.data : null;
         knownDuration = currentStreamInfo ? (currentStreamInfo.duration_seconds || 0) : 0;
@@ -1051,11 +1066,10 @@
 
         if (currentStreamInfo) {
             const nativeLabel = currentStreamInfo.native_resolution
-                ? `Original (${currentStreamInfo.native_resolution}${currentStreamInfo.needs_remux ? ' \u00b7 transcode' : ''})`
+                ? `Original (${currentStreamInfo.native_resolution}${currentStreamInfo.needs_remux ? ' \u00b7 direct stream' : ''})`
                 : 'Original';
             options += `<option value="direct" selected>${nativeLabel}</option>`;
 
-            // Add lower quality HLS transcode options
             if (currentStreamInfo.transcode_qualities) {
                 currentStreamInfo.transcode_qualities.forEach(q => {
                     options += `<option value="transcode:${q}">${q} (transcode)</option>`;
@@ -1066,8 +1080,12 @@
         }
         sel.innerHTML = options;
 
-        // Start direct play — server handles transcoding transparently
-        startDirectPlay(mediaId, token, 0);
+        // Start playback — MPEGTS for non-native formats, direct for native
+        if (currentStreamInfo && currentStreamInfo.needs_remux) {
+            startMpegtsPlay(mediaId, token, 0);
+        } else {
+            startDirectPlay(mediaId, token, 0);
+        }
         video.addEventListener('timeupdate', updatePlayerUI);
     }
 
@@ -1086,31 +1104,69 @@
         video.addEventListener('timeupdate', updatePlayerUI);
     }
 
+    // Direct play for native browser formats (MP4/WebM) — supports range requests & seeking
     function startDirectPlay(mediaId, token, startSec) {
         const video = document.getElementById('videoPlayer');
-        if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
+        destroyPlayers();
         currentPlayMode = 'direct';
+        seekOffset = 0;
+
+        const url = `/api/v1/stream/${mediaId}/direct?token=${encodeURIComponent(token)}`;
+        video.src = url;
+        if (startSec > 0) {
+            video.currentTime = startSec;
+        }
+        video.play().catch(e => {
+            console.warn('Direct play starting...', e);
+            setTimeout(() => video.play().catch(() => {}), 1000);
+        });
+    }
+
+    // MPEGTS play for non-native formats (MKV/AVI) — Plex-style direct stream
+    function startMpegtsPlay(mediaId, token, startSec) {
+        const video = document.getElementById('videoPlayer');
+        destroyPlayers();
+        currentPlayMode = 'mpegts';
         seekOffset = startSec || 0;
 
         let url = `/api/v1/stream/${mediaId}/direct?token=${encodeURIComponent(token)}`;
         if (seekOffset > 0) {
             url += `&start=${seekOffset.toFixed(1)}`;
         }
-        video.src = url;
-        video.play().catch(e => {
-            console.warn('Stream starting...', e);
-            setTimeout(() => {
-                video.play().catch(e2 => {
-                    console.error('Playback failed:', e2);
-                    toast('Playback failed — try a transcode quality', 'error');
-                });
-            }, 2000);
+
+        mpegtsPlayer = mpegts.createPlayer({
+            type: 'mpegts',
+            isLive: true, // piped stream (no defined end)
+            url: url,
+            duration: knownDuration ? knownDuration * 1000 : undefined,
+        }, {
+            enableStashBuffer: true,
+            stashInitialSize: 512 * 1024, // 512KB initial buffer
+            fixAudioTimestampGap: true, // auto-fix A/V sync gaps
+            lazyLoad: false,
+            autoCleanupSourceBuffer: true,
+            autoCleanupMaxBackwardDuration: 300,
+            autoCleanupMinBackwardDuration: 120,
+        });
+
+        mpegtsPlayer.attachMediaElement(video);
+        mpegtsPlayer.load();
+        mpegtsPlayer.play();
+
+        mpegtsPlayer.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
+            console.error('mpegts.js error:', errorType, errorDetail, errorInfo);
+            if (errorType === mpegts.ErrorTypes.NETWORK_ERROR) {
+                toast('Stream interrupted — retrying...', 'info');
+            } else {
+                toast('Playback error: ' + errorDetail, 'error');
+            }
         });
     }
 
+    // HLS play for quality-specific transcodes
     function startHLSPlay(mediaId, quality, token) {
         const video = document.getElementById('videoPlayer');
-        if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
+        destroyPlayers();
         currentPlayMode = 'hls';
         seekOffset = 0;
 
@@ -1149,7 +1205,11 @@
     function changeQuality(value) {
         const token = localStorage.getItem('token');
         if (value === 'direct') {
-            startDirectPlay(currentMediaId, token, 0);
+            if (currentStreamInfo && currentStreamInfo.needs_remux) {
+                startMpegtsPlay(currentMediaId, token, 0);
+            } else {
+                startDirectPlay(currentMediaId, token, 0);
+            }
         } else if (value.startsWith('transcode:')) {
             const quality = value.replace('transcode:', '');
             startHLSPlay(currentMediaId, quality, token);
@@ -1162,7 +1222,7 @@
         overlay.classList.remove('active');
         video.pause();
         video.src = '';
-        if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
+        destroyPlayers();
 
         // Save watch progress
         if (currentMediaId && video.currentTime > 0) {
@@ -1184,7 +1244,6 @@
         const fill = document.getElementById('playerProgressFill');
         const timeEl = document.getElementById('playerTime');
 
-        // Use known duration from DB (transcoded streams may report Infinity)
         const totalDuration = (knownDuration > 0) ? knownDuration
             : (isFinite(video.duration) ? video.duration : 0);
         const currentTime = video.currentTime + seekOffset;
@@ -1199,10 +1258,10 @@
 
     function skipBack() {
         const video = document.getElementById('videoPlayer');
-        if (currentPlayMode === 'direct' && currentStreamInfo && currentStreamInfo.needs_remux) {
-            // Transcoded stream: restart FFmpeg from new position
+        if (currentPlayMode === 'mpegts') {
+            // MPEGTS: restart stream from new position
             const target = Math.max(0, video.currentTime + seekOffset - 10);
-            startDirectPlay(currentMediaId, localStorage.getItem('token'), target);
+            startMpegtsPlay(currentMediaId, localStorage.getItem('token'), target);
         } else {
             video.currentTime = Math.max(0, video.currentTime - 10);
         }
@@ -1210,10 +1269,10 @@
 
     function skipForward() {
         const video = document.getElementById('videoPlayer');
-        if (currentPlayMode === 'direct' && currentStreamInfo && currentStreamInfo.needs_remux) {
-            // Transcoded stream: restart FFmpeg from new position
+        if (currentPlayMode === 'mpegts') {
+            // MPEGTS: restart stream from new position
             const target = video.currentTime + seekOffset + 10;
-            startDirectPlay(currentMediaId, localStorage.getItem('token'), target);
+            startMpegtsPlay(currentMediaId, localStorage.getItem('token'), target);
         } else {
             video.currentTime += 10;
         }
@@ -1233,11 +1292,11 @@
 
         const targetTime = pct * totalDuration;
 
-        if (currentPlayMode === 'direct' && currentStreamInfo && currentStreamInfo.needs_remux) {
-            // Transcoded stream: restart FFmpeg from seek position
-            startDirectPlay(currentMediaId, localStorage.getItem('token'), targetTime);
+        if (currentPlayMode === 'mpegts') {
+            // MPEGTS: restart FFmpeg from seek position (Plex-style)
+            startMpegtsPlay(currentMediaId, localStorage.getItem('token'), targetTime);
         } else {
-            // Native MP4 or HLS: use standard seeking
+            // Native MP4 or HLS: standard seeking
             video.currentTime = targetTime;
         }
     }

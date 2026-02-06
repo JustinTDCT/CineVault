@@ -28,7 +28,6 @@ func (s *Server) handleStreamMaster(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine available qualities based on source resolution
 	var qualities []string
 	height := 0
 	if media.Height != nil {
@@ -51,7 +50,7 @@ func (s *Server) handleStreamMaster(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(playlist))
 }
 
-// handleStreamInfo returns media stream info (resolution, codec, available qualities) as JSON
+// handleStreamInfo returns media stream info as JSON
 func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 	mediaID, err := uuid.Parse(r.PathValue("mediaId"))
 	if err != nil {
@@ -74,10 +73,8 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 		width = *media.Width
 	}
 
-	// Normalize height to standard resolution label
 	standardHeight := normalizeResolution(height)
 
-	// Determine available transcode qualities
 	var transcodeQualities []string
 	for _, q := range []string{"360p", "480p", "720p", "1080p", "4K"} {
 		if stream.Qualities[q].Height <= standardHeight || height == 0 {
@@ -85,7 +82,6 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// All formats playable: native formats direct play, MKV/AVI transcoded on-the-fly
 	needsRemux := stream.NeedsRemux(media.FilePath)
 
 	codec := ""
@@ -122,7 +118,7 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 			"codec":               codec,
 			"audio_codec":         audioCodec,
 			"container":           container,
-			"direct_playable":     true, // Always playable (native or transcoded)
+			"direct_playable":     true,
 			"needs_remux":         needsRemux,
 			"duration_seconds":    duration,
 			"transcode_qualities": transcodeQualities,
@@ -135,12 +131,10 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 	quality := r.PathValue("quality")
 	segmentFile := r.PathValue("segment")
 
-	// Find or start session
 	sessionKey := fmt.Sprintf("%s-%s", mediaID, quality)
 	session := s.transcoder.GetSession(sessionKey)
 
 	if session == nil {
-		// Start new HLS transcode session (for quality-specific transcodes)
 		mid, err := uuid.Parse(mediaID)
 		if err != nil {
 			s.respondError(w, http.StatusBadRequest, "invalid media id")
@@ -161,10 +155,8 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 		session = sess
 	}
 
-	// Check if requesting the m3u8 playlist
 	if strings.HasSuffix(segmentFile, ".m3u8") {
 		playlistPath := filepath.Join(session.OutputDir, "stream.m3u8")
-		// Poll briefly for the playlist to appear
 		for i := 0; i < 20; i++ {
 			if _, err := os.Stat(playlistPath); err == nil {
 				break
@@ -181,7 +173,6 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serve segment file
 	segPath := filepath.Join(session.OutputDir, segmentFile)
 	if _, err := os.Stat(segPath); err != nil {
 		s.respondError(w, http.StatusNotFound, "segment not ready")
@@ -197,11 +188,12 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, segPath)
 }
 
-// handleStreamDirect handles direct play and on-the-fly transcoding.
-// Native formats (MP4/WebM) are served directly with range request support.
-// Non-native formats (MKV/AVI/etc.) are transcoded to fragmented MP4 on-the-fly
-// following StashApp's approach: video re-encoded with libx264 veryfast,
-// audio to AAC, piped directly to the HTTP response.
+// handleStreamDirect handles direct play and on-the-fly MPEGTS remuxing.
+// Native formats (MP4/WebM): served directly with range request support (native seeking).
+// Non-native formats (MKV/AVI): remuxed to MPEG-TS on-the-fly (Plex-style direct stream).
+//   - Video copied as-is (no re-encoding)
+//   - Audio transcoded to AAC if needed (DTS, AC3, etc.)
+//   - Frontend uses mpegts.js for MPEG-TS playback via MSE
 func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 	mediaID, err := uuid.Parse(r.PathValue("mediaId"))
 	if err != nil {
@@ -223,18 +215,21 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// If the file needs transcoding (MKV, AVI, etc.) → transcode on-the-fly
+	// Non-native formats: remux to MPEG-TS on-the-fly (Plex direct stream)
 	if stream.NeedsRemux(media.FilePath) {
-		if err := stream.ServeTranscoded(r.Context(), w, s.config.FFmpeg.FFmpegPath, media.FilePath, startSeconds); err != nil {
-			// Don't try to send error response if headers already sent
+		audioCodec := ""
+		if media.AudioCodec != nil {
+			audioCodec = *media.AudioCodec
+		}
+		if err := stream.ServeRemuxedMPEGTS(r.Context(), w, s.config.FFmpeg.FFmpegPath, media.FilePath, audioCodec, startSeconds); err != nil {
 			if r.Context().Err() == nil {
-				s.respondError(w, http.StatusInternalServerError, "transcode failed: "+err.Error())
+				s.respondError(w, http.StatusInternalServerError, "remux failed: "+err.Error())
 			}
 		}
 		return
 	}
 
-	// Native browser format (MP4/WebM) - serve directly with range support
+	// Native browser format (MP4/WebM) — serve directly with range support
 	if err := stream.ServeDirectFile(w, r, media.FilePath); err != nil {
 		s.respondError(w, http.StatusInternalServerError, err.Error())
 	}

@@ -32,18 +32,20 @@ func NeedsAudioTranscode(audioCodec string) bool {
 	}
 }
 
-// ServeTranscoded streams a video file transcoded to fragmented MP4 on-the-fly.
-// This follows StashApp's proven approach:
-//   - Video is RE-ENCODED to H264 (not copied) — this guarantees A/V timestamp
-//     alignment when converting from MKV/AVI containers. StashApp only uses
-//     -c:v copy for files already in MP4 container.
-//   - Audio is transcoded to AAC stereo.
-//   - Output is fragmented MP4 piped directly to the HTTP response.
-//   - Uses exec.CommandContext tied to the HTTP request for automatic cleanup.
-//   - Uses io.Copy for clean stdout→response piping.
+// ServeRemuxedMPEGTS streams a video file remuxed to MPEG-TS on-the-fly.
+// This follows Plex's "Direct Stream" approach:
+//   - Video is COPIED as-is (no re-encoding) — preserves quality, minimal CPU
+//   - Audio is transcoded to AAC only if the source codec isn't browser-compatible
+//   - Output is MPEG Transport Stream, which handles timestamp alignment natively
+//     (unlike fragmented MP4 which has timestamp shift issues with -c:v copy from MKV)
+//   - Frontend uses mpegts.js (MSE-based MPEG-TS player) for playback
+//   - Seeking is handled by restarting FFmpeg with -ss at the seek position
 //
-// Reference: https://github.com/stashapp/stash — pkg/ffmpeg/stream_transcode.go
-func ServeTranscoded(ctx context.Context, w http.ResponseWriter, ffmpegPath, filePath string, startSeconds float64) error {
+// Why MPEGTS instead of fragmented MP4:
+//   MPEGTS embeds PCR (Program Clock Reference) and per-packet PTS/DTS in PES headers,
+//   guaranteeing A/V sync. Fragmented MP4's tfdt/trun atoms can cause timestamp shifts
+//   of 4-5 seconds when copying video packets from MKV containers.
+func ServeRemuxedMPEGTS(ctx context.Context, w http.ResponseWriter, ffmpegPath, filePath, audioCodec string, startSeconds float64) error {
 	args := []string{
 		"-hide_banner",
 		"-v", "error",
@@ -56,19 +58,25 @@ func ServeTranscoded(ctx context.Context, w http.ResponseWriter, ffmpegPath, fil
 
 	args = append(args,
 		"-i", filePath,
-		// Video: re-encode to H264 (guarantees timestamp sync)
-		"-c:v", "libx264",
-		"-pix_fmt", "yuv420p",
-		"-preset", "veryfast",
-		"-crf", "22",
-		"-sc_threshold", "0",
-		// Audio: AAC stereo
-		"-c:a", "aac",
-		"-ac", "2",
-		"-b:a", "192k",
-		// Output: fragmented MP4 for streaming
-		"-movflags", "frag_keyframe+empty_moov",
-		"-f", "mp4",
+		"-map", "0:v:0", // First video stream only
+		"-map", "0:a:0", // First audio stream only
+		"-c:v", "copy",  // Copy video as-is (no re-encoding!)
+	)
+
+	// Audio: transcode incompatible codecs to AAC, copy compatible ones
+	if NeedsAudioTranscode(audioCodec) {
+		args = append(args,
+			"-c:a", "aac",
+			"-ac", "2",
+			"-b:a", "192k",
+		)
+	} else {
+		args = append(args, "-c:a", "copy")
+	}
+
+	// Output: MPEG Transport Stream for proper timestamp handling
+	args = append(args,
+		"-f", "mpegts",
 		"pipe:",
 	)
 
@@ -84,43 +92,44 @@ func ServeTranscoded(ctx context.Context, w http.ResponseWriter, ffmpegPath, fil
 		return fmt.Errorf("stderr pipe: %w", err)
 	}
 
-	log.Printf("Transcode stream: %s (seek: %.1fs)", filePath, startSeconds)
-	log.Printf("Transcode cmd: %s %s", ffmpegPath, strings.Join(args, " "))
+	audioAction := "copy"
+	if NeedsAudioTranscode(audioCodec) {
+		audioAction = "aac"
+	}
+	log.Printf("MPEGTS remux: %s (audio: %s->%s, seek: %.1fs)", filePath, audioCodec, audioAction, startSeconds)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start ffmpeg: %w", err)
 	}
 
-	// Must consume stderr in a goroutine to prevent deadlock (StashApp pattern)
+	// Must consume stderr in goroutine to prevent deadlock
 	go func() {
 		stderrBytes, _ := io.ReadAll(stderr)
 		if err := cmd.Wait(); err != nil {
-			// Only log if NOT a context cancellation (client disconnect)
 			if ctx.Err() == nil {
 				errStr := string(stderrBytes)
 				if len(errStr) > 500 {
 					errStr = errStr[len(errStr)-500:]
 				}
-				log.Printf("FFmpeg transcode error: %v | stderr: %s", err, errStr)
+				log.Printf("FFmpeg MPEGTS error: %v | stderr: %s", err, errStr)
 			}
 		}
 	}()
 
-	// Set headers (StashApp pattern: no Content-Length, chunked transfer)
-	w.Header().Set("Content-Type", "video/mp4")
+	// Set headers — MPEG-TS content type, no caching, chunked transfer
+	w.Header().Set("Content-Type", "video/mp2t")
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 
 	// Pipe FFmpeg stdout directly to HTTP response
 	if _, err := io.Copy(w, stdout); err != nil {
-		// Ignore write errors from client disconnect (EPIPE, connection reset)
 		if ctx.Err() != nil {
-			return nil
+			return nil // Client disconnected, normal
 		}
-		log.Printf("Transcode stream write error: %v", err)
+		log.Printf("MPEGTS stream write error: %v", err)
 	}
 
-	// Flush if possible
 	if flusher, ok := w.(http.Flusher); ok {
 		flusher.Flush()
 	}
