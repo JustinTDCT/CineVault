@@ -1,6 +1,44 @@
-# Ignore everything by default
-*
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+cinevault
+*.test
+*.out
 
-# But not these files
-!.gitignore
-!.cursorrules
+# Go workspace
+go.work
+go.work.sum
+
+# Dependencies
+vendor/
+
+# Environment
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Media files (development)
+media/
+test-media/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

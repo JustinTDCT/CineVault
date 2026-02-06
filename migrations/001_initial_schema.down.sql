@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS duplicate_decisions;
+DROP TABLE IF EXISTS tv_seasons;
+DROP TABLE IF EXISTS tv_shows;
+DROP TABLE IF EXISTS media_items;
+DROP TABLE IF EXISTS libraries;
+DROP TABLE IF EXISTS users;
+DROP TYPE IF EXISTS duplicate_action;
+DROP TYPE IF EXISTS media_type;
+DROP TYPE IF EXISTS user_role;
