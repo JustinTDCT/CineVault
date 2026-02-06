@@ -221,19 +221,13 @@ func (s *Scanner) applyProbeData(item *models.MediaItem, probe *ffmpeg.ProbeResu
 func (s *Scanner) handleTVHierarchy(library *models.Library, item *models.MediaItem, path string) error {
 	// Try to parse show name, season, episode from path
 	relPath, _ := filepath.Rel(library.Path, path)
-	showName, seasonNum, episodeNum := s.parseTVInfo(relPath)
-
-	if showName == "" {
-		// Fallback: use top-level directory name as show name
-		parts := strings.Split(relPath, string(filepath.Separator))
-		if len(parts) > 1 {
-			showName = parts[0]
-		}
-	}
+	showName, seasonNum, episodeNum := s.parseTVInfo(relPath, library.Path)
 
 	if showName == "" {
 		return nil
 	}
+
+	log.Printf("TV parse: show=%q season=%d episode=%d (from %s)", showName, seasonNum, episodeNum, relPath)
 
 	// Find or create show
 	show, err := s.tvRepo.FindShowByTitle(library.ID, showName)
@@ -277,35 +271,69 @@ func (s *Scanner) handleTVHierarchy(library *models.Library, item *models.MediaI
 	return nil
 }
 
-func (s *Scanner) parseTVInfo(relPath string) (showName string, season, episode int) {
+// seasonDirPattern matches "Season N" or "Season NN" directory names
+var seasonDirPattern = regexp.MustCompile(`(?i)^season\s*(\d+)$`)
+
+func (s *Scanner) parseTVInfo(relPath string, libraryPath string) (showName string, season, episode int) {
+	parts := strings.Split(relPath, string(filepath.Separator))
+	filename := parts[len(parts)-1]
+
+	// --- Step 1: Extract season and episode from filename using SxxExx patterns ---
 	for _, pattern := range tvPatterns {
-		matches := pattern.FindStringSubmatch(relPath)
+		matches := pattern.FindStringSubmatch(filename)
 		if len(matches) >= 4 {
-			showName = s.cleanShowName(matches[1])
 			season, _ = strconv.Atoi(matches[2])
 			episode, _ = strconv.Atoi(matches[3])
-			return
+			break
 		}
 	}
 
-	// Try directory-based: Show/Season N/file
-	parts := strings.Split(relPath, string(filepath.Separator))
+	// --- Step 2: Determine show name from directory structure ---
+	// Structure A: Show/Season N/file.mkv  → relPath has 3+ parts, show = parts[0]
+	// Structure B: Season N/file.mkv        → library IS the show folder, use parent dir name
+	// Structure C: file.mkv                 → library IS the show folder, use parent dir name
+
 	if len(parts) >= 3 {
+		// Show/Season N/file.mkv
 		showName = parts[0]
-		seasonPart := strings.ToLower(parts[1])
-		seasonPart = strings.TrimPrefix(seasonPart, "season ")
-		seasonPart = strings.TrimPrefix(seasonPart, "season")
-		seasonPart = strings.TrimSpace(seasonPart)
-		if s, err := strconv.Atoi(seasonPart); err == nil {
-			season = s
+	} else if len(parts) == 2 {
+		// Check if first dir is "Season N" → library path is the show
+		if seasonDirPattern.MatchString(parts[0]) {
+			showName = filepath.Base(libraryPath)
+			// Also extract season from directory if not from filename
+			if season == 0 {
+				if m := seasonDirPattern.FindStringSubmatch(parts[0]); len(m) >= 2 {
+					season, _ = strconv.Atoi(m[1])
+				}
+			}
+		} else {
+			// First part is show name
+			showName = parts[0]
+		}
+	} else {
+		// Just a file directly in library root → library name is the show
+		showName = filepath.Base(libraryPath)
+	}
+
+	// --- Step 3: If season still unknown, check directory parts for "Season N" ---
+	if season == 0 {
+		for _, part := range parts[:len(parts)-1] {
+			if m := seasonDirPattern.FindStringSubmatch(part); len(m) >= 2 {
+				season, _ = strconv.Atoi(m[1])
+				break
+			}
 		}
 	}
+
+	showName = s.cleanShowName(showName)
 	return
 }
 
 func (s *Scanner) cleanShowName(name string) string {
 	name = strings.ReplaceAll(name, ".", " ")
 	name = strings.ReplaceAll(name, "_", " ")
+	// Remove trailing year in parens/brackets: "Show Name (2020)" → "Show Name"
+	name = regexp.MustCompile(`\s*[\(\[]\d{4}[\)\]]\s*$`).ReplaceAllString(name, "")
 	name = strings.TrimSpace(name)
 	return name
 }
