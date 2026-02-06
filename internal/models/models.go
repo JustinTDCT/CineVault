@@ -64,17 +64,23 @@ type User struct {
 // ──────────────────── Library ────────────────────
 
 type Library struct {
-	ID              uuid.UUID     `json:"id" db:"id"`
-	Name            string        `json:"name" db:"name"`
-	MediaType       MediaType     `json:"media_type" db:"media_type"`
-	Path            string        `json:"path" db:"path"`
-	IsEnabled       bool          `json:"is_enabled" db:"is_enabled"`
-	ScanOnStartup   bool          `json:"scan_on_startup" db:"scan_on_startup"`
-	SeasonGrouping  bool          `json:"season_grouping" db:"season_grouping"`
-	AccessLevel     LibraryAccess `json:"access_level" db:"access_level"`
-	LastScanAt      *time.Time    `json:"last_scan_at" db:"last_scan_at"`
-	CreatedAt       time.Time     `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time     `json:"updated_at" db:"updated_at"`
+	ID                uuid.UUID     `json:"id" db:"id"`
+	Name              string        `json:"name" db:"name"`
+	MediaType         MediaType     `json:"media_type" db:"media_type"`
+	Path              string        `json:"path" db:"path"`
+	IsEnabled         bool          `json:"is_enabled" db:"is_enabled"`
+	ScanOnStartup     bool          `json:"scan_on_startup" db:"scan_on_startup"`
+	SeasonGrouping    bool          `json:"season_grouping" db:"season_grouping"`
+	AccessLevel       LibraryAccess `json:"access_level" db:"access_level"`
+	IncludeInHomepage bool          `json:"include_in_homepage" db:"include_in_homepage"`
+	IncludeInSearch   bool          `json:"include_in_search" db:"include_in_search"`
+	RetrieveMetadata  bool          `json:"retrieve_metadata" db:"retrieve_metadata"`
+	AdultContentType  *string       `json:"adult_content_type,omitempty" db:"adult_content_type"`
+	LastScanAt        *time.Time    `json:"last_scan_at" db:"last_scan_at"`
+	CreatedAt         time.Time     `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time     `json:"updated_at" db:"updated_at"`
+	// Aggregated (not in DB)
+	Folders []LibraryFolder `json:"folders,omitempty" db:"-"`
 }
 
 type LibraryPermission struct {
@@ -82,6 +88,14 @@ type LibraryPermission struct {
 	LibraryID uuid.UUID `json:"library_id" db:"library_id"`
 	UserID    uuid.UUID `json:"user_id" db:"user_id"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
+
+type LibraryFolder struct {
+	ID           uuid.UUID `json:"id" db:"id"`
+	LibraryID    uuid.UUID `json:"library_id" db:"library_id"`
+	FolderPath   string    `json:"folder_path" db:"folder_path"`
+	SortPosition int       `json:"sort_position" db:"sort_position"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 }
 
 // ──────────────────── MediaItem ────────────────────

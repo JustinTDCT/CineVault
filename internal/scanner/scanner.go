@@ -89,78 +89,107 @@ func NewScanner(ffprobePath string, mediaRepo *repository.MediaRepository,
 func (s *Scanner) ScanLibrary(library *models.Library) (*models.ScanResult, error) {
 	result := &models.ScanResult{}
 
-	err := filepath.Walk(library.Path, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return nil
+	// Determine which folders to scan: use library.Folders if available, else fall back to library.Path
+	scanPaths := []string{}
+	if len(library.Folders) > 0 {
+		for _, f := range library.Folders {
+			if f.FolderPath != "" {
+				scanPaths = append(scanPaths, f.FolderPath)
+			}
 		}
+	}
+	if len(scanPaths) == 0 && library.Path != "" {
+		scanPaths = []string{library.Path}
+	}
 
-		ext := strings.ToLower(filepath.Ext(path))
-		if !s.isValidExtension(library.MediaType, ext) {
+	// Determine if metadata should be retrieved for this library
+	shouldRetrieveMetadata := library.RetrieveMetadata
+	// Adult clips: never scrape metadata regardless of library setting
+	if library.MediaType == models.MediaTypeAdultMovies && library.AdultContentType != nil && *library.AdultContentType == "clips" {
+		shouldRetrieveMetadata = false
+	}
+
+	for _, scanPath := range scanPaths {
+		log.Printf("Scanning folder: %s", scanPath)
+		err := filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+
+			ext := strings.ToLower(filepath.Ext(path))
+			if !s.isValidExtension(library.MediaType, ext) {
+				return nil
+			}
+			result.FilesFound++
+
+			// Check if file already scanned
+			existing, err := s.mediaRepo.GetByFilePath(path)
+			if err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("db check failed for %s: %v", path, err))
+				return nil
+			}
+			if existing != nil {
+				result.FilesSkipped++
+				return nil
+			}
+
+			// Create media item
+			item := &models.MediaItem{
+				ID:        uuid.New(),
+				LibraryID: library.ID,
+				MediaType: library.MediaType,
+				FilePath:  path,
+				FileName:  info.Name(),
+				FileSize:  info.Size(),
+				Title:     s.titleFromFilename(info.Name()),
+				Year:      s.extractYear(info.Name()),
+			}
+
+			// Probe with ffprobe for video/audio types
+			if s.isProbeableType(library.MediaType) {
+				probe, probeErr := s.ffprobe.Probe(path)
+				if probeErr != nil {
+					log.Printf("ffprobe failed for %s: %v", path, probeErr)
+					result.Errors = append(result.Errors, fmt.Sprintf("probe failed: %s", path))
+				} else {
+					s.applyProbeData(item, probe)
+				}
+			}
+
+			// Handle TV show hierarchy (only when season grouping is enabled)
+			if library.MediaType == models.MediaTypeTVShows && library.SeasonGrouping {
+				if err := s.handleTVHierarchy(library, item, path, scanPath); err != nil {
+					log.Printf("TV hierarchy error for %s: %v", path, err)
+				}
+			}
+
+			// Persist
+			if err := s.mediaRepo.Create(item); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("insert failed %s: %v", path, err))
+				return nil
+			}
+
+			// If TV with season grouping, increment season episode count
+			if library.SeasonGrouping && item.TVSeasonID != nil {
+				_ = s.tvRepo.IncrementEpisodeCount(*item.TVSeasonID)
+			}
+
+			// Auto-populate metadata from external sources (if enabled)
+			if shouldRetrieveMetadata {
+				s.autoPopulateMetadata(library, item)
+			}
+
+			result.FilesAdded++
 			return nil
-		}
-		result.FilesFound++
+		})
 
-		// Check if file already scanned
-		existing, err := s.mediaRepo.GetByFilePath(path)
 		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("db check failed for %s: %v", path, err))
-			return nil
+			result.Errors = append(result.Errors, fmt.Sprintf("walk error for %s: %v", scanPath, err))
 		}
-		if existing != nil {
-			result.FilesSkipped++
-			return nil
-		}
-
-		// Create media item
-		item := &models.MediaItem{
-			ID:        uuid.New(),
-			LibraryID: library.ID,
-			MediaType: library.MediaType,
-			FilePath:  path,
-			FileName:  info.Name(),
-			FileSize:  info.Size(),
-			Title:     s.titleFromFilename(info.Name()),
-			Year:      s.extractYear(info.Name()),
-		}
-
-		// Probe with ffprobe for video/audio types
-		if s.isProbeableType(library.MediaType) {
-			probe, probeErr := s.ffprobe.Probe(path)
-			if probeErr != nil {
-				log.Printf("ffprobe failed for %s: %v", path, probeErr)
-				result.Errors = append(result.Errors, fmt.Sprintf("probe failed: %s", path))
-			} else {
-				s.applyProbeData(item, probe)
-			}
-		}
-
-		// Handle TV show hierarchy (only when season grouping is enabled)
-		if library.MediaType == models.MediaTypeTVShows && library.SeasonGrouping {
-			if err := s.handleTVHierarchy(library, item, path); err != nil {
-				log.Printf("TV hierarchy error for %s: %v", path, err)
-			}
-		}
-
-		// Persist
-		if err := s.mediaRepo.Create(item); err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("insert failed %s: %v", path, err))
-			return nil
-		}
-
-		// If TV with season grouping, increment season episode count
-		if library.SeasonGrouping && item.TVSeasonID != nil {
-			_ = s.tvRepo.IncrementEpisodeCount(*item.TVSeasonID)
-		}
-
-		// Auto-populate metadata from external sources
-		s.autoPopulateMetadata(library, item)
-
-		result.FilesAdded++
-		return nil
-	})
+	}
 
 	// Post-scan: fetch episode-level metadata for matched TV shows
-	if len(s.pendingEpisodeMeta) > 0 {
+	if shouldRetrieveMetadata && len(s.pendingEpisodeMeta) > 0 {
 		log.Printf("Fetching episode metadata for %d TV show(s)...", len(s.pendingEpisodeMeta))
 		for showID, tmdbID := range s.pendingEpisodeMeta {
 			s.fetchEpisodeMetadata(showID, tmdbID)
@@ -171,7 +200,7 @@ func (s *Scanner) ScanLibrary(library *models.Library) (*models.ScanResult, erro
 	s.matchedShows = make(map[uuid.UUID]bool)
 	s.pendingEpisodeMeta = make(map[uuid.UUID]string)
 
-	return result, err
+	return result, nil
 }
 
 func (s *Scanner) isValidExtension(mediaType models.MediaType, ext string) bool {
@@ -230,10 +259,14 @@ func (s *Scanner) applyProbeData(item *models.MediaItem, probe *ffmpeg.ProbeResu
 	}
 }
 
-func (s *Scanner) handleTVHierarchy(library *models.Library, item *models.MediaItem, path string) error {
+func (s *Scanner) handleTVHierarchy(library *models.Library, item *models.MediaItem, path string, basePath ...string) error {
 	// Try to parse show name, season, episode from path
-	relPath, _ := filepath.Rel(library.Path, path)
-	showName, seasonNum, episodeNum := s.parseTVInfo(relPath, library.Path)
+	base := library.Path
+	if len(basePath) > 0 && basePath[0] != "" {
+		base = basePath[0]
+	}
+	relPath, _ := filepath.Rel(base, path)
+	showName, seasonNum, episodeNum := s.parseTVInfo(relPath, base)
 
 	if showName == "" {
 		return nil

@@ -23,13 +23,18 @@ func (s *Server) handleListLibraries(w http.ResponseWriter, r *http.Request) {
 }
 
 type createLibraryRequest struct {
-	Name           string        `json:"name"`
-	MediaType      string        `json:"media_type"`
-	Path           string        `json:"path"`
-	IsEnabled      bool          `json:"is_enabled"`
-	SeasonGrouping bool          `json:"season_grouping"`
-	AccessLevel    string        `json:"access_level"`
-	AllowedUsers   []string      `json:"allowed_users"`
+	Name              string   `json:"name"`
+	MediaType         string   `json:"media_type"`
+	Path              string   `json:"path"`
+	Folders           []string `json:"folders"`
+	IsEnabled         bool     `json:"is_enabled"`
+	SeasonGrouping    bool     `json:"season_grouping"`
+	AccessLevel       string   `json:"access_level"`
+	AllowedUsers      []string `json:"allowed_users"`
+	IncludeInHomepage *bool    `json:"include_in_homepage"`
+	IncludeInSearch   *bool    `json:"include_in_search"`
+	RetrieveMetadata  *bool    `json:"retrieve_metadata"`
+	AdultContentType  *string  `json:"adult_content_type"`
 }
 
 func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
@@ -44,19 +49,54 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 		accessLevel = models.LibraryAccessEveryone
 	}
 
+	// Defaults for booleans (true if not specified)
+	includeHomepage := true
+	if req.IncludeInHomepage != nil {
+		includeHomepage = *req.IncludeInHomepage
+	}
+	includeSearch := true
+	if req.IncludeInSearch != nil {
+		includeSearch = *req.IncludeInSearch
+	}
+	retrieveMeta := true
+	if req.RetrieveMetadata != nil {
+		retrieveMeta = *req.RetrieveMetadata
+	}
+
+	// Determine primary path from folders or path field
+	primaryPath := req.Path
+	if len(req.Folders) > 0 && req.Folders[0] != "" {
+		primaryPath = req.Folders[0]
+	}
+
 	library := models.Library{
-		ID:             uuid.New(),
-		Name:           req.Name,
-		MediaType:      models.MediaType(req.MediaType),
-		Path:           req.Path,
-		IsEnabled:      req.IsEnabled,
-		SeasonGrouping: req.SeasonGrouping,
-		AccessLevel:    accessLevel,
+		ID:                uuid.New(),
+		Name:              req.Name,
+		MediaType:         models.MediaType(req.MediaType),
+		Path:              primaryPath,
+		IsEnabled:         req.IsEnabled,
+		SeasonGrouping:    req.SeasonGrouping,
+		AccessLevel:       accessLevel,
+		IncludeInHomepage: includeHomepage,
+		IncludeInSearch:   includeSearch,
+		RetrieveMetadata:  retrieveMeta,
+		AdultContentType:  req.AdultContentType,
 	}
 
 	if err := s.libRepo.Create(&library); err != nil {
 		s.respondError(w, http.StatusInternalServerError, "failed to create library")
 		return
+	}
+
+	// Set folders
+	folders := req.Folders
+	if len(folders) == 0 && primaryPath != "" {
+		folders = []string{primaryPath}
+	}
+	if len(folders) > 0 {
+		if err := s.libRepo.SetFolders(library.ID, folders); err != nil {
+			log.Printf("Failed to set library folders: %v", err)
+		}
 	}
 
 	// Set user permissions if access_level is select_users
@@ -72,7 +112,13 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.respondJSON(w, http.StatusCreated, Response{Success: true, Data: library})
+	// Reload with folders
+	created, _ := s.libRepo.GetByID(library.ID)
+	if created != nil {
+		s.respondJSON(w, http.StatusCreated, Response{Success: true, Data: created})
+	} else {
+		s.respondJSON(w, http.StatusCreated, Response{Success: true, Data: library})
+	}
 }
 
 func (s *Server) handleGetLibrary(w http.ResponseWriter, r *http.Request) {
@@ -102,13 +148,18 @@ func (s *Server) handleGetLibrary(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateLibraryRequest struct {
-	Name           string   `json:"name"`
-	Path           string   `json:"path"`
-	IsEnabled      bool     `json:"is_enabled"`
-	ScanOnStartup  bool     `json:"scan_on_startup"`
-	SeasonGrouping bool     `json:"season_grouping"`
-	AccessLevel    string   `json:"access_level"`
-	AllowedUsers   []string `json:"allowed_users"`
+	Name              string   `json:"name"`
+	Path              string   `json:"path"`
+	Folders           []string `json:"folders"`
+	IsEnabled         bool     `json:"is_enabled"`
+	ScanOnStartup     bool     `json:"scan_on_startup"`
+	SeasonGrouping    bool     `json:"season_grouping"`
+	AccessLevel       string   `json:"access_level"`
+	AllowedUsers      []string `json:"allowed_users"`
+	IncludeInHomepage *bool    `json:"include_in_homepage"`
+	IncludeInSearch   *bool    `json:"include_in_search"`
+	RetrieveMetadata  *bool    `json:"retrieve_metadata"`
+	AdultContentType  *string  `json:"adult_content_type"`
 }
 
 func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
@@ -136,20 +187,55 @@ func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
 		accessLevel = existing.AccessLevel
 	}
 
+	// Defaults: preserve existing values if not specified
+	includeHomepage := existing.IncludeInHomepage
+	if req.IncludeInHomepage != nil {
+		includeHomepage = *req.IncludeInHomepage
+	}
+	includeSearch := existing.IncludeInSearch
+	if req.IncludeInSearch != nil {
+		includeSearch = *req.IncludeInSearch
+	}
+	retrieveMeta := existing.RetrieveMetadata
+	if req.RetrieveMetadata != nil {
+		retrieveMeta = *req.RetrieveMetadata
+	}
+	adultContentType := existing.AdultContentType
+	if req.AdultContentType != nil {
+		adultContentType = req.AdultContentType
+	}
+
+	// Determine primary path
+	primaryPath := req.Path
+	if len(req.Folders) > 0 && req.Folders[0] != "" {
+		primaryPath = req.Folders[0]
+	}
+
 	library := models.Library{
-		ID:             id,
-		Name:           req.Name,
-		MediaType:      existing.MediaType,
-		Path:           req.Path,
-		IsEnabled:      req.IsEnabled,
-		ScanOnStartup:  req.ScanOnStartup,
-		SeasonGrouping: req.SeasonGrouping,
-		AccessLevel:    accessLevel,
+		ID:                id,
+		Name:              req.Name,
+		MediaType:         existing.MediaType,
+		Path:              primaryPath,
+		IsEnabled:         req.IsEnabled,
+		ScanOnStartup:     req.ScanOnStartup,
+		SeasonGrouping:    req.SeasonGrouping,
+		AccessLevel:       accessLevel,
+		IncludeInHomepage: includeHomepage,
+		IncludeInSearch:   includeSearch,
+		RetrieveMetadata:  retrieveMeta,
+		AdultContentType:  adultContentType,
 	}
 
 	if err := s.libRepo.Update(&library); err != nil {
 		s.respondError(w, http.StatusInternalServerError, "failed to update library")
 		return
+	}
+
+	// Update folders if provided
+	if len(req.Folders) > 0 {
+		if err := s.libRepo.SetFolders(id, req.Folders); err != nil {
+			log.Printf("Failed to update library folders: %v", err)
+		}
 	}
 
 	// Update permissions

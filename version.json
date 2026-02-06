@@ -1,6 +1,6 @@
 {
-  "version": "0.7.0",
+  "version": "0.8.0",
   "phase": 3,
   "released": "2026-02-06",
-  "notes": "Auto-populate metadata on scan: automatic TMDB/MusicBrainz/OpenLibrary matching when new files are picked up, poster image download, year extraction from filenames, TV show-level metadata matching"
+  "notes": "Extended library settings: multi-folder support, homepage/search visibility toggles, metadata retrieval control, adult content type (clips vs movies), per-library permissions"
 }

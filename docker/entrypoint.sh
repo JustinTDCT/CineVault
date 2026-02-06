@@ -19,7 +19,8 @@ if [ -d /app/migrations ]; then
   for f in /app/migrations/001_initial_schema.up.sql \
            /app/migrations/002_phase2_schema.up.sql \
            /app/migrations/003_phase3_schema.up.sql \
-           /app/migrations/004_library_settings.up.sql; do
+           /app/migrations/004_library_settings.up.sql \
+           /app/migrations/005_library_extended_settings.up.sql; do
     if [ -f "$f" ]; then
       echo "  -> $(basename "$f")"
       PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f "$f" 2>&1 \

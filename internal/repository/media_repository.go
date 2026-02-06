@@ -152,6 +152,49 @@ func (r *MediaRepository) Search(query string, limit int) ([]*models.MediaItem, 
 	return items, rows.Err()
 }
 
+// SearchInLibraries searches media only within the specified library IDs.
+func (r *MediaRepository) SearchInLibraries(query string, libraryIDs []uuid.UUID, limit int) ([]*models.MediaItem, error) {
+	if len(libraryIDs) == 0 {
+		return []*models.MediaItem{}, nil
+	}
+
+	// Build parameterized IN clause
+	params := []interface{}{"%"+query+"%"}
+	inClause := ""
+	for i, id := range libraryIDs {
+		if i > 0 {
+			inClause += ","
+		}
+		params = append(params, id)
+		inClause += fmt.Sprintf("$%d", i+2)
+	}
+	params = append(params, limit)
+	limitParam := fmt.Sprintf("$%d", len(params))
+
+	searchQuery := `SELECT ` + mediaColumns + `
+		FROM media_items
+		WHERE (title ILIKE $1 OR file_name ILIKE $1)
+		  AND library_id IN (` + inClause + `)
+		ORDER BY title
+		LIMIT ` + limitParam
+
+	rows, err := r.db.Query(searchQuery, params...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (r *MediaRepository) CountByLibrary(libraryID uuid.UUID) (int, error) {
 	var count int
 	err := r.db.QueryRow(`SELECT COUNT(*) FROM media_items WHERE library_id = $1`, libraryID).Scan(&count)

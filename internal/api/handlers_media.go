@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
 )
 
@@ -53,7 +54,16 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := s.mediaRepo.Search(query, 50)
+	// Get searchable library IDs based on user access and include_in_search setting
+	userID := s.getUserID(r)
+	role := models.UserRole(r.Header.Get("X-User-Role"))
+	searchableIDs, err := s.libRepo.ListSearchableLibraryIDs(userID, role)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "search failed")
+		return
+	}
+
+	media, err := s.mediaRepo.SearchInLibraries(query, searchableIDs, 50)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, "search failed")
 		return
