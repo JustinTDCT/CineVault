@@ -166,6 +166,43 @@ func (r *EditionRepository) RemoveItem(groupID, itemID uuid.UUID) error {
 	return nil
 }
 
+// GetEditionItemByMediaID returns the edition_item row for a given media item, or nil if none.
+func (r *EditionRepository) GetEditionItemByMediaID(mediaItemID uuid.UUID) (*models.EditionItem, error) {
+	item := &models.EditionItem{}
+	query := `
+		SELECT id, edition_group_id, media_item_id, edition_type, custom_edition_name,
+		       quality_tier, display_name, is_default, sort_order, notes, added_at, added_by
+		FROM edition_items WHERE media_item_id = $1 LIMIT 1`
+	err := r.db.QueryRow(query, mediaItemID).Scan(
+		&item.ID, &item.EditionGroupID, &item.MediaItemID,
+		&item.EditionType, &item.CustomEditionName, &item.QualityTier,
+		&item.DisplayName, &item.IsDefault, &item.SortOrder, &item.Notes,
+		&item.AddedAt, &item.AddedBy,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+// UpdateEditionType updates the edition_type on an existing edition_item for a media item.
+func (r *EditionRepository) UpdateEditionType(mediaItemID uuid.UUID, editionType string) error {
+	result, err := r.db.Exec(
+		`UPDATE edition_items SET edition_type = $1 WHERE media_item_id = $2`,
+		editionType, mediaItemID)
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("no edition item found for this media item")
+	}
+	return nil
+}
+
 func (r *EditionRepository) SetDefault(groupID, itemID uuid.UUID) error {
 	tx, err := r.db.Begin()
 	if err != nil {

@@ -1,6 +1,6 @@
 {
-  "version": "0.13.0",
+  "version": "0.13.1",
   "phase": 3,
   "released": "2026-02-08",
-  "notes": "Real-time scan progress indicator with progress bar, file count, and current filename via WebSocket"
+  "notes": "Add edition type selector to media item edit modal"
 }

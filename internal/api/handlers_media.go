@@ -56,13 +56,14 @@ func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Title         string  `json:"title"`
-		SortTitle     *string `json:"sort_title"`
-		OriginalTitle *string `json:"original_title"`
-		Description   *string `json:"description"`
-		Year          *int    `json:"year"`
-		ReleaseDate   *string `json:"release_date"`
+		Title         string   `json:"title"`
+		SortTitle     *string  `json:"sort_title"`
+		OriginalTitle *string  `json:"original_title"`
+		Description   *string  `json:"description"`
+		Year          *int     `json:"year"`
+		ReleaseDate   *string  `json:"release_date"`
 		Rating        *float64 `json:"rating"`
+		EditionType   *string  `json:"edition_type"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondError(w, http.StatusBadRequest, "invalid request body")
@@ -76,6 +77,11 @@ func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 	if err := s.mediaRepo.UpdateMediaFields(id, req.Title, req.SortTitle, req.OriginalTitle, req.Description, req.Year, req.ReleaseDate, req.Rating); err != nil {
 		s.respondError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	// Update edition type if provided and item is in an edition group
+	if req.EditionType != nil && *req.EditionType != "" {
+		_ = s.editionRepo.UpdateEditionType(id, *req.EditionType)
 	}
 
 	// Return updated item
@@ -100,6 +106,35 @@ func (s *Server) handleResetMediaLock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true})
+}
+
+func (s *Server) handleGetMediaEdition(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media ID")
+		return
+	}
+
+	item, err := s.editionRepo.GetEditionItemByMediaID(id)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if item == nil {
+		s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{
+			"has_edition": false,
+		}})
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{
+		"has_edition":    true,
+		"edition_type":   item.EditionType,
+		"edition_id":     item.ID,
+		"edition_group_id": item.EditionGroupID,
+		"custom_edition_name": item.CustomEditionName,
+	}})
 }
 
 func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
