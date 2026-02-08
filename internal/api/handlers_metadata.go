@@ -2,12 +2,36 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"regexp"
 
 	"github.com/JustinTDCT/CineVault/internal/metadata"
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
 )
+
+// yearFromFilename extracts a 4-digit year from a filename, preferring the
+// year closest to the filename's path (which is most likely the content year).
+var identifyYearPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`\((\d{4})\)`),            // (2021)
+	regexp.MustCompile(`\[(\d{4})\]`),            // [2021]
+	regexp.MustCompile(`[.\s_-](\d{4})[.\s_-]`),  // .2021. or -2021-
+}
+
+func yearFromFilename(filename string) *int {
+	for _, p := range identifyYearPatterns {
+		matches := p.FindStringSubmatch(filename)
+		if len(matches) >= 2 {
+			var y int
+			fmt.Sscanf(matches[1], "%d", &y)
+			if y >= 1900 && y <= 2100 {
+				return &y
+			}
+		}
+	}
+	return nil
+}
 
 // ──────────────────── Metadata Handlers ────────────────────
 
@@ -44,21 +68,26 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 		allMatches = append(allMatches, matches...)
 	}
 
+	// Extract year from the filename (not the DB) to avoid using a previously bad match
+	fileYear := yearFromFilename(media.FileName)
+	if fileYear == nil {
+		// Try full file path if filename didn't have it
+		fileYear = yearFromFilename(media.FilePath)
+	}
+
 	// Apply year-aware scoring: boost matches with matching year, penalize mismatches
-	if media.Year != nil && *media.Year > 0 {
+	if fileYear != nil && *fileYear > 0 {
 		for _, m := range allMatches {
 			if m.Year != nil {
-				diff := *media.Year - *m.Year
+				diff := *fileYear - *m.Year
 				if diff < 0 {
 					diff = -diff
 				}
 				if diff == 0 {
 					m.Confidence = min(m.Confidence+0.15, 1.0)
 				} else if diff <= 1 {
-					// Off by one year is common (release date differences), slight boost
 					m.Confidence = min(m.Confidence+0.05, 1.0)
 				} else {
-					// Different year — strong penalty
 					m.Confidence = max(m.Confidence-0.3, 0.0)
 				}
 			}
