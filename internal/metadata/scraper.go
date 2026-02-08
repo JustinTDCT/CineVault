@@ -237,6 +237,85 @@ func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, erro
 	}, nil
 }
 
+// DetailsWithCredits bundles movie details and credits from a single TMDB API call.
+type DetailsWithCredits struct {
+	Details *models.MetadataMatch
+	Credits *TMDBCredits
+}
+
+// GetDetailsWithCredits fetches movie details + credits in a single TMDB API call
+// using append_to_response=credits, halving the number of requests per item.
+func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCredits, error) {
+	if s.apiKey == "" {
+		return nil, fmt.Errorf("TMDB API key not configured")
+	}
+
+	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&append_to_response=credits",
+		externalID, s.apiKey)
+	resp, err := s.client.Get(reqURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("TMDB request returned %d", resp.StatusCode)
+	}
+
+	var r struct {
+		ID          int     `json:"id"`
+		Title       string  `json:"title"`
+		Overview    string  `json:"overview"`
+		PosterPath  string  `json:"poster_path"`
+		ReleaseDate string  `json:"release_date"`
+		VoteAverage float64 `json:"vote_average"`
+		IMDBId      string  `json:"imdb_id"`
+		Genres      []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"genres"`
+		Credits TMDBCredits `json:"credits"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return nil, err
+	}
+
+	var year *int
+	if len(r.ReleaseDate) >= 4 {
+		y := 0
+		fmt.Sscanf(r.ReleaseDate[:4], "%d", &y)
+		year = &y
+	}
+	overview := r.Overview
+	var posterURL *string
+	if r.PosterPath != "" {
+		p := "https://image.tmdb.org/t/p/w500" + r.PosterPath
+		posterURL = &p
+	}
+	rating := r.VoteAverage
+
+	var genres []string
+	for _, g := range r.Genres {
+		genres = append(genres, g.Name)
+	}
+
+	return &DetailsWithCredits{
+		Details: &models.MetadataMatch{
+			Source:      "tmdb",
+			ExternalID:  fmt.Sprintf("%d", r.ID),
+			Title:       r.Title,
+			Year:        year,
+			Description: &overview,
+			PosterURL:   posterURL,
+			Rating:      &rating,
+			Genres:      genres,
+			IMDBId:      r.IMDBId,
+			Confidence:  1.0,
+		},
+		Credits: &r.Credits,
+	}, nil
+}
+
 // GetTVDetails fetches TV show details from TMDB including external IDs (for IMDB ID).
 func (s *TMDBScraper) GetTVDetails(externalID string) (*models.MetadataMatch, error) {
 	if s.apiKey == "" {

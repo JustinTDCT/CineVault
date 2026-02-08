@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/JustinTDCT/CineVault/internal/ffmpeg"
 	"github.com/JustinTDCT/CineVault/internal/metadata"
@@ -35,6 +37,8 @@ type Scanner struct {
 	matchedShows  map[uuid.UUID]bool
 	// pendingEpisodeMeta tracks show IDs → TMDB external IDs for post-scan episode metadata fetch
 	pendingEpisodeMeta map[uuid.UUID]string
+	// mu protects concurrent access during parallel enrichment
+	mu sync.Mutex
 }
 
 // Extension sets per media type
@@ -262,7 +266,7 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 }
 
 // reEnrichExistingItems finds items in the library that were previously TMDB-matched
-// but are missing OMDb ratings or cast/crew, and re-enriches them.
+// but are missing OMDb ratings or cast/crew, and re-enriches them using concurrent workers.
 func (s *Scanner) reEnrichExistingItems(library *models.Library, onProgress ProgressFunc) {
 	items, err := s.mediaRepo.ListItemsNeedingEnrichment(library.ID)
 	if err != nil {
@@ -273,41 +277,118 @@ func (s *Scanner) reEnrichExistingItems(library *models.Library, onProgress Prog
 		return
 	}
 
-	log.Printf("Re-enrich: %d items need OMDb ratings or cast enrichment", len(items))
-	if onProgress != nil {
-		onProgress(0, len(items), "Enriching metadata...")
+	// Pre-fetch and cache the OMDb API key once
+	var omdbKey string
+	if s.settingsRepo != nil {
+		omdbKey, _ = s.settingsRepo.Get("omdb_api_key")
 	}
 
-	for i, item := range items {
+	// Find the TMDB scraper once
+	var tmdbScraper *metadata.TMDBScraper
+	for _, sc := range s.scrapers {
+		if t, ok := sc.(*metadata.TMDBScraper); ok {
+			tmdbScraper = t
+			break
+		}
+	}
+	if tmdbScraper == nil {
+		log.Printf("Re-enrich: no TMDB scraper available")
+		return
+	}
+
+	// Filter items upfront
+	var enrichItems []*models.MediaItem
+	for _, item := range items {
 		if item.MetadataLocked {
 			continue
 		}
-
-		// For TV shows with season grouping, skip per-episode enrichment (handled at show level)
 		if item.MediaType == models.MediaTypeTVShows && item.TVShowID != nil && library.SeasonGrouping {
 			continue
 		}
+		enrichItems = append(enrichItems, item)
+	}
+	if len(enrichItems) == 0 {
+		return
+	}
 
-		// Search TMDB to get the external ID for this item
-		searchQuery := metadata.CleanTitleForSearch(item.Title)
-		if searchQuery == "" {
-			continue
-		}
+	total := len(enrichItems)
+	log.Printf("Re-enrich: %d items need OMDb ratings or cast enrichment (using 5 workers)", total)
+	if onProgress != nil {
+		onProgress(0, total, "Enriching metadata...")
+	}
 
-		match := metadata.FindBestMatch(s.scrapers, searchQuery, item.MediaType, item.Year)
-		if match == nil || match.Source != "tmdb" || match.ExternalID == "" {
-			continue
-		}
+	// Concurrent worker pool
+	const numWorkers = 5
+	itemCh := make(chan *models.MediaItem, numWorkers*2)
+	var wg sync.WaitGroup
+	var processed int64
 
-		log.Printf("Re-enrich: %q → TMDB ID %s", item.Title, match.ExternalID)
-		s.enrichWithDetails(item.ID, match.ExternalID, item.MediaType)
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for item := range itemCh {
+				s.enrichItemFast(item, tmdbScraper, omdbKey)
+				cur := atomic.AddInt64(&processed, 1)
+				if onProgress != nil && (cur%10 == 0 || int(cur) == total) {
+					onProgress(int(cur), total, item.Title)
+				}
+			}
+		}()
+	}
 
-		if onProgress != nil && (i+1)%5 == 0 || i+1 == len(items) {
-			onProgress(i+1, len(items), item.Title)
+	for _, item := range enrichItems {
+		itemCh <- item
+	}
+	close(itemCh)
+	wg.Wait()
+
+	log.Printf("Re-enrich: completed %d items", total)
+}
+
+// enrichItemFast enriches a single item using the combined TMDB details+credits endpoint
+// (1 TMDB call instead of 2) plus OMDb for ratings. Thread-safe for concurrent use.
+func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.TMDBScraper, omdbKey string) {
+	searchQuery := metadata.CleanTitleForSearch(item.Title)
+	if searchQuery == "" {
+		return
+	}
+
+	match := metadata.FindBestMatch(s.scrapers, searchQuery, item.MediaType, item.Year)
+	if match == nil || match.Source != "tmdb" || match.ExternalID == "" {
+		return
+	}
+
+	log.Printf("Re-enrich: %q → TMDB ID %s", item.Title, match.ExternalID)
+
+	// Use combined details+credits call (1 TMDB request instead of 2)
+	combined, err := tmdbScraper.GetDetailsWithCredits(match.ExternalID)
+	if err != nil {
+		log.Printf("Re-enrich: TMDB details+credits failed for %s: %v", match.ExternalID, err)
+		return
+	}
+
+	// Link genre tags
+	if s.tagRepo != nil && len(combined.Details.Genres) > 0 {
+		s.linkGenreTags(item.ID, combined.Details.Genres)
+	}
+
+	// Fetch OMDb ratings
+	if omdbKey != "" && combined.Details.IMDBId != "" {
+		ratings, err := metadata.FetchOMDbRatings(combined.Details.IMDBId, omdbKey)
+		if err != nil {
+			log.Printf("Re-enrich: OMDb fetch failed for %s: %v", combined.Details.IMDBId, err)
+		} else {
+			if err := s.mediaRepo.UpdateRatings(item.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); err != nil {
+				log.Printf("Re-enrich: ratings update failed for %s: %v", item.ID, err)
+			}
 		}
 	}
 
-	log.Printf("Re-enrich: completed for %d items", len(items))
+	// Populate cast/crew from the credits already fetched
+	if s.performerRepo != nil && combined.Credits != nil {
+		s.enrichWithCredits(item.ID, combined.Credits)
+	}
 }
 
 // MediaRepo exposes the media repository for post-scan jobs (e.g. phash).
@@ -734,7 +815,11 @@ func (s *Scanner) enrichWithCredits(itemID uuid.UUID, credits *metadata.TMDBCred
 
 // findOrCreatePerformer looks up an existing performer by name or creates a new one.
 // If the performer exists but has no photo, and a profilePath is available, downloads the photo.
+// Thread-safe: uses mutex to prevent duplicate creation from concurrent workers.
 func (s *Scanner) findOrCreatePerformer(name string, perfType models.PerformerType, profilePath string) (*models.Performer, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	existing, err := s.performerRepo.FindByName(name)
 	if err != nil {
 		return nil, err
