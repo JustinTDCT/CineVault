@@ -1611,20 +1611,28 @@
     });
 
     // ──── Metadata Identify ────
+    let _identifyMatches = [];
+    let _identifyMediaId = '';
+
     async function identifyMedia(id) {
         const mc=document.getElementById('mainContent');
         mc.innerHTML='<div class="section-header"><h2 class="section-title">Identify Media</h2></div><div id="matchList"><div class="spinner"></div> Searching external sources...</div>';
         const data=await api('POST','/media/'+id+'/identify');
         const div=document.getElementById('matchList');
-        if(data.success&&data.data&&data.data.length>0){
-            div.innerHTML=data.data.map(m=>`<div class="group-card"><div style="display:flex;gap:16px;align-items:start;"><div style="width:80px;min-width:80px;aspect-ratio:2/3;border-radius:10px;overflow:hidden;background:rgba(0,0,0,0.3);">${m.poster_url?'<img src="'+m.poster_url+'" style="width:100%;height:100%;object-fit:cover;">':'&#128247;'}</div><div><h4>${m.title}${m.year?' ('+m.year+')':''}</h4><p>${m.description?m.description.substring(0,200)+'...':''}</p><span class="tag tag-cyan">${m.source}</span><span class="tag tag-green">${Math.round(m.confidence*100)}% match</span><button class="btn-primary btn-small" style="margin-top:8px;" onclick="applyMeta('${id}',${JSON.stringify(m).replace(/'/g,"\\'")})">Apply</button></div></div></div>`).join('');
+        _identifyMediaId = id;
+        _identifyMatches = (data.success && data.data) ? data.data : [];
+        if(_identifyMatches.length>0){
+            const esc = (s) => s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '';
+            div.innerHTML=_identifyMatches.map((m,i)=>`<div class="group-card"><div style="display:flex;gap:16px;align-items:start;"><div style="width:80px;min-width:80px;aspect-ratio:2/3;border-radius:10px;overflow:hidden;background:rgba(0,0,0,0.3);">${m.poster_url?'<img src="'+m.poster_url+'" style="width:100%;height:100%;object-fit:cover;">':'&#128247;'}</div><div><h4>${esc(m.title)}${m.year?' ('+m.year+')':''}</h4><p>${m.description?esc(m.description.substring(0,200))+'...':''}</p><span class="tag tag-cyan">${m.source}</span><span class="tag tag-green">${Math.round(m.confidence*100)}% match</span><button class="btn-primary btn-small" style="margin-top:8px;" onclick="applyMatchByIndex(${i})">Apply</button></div></div></div>`).join('');
         } else div.innerHTML='<div class="empty-state"><div class="empty-state-title">No matches found</div></div>';
         div.innerHTML+='<button class="btn-secondary" style="margin-top:16px;" onclick="loadMediaDetail(\''+id+'\')">&#8592; Back</button>';
     }
 
-    async function applyMeta(id, match) {
-        const d=await api('POST','/media/'+id+'/apply-meta',match);
-        if(d.success){toast('Metadata applied!');loadMediaDetail(id);}else toast(d.error,'error');
+    async function applyMatchByIndex(idx) {
+        const match = _identifyMatches[idx];
+        if (!match) { toast('Match not found','error'); return; }
+        const d=await api('POST','/media/'+_identifyMediaId+'/apply-meta',match);
+        if(d.success){toast('Metadata applied!');loadMediaDetail(_identifyMediaId);}else toast(d.error,'error');
     }
 
     // ──── Edit Media ────
