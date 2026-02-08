@@ -507,6 +507,48 @@
         /* ── WS status ── */
         .ws-status { font-size: 0.7rem; padding: 4px 10px; border-radius: 8px; }
 
+        /* ── Task Activity Indicator ── */
+        .task-indicator {
+            position: relative; width: 36px; height: 36px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .task-indicator.active { animation: task-pulse 2s ease-in-out infinite; border-radius: 50%; }
+        @keyframes task-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(0,217,255,0.3); }
+            50% { box-shadow: 0 0 0 8px rgba(0,217,255,0); }
+        }
+        .task-ring { width: 36px; height: 36px; }
+        .task-ring-bg { fill: none; stroke: rgba(0,217,255,0.15); stroke-width: 3; }
+        .task-ring-fill { fill: none; stroke: #00D9FF; stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
+        .task-count {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 0.72rem; font-weight: 700; color: #00D9FF; pointer-events: none;
+        }
+        .task-tooltip {
+            display: none; position: absolute; top: calc(100% + 10px); right: 0;
+            background: linear-gradient(135deg, rgba(13,27,42,0.98) 0%, rgba(10,20,35,0.98) 100%);
+            border: 1px solid rgba(0,217,255,0.25); border-radius: 12px;
+            padding: 14px 16px; min-width: 280px; max-width: 340px; z-index: 200;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6); backdrop-filter: blur(20px);
+        }
+        .task-indicator:hover .task-tooltip { display: block; }
+        .task-tooltip-header {
+            font-size: 0.72rem; color: #5a6a7f; text-transform: uppercase; letter-spacing: 0.5px;
+            margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,217,255,0.1);
+        }
+        .task-tooltip-item { padding: 8px 0; border-bottom: 1px solid rgba(0,217,255,0.06); }
+        .task-tooltip-item:last-child { border-bottom: none; }
+        .task-tooltip-name { font-size: 0.82rem; color: #e5e5e5; font-weight: 600; margin-bottom: 6px; }
+        .task-tooltip-progress { display: flex; align-items: center; gap: 10px; }
+        .task-tooltip-bar {
+            flex: 1; height: 4px; background: rgba(0,217,255,0.12); border-radius: 2px; overflow: hidden;
+        }
+        .task-tooltip-bar-fill {
+            height: 100%; background: linear-gradient(90deg, #00D9FF, #0099CC); border-radius: 2px;
+            transition: width 0.4s ease;
+        }
+        .task-tooltip-pct { font-size: 0.72rem; color: #00D9FF; min-width: 36px; text-align: right; font-weight: 600; }
+
         /* ── Library Folders ── */
         .folder-list { display: flex; flex-direction: column; gap: 8px; }
         .folder-row {
@@ -647,6 +689,16 @@
                     <input type="text" placeholder="Search your media..." id="searchInput">
                 </div>
                 <div class="user-menu">
+                    <div class="task-indicator" id="taskIndicator" style="display:none;">
+                        <svg class="task-ring" viewBox="0 0 36 36">
+                            <circle class="task-ring-bg" cx="18" cy="18" r="15.9155"/>
+                            <circle class="task-ring-fill" id="taskRingFill" cx="18" cy="18" r="15.9155"
+                                stroke-dasharray="100" stroke-dashoffset="100"
+                                transform="rotate(-90 18 18)"/>
+                        </svg>
+                        <span class="task-count" id="taskCount"></span>
+                        <div class="task-tooltip" id="taskTooltip"></div>
+                    </div>
                     <span class="ws-status" id="wsStatus" style="display:none;"></span>
                     <div class="user-avatar" id="userAvatar">?</div>
                 </div>
@@ -798,6 +850,8 @@
     let hlsPlayer = null;
     let mpegtsPlayer = null;
     let currentMediaId = null;
+    const activeTasks = {};
+    let taskFadeTimer = null;
 
     function headers() { return { 'Authorization': 'Bearer ' + localStorage.getItem('token'), 'Content-Type': 'application/json' }; }
 
@@ -821,6 +875,65 @@
     function mediaIcon(type) { return MEDIA_ICONS[type] || '&#128191;'; }
     function formatDuration(sec) { if (!sec) return ''; const m = Math.floor(sec/60); const s = sec%60; return m + ':' + String(s).padStart(2,'0'); }
     function formatTime(sec) { const h = Math.floor(sec/3600); const m = Math.floor((sec%3600)/60); const s = Math.floor(sec%60); return (h>0?h+':':'')+String(m).padStart(h>0?2:1,'0')+':'+String(s).padStart(2,'0'); }
+
+    // ──── Task Activity Tracker ────
+    function handleTaskUpdate(data) {
+        const taskId = data.task_id;
+        if (!taskId) return;
+        if (data.status === 'complete' || data.status === 'failed') {
+            delete activeTasks[taskId];
+            // Keep indicator visible briefly after last task completes
+            if (Object.keys(activeTasks).length === 0) {
+                clearTimeout(taskFadeTimer);
+                taskFadeTimer = setTimeout(() => updateTaskIndicator(), 2000);
+                // Show 100% momentarily
+                const ring = document.getElementById('taskRingFill');
+                if (ring) ring.setAttribute('stroke-dashoffset', '0');
+                return;
+            }
+        } else {
+            clearTimeout(taskFadeTimer);
+            activeTasks[taskId] = {
+                type: data.task_type || 'unknown',
+                description: data.description || data.task_type || 'Task',
+                progress: data.progress || 0,
+                status: data.status || 'running'
+            };
+        }
+        updateTaskIndicator();
+    }
+
+    function updateTaskIndicator() {
+        const indicator = document.getElementById('taskIndicator');
+        const tasks = Object.values(activeTasks);
+        const count = tasks.length;
+        if (count === 0) {
+            indicator.style.display = 'none';
+            indicator.classList.remove('active');
+            return;
+        }
+        indicator.style.display = '';
+        indicator.classList.add('active');
+        // Aggregate progress (average across all active tasks)
+        const avgProgress = tasks.reduce((sum, t) => sum + (t.progress || 0), 0) / count;
+        const ring = document.getElementById('taskRingFill');
+        if (ring) ring.setAttribute('stroke-dashoffset', String(100 - avgProgress));
+        // Task count
+        const countEl = document.getElementById('taskCount');
+        if (countEl) countEl.textContent = count;
+        // Tooltip
+        const tooltip = document.getElementById('taskTooltip');
+        if (tooltip) {
+            tooltip.innerHTML = '<div class="task-tooltip-header">Active Tasks</div>' +
+                tasks.map(t => `<div class="task-tooltip-item">
+                    <div class="task-tooltip-name">${t.description}</div>
+                    <div class="task-tooltip-progress">
+                        <div class="task-tooltip-bar"><div class="task-tooltip-bar-fill" style="width:${Math.round(t.progress)}%"></div></div>
+                        <span class="task-tooltip-pct">${Math.round(t.progress)}%</span>
+                    </div>
+                </div>`).join('');
+        }
+    }
 
     // ──── WebSocket ────
     function connectWS() {
@@ -889,6 +1002,9 @@
                 }
                 break;
             }
+            case 'task:update':
+                handleTaskUpdate(msg.data);
+                break;
             case 'job:progress': break;
             default: break;
         }

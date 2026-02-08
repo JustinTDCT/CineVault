@@ -69,9 +69,16 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		return fmt.Errorf("get library: %w", err)
 	}
 
+	taskID := "scan:" + p.LibraryID
+	taskDesc := "Scanning: " + library.Name
+
 	log.Printf("Job: scanning library %q", library.Name)
 	if h.notifier != nil {
 		h.notifier.Broadcast("scan:start", map[string]string{"library_id": p.LibraryID, "name": library.Name})
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskScanLibrary,
+			"status": "running", "progress": 0, "description": taskDesc,
+		})
 	}
 
 	// Build a throttled progress callback to broadcast scan progress via WebSocket
@@ -83,11 +90,19 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 			// Throttle: broadcast at most every 500ms, plus always on last item
 			if now.Sub(lastBroadcast) >= 500*time.Millisecond || current == total {
 				lastBroadcast = now
+				pct := 0
+				if total > 0 {
+					pct = int(float64(current) / float64(total) * 100)
+				}
 				h.notifier.Broadcast("scan:progress", map[string]interface{}{
 					"library_id": p.LibraryID,
 					"current":    current,
 					"total":      total,
 					"filename":   filename,
+				})
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskScanLibrary,
+					"status": "running", "progress": pct, "description": taskDesc,
 				})
 			}
 		}
@@ -95,6 +110,12 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 
 	result, err := h.scanner.ScanLibrary(library, progressFn)
 	if err != nil {
+		if h.notifier != nil {
+			h.notifier.Broadcast("task:update", map[string]interface{}{
+				"task_id": taskID, "task_type": TaskScanLibrary,
+				"status": "failed", "progress": 0, "description": taskDesc,
+			})
+		}
 		return fmt.Errorf("scan: %w", err)
 	}
 
@@ -105,6 +126,10 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		h.notifier.Broadcast("scan:complete", map[string]interface{}{
 			"library_id": p.LibraryID,
 			"result":     result,
+		})
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskScanLibrary,
+			"status": "complete", "progress": 100, "description": taskDesc,
 		})
 	}
 
@@ -157,6 +182,9 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 		return fmt.Errorf("unmarshal: %w", err)
 	}
 
+	taskID := "phash:" + p.LibraryID
+	taskDesc := "Analyzing duplicates"
+
 	libID, _ := uuid.Parse(p.LibraryID)
 	items, err := h.mediaRepo.ListItemsNeedingPhash(libID)
 	if err != nil {
@@ -168,8 +196,17 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 	}
 
 	log.Printf("Phash: computing phash for %d items in library %s", len(items), p.LibraryID)
+
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskPhashLibrary,
+			"status": "running", "progress": 0, "description": taskDesc,
+		})
+	}
+
 	computed := 0
-	for _, item := range items {
+	var lastTaskBroadcast time.Time
+	for i, item := range items {
 		select {
 		case <-ctx.Done():
 			log.Printf("Phash: cancelled after %d/%d items", computed, len(items))
@@ -187,6 +224,19 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 			continue
 		}
 		computed++
+
+		// Broadcast task progress (throttled to every 500ms, plus always on last item)
+		if h.notifier != nil {
+			now := time.Now()
+			if now.Sub(lastTaskBroadcast) >= 500*time.Millisecond || i == len(items)-1 {
+				lastTaskBroadcast = now
+				pct := int(float64(i+1) / float64(len(items)) * 100)
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskPhashLibrary,
+					"status": "running", "progress": pct, "description": taskDesc,
+				})
+			}
+		}
 	}
 
 	log.Printf("Phash: computed %d/%d hashes, checking for potential duplicates", computed, len(items))
@@ -219,9 +269,13 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 	log.Printf("Phash: found %d potential duplicate pairs in library %s", dupCount, p.LibraryID)
 	if h.notifier != nil {
 		h.notifier.Broadcast("phash:complete", map[string]interface{}{
-			"library_id":     p.LibraryID,
-			"computed":       computed,
+			"library_id":      p.LibraryID,
+			"computed":        computed,
 			"duplicate_pairs": dupCount,
+		})
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskPhashLibrary,
+			"status": "complete", "progress": 100, "description": taskDesc,
 		})
 	}
 	return nil
