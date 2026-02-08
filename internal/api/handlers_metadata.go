@@ -44,6 +44,36 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 		allMatches = append(allMatches, matches...)
 	}
 
+	// Apply year-aware scoring: boost matches with matching year, penalize mismatches
+	if media.Year != nil && *media.Year > 0 {
+		for _, m := range allMatches {
+			if m.Year != nil {
+				diff := *media.Year - *m.Year
+				if diff < 0 {
+					diff = -diff
+				}
+				if diff == 0 {
+					m.Confidence = min(m.Confidence+0.15, 1.0)
+				} else if diff <= 1 {
+					// Off by one year is common (release date differences), slight boost
+					m.Confidence = min(m.Confidence+0.05, 1.0)
+				} else {
+					// Different year — strong penalty
+					m.Confidence = max(m.Confidence-0.3, 0.0)
+				}
+			}
+		}
+	}
+
+	// Sort by confidence descending
+	for i := 0; i < len(allMatches); i++ {
+		for j := i + 1; j < len(allMatches); j++ {
+			if allMatches[j].Confidence > allMatches[i].Confidence {
+				allMatches[i], allMatches[j] = allMatches[j], allMatches[i]
+			}
+		}
+	}
+
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: allMatches})
 }
 
