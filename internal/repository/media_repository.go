@@ -388,6 +388,37 @@ func (r *MediaRepository) ListDuplicateItems() ([]*models.MediaItem, error) {
 	return items, rows.Err()
 }
 
+// ListItemsNeedingEnrichment returns items in a library that have a title/description
+// (i.e. were TMDB-matched) but are missing OMDb ratings or have no linked performers.
+func (r *MediaRepository) ListItemsNeedingEnrichment(libraryID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + `
+		FROM media_items mi
+		WHERE mi.library_id = $1
+		  AND mi.metadata_locked = false
+		  AND mi.description IS NOT NULL
+		  AND mi.description != ''
+		  AND (
+		    mi.imdb_rating IS NULL
+		    OR NOT EXISTS (SELECT 1 FROM media_performers mp WHERE mp.media_item_id = mi.id)
+		  )
+		  AND mi.media_type IN ('movies','tv_shows','music_videos','home_videos','other_videos','adult_movies')
+		ORDER BY mi.title`
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 // CountUnreviewedDuplicates returns how many items have unreviewed duplicate status.
 func (r *MediaRepository) CountUnreviewedDuplicates() (int, error) {
 	var count int

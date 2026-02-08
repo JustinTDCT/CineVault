@@ -249,11 +249,65 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 		}
 	}
 
+	// Post-scan: re-enrich existing items that are missing OMDb ratings or cast
+	if shouldRetrieveMetadata && len(s.scrapers) > 0 {
+		s.reEnrichExistingItems(library, onProgress)
+	}
+
 	// Reset trackers for next scan
 	s.matchedShows = make(map[uuid.UUID]bool)
 	s.pendingEpisodeMeta = make(map[uuid.UUID]string)
 
 	return result, nil
+}
+
+// reEnrichExistingItems finds items in the library that were previously TMDB-matched
+// but are missing OMDb ratings or cast/crew, and re-enriches them.
+func (s *Scanner) reEnrichExistingItems(library *models.Library, onProgress ProgressFunc) {
+	items, err := s.mediaRepo.ListItemsNeedingEnrichment(library.ID)
+	if err != nil {
+		log.Printf("Re-enrich: failed to list items: %v", err)
+		return
+	}
+	if len(items) == 0 {
+		return
+	}
+
+	log.Printf("Re-enrich: %d items need OMDb ratings or cast enrichment", len(items))
+	if onProgress != nil {
+		onProgress(0, len(items), "Enriching metadata...")
+	}
+
+	for i, item := range items {
+		if item.MetadataLocked {
+			continue
+		}
+
+		// For TV shows with season grouping, skip per-episode enrichment (handled at show level)
+		if item.MediaType == models.MediaTypeTVShows && item.TVShowID != nil && library.SeasonGrouping {
+			continue
+		}
+
+		// Search TMDB to get the external ID for this item
+		searchQuery := metadata.CleanTitleForSearch(item.Title)
+		if searchQuery == "" {
+			continue
+		}
+
+		match := metadata.FindBestMatch(s.scrapers, searchQuery, item.MediaType, item.Year)
+		if match == nil || match.Source != "tmdb" || match.ExternalID == "" {
+			continue
+		}
+
+		log.Printf("Re-enrich: %q → TMDB ID %s", item.Title, match.ExternalID)
+		s.enrichWithDetails(item.ID, match.ExternalID, item.MediaType)
+
+		if onProgress != nil && (i+1)%5 == 0 || i+1 == len(items) {
+			onProgress(i+1, len(items), item.Title)
+		}
+	}
+
+	log.Printf("Re-enrich: completed for %d items", len(items))
 }
 
 // MediaRepo exposes the media repository for post-scan jobs (e.g. phash).
