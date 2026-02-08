@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/jobs"
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
+	"github.com/hibiken/asynq"
 )
 
 func (s *Server) handleListLibraries(w http.ResponseWriter, r *http.Request) {
@@ -285,11 +287,12 @@ func (s *Server) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If job queue is available, enqueue async scan
+	// If job queue is available, enqueue async scan (deduplicated by library ID)
 	if s.jobQueue != nil {
-		jobID, err := s.jobQueue.Enqueue(jobs.TaskScanLibrary, jobs.ScanPayload{
+		uniqueID := "scan:" + id.String()
+		jobID, err := s.jobQueue.EnqueueUnique(jobs.TaskScanLibrary, jobs.ScanPayload{
 			LibraryID: id.String(),
-		})
+		}, uniqueID, asynq.Timeout(6*time.Hour), asynq.Retention(1*time.Hour))
 		if err != nil {
 			// Fallback to synchronous scan
 			log.Printf("Failed to enqueue scan job, falling back to sync: %v", err)

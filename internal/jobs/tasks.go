@@ -138,9 +138,11 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		})
 	}
 
-	// Trigger phash computation as a follow-up background job
+	// Trigger phash computation as a follow-up background job (deduplicated by library ID)
 	if h.queue != nil {
-		if _, err := h.queue.Enqueue(TaskPhashLibrary, PhashLibraryPayload{LibraryID: p.LibraryID}); err != nil {
+		uniqueID := "phash:" + p.LibraryID
+		if _, err := h.queue.EnqueueUnique(TaskPhashLibrary, PhashLibraryPayload{LibraryID: p.LibraryID}, uniqueID,
+			asynq.Timeout(6*time.Hour), asynq.Retention(1*time.Hour)); err != nil {
 			log.Printf("Job: failed to enqueue phash job for library %s: %v", p.LibraryID, err)
 		} else {
 			log.Printf("Job: enqueued phash computation for library %s", p.LibraryID)

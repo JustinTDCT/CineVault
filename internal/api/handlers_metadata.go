@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/metadata"
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
+	"github.com/hibiken/asynq"
 )
 
 // yearFromFilename extracts a 4-digit year from a filename, preferring the
@@ -370,11 +372,12 @@ func (s *Server) handleAutoMatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Enqueue as async job
+	// Enqueue as async job (deduplicated by library ID)
 	if s.jobQueue != nil {
-		jobID, err := s.jobQueue.Enqueue("metadata:scrape", map[string]string{
+		uniqueID := "metadata:" + libID.String()
+		jobID, err := s.jobQueue.EnqueueUnique("metadata:scrape", map[string]string{
 			"library_id": libID.String(),
-		})
+		}, uniqueID, asynq.Timeout(6*time.Hour), asynq.Retention(1*time.Hour))
 		if err != nil {
 			s.respondError(w, http.StatusInternalServerError, err.Error())
 			return
