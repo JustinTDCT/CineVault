@@ -71,10 +71,41 @@
         .nav-item.active::before { opacity: 1; }
         .nav-icon { width: 22px; text-align: center; font-size: 1rem; }
         .nav-badge {
-            margin-left: auto;
             background: linear-gradient(135deg, rgba(0,217,255,0.25) 0%, rgba(0,153,204,0.2) 100%);
             color: #00D9FF; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600;
         }
+
+        /* ── Sidebar Library Context Menu ── */
+        .nav-item-lib { position: relative; }
+        .nav-item-lib .nav-lib-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .nav-lib-dots {
+            width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+            border-radius: 6px; cursor: pointer; color: #5a6a7f; font-size: 1rem; font-weight: 700;
+            opacity: 0; transition: all 0.2s; flex-shrink: 0; margin-left: auto;
+            letter-spacing: 1px; line-height: 1;
+        }
+        .nav-item-lib:hover .nav-lib-dots,
+        .nav-item-lib .nav-lib-dots.active { opacity: 1; }
+        .nav-lib-dots:hover { background: rgba(0,217,255,0.15); color: #00D9FF; }
+        .nav-item-lib:hover .nav-badge { display: none !important; }
+
+        .lib-ctx-menu {
+            position: absolute; left: 20px; top: 100%; z-index: 1000;
+            background: linear-gradient(135deg, #1a2332 0%, #0d1b2a 100%);
+            border: 1px solid rgba(0,217,255,0.25); border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5); min-width: 200px;
+            padding: 6px 0; display: none; animation: ctxFadeIn 0.15s ease;
+        }
+        .lib-ctx-menu.open { display: block; }
+        @keyframes ctxFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        .lib-ctx-item {
+            padding: 10px 16px; color: #b8c5d6; font-size: 0.82rem; cursor: pointer;
+            display: flex; align-items: center; gap: 10px; transition: all 0.15s;
+        }
+        .lib-ctx-item:hover { background: rgba(0,217,255,0.1); color: #00D9FF; }
+        .lib-ctx-item .ctx-icon { width: 18px; text-align: center; font-size: 0.9rem; }
+        .lib-ctx-sep { height: 1px; background: rgba(0,217,255,0.1); margin: 4px 12px; }
+        .lib-ctx-item.admin-only { }
 
         /* ── Main Content ── */
         .main-content { flex: 1; overflow-y: auto; padding: 35px 45px; }
@@ -896,14 +927,18 @@
             const nav = document.getElementById('librariesNav');
             // Keep the label, rebuild items
             nav.innerHTML = '<div class="nav-label">Libraries</div>';
+            const isAdmin = currentUser && currentUser.role === 'admin';
             for (const lib of allLibraries) {
                 const icon = MEDIA_ICONS[lib.media_type] || '&#128218;';
                 const item = document.createElement('div');
-                item.className = 'nav-item';
+                item.className = 'nav-item nav-item-lib';
                 item.dataset.view = 'library';
                 item.dataset.id = lib.id;
-                item.innerHTML = `<span class="nav-icon">${icon}</span><span>${lib.name}</span><span class="nav-badge" id="badge-lib-${lib.id}" style="display:none;"></span>`;
-                item.addEventListener('click', () => navigate('library', lib.id));
+                item.innerHTML = `<span class="nav-icon">${icon}</span><span class="nav-lib-name">${lib.name}</span><span class="nav-badge" id="badge-lib-${lib.id}" style="display:none;"></span><span class="nav-lib-dots" data-lib-id="${lib.id}" title="Library options">&#8943;</span><div class="lib-ctx-menu" id="ctx-menu-${lib.id}">${isAdmin ? '<div class="lib-ctx-item admin-only" onclick="showEditLibraryForm(\''+lib.id+'\')"><span class="ctx-icon">&#9998;</span> Edit Library</div><div class="lib-ctx-sep"></div>' : ''}<div class="lib-ctx-item" onclick="sidebarScanLibrary(\'${lib.id}\')"><span class="ctx-icon">&#128269;</span> Scan Library</div><div class="lib-ctx-item" onclick="sidebarMetadataRefresh(\'${lib.id}\')"><span class="ctx-icon">&#8635;</span> Metadata Refresh</div></div>`;
+                item.querySelector('.nav-lib-name').addEventListener('click', () => navigate('library', lib.id));
+                item.querySelector('.nav-icon').addEventListener('click', () => navigate('library', lib.id));
+                const dotsBtn = item.querySelector('.nav-lib-dots');
+                dotsBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleLibCtxMenu(lib.id); });
                 nav.appendChild(item);
             }
             // Load counts
@@ -926,6 +961,201 @@
                 }
             } catch {}
         } catch {}
+    }
+
+    // ──── Sidebar Library Context Menu ────
+    function toggleLibCtxMenu(libId) {
+        const menu = document.getElementById('ctx-menu-' + libId);
+        const dots = menu?.previousElementSibling;
+        const wasOpen = menu.classList.contains('open');
+        closeAllCtxMenus();
+        if (!wasOpen) {
+            menu.classList.add('open');
+            if (dots) dots.classList.add('active');
+        }
+    }
+    function closeAllCtxMenus() {
+        document.querySelectorAll('.lib-ctx-menu.open').forEach(m => m.classList.remove('open'));
+        document.querySelectorAll('.nav-lib-dots.active').forEach(d => d.classList.remove('active'));
+    }
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.nav-lib-dots') && !e.target.closest('.lib-ctx-menu')) closeAllCtxMenus();
+    });
+
+    function sidebarScanLibrary(libId) {
+        closeAllCtxMenus();
+        toast('Scan started...');
+        api('POST', '/libraries/' + libId + '/scan').then(data => {
+            if (data.success) {
+                if (data.data.job_id) { /* progress via WebSocket */ }
+                else { toast(`Scan: ${data.data.files_added} added, ${data.data.files_found} total`); loadSidebarCounts(); }
+            } else toast('Scan failed: ' + (data.error || 'Unknown'), 'error');
+        }).catch(e => toast('Scan error: ' + e.message, 'error'));
+    }
+
+    function sidebarMetadataRefresh(libId) {
+        closeAllCtxMenus();
+        const lib = allLibraries.find(l => l.id === libId);
+        if (lib && !lib.retrieve_metadata) { toast('Metadata retrieval is disabled for this library', 'error'); return; }
+        toast('Metadata refresh started — unlocked items will be updated...');
+        api('POST', '/libraries/' + libId + '/auto-match').then(data => {
+            if (data.success) toast('Metadata refresh queued');
+            else toast('Failed: ' + (data.error || 'Unknown'), 'error');
+        }).catch(e => toast('Error: ' + e.message, 'error'));
+    }
+
+    async function showEditLibraryForm(libId) {
+        closeAllCtxMenus();
+        const data = await api('GET', '/libraries/' + libId);
+        if (!data.success) { toast('Failed to load library', 'error'); return; }
+        const lib = data.data;
+        const mc = document.getElementById('mainContent');
+        const types = Object.entries(MEDIA_LABELS).map(([k,v])=>`<option value="${k}" ${k===lib.media_type?'selected':''}>${v}</option>`).join('');
+        const folders = (lib.folders && lib.folders.length > 0) ? lib.folders : [{ folder_path: lib.path }];
+        const folderRows = folders.map((f, i) => `<div class="folder-row" data-idx="${i}">
+            <input type="text" class="lib-folder-input" placeholder="/media/folder" style="flex:1;" value="${f.folder_path || ''}">
+            <button class="btn-secondary" onclick="openFolderBrowser(${i})" style="white-space:nowrap;padding:8px 12px;font-size:0.8rem;">&#128193; Browse</button>
+            ${i > 0 ? '<button class="folder-remove" onclick="removeFolderRow(this)" title="Remove folder">&#10005;</button>' : ''}
+        </div>`).join('');
+
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Edit Library</h2></div>
+        <div style="max-width:560px;">
+            <input type="hidden" id="editLibId" value="${lib.id}">
+            <div class="form-group"><label>Name</label><input type="text" id="libName" value="${lib.name}"></div>
+            <div class="form-group"><label>Media Type</label><select id="libType" disabled>${types}</select>
+                <p style="color:#5a6a7f;font-size:0.75rem;margin-top:4px;">Media type cannot be changed after creation</p>
+            </div>
+
+            <div class="form-group">
+                <label>Folders</label>
+                <p style="color:#8a9bae;font-size:0.78rem;margin-bottom:8px;">At least one folder is required. Add more to scan multiple locations.</p>
+                <div class="folder-list" id="folderList">${folderRows}</div>
+                <button class="folder-add-btn" onclick="addFolderRow()">+ Add Folder</button>
+            </div>
+            <div id="pathBrowser" style="display:none;margin-bottom:18px;background:rgba(0,0,0,0.3);border:1px solid rgba(0,217,255,0.15);border-radius:12px;padding:14px;max-height:350px;overflow-y:auto;"></div>
+
+            <div id="seasonGroupingOpt" style="${lib.media_type === 'tv_shows' ? '' : 'display:none;'}">
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Group by Season</div>
+                        <div class="option-row-desc">Parse SxxExx from filenames to group episodes by season</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="seasonGrouping" value="yes" ${lib.season_grouping?'checked':''}><span>Yes</span></label>
+                        <label><input type="radio" name="seasonGrouping" value="no" ${!lib.season_grouping?'checked':''}><span>No</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <div id="adultContentOpt" style="${lib.media_type === 'adult_movies' ? '' : 'display:none;'}">
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Content Type</div>
+                        <div class="option-row-desc">Clips &amp; Scenes will not retrieve metadata. Movies will scrape from TMDB.</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="adultContentType" value="movies" ${(!lib.adult_content_type || lib.adult_content_type === 'movies')?'checked':''}><span>Movies</span></label>
+                        <label><input type="radio" name="adultContentType" value="clips" ${lib.adult_content_type === 'clips'?'checked':''}><span>Clips</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Library Permissions</label>
+                <select id="libAccess" onchange="onAccessChange()">
+                    <option value="everyone" ${lib.access_level==='everyone'?'selected':''}>Everyone</option>
+                    <option value="select_users" ${lib.access_level==='select_users'?'selected':''}>Select People</option>
+                    <option value="admin_only" ${lib.access_level==='admin_only'?'selected':''}>Admin Only</option>
+                </select>
+            </div>
+            <div id="userSelectPanel" style="${lib.access_level==='select_users'?'':'display:none;'}margin-bottom:18px;background:rgba(0,0,0,0.3);border:1px solid rgba(0,217,255,0.15);border-radius:12px;padding:14px;">
+                <p style="color:#8a9bae;font-size:0.8rem;margin-bottom:10px;">Select users who can access this library:</p>
+                <div id="userCheckboxList"><div class="spinner"></div></div>
+            </div>
+
+            <div style="margin-bottom:18px;">
+                <label style="display:block;margin-bottom:10px;font-weight:600;color:#e5e5e5;">Library Options</label>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Include in Homepage</div>
+                        <div class="option-row-desc">Show this library's media on the home screen</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="includeHomepage" value="yes" ${lib.include_in_homepage?'checked':''}><span>Yes</span></label>
+                        <label><input type="radio" name="includeHomepage" value="no" ${!lib.include_in_homepage?'checked':''}><span>No</span></label>
+                    </div>
+                </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Include in Search</div>
+                        <div class="option-row-desc">Allow this library's items to appear in search results</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="includeSearch" value="yes" ${lib.include_in_search?'checked':''}><span>Yes</span></label>
+                        <label><input type="radio" name="includeSearch" value="no" ${!lib.include_in_search?'checked':''}><span>No</span></label>
+                    </div>
+                </div>
+                <div class="option-row" id="metadataOpt">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Retrieve Metadata</div>
+                        <div class="option-row-desc">Auto-populate from TMDB/MusicBrainz/OpenLibrary on scan</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="retrieveMetadata" value="yes" ${lib.retrieve_metadata?'checked':''}><span>Yes</span></label>
+                        <label><input type="radio" name="retrieveMetadata" value="no" ${!lib.retrieve_metadata?'checked':''}><span>No</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn-primary" onclick="saveEditLibrary()">Save Changes</button>
+            <button class="btn-secondary" style="margin-left:12px;" onclick="loadLibrariesView()">Cancel</button>
+        </div>`;
+
+        // Load user checkboxes if select_users
+        if (lib.access_level === 'select_users') {
+            const usersData = await api('GET', '/users');
+            const list = document.getElementById('userCheckboxList');
+            const allowed = lib.allowed_users ? lib.allowed_users.map(u => u.toString()) : [];
+            if (usersData.success && usersData.data && usersData.data.length > 0) {
+                list.innerHTML = usersData.data.filter(u => u.role !== 'admin').map(u =>
+                    `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;color:#e5e5e5;">
+                        <input type="checkbox" class="user-perm-cb" value="${u.id}" ${allowed.includes(u.id)?'checked':''}>
+                        <span>${u.username}</span>
+                        <span style="color:#5a6a7f;font-size:0.75rem;margin-left:auto;">${u.role}</span>
+                    </label>`
+                ).join('');
+                if (list.innerHTML === '') list.innerHTML = '<p style="color:#5a6a7f;font-size:0.85rem;">No non-admin users found</p>';
+            }
+        }
+    }
+
+    async function saveEditLibrary() {
+        const id = document.getElementById('editLibId').value;
+        const name = document.getElementById('libName').value;
+        const media_type = document.getElementById('libType').value;
+        const folderInputs = document.querySelectorAll('.lib-folder-input');
+        const folders = [...folderInputs].map(i => i.value.trim()).filter(Boolean);
+        if (!name || folders.length === 0) { toast('Name and at least one folder required', 'error'); return; }
+
+        const season_grouping = media_type === 'tv_shows' && document.querySelector('input[name="seasonGrouping"]:checked')?.value === 'yes';
+        const access_level = document.getElementById('libAccess').value;
+        const allowed_users = [...document.querySelectorAll('.user-perm-cb:checked')].map(cb => cb.value);
+        const include_in_homepage = document.querySelector('input[name="includeHomepage"]:checked')?.value === 'yes';
+        const include_in_search = document.querySelector('input[name="includeSearch"]:checked')?.value === 'yes';
+        const retrieve_metadata = document.querySelector('input[name="retrieveMetadata"]:checked')?.value === 'yes';
+
+        let adult_content_type = null;
+        if (media_type === 'adult_movies') {
+            adult_content_type = document.querySelector('input[name="adultContentType"]:checked')?.value || 'movies';
+        }
+
+        const d = await api('PUT', '/libraries/' + id, {
+            name, path: folders[0], folders, is_enabled: true,
+            season_grouping, access_level, allowed_users,
+            include_in_homepage, include_in_search, retrieve_metadata, adult_content_type
+        });
+        if (d.success) { toast('Library updated!'); loadLibrariesView(); loadSidebarCounts(); }
+        else toast('Failed: ' + d.error, 'error');
     }
 
     // ──── Navigation ────

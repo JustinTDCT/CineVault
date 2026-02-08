@@ -1,6 +1,6 @@
 {
-  "version": "0.15.1",
+  "version": "0.16.0",
   "phase": 3,
   "released": "2026-02-08",
-  "notes": "Fix metadata matching: pass year to TMDB API search and strengthen year mismatch penalty"
+  "notes": "Add sidebar library context menu with Edit, Scan, and Metadata Refresh actions"
 }
