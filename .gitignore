@@ -18,6 +18,7 @@ vendor/
 # Environment
 .env
 .env.local
+.env.production
 
 # Database
 *.db
@@ -28,17 +29,36 @@ vendor/
 *.log
 logs/
 
-# Media files (development)
+# Media files
 media/
 test-media/
+/previews/
+/thumbnails/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE / Editor
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# Cursor
+.cursor/
+.cursor-server/
+.cursorrules
+
+# Docker build artifacts
+.docker/
+
+# Backups
+*.tar.gz
+*.bak
+*.backup
+
+# Misc
+*.tmp
+tmp/
