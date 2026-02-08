@@ -35,6 +35,7 @@ type Server struct {
 	performerRepo  *repository.PerformerRepository
 	tagRepo        *repository.TagRepository
 	studioRepo     *repository.StudioRepository
+	settingsRepo   *repository.SettingsRepository
 	jobRepo        *repository.JobRepository
 	scanner        *scanner.Scanner
 	transcoder     *stream.Transcoder
@@ -71,8 +72,11 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 	scrapers = append(scrapers, metadata.NewMusicBrainzScraper())
 	scrapers = append(scrapers, metadata.NewOpenLibraryScraper())
 
+	tagRepo := repository.NewTagRepository(database.DB)
+	settingsRepo := repository.NewSettingsRepository(database.DB)
+
 	posterDir := cfg.Paths.Preview
-	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo, scrapers, posterDir)
+	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo, tagRepo, settingsRepo, scrapers, posterDir)
 	transcoder := stream.NewTranscoder(cfg.FFmpeg.FFmpegPath, cfg.Paths.Preview)
 
 	wsHub := NewWSHub()
@@ -93,8 +97,9 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 		collectionRepo: repository.NewCollectionRepository(database.DB),
 		watchRepo:      repository.NewWatchHistoryRepository(database.DB),
 		performerRepo:  repository.NewPerformerRepository(database.DB),
-		tagRepo:        repository.NewTagRepository(database.DB),
+		tagRepo:        tagRepo,
 		studioRepo:     repository.NewStudioRepository(database.DB),
+		settingsRepo:   settingsRepo,
 		jobRepo:        repository.NewJobRepository(database.DB),
 		scanner:        sc,
 		transcoder:     transcoder,
@@ -181,6 +186,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("DELETE /api/v1/media/{id}/performers/{performerId}", s.authMiddleware(s.handleUnlinkPerformer, models.RoleAdmin))
 
 	// Media - Tags
+	s.router.HandleFunc("GET /api/v1/media/{id}/tags", s.authMiddleware(s.handleGetMediaTags, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/media/{id}/tags", s.authMiddleware(s.handleAssignTags, models.RoleAdmin))
 	s.router.HandleFunc("DELETE /api/v1/media/{id}/tags/{tagId}", s.authMiddleware(s.handleRemoveTag, models.RoleAdmin))
 
@@ -259,6 +265,10 @@ func (s *Server) setupRoutes() {
 	// Playback preferences
 	s.router.HandleFunc("GET /api/v1/settings/playback", s.authMiddleware(s.handleGetPlaybackPrefs, models.RoleUser))
 	s.router.HandleFunc("PUT /api/v1/settings/playback", s.authMiddleware(s.handleUpdatePlaybackPrefs, models.RoleUser))
+
+	// System settings (admin only)
+	s.router.HandleFunc("GET /api/v1/settings/system", s.authMiddleware(s.handleGetSystemSettings, models.RoleAdmin))
+	s.router.HandleFunc("PUT /api/v1/settings/system", s.authMiddleware(s.handleUpdateSystemSettings, models.RoleAdmin))
 }
 
 // ──────────────────── Middleware ────────────────────

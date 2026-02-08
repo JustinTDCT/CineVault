@@ -26,6 +26,7 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	artist_id, album_id, track_number, disc_number,
 	author_id, book_id, chapter_number,
 	image_gallery_id, sister_group_id,
+	imdb_rating, rt_rating, audience_score,
 	sort_position, metadata_locked, duplicate_status, added_at, updated_at`
 
 func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.MediaItem, error) {
@@ -42,6 +43,7 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.ArtistID, &item.AlbumID, &item.TrackNumber, &item.DiscNumber,
 		&item.AuthorID, &item.BookID, &item.ChapterNumber,
 		&item.ImageGalleryID, &item.SisterGroupID,
+		&item.IMDBRating, &item.RTRating, &item.AudienceScore,
 		&item.SortPosition, &item.MetadataLocked, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
@@ -217,6 +219,13 @@ func (r *MediaRepository) UpdateMetadata(id uuid.UUID, title string, year *int, 
 	query := `UPDATE media_items SET title = $1, year = $2, description = $3, rating = $4,
 		poster_path = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6`
 	_, err := r.db.Exec(query, title, year, description, rating, posterPath, id)
+	return err
+}
+
+func (r *MediaRepository) UpdateRatings(id uuid.UUID, imdbRating *float64, rtRating *int, audienceScore *int) error {
+	query := `UPDATE media_items SET imdb_rating = $1, rt_rating = $2, audience_score = $3,
+		updated_at = CURRENT_TIMESTAMP WHERE id = $4`
+	_, err := r.db.Exec(query, imdbRating, rtRating, audienceScore, id)
 	return err
 }
 

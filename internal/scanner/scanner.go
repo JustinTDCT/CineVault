@@ -26,6 +26,8 @@ type Scanner struct {
 	musicRepo     *repository.MusicRepository
 	audiobookRepo *repository.AudiobookRepository
 	galleryRepo   *repository.GalleryRepository
+	tagRepo       *repository.TagRepository
+	settingsRepo  *repository.SettingsRepository
 	scrapers      []metadata.Scraper
 	posterDir     string
 	// matchedShows tracks TV show IDs already matched this scan to avoid duplicate lookups
@@ -73,6 +75,7 @@ var yearPatterns = []*regexp.Regexp{
 func NewScanner(ffprobePath string, mediaRepo *repository.MediaRepository,
 	tvRepo *repository.TVRepository, musicRepo *repository.MusicRepository,
 	audiobookRepo *repository.AudiobookRepository, galleryRepo *repository.GalleryRepository,
+	tagRepo *repository.TagRepository, settingsRepo *repository.SettingsRepository,
 	scrapers []metadata.Scraper, posterDir string,
 ) *Scanner {
 	return &Scanner{
@@ -82,6 +85,8 @@ func NewScanner(ffprobePath string, mediaRepo *repository.MediaRepository,
 		musicRepo:          musicRepo,
 		audiobookRepo:      audiobookRepo,
 		galleryRepo:        galleryRepo,
+		tagRepo:            tagRepo,
+		settingsRepo:       settingsRepo,
 		scrapers:           scrapers,
 		posterDir:          posterDir,
 		matchedShows:       make(map[uuid.UUID]bool),
@@ -501,7 +506,92 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		match.Description, match.Rating, posterPath); err != nil {
 		log.Printf("Auto-match: DB update failed for %s: %v", item.ID, err)
 	}
+
+	// Get TMDB details for genres and IMDB ID
+	if match.Source == "tmdb" {
+		s.enrichWithDetails(item.ID, match.ExternalID)
+	}
 }
+
+// enrichWithDetails fetches TMDB details, creates genre tags, and optionally fetches OMDb ratings.
+func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string) {
+	// Find the TMDB scraper
+	var tmdbScraper *metadata.TMDBScraper
+	for _, sc := range s.scrapers {
+		if t, ok := sc.(*metadata.TMDBScraper); ok {
+			tmdbScraper = t
+			break
+		}
+	}
+	if tmdbScraper == nil {
+		return
+	}
+
+	details, err := tmdbScraper.GetDetails(tmdbExternalID)
+	if err != nil {
+		log.Printf("Auto-match: TMDB details failed for %s: %v", tmdbExternalID, err)
+		return
+	}
+
+	// Create/link genre tags
+	if s.tagRepo != nil && len(details.Genres) > 0 {
+		s.linkGenreTags(itemID, details.Genres)
+	}
+
+	// Fetch OMDb ratings if key is configured
+	if s.settingsRepo != nil && details.IMDBId != "" {
+		omdbKey, err := s.settingsRepo.Get("omdb_api_key")
+		if err != nil {
+			log.Printf("Auto-match: settings lookup failed: %v", err)
+			return
+		}
+		if omdbKey != "" {
+			ratings, err := metadata.FetchOMDbRatings(details.IMDBId, omdbKey)
+			if err != nil {
+				log.Printf("Auto-match: OMDb fetch failed for %s: %v", details.IMDBId, err)
+				return
+			}
+			if err := s.mediaRepo.UpdateRatings(itemID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); err != nil {
+				log.Printf("Auto-match: ratings update failed for %s: %v", itemID, err)
+			}
+		}
+	}
+}
+
+// linkGenreTags creates genre tags (if they don't exist) and links them to the media item.
+func (s *Scanner) linkGenreTags(itemID uuid.UUID, genres []string) {
+	for _, genre := range genres {
+		// Look for existing tag with category=genre and matching name
+		existing, _ := s.tagRepo.List("genre")
+		var tagID uuid.UUID
+		found := false
+		for _, t := range existing {
+			if strings.EqualFold(t.Name, genre) {
+				tagID = t.ID
+				found = true
+				break
+			}
+		}
+		if !found {
+			// Create the genre tag
+			tagID = uuid.New()
+			tag := &models.Tag{
+				ID:       tagID,
+				Name:     genre,
+				Category: models.TagCategoryGenre,
+			}
+			if err := s.tagRepo.Create(tag); err != nil {
+				log.Printf("Auto-match: create genre tag %q failed: %v", genre, err)
+				continue
+			}
+		}
+		// Link tag to media item
+		if err := s.tagRepo.AssignToMedia(itemID, tagID); err != nil {
+			log.Printf("Auto-match: assign genre tag %q to %s failed: %v", genre, itemID, err)
+		}
+	}
+}
+
 
 // autoMatchTVShow searches for a TV show and applies metadata to the show record,
 // then fetches episode-level metadata from TMDB for each season.

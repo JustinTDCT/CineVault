@@ -1,6 +1,6 @@
 {
-  "version": "0.10.0",
+  "version": "0.11.0",
   "phase": 3,
   "released": "2026-02-08",
-  "notes": "Duplicate & edition rework: MD5 hashing for exact duplicates, phash for potential duplicates, unified Duplicate Review UI with Edit/Merge-as-Edition/Delete/Ignore actions, removed standalone Editions and Sister Groups pages"
+  "notes": "Metadata enrichment: genre auto-tagging from TMDB, IMDB/Rotten Tomatoes/Audience ratings via OMDb API, system settings for API keys, ratings display in media detail view"
 }

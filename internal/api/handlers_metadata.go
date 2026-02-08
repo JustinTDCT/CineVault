@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/JustinTDCT/CineVault/internal/metadata"
 	"github.com/JustinTDCT/CineVault/internal/models"
@@ -116,13 +117,15 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Source     string  `json:"source"`
-		ExternalID string  `json:"external_id"`
-		Title      string  `json:"title"`
-		Year       *int    `json:"year"`
-		Description *string `json:"description"`
-		PosterURL  *string `json:"poster_url"`
-		Rating     *float64 `json:"rating"`
+		Source      string   `json:"source"`
+		ExternalID  string   `json:"external_id"`
+		Title       string   `json:"title"`
+		Year        *int     `json:"year"`
+		Description *string  `json:"description"`
+		PosterURL   *string  `json:"poster_url"`
+		Rating      *float64 `json:"rating"`
+		Genres      []string `json:"genres"`
+		IMDBId      string   `json:"imdb_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondError(w, http.StatusBadRequest, "invalid request body")
@@ -162,7 +165,77 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Link genre tags
+	if len(req.Genres) > 0 {
+		s.linkGenreTags(mediaID, req.Genres)
+	}
+
+	// If source is TMDB and we have an external ID, fetch details for IMDB ID and OMDb ratings
+	imdbID := req.IMDBId
+	if imdbID == "" && req.Source == "tmdb" && req.ExternalID != "" {
+		// Fetch TMDB details to get IMDB ID
+		for _, sc := range s.scrapers {
+			if t, ok := sc.(*metadata.TMDBScraper); ok {
+				details, detailErr := t.GetDetails(req.ExternalID)
+				if detailErr == nil && details.IMDBId != "" {
+					imdbID = details.IMDBId
+					// Also link genres from details if not already provided
+					if len(req.Genres) == 0 && len(details.Genres) > 0 {
+						s.linkGenreTags(mediaID, details.Genres)
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// Fetch OMDb ratings if we have an IMDB ID
+	if imdbID != "" {
+		omdbKey, keyErr := s.settingsRepo.Get("omdb_api_key")
+		if keyErr == nil && omdbKey != "" {
+			ratings, omdbErr := metadata.FetchOMDbRatings(imdbID, omdbKey)
+			if omdbErr != nil {
+				log.Printf("Apply metadata: OMDb fetch failed for %s: %v", imdbID, omdbErr)
+			} else {
+				if dbErr := s.mediaRepo.UpdateRatings(mediaID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); dbErr != nil {
+					log.Printf("Apply metadata: ratings update failed for %s: %v", mediaID, dbErr)
+				}
+			}
+		}
+	}
+
 	s.respondJSON(w, http.StatusOK, Response{Success: true})
+}
+
+// linkGenreTags creates genre tags (if they don't exist) and links them to a media item.
+func (s *Server) linkGenreTags(mediaItemID uuid.UUID, genres []string) {
+	for _, genre := range genres {
+		existing, _ := s.tagRepo.List("genre")
+		var tagID uuid.UUID
+		found := false
+		for _, t := range existing {
+			if strings.EqualFold(t.Name, genre) {
+				tagID = t.ID
+				found = true
+				break
+			}
+		}
+		if !found {
+			tagID = uuid.New()
+			tag := &models.Tag{
+				ID:       tagID,
+				Name:     genre,
+				Category: models.TagCategoryGenre,
+			}
+			if err := s.tagRepo.Create(tag); err != nil {
+				log.Printf("Apply metadata: create genre tag %q failed: %v", genre, err)
+				continue
+			}
+		}
+		if err := s.tagRepo.AssignToMedia(mediaItemID, tagID); err != nil {
+			log.Printf("Apply metadata: assign genre tag %q to %s failed: %v", genre, mediaItemID, err)
+		}
+	}
 }
 
 func (s *Server) handleAutoMatch(w http.ResponseWriter, r *http.Request) {
@@ -304,6 +377,37 @@ func (s *Server) handleUpdatePlaybackPrefs(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	s.respondJSON(w, http.StatusOK, Response{Success: true})
+}
+
+// ──────────────────── System Settings ────────────────────
+
+func (s *Server) handleGetSystemSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := s.settingsRepo.GetAll()
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// Mask sensitive keys for display
+	if key, ok := settings["omdb_api_key"]; ok && len(key) > 4 {
+		settings["omdb_api_key"] = key[:4] + strings.Repeat("*", len(key)-4)
+	}
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: settings})
+}
+
+func (s *Server) handleUpdateSystemSettings(w http.ResponseWriter, r *http.Request) {
+	var req map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	for key, value := range req {
+		if err := s.settingsRepo.Set(key, value); err != nil {
+			s.respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	s.respondJSON(w, http.StatusOK, Response{Success: true})
 }

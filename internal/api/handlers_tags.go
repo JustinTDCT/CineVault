@@ -78,6 +78,20 @@ func (s *Server) handleDeleteTag(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, Response{Success: true})
 }
 
+func (s *Server) handleGetMediaTags(w http.ResponseWriter, r *http.Request) {
+	mediaID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media id")
+		return
+	}
+	tags, err := s.tagRepo.GetMediaTags(mediaID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: tags})
+}
+
 func (s *Server) handleAssignTags(w http.ResponseWriter, r *http.Request) {
 	mediaID, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

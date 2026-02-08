@@ -367,6 +367,21 @@
         .job-progress-bar { flex: 1; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
         .job-progress-fill { height: 100%; background: linear-gradient(90deg, #00D9FF, #0099CC); border-radius: 3px; transition: width 0.3s; }
 
+        /* ── Ratings Row ── */
+        .ratings-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
+        .rating-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 12px; font-size: 0.82rem; font-weight: 600; }
+        .rating-tmdb { background: rgba(1,180,228,0.15); color: #01b4e4; border: 1px solid rgba(1,180,228,0.3); }
+        .rating-imdb { background: rgba(245,197,24,0.15); color: #f5c518; border: 1px solid rgba(245,197,24,0.3); }
+        .rating-rt { background: rgba(250,50,10,0.15); color: #fa320a; border: 1px solid rgba(250,50,10,0.3); }
+        .rating-audience { background: rgba(100,200,100,0.15); color: #64c864; border: 1px solid rgba(100,200,100,0.3); }
+        .rating-badge .rating-icon { font-size: 1rem; }
+        .rating-badge .rating-value { font-size: 0.95rem; font-weight: 700; }
+        .rating-badge .rating-label { font-size: 0.72rem; color: #8a9bae; font-weight: 400; }
+
+        /* ── Genre Tags ── */
+        .genre-tags { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+        .genre-tag { padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 500; background: rgba(168,85,247,0.15); color: #c084fc; border: 1px solid rgba(168,85,247,0.25); cursor: default; }
+
         /* ── Duplicate Review ── */
         .dup-group { padding: 24px; border-radius: 16px; background: linear-gradient(135deg, rgba(26,35,50,0.6) 0%, rgba(13,27,42,0.8) 100%); border: 1px solid rgba(0,217,255,0.15); margin-bottom: 20px; }
         .dup-group-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
@@ -912,7 +927,10 @@
     }
 
     // ──── Media Detail ────
+    var _detailMediaId = null;
+
     async function loadMediaDetail(id) {
+        _detailMediaId = id;
         const mc = document.getElementById('mainContent');
         mc.innerHTML = '<div class="spinner"></div> Loading...';
         const data = await api('GET', '/media/' + id);
@@ -921,6 +939,18 @@
         const dur = m.duration_seconds ? formatDuration(m.duration_seconds) : '';
         const meta = [m.year, dur, m.resolution, m.codec].filter(Boolean).join(' \u00b7 ');
 
+        // Build ratings row
+        let ratingsHTML = '';
+        const hasAnyRating = m.rating || m.imdb_rating || m.rt_rating != null || m.audience_score != null;
+        if (hasAnyRating) {
+            ratingsHTML = '<div class="ratings-row">';
+            if (m.rating) ratingsHTML += `<div class="rating-badge rating-tmdb"><span class="rating-icon">&#11088;</span><span class="rating-value">${m.rating.toFixed(1)}</span><span class="rating-label">TMDB</span></div>`;
+            if (m.imdb_rating) ratingsHTML += `<div class="rating-badge rating-imdb"><span class="rating-icon">&#127902;</span><span class="rating-value">${m.imdb_rating.toFixed(1)}</span><span class="rating-label">IMDb</span></div>`;
+            if (m.rt_rating != null) ratingsHTML += `<div class="rating-badge rating-rt"><span class="rating-icon">&#127813;</span><span class="rating-value">${m.rt_rating}%</span><span class="rating-label">Rotten Tomatoes</span></div>`;
+            if (m.audience_score != null) ratingsHTML += `<div class="rating-badge rating-audience"><span class="rating-icon">&#128101;</span><span class="rating-value">${m.audience_score}%</span><span class="rating-label">Audience</span></div>`;
+            ratingsHTML += '</div>';
+        }
+
         mc.innerHTML = `
             <div class="detail-hero">
                 <div class="detail-poster">${m.poster_path ? '<img src="'+m.poster_path+'">' : mediaIcon(m.media_type)}</div>
@@ -928,6 +958,8 @@
                     <h1>${m.title}</h1>
                     <div class="meta-row">${meta}</div>
                     ${m.description ? '<p class="description">'+m.description+'</p>' : ''}
+                    <div id="detailGenreTags" class="genre-tags"></div>
+                    ${ratingsHTML}
                     <div class="detail-actions">
                         <button class="btn-primary" onclick="playMedia('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#9654; Play</button>
                         <button class="btn-secondary" onclick="playDirect('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#128190; Direct Play</button>
@@ -942,10 +974,10 @@
                         ${m.bitrate ? '<span class="tag tag-orange">'+(m.bitrate/1000).toFixed(0)+' kbps</span>' : ''}
                     </div>
                     <div class="detail-tabs">
-                        <button class="detail-tab active" onclick="showDetailTab(this,'info')">Info</button>
-                        <button class="detail-tab" onclick="showDetailTab(this,'cast')">Cast</button>
-                        <button class="detail-tab" onclick="showDetailTab(this,'tags-tab')">Tags</button>
-                        <button class="detail-tab" onclick="showDetailTab(this,'file')">File</button>
+                        <button class="detail-tab active" onclick="showDetailTab(this,'info','${m.id}')">Info</button>
+                        <button class="detail-tab" onclick="showDetailTab(this,'cast','${m.id}')">Cast</button>
+                        <button class="detail-tab" onclick="showDetailTab(this,'tags-tab','${m.id}')">Tags</button>
+                        <button class="detail-tab" onclick="showDetailTab(this,'file','${m.id}')">File</button>
                     </div>
                     <div class="detail-tab-content" id="detailTabContent">
                         <table style="width:100%;font-size:0.85rem;">
@@ -959,12 +991,58 @@
                 </div>
             </div>
             <button class="btn-secondary" onclick="navigate('home')">&#8592; Back</button>`;
+
+        // Load genre tags for this item
+        loadMediaGenreTags(id);
     }
 
-    function showDetailTab(btn, tab) {
+    async function loadMediaGenreTags(mediaId) {
+        const tagData = await api('GET', '/media/' + mediaId + '/tags');
+        const container = document.getElementById('detailGenreTags');
+        if (!container) return;
+        if (tagData.success && tagData.data && tagData.data.length > 0) {
+            const genreTags = tagData.data.filter(t => t.category === 'genre');
+            if (genreTags.length > 0) {
+                container.innerHTML = genreTags.map(t => `<span class="genre-tag">${t.name}</span>`).join('');
+            }
+        }
+    }
+
+    async function showDetailTab(btn, tab, mediaId) {
         btn.parentElement.querySelectorAll('.detail-tab').forEach(t => t.classList.remove('active'));
         btn.classList.add('active');
-        // Tab content would load dynamically here - for now just switch label
+        const tc = document.getElementById('detailTabContent');
+        if (!tc) return;
+        if (tab === 'tags-tab') {
+            tc.innerHTML = '<div class="spinner"></div>';
+            // Fetch tags for this media item
+            const res = await api('GET', '/media/' + mediaId + '/tags');
+            if (res.success && res.data && res.data.length > 0) {
+                tc.innerHTML = '<div class="genre-tags">' + res.data.map(t =>
+                    `<span class="genre-tag">${t.name}</span>`
+                ).join('') + '</div>';
+            } else {
+                tc.innerHTML = '<p style="color:#5a6a7f;">No tags assigned</p>';
+            }
+        } else if (tab === 'info') {
+            loadMediaDetail(mediaId);
+        } else if (tab === 'cast') {
+            tc.innerHTML = '<p style="color:#5a6a7f;">No cast information available</p>';
+        } else if (tab === 'file') {
+            tc.innerHTML = '<p style="color:#5a6a7f;">Loading file info...</p>';
+            const data = await api('GET', '/media/' + mediaId);
+            if (data.success) {
+                const m = data.data;
+                tc.innerHTML = `<table style="width:100%;font-size:0.85rem;">
+                    <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">File</td><td>${m.file_name}</td></tr>
+                    <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Path</td><td style="word-break:break-all;">${m.file_path}</td></tr>
+                    ${m.width ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Resolution</td><td>'+m.width+'x'+m.height+'</td></tr>' : ''}
+                    ${m.codec ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Video Codec</td><td>'+m.codec+'</td></tr>' : ''}
+                    ${m.file_hash ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">MD5 Hash</td><td style="font-family:monospace;font-size:0.78rem;">'+m.file_hash+'</td></tr>' : ''}
+                    <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Added</td><td>${new Date(m.added_at).toLocaleString()}</td></tr>
+                </table>`;
+            }
+        }
     }
 
     // ──── Media Type View ────
@@ -1722,9 +1800,14 @@
     async function loadSettingsView() {
         const mc=document.getElementById('mainContent');
         mc.innerHTML=`<div class="section-header"><h2 class="section-title">Settings</h2></div><div class="settings-grid" id="settingsGrid"><div class="spinner"></div></div>`;
-        const prefs=await api('GET','/settings/playback');
+        const [prefs, sysSett] = await Promise.all([
+            api('GET','/settings/playback'),
+            currentUser?.role==='admin' ? api('GET','/settings/system') : Promise.resolve({success:false})
+        ]);
         const p=prefs.success?prefs.data:{playback_mode:'always_ask',preferred_quality:'1080p',auto_play_next:true};
-        document.getElementById('settingsGrid').innerHTML=`
+        const sys=sysSett.success?sysSett.data:{};
+
+        let html = `
             <div class="settings-card">
                 <h3>Playback Preferences</h3>
                 <div class="form-group"><label>Edition Playback Mode</label><select id="setPbMode"><option value="always_ask" ${p.playback_mode==='always_ask'?'selected':''}>Always Ask</option><option value="play_default" ${p.playback_mode==='play_default'?'selected':''}>Play Default</option><option value="highest_quality" ${p.playback_mode==='highest_quality'?'selected':''}>Highest Quality</option><option value="lowest_quality" ${p.playback_mode==='lowest_quality'?'selected':''}>Lowest Quality</option><option value="last_played" ${p.playback_mode==='last_played'?'selected':''}>Last Played</option></select></div>
@@ -1737,6 +1820,25 @@
                 <p style="color:#8a9bae;margin-bottom:12px;">Logged in as <strong style="color:#00D9FF;">${currentUser?.username}</strong></p>
                 <p style="color:#8a9bae;">Role: <span class="tag tag-cyan">${currentUser?.role}</span></p>
             </div>`;
+
+        if (currentUser?.role==='admin') {
+            html += `
+            <div class="settings-card" style="grid-column:1/-1;">
+                <h3>Metadata Enrichment</h3>
+                <p style="color:#8a9bae;margin-bottom:16px;">Configure external API keys for additional metadata enrichment. An OMDb API key enables IMDB ratings, Rotten Tomatoes scores, and audience scores.</p>
+                <div class="form-group">
+                    <label>OMDb API Key</label>
+                    <div style="display:flex;gap:10px;">
+                        <input type="password" id="setOmdbKey" value="${sys.omdb_api_key||''}" placeholder="Enter your OMDb API key" style="flex:1;">
+                        <button class="btn-secondary" onclick="document.getElementById('setOmdbKey').type=document.getElementById('setOmdbKey').type==='password'?'text':'password'">&#128065;</button>
+                    </div>
+                    <p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">Get a free key at <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" style="color:#00D9FF;">omdbapi.com</a></p>
+                </div>
+                <button class="btn-primary" onclick="saveSystemSettings()">Save API Key</button>
+            </div>`;
+        }
+
+        document.getElementById('settingsGrid').innerHTML = html;
     }
 
     async function savePlaybackPrefs() {
@@ -1746,6 +1848,12 @@
             auto_play_next: document.getElementById('setPbAutoPlay').checked
         });
         if(d.success) toast('Settings saved!'); else toast(d.error,'error');
+    }
+
+    async function saveSystemSettings() {
+        const key = document.getElementById('setOmdbKey').value.trim();
+        const d = await api('PUT', '/settings/system', { omdb_api_key: key });
+        if(d.success) toast('System settings saved!'); else toast(d.error,'error');
     }
 
     // ──── Admin ────

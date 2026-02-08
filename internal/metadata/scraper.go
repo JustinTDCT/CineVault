@@ -33,16 +33,28 @@ func NewTMDBScraper(apiKey string) *TMDBScraper {
 
 func (s *TMDBScraper) Name() string { return "tmdb" }
 
+// tmdbGenreMap maps TMDB genre IDs to human-readable names (movies).
+var tmdbGenreMap = map[int]string{
+	28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
+	99: "Documentary", 18: "Drama", 10751: "Family", 14: "Fantasy", 36: "History",
+	27: "Horror", 10402: "Music", 9648: "Mystery", 10749: "Romance",
+	878: "Science Fiction", 10770: "TV Movie", 53: "Thriller", 10752: "War", 37: "Western",
+	// TV-specific
+	10759: "Action & Adventure", 10762: "Kids", 10763: "News", 10764: "Reality",
+	10765: "Sci-Fi & Fantasy", 10766: "Soap", 10767: "Talk", 10768: "War & Politics",
+}
+
 type tmdbSearchResult struct {
 	Results []struct {
-		ID          int     `json:"id"`
-		Title       string  `json:"title"`
-		Name        string  `json:"name"`
-		Overview    string  `json:"overview"`
-		PosterPath  string  `json:"poster_path"`
-		ReleaseDate string  `json:"release_date"`
-		FirstAirDate string `json:"first_air_date"`
-		VoteAverage float64 `json:"vote_average"`
+		ID           int     `json:"id"`
+		Title        string  `json:"title"`
+		Name         string  `json:"name"`
+		Overview     string  `json:"overview"`
+		PosterPath   string  `json:"poster_path"`
+		ReleaseDate  string  `json:"release_date"`
+		FirstAirDate string  `json:"first_air_date"`
+		VoteAverage  float64 `json:"vote_average"`
+		GenreIDs     []int   `json:"genre_ids"`
 	} `json:"results"`
 }
 
@@ -93,6 +105,12 @@ func (s *TMDBScraper) Search(query string, mediaType models.MediaType) ([]*model
 			posterURL = &p
 		}
 		rating := r.VoteAverage
+		var genres []string
+		for _, gid := range r.GenreIDs {
+			if name, ok := tmdbGenreMap[gid]; ok {
+				genres = append(genres, name)
+			}
+		}
 		matches = append(matches, &models.MetadataMatch{
 			Source:      "tmdb",
 			ExternalID:  fmt.Sprintf("%d", r.ID),
@@ -101,6 +119,7 @@ func (s *TMDBScraper) Search(query string, mediaType models.MediaType) ([]*model
 			Description: &overview,
 			PosterURL:   posterURL,
 			Rating:      &rating,
+			Genres:      genres,
 			Confidence:  titleSimilarity(query, title),
 		})
 	}
@@ -175,6 +194,11 @@ func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, erro
 		PosterPath  string  `json:"poster_path"`
 		ReleaseDate string  `json:"release_date"`
 		VoteAverage float64 `json:"vote_average"`
+		IMDBId      string  `json:"imdb_id"`
+		Genres      []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"genres"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, err
@@ -194,6 +218,11 @@ func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, erro
 	}
 	rating := r.VoteAverage
 
+	var genres []string
+	for _, g := range r.Genres {
+		genres = append(genres, g.Name)
+	}
+
 	return &models.MetadataMatch{
 		Source:      "tmdb",
 		ExternalID:  fmt.Sprintf("%d", r.ID),
@@ -202,6 +231,8 @@ func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, erro
 		Description: &overview,
 		PosterURL:   posterURL,
 		Rating:      &rating,
+		Genres:      genres,
+		IMDBId:      r.IMDBId,
 		Confidence:  1.0,
 	}, nil
 }
@@ -378,4 +409,75 @@ func (s *OpenLibraryScraper) GetDetails(externalID string) (*models.MetadataMatc
 		ExternalID: externalID,
 		Confidence: 1.0,
 	}, nil
+}
+
+// ──────────────────── OMDb ────────────────────
+
+// OMDbRatings holds the ratings fetched from the OMDb API.
+type OMDbRatings struct {
+	IMDBRating    *float64 // e.g. 7.8
+	RTScore       *int     // Rotten Tomatoes critic % (0-100)
+	AudienceScore *int     // Rotten Tomatoes audience % (0-100) – mapped from "Internet Movie Database" audience or Metacritic
+}
+
+// FetchOMDbRatings calls the OMDb API with the given IMDB ID and API key,
+// returning IMDB rating, Rotten Tomatoes score, and audience score.
+func FetchOMDbRatings(imdbID, apiKey string) (*OMDbRatings, error) {
+	if imdbID == "" || apiKey == "" {
+		return nil, fmt.Errorf("imdb_id and api_key are required")
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	reqURL := fmt.Sprintf("http://www.omdbapi.com/?i=%s&apikey=%s", url.QueryEscape(imdbID), url.QueryEscape(apiKey))
+
+	resp, err := client.Get(reqURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var omdb struct {
+		Response string `json:"Response"`
+		Error    string `json:"Error"`
+		IMDBRating string `json:"imdbRating"`
+		Ratings []struct {
+			Source string `json:"Source"`
+			Value  string `json:"Value"`
+		} `json:"Ratings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&omdb); err != nil {
+		return nil, err
+	}
+	if omdb.Response == "False" {
+		return nil, fmt.Errorf("OMDb error: %s", omdb.Error)
+	}
+
+	result := &OMDbRatings{}
+
+	// Parse IMDB rating (e.g. "7.8")
+	if omdb.IMDBRating != "" && omdb.IMDBRating != "N/A" {
+		var r float64
+		fmt.Sscanf(omdb.IMDBRating, "%f", &r)
+		result.IMDBRating = &r
+	}
+
+	// Parse ratings array
+	for _, rating := range omdb.Ratings {
+		switch rating.Source {
+		case "Rotten Tomatoes":
+			// Value is like "92%"
+			var pct int
+			fmt.Sscanf(rating.Value, "%d%%", &pct)
+			result.RTScore = &pct
+		case "Metacritic":
+			// Value is like "76/100" – use as audience score fallback
+			if result.AudienceScore == nil {
+				var score int
+				fmt.Sscanf(rating.Value, "%d/", &score)
+				result.AudienceScore = &score
+			}
+		}
+	}
+
+	return result, nil
 }
