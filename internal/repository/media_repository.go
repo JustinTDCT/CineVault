@@ -203,6 +203,42 @@ func (r *MediaRepository) CountByLibrary(libraryID uuid.UUID) (int, error) {
 	return count, err
 }
 
+// LetterIndex returns the cumulative offset for each starting letter (sorted alphabetically).
+// Result: [{"letter":"#","count":5,"offset":0},{"letter":"A","count":120,"offset":5}, ...]
+func (r *MediaRepository) LetterIndex(libraryID uuid.UUID) ([]map[string]interface{}, error) {
+	query := `
+		SELECT
+			CASE WHEN UPPER(LEFT(COALESCE(sort_title, title), 1)) BETWEEN 'A' AND 'Z'
+			     THEN UPPER(LEFT(COALESCE(sort_title, title), 1))
+			     ELSE '#' END AS letter,
+			COUNT(*) AS cnt
+		FROM media_items WHERE library_id = $1
+		GROUP BY letter ORDER BY letter`
+
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []map[string]interface{}
+	cumOffset := 0
+	for rows.Next() {
+		var letter string
+		var count int
+		if err := rows.Scan(&letter, &count); err != nil {
+			return nil, err
+		}
+		result = append(result, map[string]interface{}{
+			"letter": letter,
+			"count":  count,
+			"offset": cumOffset,
+		})
+		cumOffset += count
+	}
+	return result, rows.Err()
+}
+
 func (r *MediaRepository) Delete(id uuid.UUID) error {
 	result, err := r.db.Exec(`DELETE FROM media_items WHERE id = $1`, id)
 	if err != nil {

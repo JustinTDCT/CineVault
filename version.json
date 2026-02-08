@@ -1,6 +1,6 @@
 {
-  "version": "0.14.0",
+  "version": "0.15.0",
   "phase": 3,
   "released": "2026-02-08",
-  "notes": "Edition type on media_items: parse {edition-XXX} from filenames, strip tags from titles, always-visible edition dropdown in edit modal"
+  "notes": "Infinite scroll media grid with A-Z alpha jump bar; paginated API with limit/offset"
 }

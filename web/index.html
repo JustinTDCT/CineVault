@@ -89,7 +89,32 @@
         .view-all:hover { color: #00D9FF; background: rgba(0,217,255,0.1); }
 
         /* ── Media Grid ── */
+        .media-grid-wrapper { display: flex; gap: 0; position: relative; }
+        .media-grid-wrapper .media-grid { flex: 1; min-width: 0; }
         .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 22px; margin-bottom: 40px; }
+
+        /* ── Alpha Jump Bar ── */
+        .alpha-jump {
+            position: sticky; top: 0; right: 0; align-self: flex-start;
+            display: flex; flex-direction: column; align-items: center;
+            padding: 6px 2px; margin-left: 4px; z-index: 10;
+            background: rgba(13,27,42,0.85); backdrop-filter: blur(8px);
+            border-radius: 12px; border: 1px solid rgba(0,217,255,0.1);
+            user-select: none; min-width: 28px;
+        }
+        .alpha-jump-letter {
+            font-size: 0.65rem; font-weight: 600; color: #4a6274;
+            padding: 2px 6px; cursor: pointer; border-radius: 4px;
+            transition: all 0.15s; line-height: 1.4; text-align: center;
+        }
+        .alpha-jump-letter:hover { color: #00D9FF; background: rgba(0,217,255,0.12); }
+        .alpha-jump-letter.active { color: #00D9FF; background: rgba(0,217,255,0.18); }
+        .alpha-jump-letter.disabled { color: #2a3a4a; cursor: default; }
+        .alpha-jump-letter.disabled:hover { background: none; color: #2a3a4a; }
+
+        /* ── Load More / Scroll Sentinel ── */
+        .load-more-sentinel { grid-column: 1 / -1; display: flex; justify-content: center; padding: 20px; }
+        .load-more-sentinel .spinner { width: 28px; height: 28px; }
         .media-card { cursor: pointer; transition: all 0.3s cubic-bezier(0.4,0,0.2,1); position: relative; }
         .media-card:hover { transform: translateY(-8px); }
 
@@ -1130,18 +1155,157 @@
         }
     }
 
-    // ──── Media Type View ────
+    // ──── Paginated Media Grid with Alpha Jump ────
+    let _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [] };
+
+    function teardownGrid() {
+        if (_gridState.observer) { _gridState.observer.disconnect(); _gridState.observer = null; }
+        _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [] };
+    }
+
+    async function loadMoreMedia() {
+        if (_gridState.loading || _gridState.done) return;
+        _gridState.loading = true;
+        const m = await api('GET', '/libraries/' + _gridState.libraryId + '/media?limit=200&offset=' + _gridState.offset);
+        const items = (m.success && m.data && m.data.items) ? m.data.items : [];
+        _gridState.total = m.data ? m.data.total : _gridState.total;
+
+        const grid = document.getElementById('libGrid');
+        if (!grid) { _gridState.loading = false; return; }
+
+        // Remove sentinel before appending
+        const sentinel = document.getElementById('gridSentinel');
+        if (sentinel) sentinel.remove();
+
+        if (items.length === 0 && _gridState.offset === 0) {
+            const type = (allLibraries.find(l => l.id === _gridState.libraryId) || {}).media_type || '';
+            grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">${mediaIcon(type)}</div><div class="empty-state-title">No items in this library</div><p>Scan the library to populate it with media</p></div>`;
+            _gridState.done = true;
+            _gridState.loading = false;
+            return;
+        }
+
+        grid.insertAdjacentHTML('beforeend', items.map(renderMediaCard).join(''));
+        _gridState.offset += items.length;
+
+        // Check if we've loaded everything
+        if (_gridState.offset >= _gridState.total || items.length < 200) {
+            _gridState.done = true;
+            updateAlphaCount();
+        } else {
+            // Add sentinel for infinite scroll
+            grid.insertAdjacentHTML('beforeend', '<div id="gridSentinel" class="load-more-sentinel"><div class="spinner"></div></div>');
+            const newSentinel = document.getElementById('gridSentinel');
+            if (newSentinel && _gridState.observer) _gridState.observer.observe(newSentinel);
+        }
+        _gridState.loading = false;
+        updateAlphaCount();
+    }
+
+    function setupScrollObserver() {
+        _gridState.observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) loadMoreMedia();
+        }, { root: document.getElementById('mainContent'), rootMargin: '800px' });
+        const sentinel = document.getElementById('gridSentinel');
+        if (sentinel) _gridState.observer.observe(sentinel);
+    }
+
+    function buildAlphaJump(letterIndex) {
+        const allLetters = ['#','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'];
+        const indexMap = {};
+        letterIndex.forEach(e => { indexMap[e.letter] = e; });
+        return `<div class="alpha-jump" id="alphaJump">${allLetters.map(l => {
+            const entry = indexMap[l];
+            if (entry) {
+                return `<div class="alpha-jump-letter" data-letter="${l}" data-offset="${entry.offset}" onclick="jumpToLetter(this)">${l}</div>`;
+            }
+            return `<div class="alpha-jump-letter disabled">${l}</div>`;
+        }).join('')}</div>`;
+    }
+
+    function updateAlphaCount() {
+        // Highlight the current visible letter based on scroll position
+        const grid = document.getElementById('libGrid');
+        const jump = document.getElementById('alphaJump');
+        if (!grid || !jump) return;
+        const cards = grid.querySelectorAll('.media-card');
+        if (cards.length === 0) return;
+
+        // Find the first visible card
+        const container = document.getElementById('mainContent');
+        const containerTop = container.getBoundingClientRect().top;
+        let activeLetter = '';
+        for (const card of cards) {
+            const rect = card.getBoundingClientRect();
+            if (rect.top >= containerTop - 50) {
+                const title = card.querySelector('.media-title');
+                if (title) {
+                    const first = title.textContent.trim().charAt(0).toUpperCase();
+                    activeLetter = (first >= 'A' && first <= 'Z') ? first : '#';
+                }
+                break;
+            }
+        }
+        jump.querySelectorAll('.alpha-jump-letter').forEach(el => {
+            el.classList.toggle('active', el.dataset.letter === activeLetter);
+        });
+    }
+
+    async function jumpToLetter(el) {
+        const targetOffset = parseInt(el.dataset.offset);
+        const letter = el.dataset.letter;
+        // Load batches until we have enough items to reach this letter
+        if (targetOffset >= _gridState.offset && !_gridState.done) {
+            while (_gridState.offset <= targetOffset && !_gridState.done) {
+                await loadMoreMedia();
+            }
+        }
+        // Find the first card starting with this letter and scroll to it
+        const grid = document.getElementById('libGrid');
+        if (!grid) return;
+        const cards = grid.querySelectorAll('.media-card');
+        for (const card of cards) {
+            const title = card.querySelector('.media-title');
+            if (title) {
+                const first = title.textContent.trim().charAt(0).toUpperCase();
+                const cardLetter = (first >= 'A' && first <= 'Z') ? first : '#';
+                if (cardLetter === letter) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    break;
+                }
+            }
+        }
+        document.querySelectorAll('.alpha-jump-letter').forEach(l => l.classList.remove('active'));
+        el.classList.add('active');
+    }
+
     async function loadMediaTypeView(mediaType) {
+        teardownGrid();
         const mc = document.getElementById('mainContent');
         const label = MEDIA_LABELS[mediaType] || mediaType;
+
+        // Find all libraries of this type
+        const libs = await api('GET', '/libraries');
+        const matchingLibs = (libs.success && libs.data) ? libs.data.filter(l => l.media_type === mediaType) : [];
+
+        if (matchingLibs.length === 1) {
+            // Single library — use paginated view
+            return loadLibraryView(matchingLibs[0].id);
+        }
+
+        // Multiple libraries — load all (with pagination for each)
         mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2></div>
             <div class="media-grid" id="typeGrid"><div class="spinner"></div> Loading...</div>`;
-        const libs = await api('GET', '/libraries');
         let items = [];
-        if (libs.success && libs.data) {
-            for (const lib of libs.data.filter(l => l.media_type === mediaType)) {
-                const m = await api('GET', '/libraries/'+lib.id+'/media');
-                if (m.success && m.data && m.data.items) items = items.concat(m.data.items);
+        for (const lib of matchingLibs) {
+            let off = 0;
+            while (true) {
+                const m = await api('GET', '/libraries/'+lib.id+'/media?limit=500&offset='+off);
+                if (m.success && m.data && m.data.items && m.data.items.length > 0) {
+                    items = items.concat(m.data.items);
+                    off += m.data.items.length;
+                    if (off >= m.data.total) break;
+                } else break;
             }
         }
         const grid = document.getElementById('typeGrid');
@@ -1151,6 +1315,7 @@
     }
 
     async function loadLibraryView(libraryId) {
+        teardownGrid();
         const mc = document.getElementById('mainContent');
         const lib = allLibraries.find(l => l.id === libraryId);
         const label = lib ? lib.name : 'Library';
@@ -1169,15 +1334,26 @@
             return;
         }
 
-        // Default: flat media items
-        mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2><span class="tag tag-cyan" style="margin-left:12px;">${MEDIA_LABELS[type]||type}</span></div>
-            <div class="media-grid" id="libGrid"><div class="spinner"></div> Loading...</div>`;
-        const m = await api('GET', '/libraries/' + libraryId + '/media');
-        const items = (m.success && m.data && m.data.items) ? m.data.items : [];
-        const grid = document.getElementById('libGrid');
-        grid.innerHTML = items.length > 0
-            ? items.map(renderMediaCard).join('')
-            : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">${mediaIcon(type)}</div><div class="empty-state-title">No items in this library</div><p>Scan the library to populate it with media</p></div>`;
+        // Fetch letter index for jump bar
+        const idxData = await api('GET', '/libraries/' + libraryId + '/media/index');
+        const letterIndex = (idxData.success && idxData.data) ? idxData.data : [];
+        _gridState.libraryId = libraryId;
+        _gridState.letterIndex = letterIndex;
+
+        const totalCount = letterIndex.reduce((s, e) => s + e.count, 0);
+
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2><span class="tag tag-cyan" style="margin-left:12px;">${MEDIA_LABELS[type]||type}</span><span class="tag" style="margin-left:8px;">${totalCount.toLocaleString()} items</span></div>
+            <div class="media-grid-wrapper">
+                <div class="media-grid" id="libGrid"><div id="gridSentinel" class="load-more-sentinel"><div class="spinner"></div></div></div>
+                ${buildAlphaJump(letterIndex)}
+            </div>`;
+
+        setupScrollObserver();
+        loadMoreMedia();
+
+        // Update active letter on scroll
+        const container = document.getElementById('mainContent');
+        container.addEventListener('scroll', () => { requestAnimationFrame(updateAlphaCount); });
     }
 
     function renderShowCard(show) {

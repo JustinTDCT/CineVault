@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
@@ -15,7 +16,20 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := s.mediaRepo.ListByLibrary(libraryID, 100, 0)
+	limit := 200
+	offset := 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+
+	media, err := s.mediaRepo.ListByLibrary(libraryID, limit, offset)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, "failed to list media")
 		return
@@ -26,10 +40,28 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data: map[string]interface{}{
-			"items": media,
-			"total": count,
+			"items":  media,
+			"total":  count,
+			"limit":  limit,
+			"offset": offset,
 		},
 	})
+}
+
+func (s *Server) handleMediaLetterIndex(w http.ResponseWriter, r *http.Request) {
+	libraryID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid library ID")
+		return
+	}
+
+	index, err := s.mediaRepo.LetterIndex(libraryID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to build letter index")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: index})
 }
 
 func (s *Server) handleGetMedia(w http.ResponseWriter, r *http.Request) {
