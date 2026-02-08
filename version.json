@@ -1,6 +1,6 @@
 {
-  "version": "0.9.0",
+  "version": "0.10.0",
   "phase": 3,
   "released": "2026-02-08",
-  "notes": "Media item editing: edit all metadata fields from the UI, metadata lock to prevent auto-match overwrites, reset lock to allow re-scraping"
+  "notes": "Duplicate & edition rework: MD5 hashing for exact duplicates, phash for potential duplicates, unified Duplicate Review UI with Edit/Merge-as-Edition/Delete/Ignore actions, removed standalone Editions and Sister Groups pages"
 }

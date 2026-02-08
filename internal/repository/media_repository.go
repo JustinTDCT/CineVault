@@ -26,7 +26,7 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	artist_id, album_id, track_number, disc_number,
 	author_id, book_id, chapter_number,
 	image_gallery_id, sister_group_id,
-	sort_position, metadata_locked, added_at, updated_at`
+	sort_position, metadata_locked, duplicate_status, added_at, updated_at`
 
 func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.MediaItem, error) {
 	item := &models.MediaItem{}
@@ -42,7 +42,7 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.ArtistID, &item.AlbumID, &item.TrackNumber, &item.DiscNumber,
 		&item.AuthorID, &item.BookID, &item.ChapterNumber,
 		&item.ImageGalleryID, &item.SisterGroupID,
-		&item.SortPosition, &item.MetadataLocked, &item.AddedAt, &item.UpdatedAt,
+		&item.SortPosition, &item.MetadataLocked, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
 }
@@ -270,4 +270,118 @@ func (r *MediaRepository) ListByTVShow(showID uuid.UUID) ([]*models.MediaItem, e
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// ──────────────────── Duplicate / Hash helpers ────────────────────
+
+// UpdateFileHash sets the MD5 hash for a media item.
+func (r *MediaRepository) UpdateFileHash(id uuid.UUID, hash string) error {
+	_, err := r.db.Exec(`UPDATE media_items SET file_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, hash, id)
+	return err
+}
+
+// UpdatePhash sets the perceptual hash for a media item.
+func (r *MediaRepository) UpdatePhash(id uuid.UUID, phash string) error {
+	_, err := r.db.Exec(`UPDATE media_items SET phash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, phash, id)
+	return err
+}
+
+// UpdateDuplicateStatus sets the duplicate_status flag on a media item.
+func (r *MediaRepository) UpdateDuplicateStatus(id uuid.UUID, status string) error {
+	_, err := r.db.Exec(`UPDATE media_items SET duplicate_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, status, id)
+	return err
+}
+
+// FindByFileHash returns all media items with a matching file_hash (excluding the given id).
+func (r *MediaRepository) FindByFileHash(hash string, excludeID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + ` FROM media_items WHERE file_hash = $1 AND id != $2`
+	rows, err := r.db.Query(query, hash, excludeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// ListItemsNeedingPhash returns media items in a library that have no phash and are video types.
+func (r *MediaRepository) ListItemsNeedingPhash(libraryID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + `
+		FROM media_items
+		WHERE library_id = $1
+		  AND (phash IS NULL OR phash = '')
+		  AND media_type IN ('movies','adult_movies','tv_shows','music_videos','home_videos','other_videos')
+		ORDER BY added_at`
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// ListPhashesInLibrary returns all items in a library that have a phash.
+func (r *MediaRepository) ListPhashesInLibrary(libraryID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + `
+		FROM media_items
+		WHERE library_id = $1 AND phash IS NOT NULL AND phash != ''
+		ORDER BY title`
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// ListDuplicateItems returns items where duplicate_status is 'exact' or 'potential'.
+func (r *MediaRepository) ListDuplicateItems() ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + `
+		FROM media_items
+		WHERE duplicate_status IN ('exact', 'potential')
+		ORDER BY title`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// CountUnreviewedDuplicates returns how many items have unreviewed duplicate status.
+func (r *MediaRepository) CountUnreviewedDuplicates() (int, error) {
+	var count int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM media_items WHERE duplicate_status IN ('exact','potential')`).Scan(&count)
+	return count, err
 }

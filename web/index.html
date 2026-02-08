@@ -368,10 +368,52 @@
         .job-progress-fill { height: 100%; background: linear-gradient(90deg, #00D9FF, #0099CC); border-radius: 3px; transition: width 0.3s; }
 
         /* ── Duplicate Review ── */
-        .dup-pair { display: flex; gap: 20px; padding: 20px; border-radius: 16px; background: linear-gradient(135deg, rgba(26,35,50,0.6) 0%, rgba(13,27,42,0.8) 100%); border: 1px solid rgba(0,217,255,0.15); margin-bottom: 14px; align-items: center; }
-        .dup-item { flex: 1; }
-        .dup-vs { font-size: 1.2rem; color: #ffa94d; font-weight: 700; }
-        .dup-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .dup-group { padding: 24px; border-radius: 16px; background: linear-gradient(135deg, rgba(26,35,50,0.6) 0%, rgba(13,27,42,0.8) 100%); border: 1px solid rgba(0,217,255,0.15); margin-bottom: 20px; }
+        .dup-group-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .dup-type-badge { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+        .dup-type-exact { background: rgba(255,107,107,0.2); color: #ff6b6b; border: 1px solid rgba(255,107,107,0.3); }
+        .dup-type-potential { background: rgba(255,169,77,0.2); color: #ffa94d; border: 1px solid rgba(255,169,77,0.3); }
+        .dup-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 16px; }
+        .dup-card { padding: 16px; border-radius: 12px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); }
+        .dup-card-header { display: flex; gap: 12px; margin-bottom: 12px; }
+        .dup-card-poster { width: 80px; height: 120px; border-radius: 8px; overflow: hidden; background: rgba(0,0,0,0.3); flex-shrink: 0; }
+        .dup-card-poster img { width: 100%; height: 100%; object-fit: cover; }
+        .dup-card-meta { flex: 1; }
+        .dup-card-meta h4 { color: #00D9FF; margin-bottom: 6px; font-size: 1rem; }
+        .dup-card-meta p { color: #8a9bae; font-size: 0.82rem; margin-bottom: 4px; }
+        .dup-match-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; }
+        .dup-match-md5 { background: rgba(255,107,107,0.15); color: #ff6b6b; }
+        .dup-match-phash { background: rgba(255,169,77,0.15); color: #ffa94d; }
+        .dup-decisions { padding: 10px 14px; border-radius: 8px; background: rgba(0,0,0,0.15); margin-bottom: 16px; font-size: 0.82rem; color: #8a9bae; }
+        .dup-decisions strong { color: #e5e5e5; }
+        .dup-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .dup-actions .btn-edit { background: linear-gradient(135deg, #00D9FF, #00B8DB); color: #0a1929; border: none; }
+        .dup-actions .btn-edition { background: linear-gradient(135deg, #a855f7, #7c3aed); color: #fff; border: none; }
+        .nav-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: #ff6b6b; color: #fff; font-size: 0.7rem; font-weight: 700; margin-left: auto; }
+        .edition-badge { position: absolute; bottom: 8px; left: 8px; padding: 2px 8px; border-radius: 8px; background: rgba(168,85,247,0.85); color: #fff; font-size: 0.7rem; font-weight: 600; backdrop-filter: blur(4px); }
+        /* ── Merge Edition Modal ── */
+        .merge-modal-overlay {
+            position: fixed; inset: 0; z-index: 3100;
+            background: rgba(10,25,41,0.92); backdrop-filter: blur(8px);
+            display: none; align-items: center; justify-content: center;
+        }
+        .merge-modal-overlay.active { display: flex; }
+        .merge-modal {
+            background: linear-gradient(135deg, rgba(26,35,50,0.97) 0%, rgba(13,27,42,0.99) 100%);
+            border: 1px solid rgba(168,85,247,0.3); border-radius: 20px;
+            padding: 32px; width: 90%; max-width: 600px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+        .merge-modal-title {
+            font-size: 1.3rem; font-weight: 700; margin-bottom: 20px;
+            background: linear-gradient(135deg, #a855f7, #7c3aed);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .merge-option { padding: 12px 16px; border-radius: 10px; background: rgba(0,0,0,0.2); border: 2px solid rgba(255,255,255,0.06); margin-bottom: 10px; cursor: pointer; transition: all 0.2s; }
+        .merge-option:hover { border-color: rgba(168,85,247,0.4); }
+        .merge-option.selected { border-color: #a855f7; background: rgba(168,85,247,0.1); }
+        .merge-option label { cursor: pointer; display: flex; align-items: center; gap: 10px; }
+        .merge-option input[type="radio"] { accent-color: #a855f7; }
 
         /* ── WS status ── */
         .ws-status { font-size: 0.7rem; padding: 4px 10px; border-radius: 8px; }
@@ -487,13 +529,15 @@
 
             <div class="nav-section">
                 <div class="nav-label">Organize</div>
-                <div class="nav-item" data-view="editions"><span class="nav-icon">&#128191;</span><span>Editions</span></div>
-                <div class="nav-item" data-view="sisters"><span class="nav-icon">&#128279;</span><span>Sister Groups</span></div>
                 <div class="nav-item" data-view="collections"><span class="nav-icon">&#11088;</span><span>Collections</span></div>
                 <div class="nav-item" data-view="performers"><span class="nav-icon">&#128100;</span><span>Performers</span></div>
                 <div class="nav-item" data-view="tags"><span class="nav-icon">&#127991;</span><span>Tags</span></div>
                 <div class="nav-item" data-view="studios"><span class="nav-icon">&#127980;</span><span>Studios</span></div>
-                <div class="nav-item" data-view="duplicates"><span class="nav-icon">&#128257;</span><span>Duplicates</span></div>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-label">Manage</div>
+                <div class="nav-item" data-view="duplicates"><span class="nav-icon">&#128257;</span><span>Duplicate Review</span><span class="nav-badge" id="dupBadge" style="display:none;">0</span></div>
             </div>
 
             <div class="nav-section">
@@ -600,6 +644,36 @@
                 <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
                 <button class="btn-danger" id="editResetBtn" style="display:none;" onclick="resetMediaMeta()">&#8635; Reset Lock</button>
                 <button class="btn-primary" onclick="saveMediaEdit()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Merge as Edition Modal -->
+    <div class="merge-modal-overlay" id="mergeEditionOverlay">
+        <div class="merge-modal">
+            <div class="merge-modal-title">Merge as Edition</div>
+            <input type="hidden" id="mergeItemA">
+            <input type="hidden" id="mergeItemB">
+            <div class="form-group">
+                <label>Edition Label</label>
+                <select id="mergeEditionLabel">
+                    <option value="Theatrical">Theatrical</option>
+                    <option value="Director's Cut">Director's Cut</option>
+                    <option value="Extended">Extended</option>
+                    <option value="Unrated">Unrated</option>
+                    <option value="IMAX">IMAX</option>
+                    <option value="4K Remaster">4K Remaster</option>
+                    <option value="Special Edition">Special Edition</option>
+                    <option value="Alternate">Alternate</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Select Primary Item</label>
+                <div id="mergePrimaryOptions"></div>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
+                <button class="btn-secondary" onclick="closeMergeModal()">Cancel</button>
+                <button class="btn-primary" onclick="submitMergeEdition()" style="background:linear-gradient(135deg,#a855f7,#7c3aed);">Merge</button>
             </div>
         </div>
     </div>
@@ -728,6 +802,14 @@
                     }
                 }
             }
+            // Load duplicate count badge
+            try {
+                const dupData = await api('GET', '/duplicates/count');
+                if (dupData.success && dupData.data && dupData.data.count > 0) {
+                    const dupBadge = document.getElementById('dupBadge');
+                    if (dupBadge) { dupBadge.textContent = dupData.data.count; dupBadge.style.display = ''; }
+                }
+            } catch {}
         } catch {}
     }
 
@@ -746,8 +828,6 @@
             case 'libraries': loadLibrariesView(); break;
             case 'library': loadLibraryView(extra); break;
             case 'media': loadMediaTypeView(extra); break;
-            case 'editions': loadEditionsView(); break;
-            case 'sisters': loadSistersView(); break;
             case 'collections': loadCollectionsView(); break;
             case 'performers': loadPerformersView(); break;
             case 'tags': loadTagsView(); break;
@@ -774,10 +854,12 @@
         const year = item.year || '';
         const res = item.resolution || '';
         const meta = [year, dur, res].filter(Boolean).join(' \u00b7 ');
+        const edBadge = item.edition_count && item.edition_count > 1 ? `<span class="edition-badge">${item.edition_count} editions</span>` : '';
         return `<div class="media-card" onclick="loadMediaDetail('${item.id}')">
-            <div class="media-poster">
+            <div class="media-poster" style="position:relative;">
                 ${item.poster_path ? '<img src="'+item.poster_path+'" alt="">' : mediaIcon(item.media_type)}
                 ${res ? '<span class="quality-badge">'+res+'</span>' : ''}
+                ${edBadge}
                 <div class="play-overlay"><div class="play-button">&#9654;</div></div>
             </div>
             <div class="media-info"><div class="media-title">${item.title}</div><div class="media-meta">${meta}</div></div>
@@ -1322,23 +1404,7 @@
         else toast('Failed: ' + d.error, 'error');
     }
 
-    // ──── Editions / Sisters / Collections (same as Phase 2 but with navigate()) ────
-    async function loadEditionsView() {
-        const mc=document.getElementById('mainContent'); const isAdmin=currentUser&&currentUser.role==='admin';
-        mc.innerHTML=`<div class="section-header"><h2 class="section-title">Edition Groups</h2>${isAdmin?'<button class="btn-primary" onclick="showCreateEdition()">+ Create Group</button>':''}</div><p style="color:#8a9bae;margin-bottom:20px;">Group different versions of the same content</p><div id="editionsList"><div class="spinner"></div></div>`;
-        const data=await api('GET','/editions'); const div=document.getElementById('editionsList');
-        if(data.success&&data.data&&data.data.length>0){div.innerHTML=data.data.map(g=>`<div class="group-card"><div style="display:flex;justify-content:space-between;align-items:start;"><div><h4>${g.title}</h4><p>${g.year?g.year+' \u00b7 ':''}${MEDIA_LABELS[g.media_type]||g.media_type}</p><span class="tag tag-cyan">${g.items?g.items.length:0} editions</span></div>${isAdmin?`<button class="btn-danger btn-small" onclick="deleteEdition('${g.id}')">Delete</button>`:''}</div></div>`).join('');}
-        else div.innerHTML=`<div class="empty-state"><div class="empty-state-icon">&#128191;</div><div class="empty-state-title">No edition groups</div></div>`;
-    }
-    function showCreateEdition(){const mc=document.getElementById('mainContent');const types=Object.entries(MEDIA_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');mc.innerHTML=`<div class="section-header"><h2 class="section-title">Create Edition Group</h2></div><div style="max-width:500px;"><div class="form-group"><label>Title</label><input type="text" id="edTitle"></div><div class="form-group"><label>Year</label><input type="number" id="edYear"></div><div class="form-group"><label>Type</label><select id="edType">${types}</select></div><div class="form-group"><label>Library</label><select id="edLib"><option value="">Select...</option></select></div><button class="btn-primary" onclick="createEdition()">Create</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadEditionsView()">Cancel</button></div>`;api('GET','/libraries').then(d=>{if(d.success&&d.data)document.getElementById('edLib').innerHTML+= d.data.map(l=>`<option value="${l.id}">${l.name}</option>`).join('');});}
-    async function createEdition(){const t=document.getElementById('edTitle').value,y=parseInt(document.getElementById('edYear').value)||null,mt=document.getElementById('edType').value,li=document.getElementById('edLib').value;if(!t||!li){toast('Title and library required','error');return;}const d=await api('POST','/editions',{title:t,year:y,media_type:mt,library_id:li});if(d.success){toast('Created!');loadEditionsView();}else toast('Failed: '+d.error,'error');}
-    async function deleteEdition(id){if(!confirm('Delete?'))return;const d=await api('DELETE','/editions/'+id);if(d.success){toast('Deleted');loadEditionsView();}else toast(d.error,'error');}
-
-    async function loadSistersView(){const mc=document.getElementById('mainContent');const isAdmin=currentUser&&currentUser.role==='admin';mc.innerHTML=`<div class="section-header"><h2 class="section-title">Sister Groups</h2>${isAdmin?'<button class="btn-primary" onclick="showCreateSister()">+ Create</button>':''}</div><div id="sistersList"><div class="spinner"></div></div>`;const data=await api('GET','/sisters');const div=document.getElementById('sistersList');if(data.success&&data.data&&data.data.length>0){div.innerHTML=data.data.map(g=>`<div class="group-card"><div style="display:flex;justify-content:space-between;"><div><h4>${g.name}</h4>${g.notes?'<p>'+g.notes+'</p>':''}<span class="tag tag-purple">${g.members?g.members.length:0} members</span></div>${isAdmin?`<button class="btn-danger btn-small" onclick="deleteSister('${g.id}')">Delete</button>`:''}</div></div>`).join('');}else div.innerHTML='<div class="empty-state"><div class="empty-state-icon">&#128279;</div><div class="empty-state-title">No sister groups</div></div>';}
-    function showCreateSister(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">Create Sister Group</h2></div><div style="max-width:500px;"><div class="form-group"><label>Name</label><input type="text" id="sisName"></div><div class="form-group"><label>Notes</label><input type="text" id="sisNotes"></div><button class="btn-primary" onclick="createSister()">Create</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadSistersView()">Cancel</button></div>`;}
-    async function createSister(){const n=document.getElementById('sisName').value,no=document.getElementById('sisNotes').value||null;if(!n){toast('Name required','error');return;}const d=await api('POST','/sisters',{name:n,notes:no});if(d.success){toast('Created!');loadSistersView();}else toast(d.error,'error');}
-    async function deleteSister(id){if(!confirm('Delete?'))return;const d=await api('DELETE','/sisters/'+id);if(d.success){toast('Deleted');loadSistersView();}else toast(d.error,'error');}
-
+    // ──── Collections ────
     async function loadCollectionsView(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">Collections</h2><button class="btn-primary" onclick="showCreateCollection()">+ New</button></div><div id="collList"><div class="spinner"></div></div>`;const data=await api('GET','/collections');const div=document.getElementById('collList');if(data.success&&data.data&&data.data.length>0){div.innerHTML=data.data.map(c=>`<div class="group-card"><div style="display:flex;justify-content:space-between;"><div><h4>${c.name}</h4>${c.description?'<p>'+c.description+'</p>':''}<span class="tag tag-green">${c.item_count||0} items</span><span class="tag tag-cyan">${c.visibility}</span></div><button class="btn-danger btn-small" onclick="deleteCollection('${c.id}')">Delete</button></div></div>`).join('');}else div.innerHTML='<div class="empty-state"><div class="empty-state-icon">&#11088;</div><div class="empty-state-title">No collections</div></div>';}
     function showCreateCollection(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">New Collection</h2></div><div style="max-width:500px;"><div class="form-group"><label>Name</label><input type="text" id="collName"></div><div class="form-group"><label>Description</label><input type="text" id="collDesc"></div><div class="form-group"><label>Visibility</label><select id="collVis"><option value="private">Private</option><option value="shared">Shared</option><option value="public">Public</option></select></div><button class="btn-primary" onclick="createCollection()">Create</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadCollectionsView()">Cancel</button></div>`;}
     async function createCollection(){const n=document.getElementById('collName').value,d=document.getElementById('collDesc').value||null,v=document.getElementById('collVis').value;if(!n){toast('Name required','error');return;}const r=await api('POST','/collections',{name:n,description:d,visibility:v});if(r.success){toast('Created!');loadCollectionsView();}else toast(r.error,'error');}
@@ -1407,19 +1473,142 @@
 
     // ──── Duplicates ────
     async function loadDuplicatesView() {
-        const mc=document.getElementById('mainContent');
-        mc.innerHTML=`<div class="section-header"><h2 class="section-title">Duplicate Review</h2></div><p style="color:#8a9bae;margin-bottom:20px;">Review potential duplicate media detected by perceptual hashing</p><div id="dupList"><div class="spinner"></div></div>`;
-        const data=await api('GET','/duplicates');
-        const div=document.getElementById('dupList');
-        if(data.success&&data.data&&data.data.length>0){
-            div.innerHTML=data.data.map(p=>`<div class="dup-pair"><div class="dup-item"><h4 style="color:#00D9FF;">${p.media_a_title}</h4><span class="tag tag-cyan">${p.media_a}</span></div><div class="dup-vs">${Math.round(p.similarity_score*100)}%</div><div class="dup-item"><h4 style="color:#00D9FF;">${p.media_b_title}</h4><span class="tag tag-cyan">${p.media_b}</span></div><div class="dup-actions"><button class="btn-secondary btn-small" onclick="resolveDup('${p.media_a}','${p.media_b}','ignored')">Ignore</button><button class="btn-secondary btn-small" onclick="resolveDup('${p.media_a}','${p.media_b}','merged')">Merge</button><button class="btn-danger btn-small" onclick="resolveDup('${p.media_a}','${p.media_b}','deleted')">Delete B</button><button class="btn-secondary btn-small" onclick="resolveDup('${p.media_a}','${p.media_b}','split_as_sister')">Sister</button></div></div>`).join('');
-        } else div.innerHTML='<div class="empty-state"><div class="empty-state-icon">&#128257;</div><div class="empty-state-title">No duplicates found</div><p>Scan libraries to detect potential duplicates via perceptual hashing</p></div>';
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Duplicate Review</h2></div>
+            <p style="color:#8a9bae;margin-bottom:20px;">Review media items flagged as exact (MD5) or potential (phash) duplicates</p>
+            <div id="dupList"><div class="spinner"></div></div>`;
+        const data = await api('GET', '/duplicates');
+        const div = document.getElementById('dupList');
+        if (!data.success) { div.innerHTML = '<p style="color:#ff6b6b;">Failed to load duplicates</p>'; return; }
+        const groups = data.data && data.data.groups ? data.data.groups : [];
+        if (groups.length === 0) {
+            div.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128257;</div><div class="empty-state-title">No duplicates found</div><p>Scan libraries to detect duplicates via MD5 and perceptual hashing</p></div>';
+            return;
+        }
+        div.innerHTML = groups.map(g => renderDuplicateGroup(g)).join('');
     }
 
-    async function resolveDup(a,b,action) {
-        const d=await api('POST','/duplicates/resolve',{media_id_a:a,media_id_b:b,action:action});
-        if(d.success){toast('Resolved!');loadDuplicatesView();}else toast(d.error,'error');
+    function renderDuplicateGroup(g) {
+        const item = g.item;
+        const typeClass = g.dup_type === 'exact' ? 'dup-type-exact' : 'dup-type-potential';
+        const typeLabel = g.dup_type === 'exact' ? 'Exact Duplicate' : 'Potential Duplicate';
+        const matches = g.matches || [];
+        const decisions = g.decisions || [];
+
+        let decisionsHtml = '';
+        if (decisions.length > 0) {
+            decisionsHtml = `<div class="dup-decisions"><strong>Prior decisions:</strong> ` +
+                decisions.map(d => `${d.action} by ${d.decided_by} on ${new Date(d.decided_at).toLocaleDateString()}`
+                    + (d.notes ? ' - ' + d.notes : '')).join('; ') + '</div>';
+        }
+
+        let matchesHtml = '';
+        if (matches.length > 0) {
+            matchesHtml = `<div class="dup-compare">` + renderDupCard(item, 'Source') +
+                matches.map(m => renderDupCard(m.item, m.match_type === 'md5' ?
+                    `<span class="dup-match-badge dup-match-md5">MD5 Match</span>` :
+                    `<span class="dup-match-badge dup-match-phash">${Math.round(m.similarity * 100)}% Similar</span>`
+                )).join('') + `</div>`;
+        }
+
+        const bestMatch = matches.length > 0 ? matches[0] : null;
+        const partnerId = bestMatch ? bestMatch.item.id : '';
+        const partnerTitle = bestMatch ? bestMatch.item.title : '';
+
+        return `<div class="dup-group">
+            <div class="dup-group-header">
+                <h3 style="color:#e5e5e5;">${item.title}${item.year ? ' (' + item.year + ')' : ''}</h3>
+                <span class="dup-type-badge ${typeClass}">${typeLabel}</span>
+            </div>
+            ${matchesHtml}
+            ${decisionsHtml}
+            <div class="dup-actions">
+                <button class="btn-edit btn-small" onclick="dupEdit('${item.id}','${partnerId}')">&#9998; Edit</button>
+                <button class="btn-edition btn-small" onclick="dupMergeEdition('${item.id}','${partnerId}','${item.title.replace(/'/g,"\\'")}','${partnerTitle.replace(/'/g,"\\'")}')">&#128191; Merge as Edition</button>
+                <button class="btn-danger btn-small" onclick="dupDelete('${item.id}','${partnerId}')">&#128465; Delete</button>
+                <button class="btn-secondary btn-small" onclick="dupIgnore('${item.id}','${partnerId}')">&#128683; Ignore</button>
+            </div>
+        </div>`;
     }
+
+    function renderDupCard(item, label) {
+        const fileSize = item.file_size ? (item.file_size / (1024*1024*1024)).toFixed(2) + ' GB' : '';
+        const res = item.resolution || '';
+        const filePath = item.file_path || '';
+        const shortPath = filePath.length > 60 ? '...' + filePath.slice(-57) : filePath;
+        return `<div class="dup-card">
+            <div class="dup-card-header">
+                <div class="dup-card-poster">${item.poster_path ? '<img src="'+item.poster_path+'">' : '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:2rem;color:#4a5568;">&#127910;</div>'}</div>
+                <div class="dup-card-meta">
+                    <h4>${item.title}</h4>
+                    <p>${item.year || 'N/A'}${res ? ' &middot; ' + res : ''}${fileSize ? ' &middot; ' + fileSize : ''}</p>
+                    <p title="${filePath}" style="word-break:break-all;">${shortPath}</p>
+                    <div style="margin-top:6px;">${label}</div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    async function dupEdit(itemId, partnerId) {
+        // Open the edit modal, then mark as addressed on save
+        openEditModal(itemId);
+        // After save, mark both as addressed
+        window._dupResolveAfterEdit = { itemId, partnerId };
+    }
+
+    async function dupIgnore(itemId, partnerId) {
+        const d = await api('POST', '/duplicates/resolve', { media_id: itemId, partner_id: partnerId, action: 'ignored' });
+        if (d.success) { toast('Marked as ignored'); loadDuplicatesView(); loadSidebarCounts(); } else toast(d.error, 'error');
+    }
+
+    async function dupDelete(itemId, partnerId) {
+        if (!confirm('Delete this item from the database?')) return;
+        const deleteFile = confirm('Also delete the file from disk? (Cannot be undone)');
+        const d = await api('POST', '/duplicates/resolve', { media_id: itemId, partner_id: partnerId, action: 'deleted', delete_file: deleteFile });
+        if (d.success) { toast('Item deleted'); loadDuplicatesView(); loadSidebarCounts(); } else toast(d.error, 'error');
+    }
+
+    function dupMergeEdition(itemA, itemB, titleA, titleB) {
+        document.getElementById('mergeItemA').value = itemA;
+        document.getElementById('mergeItemB').value = itemB;
+        const opts = document.getElementById('mergePrimaryOptions');
+        opts.innerHTML = `
+            <div class="merge-option selected" onclick="selectMergePrimary(this,'${itemA}')">
+                <label><input type="radio" name="mergePrimary" value="${itemA}" checked> ${titleA} (Source)</label>
+            </div>
+            <div class="merge-option" onclick="selectMergePrimary(this,'${itemB}')">
+                <label><input type="radio" name="mergePrimary" value="${itemB}"> ${titleB} (Match)</label>
+            </div>`;
+        document.getElementById('mergeEditionOverlay').classList.add('active');
+    }
+
+    function selectMergePrimary(el, id) {
+        document.querySelectorAll('.merge-option').forEach(o => o.classList.remove('selected'));
+        el.classList.add('selected');
+        el.querySelector('input[type="radio"]').checked = true;
+    }
+
+    function closeMergeModal() {
+        document.getElementById('mergeEditionOverlay').classList.remove('active');
+    }
+
+    async function submitMergeEdition() {
+        const itemA = document.getElementById('mergeItemA').value;
+        const itemB = document.getElementById('mergeItemB').value;
+        const label = document.getElementById('mergeEditionLabel').value;
+        const primaryId = document.querySelector('input[name="mergePrimary"]:checked').value;
+        const d = await api('POST', '/duplicates/resolve', {
+            media_id: itemA, partner_id: itemB, action: 'edition',
+            edition_label: label, primary_id: primaryId
+        });
+        if (d.success) { toast('Merged as edition!'); closeMergeModal(); loadDuplicatesView(); loadSidebarCounts(); }
+        else toast(d.error, 'error');
+    }
+
+    // Close merge modal on overlay click
+    document.getElementById('mergeEditionOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closeMergeModal();
+    });
 
     // ──── Metadata Identify ────
     async function identifyMedia(id) {
@@ -1488,7 +1677,16 @@
         if (d.success) {
             toast('Changes saved! Metadata locked.');
             closeEditModal();
-            loadMediaDetail(id);
+            // If triggered from duplicate review, mark as addressed
+            if (window._dupResolveAfterEdit) {
+                const r = window._dupResolveAfterEdit;
+                await api('POST', '/duplicates/resolve', { media_id: r.itemId, partner_id: r.partnerId, action: 'edit' });
+                window._dupResolveAfterEdit = null;
+                loadDuplicatesView();
+                loadSidebarCounts();
+            } else {
+                loadMediaDetail(id);
+            }
         } else {
             toast(d.error || 'Save failed', 'error');
         }

@@ -12,6 +12,7 @@ import (
 const (
 	TaskScanLibrary    = "scan:library"
 	TaskFingerprint    = "fingerprint:media"
+	TaskPhashLibrary   = "phash:library"
 	TaskGeneratePreview = "preview:generate"
 	TaskMetadataScrape = "metadata:scrape"
 )

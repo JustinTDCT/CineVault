@@ -41,11 +41,10 @@ const (
 type DuplicateAction string
 
 const (
-	DuplicateMerged        DuplicateAction = "merged"
-	DuplicateDeleted       DuplicateAction = "deleted"
-	DuplicateIgnored       DuplicateAction = "ignored"
-	DuplicateSplitAsSister DuplicateAction = "split_as_sister"
-	DuplicateEditionGrouped DuplicateAction = "edition_grouped"
+	DuplicateEdit    DuplicateAction = "edit"
+	DuplicateEdition DuplicateAction = "edition"
+	DuplicateDeleted DuplicateAction = "deleted"
+	DuplicateIgnored DuplicateAction = "ignored"
 )
 
 // ──────────────────── User ────────────────────
@@ -149,6 +148,7 @@ type MediaItem struct {
 	AudioFingerprint *string    `json:"audio_fingerprint,omitempty" db:"audio_fingerprint"`
 	SortPosition     int        `json:"sort_position" db:"sort_position"`
 	MetadataLocked   bool       `json:"metadata_locked" db:"metadata_locked"`
+	DuplicateStatus  string     `json:"duplicate_status" db:"duplicate_status"`
 	AddedAt          time.Time  `json:"added_at" db:"added_at"`
 	UpdatedAt        time.Time  `json:"updated_at" db:"updated_at"`
 	LastScannedAt    *time.Time `json:"last_scanned_at,omitempty" db:"last_scanned_at"`

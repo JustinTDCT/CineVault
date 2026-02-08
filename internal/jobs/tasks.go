@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 
+	"github.com/JustinTDCT/CineVault/internal/fingerprint"
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/JustinTDCT/CineVault/internal/repository"
 	"github.com/JustinTDCT/CineVault/internal/scanner"
@@ -28,6 +29,10 @@ type PreviewPayload struct {
 	MediaItemID string `json:"media_item_id"`
 }
 
+type PhashLibraryPayload struct {
+	LibraryID string `json:"library_id"`
+}
+
 type MetadataPayload struct {
 	MediaItemID string `json:"media_item_id"`
 	Source      string `json:"source"`
@@ -39,6 +44,7 @@ type ScanHandler struct {
 	scanner  *scanner.Scanner
 	libRepo  *repository.LibraryRepository
 	jobRepo  *repository.JobRepository
+	queue    *Queue
 	notifier EventNotifier
 }
 
@@ -46,8 +52,8 @@ type EventNotifier interface {
 	Broadcast(event string, data interface{})
 }
 
-func NewScanHandler(sc *scanner.Scanner, libRepo *repository.LibraryRepository, jobRepo *repository.JobRepository, notifier EventNotifier) *ScanHandler {
-	return &ScanHandler{scanner: sc, libRepo: libRepo, jobRepo: jobRepo, notifier: notifier}
+func NewScanHandler(sc *scanner.Scanner, libRepo *repository.LibraryRepository, jobRepo *repository.JobRepository, queue *Queue, notifier EventNotifier) *ScanHandler {
+	return &ScanHandler{scanner: sc, libRepo: libRepo, jobRepo: jobRepo, queue: queue, notifier: notifier}
 }
 
 func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
@@ -82,10 +88,19 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		})
 	}
 
+	// Trigger phash computation as a follow-up background job
+	if h.queue != nil {
+		if _, err := h.queue.Enqueue(TaskPhashLibrary, PhashLibraryPayload{LibraryID: p.LibraryID}); err != nil {
+			log.Printf("Job: failed to enqueue phash job for library %s: %v", p.LibraryID, err)
+		} else {
+			log.Printf("Job: enqueued phash computation for library %s", p.LibraryID)
+		}
+	}
+
 	return nil
 }
 
-// ──────── Fingerprint Handler (stub) ────────
+// ──────── Fingerprint Handler (single item - stub) ────────
 
 type FingerprintHandler struct {
 	mediaRepo *repository.MediaRepository
@@ -101,7 +116,94 @@ func (h *FingerprintHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 		return err
 	}
 	log.Printf("Job: fingerprinting media %s", p.MediaItemID)
-	// Fingerprinting logic will be wired in the fingerprint package
+	return nil
+}
+
+// ──────── Phash Library Handler ────────
+
+type PhashLibraryHandler struct {
+	mediaRepo    *repository.MediaRepository
+	fingerprinter *fingerprint.Fingerprinter
+	notifier     EventNotifier
+}
+
+func NewPhashLibraryHandler(mediaRepo *repository.MediaRepository, fp *fingerprint.Fingerprinter, notifier EventNotifier) *PhashLibraryHandler {
+	return &PhashLibraryHandler{mediaRepo: mediaRepo, fingerprinter: fp, notifier: notifier}
+}
+
+func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
+	var p PhashLibraryPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return fmt.Errorf("unmarshal: %w", err)
+	}
+
+	libID, _ := uuid.Parse(p.LibraryID)
+	items, err := h.mediaRepo.ListItemsNeedingPhash(libID)
+	if err != nil {
+		return fmt.Errorf("list items needing phash: %w", err)
+	}
+	if len(items) == 0 {
+		log.Printf("Phash: no items need hashing in library %s", p.LibraryID)
+		return nil
+	}
+
+	log.Printf("Phash: computing phash for %d items in library %s", len(items), p.LibraryID)
+	computed := 0
+	for _, item := range items {
+		select {
+		case <-ctx.Done():
+			log.Printf("Phash: cancelled after %d/%d items", computed, len(items))
+			return ctx.Err()
+		default:
+		}
+
+		phash, err := h.fingerprinter.ComputePHash(item.FilePath, 30)
+		if err != nil {
+			log.Printf("Phash: failed for %s: %v", item.FileName, err)
+			continue
+		}
+		if err := h.mediaRepo.UpdatePhash(item.ID, phash); err != nil {
+			log.Printf("Phash: failed to store for %s: %v", item.FileName, err)
+			continue
+		}
+		computed++
+	}
+
+	log.Printf("Phash: computed %d/%d hashes, checking for potential duplicates", computed, len(items))
+
+	// Check all phash items in the library for potential duplicates
+	allHashed, err := h.mediaRepo.ListPhashesInLibrary(libID)
+	if err != nil {
+		return fmt.Errorf("list phashes: %w", err)
+	}
+
+	dupCount := 0
+	for i := 0; i < len(allHashed); i++ {
+		for j := i + 1; j < len(allHashed); j++ {
+			if allHashed[i].Phash == nil || allHashed[j].Phash == nil {
+				continue
+			}
+			sim := fingerprint.Similarity(*allHashed[i].Phash, *allHashed[j].Phash)
+			if sim >= 0.90 {
+				if allHashed[i].DuplicateStatus != "exact" && allHashed[i].DuplicateStatus != "addressed" {
+					_ = h.mediaRepo.UpdateDuplicateStatus(allHashed[i].ID, "potential")
+				}
+				if allHashed[j].DuplicateStatus != "exact" && allHashed[j].DuplicateStatus != "addressed" {
+					_ = h.mediaRepo.UpdateDuplicateStatus(allHashed[j].ID, "potential")
+				}
+				dupCount++
+			}
+		}
+	}
+
+	log.Printf("Phash: found %d potential duplicate pairs in library %s", dupCount, p.LibraryID)
+	if h.notifier != nil {
+		h.notifier.Broadcast("phash:complete", map[string]interface{}{
+			"library_id":     p.LibraryID,
+			"computed":       computed,
+			"duplicate_pairs": dupCount,
+		})
+	}
 	return nil
 }
 
@@ -125,10 +227,12 @@ func (h *PreviewHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 // ──────── Register all handlers ────────
 
 func RegisterHandlers(q *Queue, sc *scanner.Scanner, libRepo *repository.LibraryRepository,
-	mediaRepo *repository.MediaRepository, jobRepo *repository.JobRepository, notifier EventNotifier) {
+	mediaRepo *repository.MediaRepository, jobRepo *repository.JobRepository,
+	fp *fingerprint.Fingerprinter, notifier EventNotifier) {
 
-	q.RegisterHandler(TaskScanLibrary, NewScanHandler(sc, libRepo, jobRepo, notifier))
+	q.RegisterHandler(TaskScanLibrary, NewScanHandler(sc, libRepo, jobRepo, q, notifier))
 	q.RegisterHandler(TaskFingerprint, NewFingerprintHandler(mediaRepo))
+	q.RegisterHandler(TaskPhashLibrary, NewPhashLibraryHandler(mediaRepo, fp, notifier))
 	q.RegisterHandler(TaskGeneratePreview, NewPreviewHandler())
 	q.RegisterHandler(TaskMetadataScrape, asynq.HandlerFunc(func(ctx context.Context, t *asynq.Task) error {
 		var p MetadataPayload
