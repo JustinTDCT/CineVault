@@ -134,6 +134,18 @@ func (s *Server) JobRepo() *repository.JobRepository {
 	return s.jobRepo
 }
 
+func (s *Server) Scrapers() []metadata.Scraper {
+	return s.scrapers
+}
+
+func (s *Server) SettingsRepo() *repository.SettingsRepository {
+	return s.settingsRepo
+}
+
+func (s *Server) Config() *config.Config {
+	return s.config
+}
+
 func (s *Server) setupRoutes() {
 	// Static files
 	fs := http.FileServer(http.Dir("web"))

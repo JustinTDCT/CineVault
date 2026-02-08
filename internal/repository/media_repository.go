@@ -289,6 +289,27 @@ func (r *MediaRepository) IsMetadataLocked(id uuid.UUID) (bool, error) {
 	return locked, err
 }
 
+// ListUnlockedByLibrary returns all media items in a library that are not metadata-locked.
+func (r *MediaRepository) ListUnlockedByLibrary(libraryID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + `
+		FROM media_items WHERE library_id = $1 AND metadata_locked = false
+		ORDER BY COALESCE(sort_title, title)`
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (r *MediaRepository) UpdateLastScanned(id uuid.UUID) error {
 	_, err := r.db.Exec(
 		`UPDATE media_items SET last_scanned_at = CURRENT_TIMESTAMP WHERE id = $1`, id)

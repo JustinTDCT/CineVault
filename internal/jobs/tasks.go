@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 
+	"github.com/JustinTDCT/CineVault/internal/config"
 	"github.com/JustinTDCT/CineVault/internal/fingerprint"
+	"github.com/JustinTDCT/CineVault/internal/metadata"
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/JustinTDCT/CineVault/internal/repository"
 	"github.com/JustinTDCT/CineVault/internal/scanner"
@@ -301,24 +304,161 @@ func (h *PreviewHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	return nil
 }
 
+// ──────── Metadata Scrape Handler ────────
+
+type MetadataScrapeHandler struct {
+	mediaRepo    *repository.MediaRepository
+	libRepo      *repository.LibraryRepository
+	settingsRepo *repository.SettingsRepository
+	scrapers     []metadata.Scraper
+	cfg          *config.Config
+	notifier     EventNotifier
+}
+
+func NewMetadataScrapeHandler(mediaRepo *repository.MediaRepository, libRepo *repository.LibraryRepository,
+	settingsRepo *repository.SettingsRepository, scrapers []metadata.Scraper,
+	cfg *config.Config, notifier EventNotifier) *MetadataScrapeHandler {
+	return &MetadataScrapeHandler{
+		mediaRepo: mediaRepo, libRepo: libRepo, settingsRepo: settingsRepo,
+		scrapers: scrapers, cfg: cfg, notifier: notifier,
+	}
+}
+
+func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
+	// The auto-match endpoint sends {"library_id":"..."} under the metadata:scrape task type
+	var payload struct {
+		LibraryID string `json:"library_id"`
+	}
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return fmt.Errorf("unmarshal: %w", err)
+	}
+
+	libID, _ := uuid.Parse(payload.LibraryID)
+	library, err := h.libRepo.GetByID(libID)
+	if err != nil {
+		return fmt.Errorf("get library: %w", err)
+	}
+
+	taskID := "metadata:" + payload.LibraryID
+	taskDesc := "Metadata refresh: " + library.Name
+
+	items, err := h.mediaRepo.ListUnlockedByLibrary(libID)
+	if err != nil {
+		return fmt.Errorf("list unlocked items: %w", err)
+	}
+	if len(items) == 0 {
+		log.Printf("Metadata: no unlocked items in library %s", library.Name)
+		return nil
+	}
+
+	log.Printf("Metadata: refreshing %d unlocked items in %q", len(items), library.Name)
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskMetadataScrape,
+			"status": "running", "progress": 0, "description": taskDesc,
+		})
+	}
+
+	// Fetch OMDb API key once
+	omdbKey, _ := h.settingsRepo.Get("omdb_api_key")
+
+	updated := 0
+	var lastBroadcast time.Time
+	for i, item := range items {
+		select {
+		case <-ctx.Done():
+			log.Printf("Metadata: cancelled after %d/%d items", i, len(items))
+			return ctx.Err()
+		default:
+		}
+
+		// Broadcast progress
+		if h.notifier != nil {
+			now := time.Now()
+			if now.Sub(lastBroadcast) >= 500*time.Millisecond || i == len(items)-1 {
+				lastBroadcast = now
+				pct := int(float64(i+1) / float64(len(items)) * 100)
+				desc := fmt.Sprintf("Metadata refresh: %s · %s (%d/%d)", library.Name, item.Title, i+1, len(items))
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskMetadataScrape,
+					"status": "running", "progress": pct, "description": desc,
+				})
+			}
+		}
+
+		// Skip types that don't support auto-match
+		if !metadata.ShouldAutoMatch(item.MediaType) {
+			continue
+		}
+
+		// Clean the title and find best match
+		query := metadata.CleanTitleForSearch(item.Title)
+		if query == "" {
+			query = item.Title
+		}
+
+		var yearHint *int
+		if item.Year != nil && *item.Year > 0 {
+			yearHint = item.Year
+		}
+
+		best := metadata.FindBestMatch(h.scrapers, query, item.MediaType, yearHint)
+		if best == nil {
+			continue
+		}
+
+		// Download poster if available
+		var posterPath *string
+		if best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
+			filename := item.ID.String() + ".jpg"
+			_, dlErr := metadata.DownloadPoster(*best.PosterURL, filepath.Join(h.cfg.Paths.Preview, "posters"), filename)
+			if dlErr == nil {
+				webPath := "/previews/posters/" + filename
+				posterPath = &webPath
+			}
+		}
+
+		// Apply metadata
+		if err := h.mediaRepo.UpdateMetadata(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath); err != nil {
+			log.Printf("Metadata: update failed for %s: %v", item.FileName, err)
+			continue
+		}
+
+		// Fetch OMDb ratings if we have an IMDB ID
+		if best.IMDBId != "" && omdbKey != "" {
+			ratings, omdbErr := metadata.FetchOMDbRatings(best.IMDBId, omdbKey)
+			if omdbErr == nil {
+				_ = h.mediaRepo.UpdateRatings(item.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore)
+			}
+		}
+
+		updated++
+		// Rate-limit API calls
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	log.Printf("Metadata: updated %d/%d items in %q", updated, len(items), library.Name)
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskMetadataScrape,
+			"status": "complete", "progress": 100, "description": taskDesc,
+		})
+	}
+	return nil
+}
+
 // ──────── Register all handlers ────────
 
 func RegisterHandlers(q *Queue, sc *scanner.Scanner, libRepo *repository.LibraryRepository,
 	mediaRepo *repository.MediaRepository, jobRepo *repository.JobRepository,
-	fp *fingerprint.Fingerprinter, notifier EventNotifier) {
+	fp *fingerprint.Fingerprinter, notifier EventNotifier,
+	scrapers []metadata.Scraper, settingsRepo *repository.SettingsRepository, cfg *config.Config) {
 
 	q.RegisterHandler(TaskScanLibrary, NewScanHandler(sc, libRepo, jobRepo, q, notifier))
 	q.RegisterHandler(TaskFingerprint, NewFingerprintHandler(mediaRepo))
 	q.RegisterHandler(TaskPhashLibrary, NewPhashLibraryHandler(mediaRepo, fp, notifier))
 	q.RegisterHandler(TaskGeneratePreview, NewPreviewHandler())
-	q.RegisterHandler(TaskMetadataScrape, asynq.HandlerFunc(func(ctx context.Context, t *asynq.Task) error {
-		var p MetadataPayload
-		if err := json.Unmarshal(t.Payload(), &p); err != nil {
-			return err
-		}
-		log.Printf("Job: scraping metadata for %s from %s", p.MediaItemID, p.Source)
-		return nil
-	}))
+	q.RegisterHandler(TaskMetadataScrape, NewMetadataScrapeHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, notifier))
 
 	// Ignore unused import
 	_ = models.JobPending
