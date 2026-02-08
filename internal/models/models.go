@@ -449,6 +449,18 @@ type MediaPerformer struct {
 	SortOrder     int       `json:"sort_order" db:"sort_order"`
 }
 
+// CastMember is the API response for a performer linked to a media item,
+// including the performer details and their role/character in the media.
+type CastMember struct {
+	PerformerID   uuid.UUID     `json:"performer_id"`
+	Name          string        `json:"name"`
+	PerformerType PerformerType `json:"performer_type"`
+	PhotoPath     *string       `json:"photo_path,omitempty"`
+	Role          string        `json:"role"`
+	CharacterName *string       `json:"character_name,omitempty"`
+	SortOrder     int           `json:"sort_order"`
+}
+
 // ──────────────────── Tags ────────────────────
 
 type TagCategory string

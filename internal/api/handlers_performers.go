@@ -97,6 +97,20 @@ func (s *Server) handleDeletePerformer(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, Response{Success: true})
 }
 
+func (s *Server) handleGetMediaCast(w http.ResponseWriter, r *http.Request) {
+	mediaID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media id")
+		return
+	}
+	cast, err := s.performerRepo.GetMediaCast(mediaID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: cast})
+}
+
 func (s *Server) handleLinkPerformer(w http.ResponseWriter, r *http.Request) {
 	mediaID, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

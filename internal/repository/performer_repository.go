@@ -142,6 +142,30 @@ func (r *PerformerRepository) GetMediaPerformers(mediaItemID uuid.UUID) ([]*mode
 	return performers, rows.Err()
 }
 
+// GetMediaCast returns performers linked to a media item with their role and character info.
+func (r *PerformerRepository) GetMediaCast(mediaItemID uuid.UUID) ([]*models.CastMember, error) {
+	query := `SELECT p.id, p.name, p.performer_type, p.photo_path,
+		mp.role, mp.character_name, mp.sort_order
+		FROM performers p JOIN media_performers mp ON p.id = mp.performer_id
+		WHERE mp.media_item_id = $1 ORDER BY mp.sort_order`
+	rows, err := r.db.Query(query, mediaItemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cast []*models.CastMember
+	for rows.Next() {
+		c := &models.CastMember{}
+		if err := rows.Scan(&c.PerformerID, &c.Name, &c.PerformerType,
+			&c.PhotoPath, &c.Role, &c.CharacterName, &c.SortOrder); err != nil {
+			return nil, err
+		}
+		cast = append(cast, c)
+	}
+	return cast, rows.Err()
+}
+
 // FindByName returns a performer matching the exact name (case-insensitive), or nil if not found.
 func (r *PerformerRepository) FindByName(name string) (*models.Performer, error) {
 	p := &models.Performer{}

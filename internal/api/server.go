@@ -183,6 +183,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("POST /api/v1/media/{id}/apply-meta", s.authMiddleware(s.handleApplyMetadata, models.RoleAdmin))
 
 	// Media - Performers
+	s.router.HandleFunc("GET /api/v1/media/{id}/cast", s.authMiddleware(s.handleGetMediaCast, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/media/{id}/performers", s.authMiddleware(s.handleLinkPerformer, models.RoleAdmin))
 	s.router.HandleFunc("DELETE /api/v1/media/{id}/performers/{performerId}", s.authMiddleware(s.handleUnlinkPerformer, models.RoleAdmin))
 
