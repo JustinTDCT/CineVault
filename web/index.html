@@ -352,13 +352,17 @@
         .person-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .person-name { font-size: 0.85rem; color: #e5e5e5; font-weight: 500; }
         .person-role { font-size: 0.75rem; color: #5a6a7f; }
-        .cast-grid { display: flex; gap: 18px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: thin; }
-        .cast-grid::-webkit-scrollbar { height: 6px; }
-        .cast-grid::-webkit-scrollbar-thumb { background: rgba(0,217,255,0.3); border-radius: 3px; }
-        .cast-card { text-align: center; flex: 0 0 100px; }
-        .cast-card .person-avatar { width: 72px; height: 72px; margin: 0 auto 6px; }
-        .cast-card .person-name { font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .cast-card .person-role { font-size: 0.72rem; color: #00D9FF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .cast-row { position: relative; }
+        .cast-row-scroll { display: flex; gap: 24px; overflow-x: auto; padding-bottom: 10px; scroll-behavior: smooth; -ms-overflow-style: none; scrollbar-width: none; }
+        .cast-row-scroll::-webkit-scrollbar { display: none; }
+        .cast-row-arrow { position: absolute; top: 40%; transform: translateY(-50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(0,0,0,0.6); border: 1px solid rgba(0,217,255,0.3); color: #fff; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 2; transition: background 0.2s; }
+        .cast-row-arrow:hover { background: rgba(0,217,255,0.3); }
+        .cast-row-arrow.left { left: -12px; }
+        .cast-row-arrow.right { right: -12px; }
+        .cast-card { text-align: center; flex: 0 0 110px; cursor: pointer; }
+        .cast-card .person-avatar { width: 90px; height: 90px; margin: 0 auto 8px; }
+        .cast-card .person-name { font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .cast-card .person-role { font-size: 0.72rem; color: #8a9bae; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
         /* ── Settings / Admin Grid ── */
         .settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
@@ -1084,20 +1088,11 @@
             tc.innerHTML = '<div class="spinner"></div>';
             const castRes = await api('GET', '/media/' + mediaId + '/cast');
             if (castRes.success && castRes.data && castRes.data.length > 0) {
-                const actors = castRes.data.filter(c => c.role === 'actor');
-                const crew = castRes.data.filter(c => c.role !== 'actor');
-                let html = '';
-                if (actors.length > 0) {
-                    html += '<h4 style="color:#e5e5e5;margin-bottom:12px;">Cast</h4><div class="cast-grid">';
-                    html += actors.map(c => `<div class="cast-card" onclick="loadPerformerDetail('${c.performer_id}')"><div class="person-avatar">${c.photo_path ? '<img src="'+c.photo_path+'">' : '&#128100;'}</div><div class="person-name">${c.name}</div><div class="person-role">${c.character_name || ''}</div></div>`).join('');
-                    html += '</div>';
-                }
-                if (crew.length > 0) {
-                    html += '<h4 style="color:#e5e5e5;margin:20px 0 12px;">Crew</h4><div class="cast-grid">';
-                    html += crew.map(c => `<div class="cast-card" onclick="loadPerformerDetail('${c.performer_id}')"><div class="person-avatar">${c.photo_path ? '<img src="'+c.photo_path+'">' : '&#128100;'}</div><div class="person-name">${c.name}</div><div class="person-role">${c.role}</div></div>`).join('');
-                    html += '</div>';
-                }
-                tc.innerHTML = html;
+                const all = castRes.data.map(c => {
+                    const subtitle = c.role === 'actor' ? (c.character_name || '') : c.role;
+                    return `<div class="cast-card" onclick="loadPerformerDetail('${c.performer_id}')"><div class="person-avatar">${c.photo_path ? '<img src="'+c.photo_path+'">' : '&#128100;'}</div><div class="person-name">${c.name}</div><div class="person-role">${subtitle}</div></div>`;
+                }).join('');
+                tc.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"><h4 style="color:#e5e5e5;margin:0;">Cast &amp; Crew</h4></div><div class="cast-row"><button class="cast-row-arrow left" onclick="document.getElementById('castScroll').scrollLeft-=400">&#8249;</button><div class="cast-row-scroll" id="castScroll">${all}</div><button class="cast-row-arrow right" onclick="document.getElementById('castScroll').scrollLeft+=400">&#8250;</button></div>`;
             } else {
                 tc.innerHTML = '<p style="color:#5a6a7f;">No cast information available</p>';
             }
