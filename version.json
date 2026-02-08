@@ -1,6 +1,6 @@
 {
-  "version": "0.12.0",
+  "version": "0.13.0",
   "phase": 3,
   "released": "2026-02-08",
-  "notes": "Auto-populate cast/crew from TMDB credits, TV show OMDb ratings and genre enrichment, performer photos from TMDB"
+  "notes": "Real-time scan progress indicator with progress bar, file count, and current filename via WebSocket"
 }

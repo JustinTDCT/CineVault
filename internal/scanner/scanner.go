@@ -97,7 +97,10 @@ func NewScanner(ffprobePath string, mediaRepo *repository.MediaRepository,
 	}
 }
 
-func (s *Scanner) ScanLibrary(library *models.Library) (*models.ScanResult, error) {
+// ProgressFunc reports scan progress: current processed count, total eligible files, current filename.
+type ProgressFunc func(current, total int, filename string)
+
+func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFunc) (*models.ScanResult, error) {
 	result := &models.ScanResult{}
 
 	// Determine which folders to scan: use library.Folders if available, else fall back to library.Path
@@ -112,6 +115,18 @@ func (s *Scanner) ScanLibrary(library *models.Library) (*models.ScanResult, erro
 	if len(scanPaths) == 0 && library.Path != "" {
 		scanPaths = []string{library.Path}
 	}
+
+	// Pre-count eligible files for progress reporting
+	var onProgress ProgressFunc
+	if len(progressFn) > 0 && progressFn[0] != nil {
+		onProgress = progressFn[0]
+	}
+	totalFiles := 0
+	if onProgress != nil {
+		totalFiles = s.countEligibleFiles(library.MediaType, scanPaths)
+		log.Printf("Scan: pre-count found %d eligible files", totalFiles)
+	}
+	processed := 0
 
 	// Determine if metadata should be retrieved for this library
 	shouldRetrieveMetadata := library.RetrieveMetadata
@@ -132,6 +147,12 @@ func (s *Scanner) ScanLibrary(library *models.Library) (*models.ScanResult, erro
 				return nil
 			}
 			result.FilesFound++
+			processed++
+
+			// Report progress
+			if onProgress != nil {
+				onProgress(processed, totalFiles, info.Name())
+			}
 
 			// Check if file already scanned
 			existing, err := s.mediaRepo.GetByFilePath(path)
@@ -252,6 +273,24 @@ func computeMD5(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// countEligibleFiles walks the scan paths and counts files with valid extensions.
+func (s *Scanner) countEligibleFiles(mediaType models.MediaType, scanPaths []string) int {
+	count := 0
+	for _, scanPath := range scanPaths {
+		_ = filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+			ext := strings.ToLower(filepath.Ext(path))
+			if s.isValidExtension(mediaType, ext) {
+				count++
+			}
+			return nil
+		})
+	}
+	return count
 }
 
 func (s *Scanner) isValidExtension(mediaType models.MediaType, ext string) bool {

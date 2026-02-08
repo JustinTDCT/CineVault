@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
@@ -73,7 +74,26 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		h.notifier.Broadcast("scan:start", map[string]string{"library_id": p.LibraryID, "name": library.Name})
 	}
 
-	result, err := h.scanner.ScanLibrary(library)
+	// Build a throttled progress callback to broadcast scan progress via WebSocket
+	var progressFn scanner.ProgressFunc
+	if h.notifier != nil {
+		var lastBroadcast time.Time
+		progressFn = func(current, total int, filename string) {
+			now := time.Now()
+			// Throttle: broadcast at most every 500ms, plus always on last item
+			if now.Sub(lastBroadcast) >= 500*time.Millisecond || current == total {
+				lastBroadcast = now
+				h.notifier.Broadcast("scan:progress", map[string]interface{}{
+					"library_id": p.LibraryID,
+					"current":    current,
+					"total":      total,
+					"filename":   filename,
+				})
+			}
+		}
+	}
+
+	result, err := h.scanner.ScanLibrary(library, progressFn)
 	if err != nil {
 		return fmt.Errorf("scan: %w", err)
 	}

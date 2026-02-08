@@ -240,6 +240,12 @@
             display: flex; justify-content: space-between; align-items: center;
         }
         .library-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,217,255,0.2); border-color: rgba(0,217,255,0.4); }
+        .scan-progress { margin-top: 8px; display: none; }
+        .scan-progress.active { display: block; }
+        .scan-progress-bar { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+        .scan-progress-fill { height: 100%; background: linear-gradient(90deg, #00D9FF 0%, #0099CC 100%); box-shadow: 0 0 8px rgba(0,217,255,0.5); border-radius: 3px; width: 0%; transition: width 0.3s ease; }
+        .scan-progress-text { color: #8a9bae; font-size: 0.75rem; margin-top: 4px; display: flex; justify-content: space-between; }
+        .scan-progress-text .filename { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .library-card h3 {
             background: linear-gradient(135deg, #00D9FF 0%, #00B8DB 100%);
             -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
@@ -748,13 +754,54 @@
 
     function handleWSEvent(msg) {
         switch(msg.event) {
-            case 'scan:start': toast('Scanning: ' + (msg.data?.name || ''), 'success'); break;
-            case 'scan:complete':
+            case 'scan:start': {
+                toast('Scanning: ' + (msg.data?.name || ''), 'success');
+                const libId = msg.data?.library_id;
+                if (libId) {
+                    const prog = document.getElementById('scan-progress-' + libId);
+                    if (prog) prog.classList.add('active');
+                    const btn = document.getElementById('scan-btn-' + libId);
+                    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Scanning...'; }
+                }
+                break;
+            }
+            case 'scan:progress': {
+                const libId = msg.data?.library_id;
+                if (!libId) break;
+                const current = msg.data.current || 0;
+                const total = msg.data.total || 0;
+                const filename = msg.data.filename || '';
+                const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+                const fill = document.getElementById('scan-fill-' + libId);
+                if (fill) fill.style.width = pct + '%';
+                const fileEl = document.getElementById('scan-file-' + libId);
+                if (fileEl) fileEl.textContent = filename;
+                const countEl = document.getElementById('scan-count-' + libId);
+                if (countEl) countEl.textContent = current + ' / ' + total + ' (' + pct + '%)';
+                const prog = document.getElementById('scan-progress-' + libId);
+                if (prog && !prog.classList.contains('active')) prog.classList.add('active');
+                break;
+            }
+            case 'scan:complete': {
                 const r = msg.data?.result;
                 toast(`Scan complete: ${r?.files_added||0} added, ${r?.files_found||0} found`);
                 loadSidebarCounts();
+                const libId = msg.data?.library_id;
+                if (libId) {
+                    const fill = document.getElementById('scan-fill-' + libId);
+                    if (fill) fill.style.width = '100%';
+                    const btn = document.getElementById('scan-btn-' + libId);
+                    if (btn) { btn.disabled = false; btn.innerHTML = '&#128269; Scan'; }
+                    setTimeout(() => {
+                        const prog = document.getElementById('scan-progress-' + libId);
+                        if (prog) prog.classList.remove('active');
+                        if (fill) fill.style.width = '0%';
+                    }, 3000);
+                    loadLibrariesView();
+                }
                 break;
-            case 'job:progress': break; // Could update progress bars
+            }
+            case 'job:progress': break;
             default: break;
         }
     }
@@ -1226,22 +1273,39 @@
                 if (!lib.include_in_search) settingsTags += '<span class="tag tag-red" style="margin-left:4px;">Hidden from Search</span>';
                 if (!lib.retrieve_metadata) settingsTags += '<span class="tag tag-orange" style="margin-left:4px;">No Metadata</span>';
                 if (lib.media_type === 'adult_movies' && lib.adult_content_type) settingsTags += `<span class="tag tag-purple" style="margin-left:4px;">${lib.adult_content_type === 'clips' ? 'Clips' : 'Movies'}</span>`;
-                return `<div class="library-card"><div><h3>${lib.name}</h3><p style="color:#8a9bae;font-size:0.85rem;"><span class="tag tag-cyan">${MEDIA_LABELS[lib.media_type]||lib.media_type}</span>${lib.season_grouping?'<span class="tag tag-purple" style="margin-left:6px;">Season Grouping</span>':''}<span class="tag ${accessColor}" style="margin-left:6px;">${accessLabel}</span>${folderCount}<span style="margin-left:8px;">${folderPaths}</span></p><div class="lib-settings-tags">${settingsTags}</div><p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">${lib.last_scan_at?'Last scan: '+new Date(lib.last_scan_at).toLocaleString():'Never scanned'}</p></div><div class="library-actions">${isAdmin?`<button class="btn-secondary" onclick="scanLibrary('${lib.id}',this)">&#128269; Scan</button><button class="btn-danger btn-small" onclick="deleteLibrary('${lib.id}')">Delete</button>`:''}</div></div>`;
+                return `<div class="library-card" id="lib-card-${lib.id}"><div style="flex:1;"><h3>${lib.name}</h3><p style="color:#8a9bae;font-size:0.85rem;"><span class="tag tag-cyan">${MEDIA_LABELS[lib.media_type]||lib.media_type}</span>${lib.season_grouping?'<span class="tag tag-purple" style="margin-left:6px;">Season Grouping</span>':''}<span class="tag ${accessColor}" style="margin-left:6px;">${accessLabel}</span>${folderCount}<span style="margin-left:8px;">${folderPaths}</span></p><div class="lib-settings-tags">${settingsTags}</div><p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">${lib.last_scan_at?'Last scan: '+new Date(lib.last_scan_at).toLocaleString():'Never scanned'}</p><div class="scan-progress" id="scan-progress-${lib.id}"><div class="scan-progress-bar"><div class="scan-progress-fill" id="scan-fill-${lib.id}"></div></div><div class="scan-progress-text"><span class="filename" id="scan-file-${lib.id}"></span><span id="scan-count-${lib.id}"></span></div></div></div><div class="library-actions">${isAdmin?`<button class="btn-secondary" id="scan-btn-${lib.id}" onclick="scanLibrary('${lib.id}',this)">&#128269; Scan</button><button class="btn-danger btn-small" onclick="deleteLibrary('${lib.id}')">Delete</button>`:''}</div></div>`;
             }).join('');
         } else div.innerHTML = `<div class="empty-state"><div class="empty-state-icon">&#128218;</div><div class="empty-state-title">No libraries configured</div><p>Create your first library to start organizing media</p></div>`;
     }
 
     async function scanLibrary(id, btn) {
         btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Scanning...';
+        const prog = document.getElementById('scan-progress-' + id);
+        if (prog) prog.classList.add('active');
+        const countEl = document.getElementById('scan-count-' + id);
+        if (countEl) countEl.textContent = 'Counting files...';
         try {
             const data = await api('POST', '/libraries/'+id+'/scan');
             if (data.success) {
-                if (data.data.job_id) toast('Scan job enqueued!');
-                else { const r = data.data; toast(`Scan: ${r.files_added} added, ${r.files_found} total`); }
-                loadLibrariesView(); loadSidebarCounts();
-            } else toast('Scan failed: '+(data.error||'Unknown'), 'error');
-        } catch(e) { toast('Scan error: '+e.message, 'error'); }
-        btn.disabled = false; btn.innerHTML = '&#128269; Scan';
+                if (data.data.job_id) { /* progress handled by WebSocket events */ }
+                else {
+                    // Synchronous scan fallback (no job queue)
+                    const r = data.data;
+                    toast(`Scan: ${r.files_added} added, ${r.files_found} total`);
+                    loadLibrariesView(); loadSidebarCounts();
+                    btn.disabled = false; btn.innerHTML = '&#128269; Scan';
+                    if (prog) prog.classList.remove('active');
+                }
+            } else {
+                toast('Scan failed: '+(data.error||'Unknown'), 'error');
+                btn.disabled = false; btn.innerHTML = '&#128269; Scan';
+                if (prog) prog.classList.remove('active');
+            }
+        } catch(e) {
+            toast('Scan error: '+e.message, 'error');
+            btn.disabled = false; btn.innerHTML = '&#128269; Scan';
+            if (prog) prog.classList.remove('active');
+        }
     }
 
     async function deleteLibrary(id) { if (!confirm('Delete this library and all its media?')) return; const d=await api('DELETE','/libraries/'+id); if(d.success){toast('Library deleted');loadLibrariesView();}else toast('Failed: '+d.error,'error'); }
