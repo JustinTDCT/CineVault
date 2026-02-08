@@ -3,7 +3,9 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"path/filepath"
 	"regexp"
 
 	"github.com/JustinTDCT/CineVault/internal/metadata"
@@ -127,13 +129,37 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Download poster if URL provided
+	var posterPath *string
+	if req.PosterURL != nil && *req.PosterURL != "" && s.config.Paths.Preview != "" {
+		filename := mediaID.String() + ".jpg"
+		saved, dlErr := metadata.DownloadPoster(*req.PosterURL, filepath.Join(s.config.Paths.Preview, "posters"), filename)
+		if dlErr != nil {
+			log.Printf("Apply metadata: poster download failed for %s: %v", mediaID, dlErr)
+		} else {
+			webPath := "/previews/posters/" + filename
+			posterPath = &webPath
+			log.Printf("Apply metadata: poster saved to %s", saved)
+		}
+	}
+
 	// Apply metadata to media item and lock to prevent auto-overwrite
-	query := `UPDATE media_items SET title = $1, year = $2, description = $3, rating = $4,
-		metadata_locked = true, updated_at = CURRENT_TIMESTAMP WHERE id = $5`
-	_, err = s.db.DB.Exec(query, req.Title, req.Year, req.Description, req.Rating, mediaID)
-	if err != nil {
-		s.respondError(w, http.StatusInternalServerError, err.Error())
-		return
+	if posterPath != nil {
+		query := `UPDATE media_items SET title = $1, year = $2, description = $3, rating = $4,
+			poster_path = $5, metadata_locked = true, updated_at = CURRENT_TIMESTAMP WHERE id = $6`
+		_, err = s.db.DB.Exec(query, req.Title, req.Year, req.Description, req.Rating, *posterPath, mediaID)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	} else {
+		query := `UPDATE media_items SET title = $1, year = $2, description = $3, rating = $4,
+			metadata_locked = true, updated_at = CURRENT_TIMESTAMP WHERE id = $5`
+		_, err = s.db.DB.Exec(query, req.Title, req.Year, req.Description, req.Rating, mediaID)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true})
