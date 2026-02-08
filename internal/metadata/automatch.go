@@ -23,10 +23,17 @@ const (
 
 // FindBestMatch searches all applicable scrapers for the best metadata match.
 // It selects scrapers based on media type and returns the highest-confidence result.
-func FindBestMatch(scrapers []Scraper, query string, mediaType models.MediaType) *models.MetadataMatch {
+// If itemYear is non-nil, results matching that year get a confidence boost.
+func FindBestMatch(scrapers []Scraper, query string, mediaType models.MediaType, itemYear ...*int) *models.MetadataMatch {
 	applicable := ScrapersForMediaType(scrapers, mediaType)
 	if len(applicable) == 0 {
 		return nil
+	}
+
+	// Extract year hint if provided
+	var yearHint *int
+	if len(itemYear) > 0 {
+		yearHint = itemYear[0]
 	}
 
 	var best *models.MetadataMatch
@@ -37,6 +44,19 @@ func FindBestMatch(scrapers []Scraper, query string, mediaType models.MediaType)
 			continue
 		}
 		for _, m := range matches {
+			conf := m.Confidence
+			// Boost confidence when the year from the file matches the result year
+			if yearHint != nil && m.Year != nil && *yearHint == *m.Year {
+				conf += 0.15
+				if conf > 1.0 {
+					conf = 1.0
+				}
+			}
+			// Penalize when we have a year but the result year doesn't match
+			if yearHint != nil && m.Year != nil && *yearHint != *m.Year {
+				conf -= 0.2
+			}
+			m.Confidence = conf
 			if m.Confidence >= MinAutoMatchConfidence && (best == nil || m.Confidence > best.Confidence) {
 				best = m
 			}

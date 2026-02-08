@@ -388,6 +388,17 @@ func (s *Scanner) titleFromFilename(filename string) string {
 	name := strings.TrimSuffix(filename, ext)
 	name = strings.ReplaceAll(name, ".", " ")
 	name = strings.ReplaceAll(name, "_", " ")
+
+	// Strip year in parens/brackets: "Title - (2020)" → "Title -"
+	name = regexp.MustCompile(`[\(\[\{]\d{4}[\)\]\}]`).ReplaceAllString(name, "")
+	// Strip anything in square brackets: "[Bluray-1080p x265]" etc.
+	name = regexp.MustCompile(`\[.*?\]`).ReplaceAllString(name, "")
+	// Strip resolution, codec, and release junk tokens
+	name = regexp.MustCompile(`(?i)\b(1080p|720p|480p|2160p|4k|uhd|bluray|blu-ray|brrip|bdrip|dvdrip|webrip|web-dl|webdl|hdtv|hdrip|x264|x265|h264|h265|hevc|aac|ac3|dts|atmos|remux|proper|repack|extended|unrated|directors cut|dc)\b`).ReplaceAllString(name, "")
+	// Strip trailing dash/whitespace separator: "Title -  " → "Title"
+	name = regexp.MustCompile(`\s*-\s*$`).ReplaceAllString(name, "")
+	// Collapse multiple spaces
+	name = regexp.MustCompile(`\s+`).ReplaceAllString(name, " ")
 	return strings.TrimSpace(name)
 }
 
@@ -418,7 +429,7 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		return
 	}
 
-	match := metadata.FindBestMatch(s.scrapers, searchQuery, item.MediaType)
+	match := metadata.FindBestMatch(s.scrapers, searchQuery, item.MediaType, item.Year)
 	if match == nil {
 		log.Printf("Auto-match: no match for %q", searchQuery)
 		return

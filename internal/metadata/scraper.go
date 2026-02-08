@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
@@ -100,10 +101,59 @@ func (s *TMDBScraper) Search(query string, mediaType models.MediaType) ([]*model
 			Description: &overview,
 			PosterURL:   posterURL,
 			Rating:      &rating,
-			Confidence:  0.8,
+			Confidence:  titleSimilarity(query, title),
 		})
 	}
 	return matches, nil
+}
+
+// titleSimilarity computes a confidence score between a search query and a result title.
+// Exact match = 1.0, substring containment gets partial credit, otherwise uses word overlap.
+func titleSimilarity(query, result string) float64 {
+	q := strings.ToLower(strings.TrimSpace(query))
+	r := strings.ToLower(strings.TrimSpace(result))
+
+	if q == r {
+		return 1.0
+	}
+
+	// If one is a strict prefix/substring of the other, high but not perfect
+	if q == r || strings.HasPrefix(r, q+" ") || strings.HasPrefix(q, r+" ") {
+		return 0.9
+	}
+
+	// Word-overlap scoring
+	qWords := strings.Fields(q)
+	rWords := strings.Fields(r)
+	if len(qWords) == 0 || len(rWords) == 0 {
+		return 0.0
+	}
+
+	rSet := make(map[string]bool, len(rWords))
+	for _, w := range rWords {
+		rSet[w] = true
+	}
+
+	matches := 0
+	for _, w := range qWords {
+		if rSet[w] {
+			matches++
+		}
+	}
+
+	// Jaccard-like: matched / total unique words
+	total := len(qWords)
+	if len(rWords) > total {
+		total = len(rWords)
+	}
+	score := float64(matches) / float64(total)
+
+	// Penalize if result has many extra words (e.g. query="Cloverfield" vs result="10 Cloverfield Lane")
+	if len(rWords) > len(qWords) {
+		score *= float64(len(qWords)) / float64(len(rWords))
+	}
+
+	return score
 }
 
 func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, error) {
