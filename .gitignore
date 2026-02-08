@@ -51,6 +51,10 @@ Thumbs.db
 .cursor-server/
 .cursorrules
 
+# Internal docs
+DESIGN.md
+CINEVAULT_DESIGN.md
+
 # Docker build artifacts
 .docker/
 
