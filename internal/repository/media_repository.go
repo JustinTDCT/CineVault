@@ -26,7 +26,7 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	artist_id, album_id, track_number, disc_number,
 	author_id, book_id, chapter_number,
 	image_gallery_id, sister_group_id,
-	sort_position, added_at, updated_at`
+	sort_position, metadata_locked, added_at, updated_at`
 
 func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.MediaItem, error) {
 	item := &models.MediaItem{}
@@ -42,7 +42,7 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.ArtistID, &item.AlbumID, &item.TrackNumber, &item.DiscNumber,
 		&item.AuthorID, &item.BookID, &item.ChapterNumber,
 		&item.ImageGalleryID, &item.SisterGroupID,
-		&item.SortPosition, &item.AddedAt, &item.UpdatedAt,
+		&item.SortPosition, &item.MetadataLocked, &item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
 }
@@ -218,6 +218,30 @@ func (r *MediaRepository) UpdateMetadata(id uuid.UUID, title string, year *int, 
 		poster_path = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6`
 	_, err := r.db.Exec(query, title, year, description, rating, posterPath, id)
 	return err
+}
+
+// UpdateMediaFields updates user-editable metadata fields and sets metadata_locked = true.
+func (r *MediaRepository) UpdateMediaFields(id uuid.UUID, title string, sortTitle, originalTitle, description *string, year *int, releaseDate *string, rating *float64) error {
+	query := `UPDATE media_items SET
+		title = $1, sort_title = $2, original_title = $3, description = $4,
+		year = $5, release_date = $6, rating = $7,
+		metadata_locked = true, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $8`
+	_, err := r.db.Exec(query, title, sortTitle, originalTitle, description, year, releaseDate, rating, id)
+	return err
+}
+
+// ResetMetadataLock clears the metadata_locked flag so the next scan/auto-match can overwrite.
+func (r *MediaRepository) ResetMetadataLock(id uuid.UUID) error {
+	_, err := r.db.Exec(`UPDATE media_items SET metadata_locked = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, id)
+	return err
+}
+
+// IsMetadataLocked returns whether the item has user-edited metadata that should be preserved.
+func (r *MediaRepository) IsMetadataLocked(id uuid.UUID) (bool, error) {
+	var locked bool
+	err := r.db.QueryRow(`SELECT metadata_locked FROM media_items WHERE id = $1`, id).Scan(&locked)
+	return locked, err
 }
 
 func (r *MediaRepository) UpdateLastScanned(id uuid.UUID) error {

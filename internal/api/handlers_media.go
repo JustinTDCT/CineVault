@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
@@ -45,6 +46,60 @@ func (s *Server) handleGetMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: media})
+}
+
+func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media ID")
+		return
+	}
+
+	var req struct {
+		Title         string  `json:"title"`
+		SortTitle     *string `json:"sort_title"`
+		OriginalTitle *string `json:"original_title"`
+		Description   *string `json:"description"`
+		Year          *int    `json:"year"`
+		ReleaseDate   *string `json:"release_date"`
+		Rating        *float64 `json:"rating"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Title == "" {
+		s.respondError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+
+	if err := s.mediaRepo.UpdateMediaFields(id, req.Title, req.SortTitle, req.OriginalTitle, req.Description, req.Year, req.ReleaseDate, req.Rating); err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Return updated item
+	media, err := s.mediaRepo.GetByID(id)
+	if err != nil {
+		s.respondJSON(w, http.StatusOK, Response{Success: true})
+		return
+	}
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: media})
+}
+
+func (s *Server) handleResetMediaLock(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media ID")
+		return
+	}
+
+	if err := s.mediaRepo.ResetMetadataLock(id); err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true})
 }
 
 func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {

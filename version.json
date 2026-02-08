@@ -1,6 +1,6 @@
 {
-  "version": "0.8.0",
+  "version": "0.9.0",
   "phase": 3,
-  "released": "2026-02-06",
-  "notes": "Extended library settings: multi-folder support, homepage/search visibility toggles, metadata retrieval control, adult content type (clips vs movies), per-library permissions"
+  "released": "2026-02-08",
+  "notes": "Media item editing: edit all metadata fields from the UI, metadata lock to prevent auto-match overwrites, reset lock to allow re-scraping"
 }

@@ -427,6 +427,46 @@
 
         /* ── Library Settings Tags ── */
         .lib-settings-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+
+        /* ── Edit Media Modal ── */
+        .edit-modal-overlay {
+            position: fixed; inset: 0; z-index: 3000;
+            background: rgba(10,25,41,0.92); backdrop-filter: blur(8px);
+            display: none; align-items: center; justify-content: center;
+        }
+        .edit-modal-overlay.active { display: flex; }
+        .edit-modal {
+            background: linear-gradient(135deg, rgba(26,35,50,0.97) 0%, rgba(13,27,42,0.99) 100%);
+            border: 1px solid rgba(0,217,255,0.3); border-radius: 20px;
+            padding: 36px 40px; width: 560px; max-width: 95vw;
+            max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,217,255,0.15);
+        }
+        .edit-modal-title {
+            font-size: 1.4rem; font-weight: 700; margin-bottom: 24px;
+            background: linear-gradient(135deg, #00D9FF 0%, #00B8DB 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .edit-modal-actions {
+            display: flex; gap: 10px; justify-content: flex-end;
+            margin-top: 24px; padding-top: 18px;
+            border-top: 1px solid rgba(0,217,255,0.1);
+        }
+        .edit-field-row {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+        }
+        .lock-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 600;
+        }
+        .lock-badge.locked {
+            background: rgba(255,159,64,0.15); color: #ffa94d;
+            border: 1px solid rgba(255,159,64,0.3);
+        }
+        .lock-badge.unlocked {
+            background: rgba(52,199,89,0.15); color: #51cf66;
+            border: 1px solid rgba(52,199,89,0.3);
+        }
     </style>
 </head>
 <body>
@@ -514,6 +554,52 @@
                 <button class="player-btn" onclick="toggleMute()">&#128266;</button>
                 <select class="player-quality-select" id="qualitySelect" onchange="changeQuality(this.value)"></select>
                 <button class="player-btn" onclick="toggleFullscreen()" style="margin-left:auto;">&#9974;</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Media Modal -->
+    <div class="edit-modal-overlay" id="editMediaOverlay">
+        <div class="edit-modal">
+            <div class="edit-modal-title">Edit Media Item</div>
+            <input type="hidden" id="editMediaId">
+            <div class="form-group">
+                <label>Title *</label>
+                <input type="text" id="editTitle">
+            </div>
+            <div class="edit-field-row">
+                <div class="form-group">
+                    <label>Sort Title</label>
+                    <input type="text" id="editSortTitle" placeholder="Leave blank to use title">
+                </div>
+                <div class="form-group">
+                    <label>Original Title</label>
+                    <input type="text" id="editOriginalTitle" placeholder="Original language title">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="editDescription" rows="4" placeholder="Synopsis or description"></textarea>
+            </div>
+            <div class="edit-field-row">
+                <div class="form-group">
+                    <label>Year</label>
+                    <input type="number" id="editYear" min="1800" max="2100" placeholder="e.g. 2024">
+                </div>
+                <div class="form-group">
+                    <label>Release Date</label>
+                    <input type="date" id="editReleaseDate">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Rating</label>
+                <input type="number" id="editRating" min="0" max="10" step="0.1" placeholder="0.0 – 10.0">
+            </div>
+            <div id="editLockStatus" style="margin-top:8px;"></div>
+            <div class="edit-modal-actions">
+                <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
+                <button class="btn-danger" id="editResetBtn" style="display:none;" onclick="resetMediaMeta()">&#8635; Reset Lock</button>
+                <button class="btn-primary" onclick="saveMediaEdit()">Save Changes</button>
             </div>
         </div>
     </div>
@@ -763,9 +849,11 @@
                     <div class="detail-actions">
                         <button class="btn-primary" onclick="playMedia('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#9654; Play</button>
                         <button class="btn-secondary" onclick="playDirect('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#128190; Direct Play</button>
+                        <button class="btn-secondary" onclick="openEditModal('${m.id}')">&#9998; Edit</button>
                         <button class="btn-secondary" onclick="identifyMedia('${m.id}')">&#128270; Identify</button>
                     </div>
                     <div style="margin-bottom:10px;">
+                        ${m.metadata_locked ? '<span class="lock-badge locked">&#128274; Metadata Locked</span>' : ''}
                         <span class="tag tag-cyan">${MEDIA_LABELS[m.media_type]||m.media_type}</span>
                         ${m.file_size ? '<span class="tag tag-purple">'+(m.file_size/1024/1024).toFixed(0)+' MB</span>' : ''}
                         ${m.audio_codec ? '<span class="tag tag-green">'+m.audio_codec+'</span>' : ''}
@@ -1349,6 +1437,80 @@
         const d=await api('POST','/media/'+id+'/apply-meta',match);
         if(d.success){toast('Metadata applied!');loadMediaDetail(id);}else toast(d.error,'error');
     }
+
+    // ──── Edit Media ────
+    async function openEditModal(id) {
+        const data = await api('GET', '/media/' + id);
+        if (!data.success) { toast('Failed to load media', 'error'); return; }
+        const m = data.data;
+        document.getElementById('editMediaId').value = m.id;
+        document.getElementById('editTitle').value = m.title || '';
+        document.getElementById('editSortTitle').value = m.sort_title || '';
+        document.getElementById('editOriginalTitle').value = m.original_title || '';
+        document.getElementById('editDescription').value = m.description || '';
+        document.getElementById('editYear').value = m.year || '';
+        document.getElementById('editReleaseDate').value = m.release_date ? m.release_date.substring(0,10) : '';
+        document.getElementById('editRating').value = m.rating != null ? m.rating : '';
+        // Lock status
+        const lockDiv = document.getElementById('editLockStatus');
+        const resetBtn = document.getElementById('editResetBtn');
+        if (m.metadata_locked) {
+            lockDiv.innerHTML = '<span class="lock-badge locked">&#128274; Metadata locked — auto-match will not overwrite your edits</span>';
+            resetBtn.style.display = 'inline-flex';
+        } else {
+            lockDiv.innerHTML = '<span class="lock-badge unlocked">&#128275; Metadata unlocked — auto-match may update fields</span>';
+            resetBtn.style.display = 'none';
+        }
+        document.getElementById('editMediaOverlay').classList.add('active');
+    }
+
+    function closeEditModal() {
+        document.getElementById('editMediaOverlay').classList.remove('active');
+    }
+
+    async function saveMediaEdit() {
+        const id = document.getElementById('editMediaId').value;
+        const title = document.getElementById('editTitle').value.trim();
+        if (!title) { toast('Title is required', 'error'); return; }
+        const sortTitle = document.getElementById('editSortTitle').value.trim() || null;
+        const originalTitle = document.getElementById('editOriginalTitle').value.trim() || null;
+        const description = document.getElementById('editDescription').value.trim() || null;
+        const yearVal = document.getElementById('editYear').value;
+        const year = yearVal ? parseInt(yearVal) : null;
+        const releaseDate = document.getElementById('editReleaseDate').value || null;
+        const ratingVal = document.getElementById('editRating').value;
+        const rating = ratingVal !== '' ? parseFloat(ratingVal) : null;
+
+        const d = await api('PUT', '/media/' + id, {
+            title, sort_title: sortTitle, original_title: originalTitle,
+            description, year, release_date: releaseDate, rating
+        });
+        if (d.success) {
+            toast('Changes saved! Metadata locked.');
+            closeEditModal();
+            loadMediaDetail(id);
+        } else {
+            toast(d.error || 'Save failed', 'error');
+        }
+    }
+
+    async function resetMediaMeta() {
+        const id = document.getElementById('editMediaId').value;
+        if (!confirm('Reset metadata lock? The next auto-match or scan will be able to overwrite your edits.')) return;
+        const d = await api('POST', '/media/' + id + '/reset');
+        if (d.success) {
+            toast('Metadata lock removed');
+            closeEditModal();
+            loadMediaDetail(id);
+        } else {
+            toast(d.error || 'Reset failed', 'error');
+        }
+    }
+
+    // Close edit modal on Escape
+    document.getElementById('editMediaOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closeEditModal();
+    });
 
     // ──── Settings ────
     async function loadSettingsView() {

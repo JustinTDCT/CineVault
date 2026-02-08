@@ -148,6 +148,7 @@ type MediaItem struct {
 	Phash            *string    `json:"phash,omitempty" db:"phash"`
 	AudioFingerprint *string    `json:"audio_fingerprint,omitempty" db:"audio_fingerprint"`
 	SortPosition     int        `json:"sort_position" db:"sort_position"`
+	MetadataLocked   bool       `json:"metadata_locked" db:"metadata_locked"`
 	AddedAt          time.Time  `json:"added_at" db:"added_at"`
 	UpdatedAt        time.Time  `json:"updated_at" db:"updated_at"`
 	LastScannedAt    *time.Time `json:"last_scanned_at,omitempty" db:"last_scanned_at"`

@@ -399,6 +399,12 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		return
 	}
 
+	// Skip items where the user has manually edited metadata
+	if item.MetadataLocked {
+		log.Printf("Auto-match: skipping %s (metadata locked by user edit)", item.ID)
+		return
+	}
+
 	// For TV shows with season grouping, match at the show level (not per-episode)
 	if item.MediaType == models.MediaTypeTVShows && item.TVShowID != nil {
 		s.autoMatchTVShow(*item.TVShowID)
