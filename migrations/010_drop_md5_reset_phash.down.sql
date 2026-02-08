@@ -1,0 +1,1 @@
+-- No-op: cannot restore old hashes

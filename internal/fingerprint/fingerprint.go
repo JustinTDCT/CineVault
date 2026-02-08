@@ -23,8 +23,77 @@ func NewFingerprinter(ffmpegPath, tempDir string) *Fingerprinter {
 	return &Fingerprinter{ffmpegPath: ffmpegPath, tempDir: tempDir}
 }
 
-// ComputePHash generates a perceptual hash from a video keyframe
-func (f *Fingerprinter) ComputePHash(filePath string, seekSeconds int) (string, error) {
+// samplePoints defines the percentage offsets into the video where frames are extracted.
+// Using multiple sample points increases accuracy by comparing content at different positions.
+var samplePoints = []float64{0.05, 0.15, 0.30, 0.50, 0.70, 0.85, 0.95}
+
+// ComputePHash generates a composite perceptual hash from multiple keyframes
+// sampled at percentage-based positions throughout the video.
+// The durationSec parameter is the total duration of the video in seconds.
+func (f *Fingerprinter) ComputePHash(filePath string, durationSec int) (string, error) {
+	if durationSec <= 0 {
+		// Fallback: single frame at 1 second
+		return f.computeSingleFrameHash(filePath, 1)
+	}
+
+	tmpDir, err := os.MkdirTemp(f.tempDir, "phash-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	var allHashBits []byte
+	extracted := 0
+
+	for i, pct := range samplePoints {
+		seekSec := int(float64(durationSec) * pct)
+		if seekSec <= 0 {
+			seekSec = 1
+		}
+		// Don't seek past the end
+		if seekSec >= durationSec {
+			seekSec = durationSec - 1
+		}
+		if seekSec <= 0 {
+			seekSec = 1
+		}
+
+		framePath := filepath.Join(tmpDir, fmt.Sprintf("frame_%d.jpg", i))
+
+		cmd := exec.Command(f.ffmpegPath,
+			"-ss", fmt.Sprintf("%d", seekSec),
+			"-i", filePath,
+			"-vframes", "1",
+			"-vf", "scale=32:32",
+			"-y",
+			framePath,
+		)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("Frame extraction at %d%% (%ds) failed for %s: %s", int(pct*100), seekSec, filepath.Base(filePath), string(output))
+			continue
+		}
+
+		bits, err := hashFrame(framePath)
+		if err != nil {
+			log.Printf("Hash frame at %d%% failed for %s: %v", int(pct*100), filepath.Base(filePath), err)
+			continue
+		}
+
+		allHashBits = append(allHashBits, bits...)
+		extracted++
+	}
+
+	if extracted == 0 {
+		return "", fmt.Errorf("no frames could be extracted from %s", filepath.Base(filePath))
+	}
+
+	// Produce a single composite hash from all sampled frame bits
+	hash := md5.Sum(allHashBits)
+	return fmt.Sprintf("%x", hash), nil
+}
+
+// computeSingleFrameHash is a fallback for very short videos or when duration is unknown.
+func (f *Fingerprinter) computeSingleFrameHash(filePath string, seekSec int) (string, error) {
 	tmpDir, err := os.MkdirTemp(f.tempDir, "phash-*")
 	if err != nil {
 		return "", err
@@ -33,9 +102,8 @@ func (f *Fingerprinter) ComputePHash(filePath string, seekSeconds int) (string, 
 
 	framePath := filepath.Join(tmpDir, "frame.jpg")
 
-	// Extract a frame
 	cmd := exec.Command(f.ffmpegPath,
-		"-ss", fmt.Sprintf("%d", seekSeconds),
+		"-ss", fmt.Sprintf("%d", seekSec),
 		"-i", filePath,
 		"-vframes", "1",
 		"-vf", "scale=32:32",
@@ -47,19 +115,28 @@ func (f *Fingerprinter) ComputePHash(filePath string, seekSeconds int) (string, 
 		return "", fmt.Errorf("extract frame: %w", err)
 	}
 
-	// Open and convert to grayscale
-	file, err := os.Open(framePath)
+	bits, err := hashFrame(framePath)
 	if err != nil {
 		return "", err
+	}
+
+	hash := md5.Sum(bits)
+	return fmt.Sprintf("%x", hash), nil
+}
+
+// hashFrame opens a JPEG frame and returns the binary hash bits (1/0 per pixel vs average).
+func hashFrame(framePath string) ([]byte, error) {
+	file, err := os.Open(framePath)
+	if err != nil {
+		return nil, err
 	}
 	defer file.Close()
 
 	img, _, err := image.Decode(file)
 	if err != nil {
-		return "", fmt.Errorf("decode image: %w", err)
+		return nil, fmt.Errorf("decode image: %w", err)
 	}
 
-	// Convert to 32x32 grayscale values
 	bounds := img.Bounds()
 	pixels := make([]float64, 32*32)
 	for y := 0; y < 32; y++ {
@@ -70,14 +147,12 @@ func (f *Fingerprinter) ComputePHash(filePath string, seekSeconds int) (string, 
 		}
 	}
 
-	// Compute average
 	var sum float64
 	for _, v := range pixels {
 		sum += v
 	}
 	avg := sum / float64(len(pixels))
 
-	// Generate hash: 1 if pixel > avg, else 0
 	var hashBits []byte
 	for _, v := range pixels {
 		if v > avg {
@@ -87,9 +162,7 @@ func (f *Fingerprinter) ComputePHash(filePath string, seekSeconds int) (string, 
 		}
 	}
 
-	// Convert to hex for compact storage
-	hash := md5.Sum(hashBits)
-	return fmt.Sprintf("%x", hash), nil
+	return hashBits, nil
 }
 
 // ComputeAudioFingerprint uses fpcalc (Chromaprint) if available, falls back to FFmpeg spectral
@@ -154,11 +227,10 @@ func Similarity(hash1, hash2 string) float64 {
 	return 1.0 - float64(dist)/float64(maxBits)
 }
 
-// IsDuplicate returns true if similarity is above threshold (default 0.97)
+// IsDuplicate returns true if similarity is above threshold (default 0.90)
 func IsDuplicate(hash1, hash2 string, threshold float64) bool {
 	if threshold <= 0 {
-		threshold = 0.97
+		threshold = 0.90
 	}
 	return Similarity(hash1, hash2) >= threshold
 }
-

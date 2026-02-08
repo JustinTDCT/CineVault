@@ -17,14 +17,14 @@ import (
 // DuplicateGroup represents a flagged item with its matching items and prior decisions.
 type DuplicateGroup struct {
 	Item       *models.MediaItem        `json:"item"`
-	DupType    string                   `json:"dup_type"`  // "exact" or "potential"
+	DupType    string                   `json:"dup_type"`  // "potential"
 	Matches    []DuplicateMatch         `json:"matches"`
 	Decisions  []DuplicateDecisionInfo  `json:"decisions"`
 }
 
 type DuplicateMatch struct {
 	Item       *models.MediaItem `json:"item"`
-	MatchType  string            `json:"match_type"` // "md5" or "phash"
+	MatchType  string            `json:"match_type"` // "phash"
 	Similarity float64           `json:"similarity"`
 }
 
@@ -81,52 +81,44 @@ func (s *Server) handleListDuplicates(w http.ResponseWriter, r *http.Request) {
 	}})
 }
 
-// findMatches finds items that match the given item by MD5 or phash.
+// findMatches finds items that match the given item by perceptual hash similarity.
+// Uses duration pre-filter (within 5%) before comparing hashes.
 func (s *Server) findMatches(item *models.MediaItem) []DuplicateMatch {
 	var matches []DuplicateMatch
 
-	// Exact matches by MD5
-	if item.FileHash != nil && *item.FileHash != "" {
-		dupes, err := s.mediaRepo.FindByFileHash(*item.FileHash, item.ID)
-		if err == nil {
-			for _, d := range dupes {
-				matches = append(matches, DuplicateMatch{
-					Item:       d,
-					MatchType:  "md5",
-					Similarity: 1.0,
-				})
-			}
-		}
+	if item.Phash == nil || *item.Phash == "" {
+		return matches
 	}
 
-	// Potential matches by phash
-	if item.Phash != nil && *item.Phash != "" {
-		phashItems, err := s.mediaRepo.ListPhashesInLibrary(item.LibraryID)
-		if err == nil {
-			for _, p := range phashItems {
-				if p.ID == item.ID || p.Phash == nil {
+	phashItems, err := s.mediaRepo.ListPhashesInLibrary(item.LibraryID)
+	if err != nil {
+		return matches
+	}
+
+	for _, p := range phashItems {
+		if p.ID == item.ID || p.Phash == nil {
+			continue
+		}
+
+		// Duration pre-filter: skip if durations differ by more than 5%
+		if item.DurationSeconds != nil && p.DurationSeconds != nil {
+			durA := float64(*item.DurationSeconds)
+			durB := float64(*p.DurationSeconds)
+			if durA > 0 && durB > 0 {
+				ratio := durA / durB
+				if ratio < 0.95 || ratio > 1.05 {
 					continue
-				}
-				// Skip if already found as MD5 match
-				alreadyFound := false
-				for _, m := range matches {
-					if m.Item.ID == p.ID {
-						alreadyFound = true
-						break
-					}
-				}
-				if alreadyFound {
-					continue
-				}
-				sim := fingerprint.Similarity(*item.Phash, *p.Phash)
-				if sim >= 0.90 {
-					matches = append(matches, DuplicateMatch{
-						Item:       p,
-						MatchType:  "phash",
-						Similarity: sim,
-					})
 				}
 			}
+		}
+
+		sim := fingerprint.Similarity(*item.Phash, *p.Phash)
+		if sim >= 0.90 {
+			matches = append(matches, DuplicateMatch{
+				Item:       p,
+				MatchType:  "phash",
+				Similarity: sim,
+			})
 		}
 	}
 

@@ -1,10 +1,7 @@
 package scanner
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -214,27 +211,6 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				_ = s.tvRepo.IncrementEpisodeCount(*item.TVSeasonID)
 			}
 
-			// Compute MD5 hash and check for exact duplicates
-			if md5Hash, err := computeMD5(path); err == nil {
-				if err := s.mediaRepo.UpdateFileHash(item.ID, md5Hash); err != nil {
-					log.Printf("MD5: failed to store hash for %s: %v", path, err)
-				} else {
-					item.FileHash = &md5Hash
-					dupes, err := s.mediaRepo.FindByFileHash(md5Hash, item.ID)
-					if err == nil && len(dupes) > 0 {
-						_ = s.mediaRepo.UpdateDuplicateStatus(item.ID, "exact")
-						for _, d := range dupes {
-							if d.DuplicateStatus != "addressed" {
-								_ = s.mediaRepo.UpdateDuplicateStatus(d.ID, "exact")
-							}
-						}
-						log.Printf("MD5: exact duplicate found for %s (%d matches)", item.FileName, len(dupes))
-					}
-				}
-			} else {
-				log.Printf("MD5: failed to hash %s: %v", path, err)
-			}
-
 			// Auto-populate metadata from external sources (if enabled)
 			if shouldRetrieveMetadata {
 				s.autoPopulateMetadata(library, item)
@@ -398,20 +374,6 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 // MediaRepo exposes the media repository for post-scan jobs (e.g. phash).
 func (s *Scanner) MediaRepo() *repository.MediaRepository {
 	return s.mediaRepo
-}
-
-// computeMD5 returns the hex-encoded MD5 hash of a file.
-func computeMD5(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	h := md5.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // countEligibleFiles walks the scan paths and counts files with valid extensions.

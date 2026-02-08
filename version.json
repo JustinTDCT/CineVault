@@ -1,6 +1,6 @@
 {
-  "version": "0.17.0",
+  "version": "0.18.0",
   "phase": 3,
   "released": "2026-02-08",
-  "notes": "Add task activity indicator with circular progress ring and hover tooltip"
+  "notes": "Replace MD5 with multi-point perceptual hashing for duplicate detection"
 }

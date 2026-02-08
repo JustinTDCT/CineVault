@@ -219,7 +219,12 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 		default:
 		}
 
-		phash, err := h.fingerprinter.ComputePHash(item.FilePath, 30)
+		// Use the item's actual duration for multi-point sampling
+		dur := 0
+		if item.DurationSeconds != nil {
+			dur = *item.DurationSeconds
+		}
+		phash, err := h.fingerprinter.ComputePHash(item.FilePath, dur)
 		if err != nil {
 			log.Printf("Phash: failed for %s: %v", item.FileName, err)
 			continue
@@ -259,12 +264,25 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 			if allHashed[i].Phash == nil || allHashed[j].Phash == nil {
 				continue
 			}
+
+			// Duration pre-filter: skip comparison if durations differ by more than 5%
+			if allHashed[i].DurationSeconds != nil && allHashed[j].DurationSeconds != nil {
+				durA := float64(*allHashed[i].DurationSeconds)
+				durB := float64(*allHashed[j].DurationSeconds)
+				if durA > 0 && durB > 0 {
+					ratio := durA / durB
+					if ratio < 0.95 || ratio > 1.05 {
+						continue
+					}
+				}
+			}
+
 			sim := fingerprint.Similarity(*allHashed[i].Phash, *allHashed[j].Phash)
 			if sim >= 0.90 {
-				if allHashed[i].DuplicateStatus != "exact" && allHashed[i].DuplicateStatus != "addressed" {
+				if allHashed[i].DuplicateStatus != "addressed" {
 					_ = h.mediaRepo.UpdateDuplicateStatus(allHashed[i].ID, "potential")
 				}
-				if allHashed[j].DuplicateStatus != "exact" && allHashed[j].DuplicateStatus != "addressed" {
+				if allHashed[j].DuplicateStatus != "addressed" {
 					_ = h.mediaRepo.UpdateDuplicateStatus(allHashed[j].ID, "potential")
 				}
 				dupCount++
