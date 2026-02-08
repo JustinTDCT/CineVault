@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 
 type Scanner struct {
 	ffprobe       *ffmpeg.FFprobe
+	ffmpegPath    string
 	mediaRepo     *repository.MediaRepository
 	tvRepo        *repository.TVRepository
 	musicRepo     *repository.MusicRepository
@@ -77,7 +79,7 @@ var yearPatterns = []*regexp.Regexp{
 // Edition extraction pattern: {edition-XXX} (Radarr/Sonarr convention)
 var editionPattern = regexp.MustCompile(`(?i)\{edition-([^}]+)\}`)
 
-func NewScanner(ffprobePath string, mediaRepo *repository.MediaRepository,
+func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepository,
 	tvRepo *repository.TVRepository, musicRepo *repository.MusicRepository,
 	audiobookRepo *repository.AudiobookRepository, galleryRepo *repository.GalleryRepository,
 	tagRepo *repository.TagRepository, performerRepo *repository.PerformerRepository,
@@ -86,6 +88,7 @@ func NewScanner(ffprobePath string, mediaRepo *repository.MediaRepository,
 ) *Scanner {
 	return &Scanner{
 		ffprobe:            ffmpeg.NewFFprobe(ffprobePath),
+		ffmpegPath:         ffmpegPath,
 		mediaRepo:          mediaRepo,
 		tvRepo:             tvRepo,
 		musicRepo:          musicRepo,
@@ -165,6 +168,10 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				return nil
 			}
 			if existing != nil {
+				// Backfill: generate screenshot poster for existing items that don't have one
+				if existing.PosterPath == nil && s.isProbeableType(library.MediaType) {
+					s.generateScreenshotPoster(existing)
+				}
 				result.FilesSkipped++
 				return nil
 			}
@@ -214,6 +221,12 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 			// Auto-populate metadata from external sources (if enabled)
 			if shouldRetrieveMetadata {
 				s.autoPopulateMetadata(library, item)
+			}
+
+			// For items without metadata retrieval (or that didn't get a poster),
+			// extract a screenshot from the video to use as the poster image.
+			if item.PosterPath == nil && s.isProbeableType(library.MediaType) {
+				s.generateScreenshotPoster(item)
 			}
 
 			result.FilesAdded++
@@ -392,6 +405,60 @@ func (s *Scanner) countEligibleFiles(mediaType models.MediaType, scanPaths []str
 		})
 	}
 	return count
+}
+
+// generateScreenshotPoster extracts a frame from a video file at ~20% into
+// the duration and saves it as the poster image. This mimics StashApp's
+// behavior for libraries that don't pull external metadata.
+func (s *Scanner) generateScreenshotPoster(item *models.MediaItem) {
+	if s.ffmpegPath == "" || s.posterDir == "" {
+		return
+	}
+
+	// Determine seek position: 20% into the video (like StashApp)
+	seekSec := 5 // default for very short/unknown duration
+	if item.DurationSeconds != nil && *item.DurationSeconds > 0 {
+		seekSec = *item.DurationSeconds / 5 // 20%
+		if seekSec < 1 {
+			seekSec = 1
+		}
+	}
+
+	// Ensure output directory exists
+	posterDir := filepath.Join(s.posterDir, "posters")
+	if err := os.MkdirAll(posterDir, 0755); err != nil {
+		log.Printf("Screenshot: failed to create poster dir: %v", err)
+		return
+	}
+
+	filename := item.ID.String() + ".jpg"
+	outPath := filepath.Join(posterDir, filename)
+
+	cmd := exec.Command(s.ffmpegPath,
+		"-ss", fmt.Sprintf("%d", seekSec),
+		"-i", item.FilePath,
+		"-vframes", "1",
+		"-q:v", "2",
+		"-y",
+		outPath,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("Screenshot: failed for %s: %s", item.FileName, string(output))
+		return
+	}
+
+	// Verify the file was actually created
+	if _, err := os.Stat(outPath); err != nil {
+		return
+	}
+
+	webPath := "/previews/posters/" + filename
+	if err := s.mediaRepo.UpdatePosterPath(item.ID, webPath); err != nil {
+		log.Printf("Screenshot: failed to update poster path for %s: %v", item.FileName, err)
+		return
+	}
+	item.PosterPath = &webPath
+	log.Printf("Screenshot: generated poster for %s at %ds", item.FileName, seekSec)
 }
 
 func (s *Scanner) isValidExtension(mediaType models.MediaType, ext string) bool {

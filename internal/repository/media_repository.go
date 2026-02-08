@@ -352,6 +352,12 @@ func (r *MediaRepository) UpdatePhash(id uuid.UUID, phash string) error {
 	return err
 }
 
+// UpdatePosterPath sets the poster image path for a media item.
+func (r *MediaRepository) UpdatePosterPath(id uuid.UUID, posterPath string) error {
+	_, err := r.db.Exec(`UPDATE media_items SET poster_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, posterPath, id)
+	return err
+}
+
 // UpdateDuplicateStatus sets the duplicate_status flag on a media item.
 func (r *MediaRepository) UpdateDuplicateStatus(id uuid.UUID, status string) error {
 	_, err := r.db.Exec(`UPDATE media_items SET duplicate_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, status, id)
