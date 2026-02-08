@@ -27,7 +27,7 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	author_id, book_id, chapter_number,
 	image_gallery_id, sister_group_id,
 	imdb_rating, rt_rating, audience_score,
-	sort_position, metadata_locked, duplicate_status, added_at, updated_at`
+	edition_type, sort_position, metadata_locked, duplicate_status, added_at, updated_at`
 
 func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.MediaItem, error) {
 	item := &models.MediaItem{}
@@ -44,7 +44,7 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.AuthorID, &item.BookID, &item.ChapterNumber,
 		&item.ImageGalleryID, &item.SisterGroupID,
 		&item.IMDBRating, &item.RTRating, &item.AudienceScore,
-		&item.SortPosition, &item.MetadataLocked, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
+		&item.EditionType, &item.SortPosition, &item.MetadataLocked, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
 }
@@ -60,7 +60,7 @@ func (r *MediaRepository) Create(item *models.MediaItem) error {
 			tv_show_id, tv_season_id, episode_number,
 			artist_id, album_id, track_number, disc_number,
 			author_id, book_id, chapter_number,
-			image_gallery_id, sister_group_id, sort_position
+			image_gallery_id, sister_group_id, edition_type, sort_position
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
 			$8, $9, $10, $11, $12, $13,
@@ -70,7 +70,7 @@ func (r *MediaRepository) Create(item *models.MediaItem) error {
 			$28, $29, $30,
 			$31, $32, $33, $34,
 			$35, $36, $37,
-			$38, $39, $40
+			$38, $39, $40, $41
 		)
 		RETURNING added_at, updated_at`
 
@@ -85,7 +85,7 @@ func (r *MediaRepository) Create(item *models.MediaItem) error {
 		item.TVShowID, item.TVSeasonID, item.EpisodeNumber,
 		item.ArtistID, item.AlbumID, item.TrackNumber, item.DiscNumber,
 		item.AuthorID, item.BookID, item.ChapterNumber,
-		item.ImageGalleryID, item.SisterGroupID, item.SortPosition,
+		item.ImageGalleryID, item.SisterGroupID, item.EditionType, item.SortPosition,
 	).Scan(&item.AddedAt, &item.UpdatedAt)
 }
 
@@ -230,13 +230,13 @@ func (r *MediaRepository) UpdateRatings(id uuid.UUID, imdbRating *float64, rtRat
 }
 
 // UpdateMediaFields updates user-editable metadata fields and sets metadata_locked = true.
-func (r *MediaRepository) UpdateMediaFields(id uuid.UUID, title string, sortTitle, originalTitle, description *string, year *int, releaseDate *string, rating *float64) error {
+func (r *MediaRepository) UpdateMediaFields(id uuid.UUID, title string, sortTitle, originalTitle, description *string, year *int, releaseDate *string, rating *float64, editionType *string) error {
 	query := `UPDATE media_items SET
 		title = $1, sort_title = $2, original_title = $3, description = $4,
-		year = $5, release_date = $6, rating = $7,
+		year = $5, release_date = $6, rating = $7, edition_type = COALESCE($8, edition_type),
 		metadata_locked = true, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $8`
-	_, err := r.db.Exec(query, title, sortTitle, originalTitle, description, year, releaseDate, rating, id)
+		WHERE id = $9`
+	_, err := r.db.Exec(query, title, sortTitle, originalTitle, description, year, releaseDate, rating, editionType, id)
 	return err
 }
 

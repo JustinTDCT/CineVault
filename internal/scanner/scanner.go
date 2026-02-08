@@ -77,6 +77,9 @@ var yearPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`[.\s_-](\d{4})[.\s_-]`), // Movie.Title.2020.1080p
 }
 
+// Edition extraction pattern: {edition-XXX} (Radarr/Sonarr convention)
+var editionPattern = regexp.MustCompile(`(?i)\{edition-([^}]+)\}`)
+
 func NewScanner(ffprobePath string, mediaRepo *repository.MediaRepository,
 	tvRepo *repository.TVRepository, musicRepo *repository.MusicRepository,
 	audiobookRepo *repository.AudiobookRepository, galleryRepo *repository.GalleryRepository,
@@ -171,14 +174,15 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 
 			// Create media item
 			item := &models.MediaItem{
-				ID:        uuid.New(),
-				LibraryID: library.ID,
-				MediaType: library.MediaType,
-				FilePath:  path,
-				FileName:  info.Name(),
-				FileSize:  info.Size(),
-				Title:     s.titleFromFilename(info.Name()),
-				Year:      s.extractYear(info.Name()),
+				ID:          uuid.New(),
+				LibraryID:   library.ID,
+				MediaType:   library.MediaType,
+				FilePath:    path,
+				FileName:    info.Name(),
+				FileSize:    info.Size(),
+				Title:       s.titleFromFilename(info.Name()),
+				Year:        s.extractYear(info.Name()),
+				EditionType: s.extractEdition(info.Name()),
 			}
 
 			// Probe with ffprobe for video/audio types
@@ -614,6 +618,8 @@ func (s *Scanner) titleFromFilename(filename string) string {
 	name = strings.ReplaceAll(name, ".", " ")
 	name = strings.ReplaceAll(name, "_", " ")
 
+	// Strip edition tags: {edition-Remastered} etc.
+	name = regexp.MustCompile(`\{[^}]*\}`).ReplaceAllString(name, "")
 	// Strip year in parens/brackets: "Title - (2020)" → "Title -"
 	name = regexp.MustCompile(`[\(\[\{]\d{4}[\)\]\}]`).ReplaceAllString(name, "")
 	// Strip anything in square brackets: "[Bluray-1080p x265]" etc.
@@ -625,6 +631,15 @@ func (s *Scanner) titleFromFilename(filename string) string {
 	// Collapse multiple spaces
 	name = regexp.MustCompile(`\s+`).ReplaceAllString(name, " ")
 	return strings.TrimSpace(name)
+}
+
+// extractEdition parses {edition-XXX} from a filename. Returns "Theatrical" if none found.
+func (s *Scanner) extractEdition(filename string) string {
+	matches := editionPattern.FindStringSubmatch(filename)
+	if len(matches) >= 2 {
+		return strings.TrimSpace(matches[1])
+	}
+	return "Theatrical"
 }
 
 // ──────────────────── Auto Metadata Population ────────────────────

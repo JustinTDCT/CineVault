@@ -672,13 +672,13 @@
                     <label>Rating</label>
                     <input type="number" id="editRating" min="0" max="10" step="0.1" placeholder="0.0 – 10.0">
                 </div>
-                <div class="form-group" id="editEditionGroup" style="display:none;">
+                <div class="form-group">
                     <label>Edition</label>
                     <select id="editEditionType">
-                        <option value="Normal">Normal</option>
                         <option value="Theatrical">Theatrical</option>
                         <option value="Director's Cut">Director's Cut</option>
                         <option value="Extended">Extended</option>
+                        <option value="Extended Edition">Extended Edition</option>
                         <option value="Unrated">Unrated</option>
                         <option value="Remastered">Remastered</option>
                         <option value="IMAX">IMAX</option>
@@ -1828,18 +1828,8 @@
         document.getElementById('editYear').value = m.year || '';
         document.getElementById('editReleaseDate').value = m.release_date ? m.release_date.substring(0,10) : '';
         document.getElementById('editRating').value = m.rating != null ? m.rating : '';
-        // Edition info
-        const edGroup = document.getElementById('editEditionGroup');
-        const edSelect = document.getElementById('editEditionType');
-        edGroup.style.display = 'none';
-        edSelect.value = 'Normal';
-        try {
-            const edData = await api('GET', '/media/' + id + '/edition');
-            if (edData.success && edData.data && edData.data.has_edition) {
-                edGroup.style.display = '';
-                edSelect.value = edData.data.edition_type || 'Normal';
-            }
-        } catch(e) {}
+        // Edition type (always shown)
+        document.getElementById('editEditionType').value = m.edition_type || 'Theatrical';
         // Lock status
         const lockDiv = document.getElementById('editLockStatus');
         const resetBtn = document.getElementById('editResetBtn');
@@ -1870,8 +1860,7 @@
         const ratingVal = document.getElementById('editRating').value;
         const rating = ratingVal !== '' ? parseFloat(ratingVal) : null;
 
-        const editionGroup = document.getElementById('editEditionGroup');
-        const editionType = editionGroup.style.display !== 'none' ? document.getElementById('editEditionType').value : null;
+        const editionType = document.getElementById('editEditionType').value;
 
         const d = await api('PUT', '/media/' + id, {
             title, sort_title: sortTitle, original_title: originalTitle,

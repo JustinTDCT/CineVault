@@ -74,14 +74,9 @@ func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.mediaRepo.UpdateMediaFields(id, req.Title, req.SortTitle, req.OriginalTitle, req.Description, req.Year, req.ReleaseDate, req.Rating); err != nil {
+	if err := s.mediaRepo.UpdateMediaFields(id, req.Title, req.SortTitle, req.OriginalTitle, req.Description, req.Year, req.ReleaseDate, req.Rating, req.EditionType); err != nil {
 		s.respondError(w, http.StatusInternalServerError, err.Error())
 		return
-	}
-
-	// Update edition type if provided and item is in an edition group
-	if req.EditionType != nil && *req.EditionType != "" {
-		_ = s.editionRepo.UpdateEditionType(id, *req.EditionType)
 	}
 
 	// Return updated item

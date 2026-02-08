@@ -150,6 +150,7 @@ type MediaItem struct {
 	IMDBRating       *float64   `json:"imdb_rating,omitempty" db:"imdb_rating"`
 	RTRating         *int       `json:"rt_rating,omitempty" db:"rt_rating"`
 	AudienceScore    *int       `json:"audience_score,omitempty" db:"audience_score"`
+	EditionType      string     `json:"edition_type" db:"edition_type"`
 	MetadataLocked   bool       `json:"metadata_locked" db:"metadata_locked"`
 	DuplicateStatus  string     `json:"duplicate_status" db:"duplicate_status"`
 	AddedAt          time.Time  `json:"added_at" db:"added_at"`
