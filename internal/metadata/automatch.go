@@ -38,7 +38,7 @@ func FindBestMatch(scrapers []Scraper, query string, mediaType models.MediaType,
 
 	var best *models.MetadataMatch
 	for _, scraper := range applicable {
-		matches, err := scraper.Search(query, mediaType)
+		matches, err := scraper.Search(query, mediaType, yearHint)
 		if err != nil {
 			log.Printf("Auto-match: %s search failed for %q: %v", scraper.Name(), query, err)
 			continue
@@ -47,14 +47,22 @@ func FindBestMatch(scrapers []Scraper, query string, mediaType models.MediaType,
 			conf := m.Confidence
 			// Boost confidence when the year from the file matches the result year
 			if yearHint != nil && m.Year != nil && *yearHint == *m.Year {
-				conf += 0.15
+				conf += 0.20
 				if conf > 1.0 {
 					conf = 1.0
 				}
 			}
-			// Penalize when we have a year but the result year doesn't match
+			// Strong penalty when we have a year but the result year doesn't match
 			if yearHint != nil && m.Year != nil && *yearHint != *m.Year {
-				conf -= 0.2
+				diff := *yearHint - *m.Year
+				if diff < 0 {
+					diff = -diff
+				}
+				if diff <= 1 {
+					conf -= 0.10 // off by 1 year, mild penalty
+				} else {
+					conf -= 0.40 // more than 1 year off, strong penalty
+				}
 			}
 			m.Confidence = conf
 			if m.Confidence >= MinAutoMatchConfidence && (best == nil || m.Confidence > best.Confidence) {

@@ -1,6 +1,6 @@
 {
-  "version": "0.15.0",
+  "version": "0.15.1",
   "phase": 3,
   "released": "2026-02-08",
-  "notes": "Infinite scroll media grid with A-Z alpha jump bar; paginated API with limit/offset"
+  "notes": "Fix metadata matching: pass year to TMDB API search and strengthen year mismatch penalty"
 }

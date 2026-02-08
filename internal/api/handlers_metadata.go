@@ -62,20 +62,20 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 		scrapers = s.scrapers // fallback to all if no type-specific match
 	}
 
-	var allMatches []*models.MetadataMatch
-	for _, scraper := range scrapers {
-		matches, err := scraper.Search(query, media.MediaType)
-		if err != nil {
-			continue
-		}
-		allMatches = append(allMatches, matches...)
-	}
-
 	// Extract year from the filename (not the DB) to avoid using a previously bad match
 	fileYear := yearFromFilename(media.FileName)
 	if fileYear == nil {
 		// Try full file path if filename didn't have it
 		fileYear = yearFromFilename(media.FilePath)
+	}
+
+	var allMatches []*models.MetadataMatch
+	for _, scraper := range scrapers {
+		matches, err := scraper.Search(query, media.MediaType, fileYear)
+		if err != nil {
+			continue
+		}
+		allMatches = append(allMatches, matches...)
 	}
 
 	// Apply year-aware scoring: boost matches with matching year, penalize mismatches

@@ -12,7 +12,7 @@ import (
 )
 
 type Scraper interface {
-	Search(query string, mediaType models.MediaType) ([]*models.MetadataMatch, error)
+	Search(query string, mediaType models.MediaType, year *int) ([]*models.MetadataMatch, error)
 	GetDetails(externalID string) (*models.MetadataMatch, error)
 	Name() string
 }
@@ -58,7 +58,7 @@ type tmdbSearchResult struct {
 	} `json:"results"`
 }
 
-func (s *TMDBScraper) Search(query string, mediaType models.MediaType) ([]*models.MetadataMatch, error) {
+func (s *TMDBScraper) Search(query string, mediaType models.MediaType, year *int) ([]*models.MetadataMatch, error) {
 	if s.apiKey == "" {
 		return nil, fmt.Errorf("TMDB API key not configured")
 	}
@@ -70,6 +70,15 @@ func (s *TMDBScraper) Search(query string, mediaType models.MediaType) ([]*model
 
 	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s",
 		searchType, s.apiKey, url.QueryEscape(query))
+
+	// Pass year to TMDB for more accurate results
+	if year != nil && *year > 0 {
+		if searchType == "tv" {
+			reqURL += fmt.Sprintf("&first_air_date_year=%d", *year)
+		} else {
+			reqURL += fmt.Sprintf("&year=%d", *year)
+		}
+	}
 
 	resp, err := s.client.Get(reqURL)
 	if err != nil {
@@ -565,7 +574,7 @@ func NewMusicBrainzScraper() *MusicBrainzScraper {
 
 func (s *MusicBrainzScraper) Name() string { return "musicbrainz" }
 
-func (s *MusicBrainzScraper) Search(query string, mediaType models.MediaType) ([]*models.MetadataMatch, error) {
+func (s *MusicBrainzScraper) Search(query string, mediaType models.MediaType, year *int) ([]*models.MetadataMatch, error) {
 	reqURL := fmt.Sprintf("https://musicbrainz.org/ws/2/recording/?query=%s&fmt=json&limit=10",
 		url.QueryEscape(query))
 
@@ -623,7 +632,7 @@ func NewOpenLibraryScraper() *OpenLibraryScraper {
 
 func (s *OpenLibraryScraper) Name() string { return "openlibrary" }
 
-func (s *OpenLibraryScraper) Search(query string, mediaType models.MediaType) ([]*models.MetadataMatch, error) {
+func (s *OpenLibraryScraper) Search(query string, mediaType models.MediaType, year *int) ([]*models.MetadataMatch, error) {
 	reqURL := fmt.Sprintf("https://openlibrary.org/search.json?q=%s&limit=10", url.QueryEscape(query))
 
 	resp, err := s.client.Get(reqURL)
