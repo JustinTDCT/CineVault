@@ -329,7 +329,9 @@
 
         /* ── Toast ── */
         .toast-container { position: fixed; bottom: 30px; right: 30px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
-        .toast { padding: 14px 24px; border-radius: 12px; font-size: 0.9rem; animation: slideInRight 0.3s ease-out; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+        .toast { padding: 14px 24px; border-radius: 12px; font-size: 0.9rem; animation: slideInRight 0.3s ease-out; box-shadow: 0 8px 24px rgba(0,0,0,0.5); backdrop-filter: blur(20px); }
+        .toast.success { background: rgba(10,25,41,0.95); border: 1px solid rgba(52,199,89,0.5); color: #51cf66; }
+        .toast.error { background: rgba(10,25,41,0.95); border: 1px solid rgba(255,59,48,0.5); color: #ff6b6b; }
         @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
         /* ── Continue Watching ── */
@@ -538,7 +540,7 @@
         }
         .task-tooltip-item { padding: 8px 0; border-bottom: 1px solid rgba(0,217,255,0.06); }
         .task-tooltip-item:last-child { border-bottom: none; }
-        .task-tooltip-name { font-size: 0.82rem; color: #e5e5e5; font-weight: 600; margin-bottom: 6px; }
+        .task-tooltip-name { font-size: 0.82rem; color: #e5e5e5; font-weight: 600; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .task-tooltip-progress { display: flex; align-items: center; gap: 10px; }
         .task-tooltip-bar {
             flex: 1; height: 4px; background: rgba(0,217,255,0.12); border-radius: 2px; overflow: hidden;

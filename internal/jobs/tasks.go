@@ -100,9 +100,11 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 					"total":      total,
 					"filename":   filename,
 				})
+				// Build descriptive status: "Scanning Movies · filename.mp4 (5/120)"
+				desc := fmt.Sprintf("Scanning %s · %s (%d/%d)", library.Name, filename, current, total)
 				h.notifier.Broadcast("task:update", map[string]interface{}{
 					"task_id": taskID, "task_type": TaskScanLibrary,
-					"status": "running", "progress": pct, "description": taskDesc,
+					"status": "running", "progress": pct, "description": desc,
 				})
 			}
 		}
@@ -231,9 +233,10 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 			if now.Sub(lastTaskBroadcast) >= 500*time.Millisecond || i == len(items)-1 {
 				lastTaskBroadcast = now
 				pct := int(float64(i+1) / float64(len(items)) * 100)
+				desc := fmt.Sprintf("Analyzing duplicates · %s (%d/%d)", item.FileName, i+1, len(items))
 				h.notifier.Broadcast("task:update", map[string]interface{}{
 					"task_id": taskID, "task_type": TaskPhashLibrary,
-					"status": "running", "progress": pct, "description": taskDesc,
+					"status": "running", "progress": pct, "description": desc,
 				})
 			}
 		}
