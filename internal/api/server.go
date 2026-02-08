@@ -75,8 +75,9 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 	tagRepo := repository.NewTagRepository(database.DB)
 	settingsRepo := repository.NewSettingsRepository(database.DB)
 
+	performerRepo := repository.NewPerformerRepository(database.DB)
 	posterDir := cfg.Paths.Preview
-	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo, tagRepo, settingsRepo, scrapers, posterDir)
+	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo, tagRepo, performerRepo, settingsRepo, scrapers, posterDir)
 	transcoder := stream.NewTranscoder(cfg.FFmpeg.FFmpegPath, cfg.Paths.Preview)
 
 	wsHub := NewWSHub()
@@ -96,7 +97,7 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 		sisterRepo:     repository.NewSisterRepository(database.DB),
 		collectionRepo: repository.NewCollectionRepository(database.DB),
 		watchRepo:      repository.NewWatchHistoryRepository(database.DB),
-		performerRepo:  repository.NewPerformerRepository(database.DB),
+		performerRepo:  performerRepo,
 		tagRepo:        tagRepo,
 		studioRepo:     repository.NewStudioRepository(database.DB),
 		settingsRepo:   settingsRepo,

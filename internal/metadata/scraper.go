@@ -237,6 +237,193 @@ func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, erro
 	}, nil
 }
 
+// GetTVDetails fetches TV show details from TMDB including external IDs (for IMDB ID).
+func (s *TMDBScraper) GetTVDetails(externalID string) (*models.MetadataMatch, error) {
+	if s.apiKey == "" {
+		return nil, fmt.Errorf("TMDB API key not configured")
+	}
+
+	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/tv/%s?api_key=%s&append_to_response=external_ids",
+		externalID, s.apiKey)
+	resp, err := s.client.Get(reqURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var r struct {
+		ID           int     `json:"id"`
+		Name         string  `json:"name"`
+		Overview     string  `json:"overview"`
+		PosterPath   string  `json:"poster_path"`
+		FirstAirDate string  `json:"first_air_date"`
+		VoteAverage  float64 `json:"vote_average"`
+		ExternalIDs  struct {
+			IMDBId string `json:"imdb_id"`
+		} `json:"external_ids"`
+		Genres []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"genres"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return nil, err
+	}
+
+	var year *int
+	if len(r.FirstAirDate) >= 4 {
+		y := 0
+		fmt.Sscanf(r.FirstAirDate[:4], "%d", &y)
+		year = &y
+	}
+	overview := r.Overview
+	var posterURL *string
+	if r.PosterPath != "" {
+		p := "https://image.tmdb.org/t/p/w500" + r.PosterPath
+		posterURL = &p
+	}
+	rating := r.VoteAverage
+	var genres []string
+	for _, g := range r.Genres {
+		genres = append(genres, g.Name)
+	}
+
+	return &models.MetadataMatch{
+		Source:      "tmdb",
+		ExternalID:  fmt.Sprintf("%d", r.ID),
+		Title:       r.Name,
+		Year:        year,
+		Description: &overview,
+		PosterURL:   posterURL,
+		Rating:      &rating,
+		Genres:      genres,
+		IMDBId:      r.ExternalIDs.IMDBId,
+		Confidence:  1.0,
+	}, nil
+}
+
+// ──────────────────── TMDB Credits ────────────────────
+
+// TMDBCastMember represents a cast member from TMDB credits.
+type TMDBCastMember struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Character   string `json:"character"`
+	ProfilePath string `json:"profile_path"`
+	Order       int    `json:"order"`
+}
+
+// TMDBCrewMember represents a crew member from TMDB credits.
+type TMDBCrewMember struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Job         string `json:"job"`
+	Department  string `json:"department"`
+	ProfilePath string `json:"profile_path"`
+}
+
+// TMDBCredits holds the cast and crew from TMDB.
+type TMDBCredits struct {
+	Cast []TMDBCastMember `json:"cast"`
+	Crew []TMDBCrewMember `json:"crew"`
+}
+
+// GetMovieCredits fetches the cast and crew for a movie from TMDB.
+func (s *TMDBScraper) GetMovieCredits(tmdbID string) (*TMDBCredits, error) {
+	if s.apiKey == "" {
+		return nil, fmt.Errorf("TMDB API key not configured")
+	}
+
+	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s/credits?api_key=%s", tmdbID, s.apiKey)
+	resp, err := s.client.Get(reqURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("TMDB credits request returned %d", resp.StatusCode)
+	}
+
+	var credits TMDBCredits
+	if err := json.NewDecoder(resp.Body).Decode(&credits); err != nil {
+		return nil, err
+	}
+	return &credits, nil
+}
+
+// GetTVCredits fetches the aggregate cast and crew for a TV show from TMDB.
+func (s *TMDBScraper) GetTVCredits(tmdbID string) (*TMDBCredits, error) {
+	if s.apiKey == "" {
+		return nil, fmt.Errorf("TMDB API key not configured")
+	}
+
+	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/tv/%s/aggregate_credits?api_key=%s", tmdbID, s.apiKey)
+	resp, err := s.client.Get(reqURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("TMDB TV credits request returned %d", resp.StatusCode)
+	}
+
+	// TV aggregate_credits has a slightly different structure for cast roles
+	var raw struct {
+		Cast []struct {
+			ID          int    `json:"id"`
+			Name        string `json:"name"`
+			ProfilePath string `json:"profile_path"`
+			Order       int    `json:"order"`
+			Roles       []struct {
+				Character string `json:"character"`
+			} `json:"roles"`
+		} `json:"cast"`
+		Crew []struct {
+			ID          int    `json:"id"`
+			Name        string `json:"name"`
+			ProfilePath string `json:"profile_path"`
+			Department  string `json:"department"`
+			Jobs        []struct {
+				Job string `json:"job"`
+			} `json:"jobs"`
+		} `json:"crew"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, err
+	}
+
+	credits := &TMDBCredits{}
+	for _, c := range raw.Cast {
+		character := ""
+		if len(c.Roles) > 0 {
+			character = c.Roles[0].Character
+		}
+		credits.Cast = append(credits.Cast, TMDBCastMember{
+			ID:          c.ID,
+			Name:        c.Name,
+			Character:   character,
+			ProfilePath: c.ProfilePath,
+			Order:       c.Order,
+		})
+	}
+	for _, c := range raw.Crew {
+		job := ""
+		if len(c.Jobs) > 0 {
+			job = c.Jobs[0].Job
+		}
+		credits.Crew = append(credits.Crew, TMDBCrewMember{
+			ID:          c.ID,
+			Name:        c.Name,
+			Job:         job,
+			Department:  c.Department,
+			ProfilePath: c.ProfilePath,
+		})
+	}
+	return credits, nil
+}
+
 // ──────────────────── TMDB TV Episode Details ────────────────────
 
 // TMDBEpisode holds metadata for a single TV episode from TMDB.

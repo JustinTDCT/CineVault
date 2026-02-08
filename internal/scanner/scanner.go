@@ -27,6 +27,7 @@ type Scanner struct {
 	audiobookRepo *repository.AudiobookRepository
 	galleryRepo   *repository.GalleryRepository
 	tagRepo       *repository.TagRepository
+	performerRepo *repository.PerformerRepository
 	settingsRepo  *repository.SettingsRepository
 	scrapers      []metadata.Scraper
 	posterDir     string
@@ -75,7 +76,8 @@ var yearPatterns = []*regexp.Regexp{
 func NewScanner(ffprobePath string, mediaRepo *repository.MediaRepository,
 	tvRepo *repository.TVRepository, musicRepo *repository.MusicRepository,
 	audiobookRepo *repository.AudiobookRepository, galleryRepo *repository.GalleryRepository,
-	tagRepo *repository.TagRepository, settingsRepo *repository.SettingsRepository,
+	tagRepo *repository.TagRepository, performerRepo *repository.PerformerRepository,
+	settingsRepo *repository.SettingsRepository,
 	scrapers []metadata.Scraper, posterDir string,
 ) *Scanner {
 	return &Scanner{
@@ -86,6 +88,7 @@ func NewScanner(ffprobePath string, mediaRepo *repository.MediaRepository,
 		audiobookRepo:      audiobookRepo,
 		galleryRepo:        galleryRepo,
 		tagRepo:            tagRepo,
+		performerRepo:      performerRepo,
 		settingsRepo:       settingsRepo,
 		scrapers:           scrapers,
 		posterDir:          posterDir,
@@ -507,14 +510,14 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		log.Printf("Auto-match: DB update failed for %s: %v", item.ID, err)
 	}
 
-	// Get TMDB details for genres and IMDB ID
+	// Get TMDB details for genres, IMDB ID, OMDb ratings, and cast
 	if match.Source == "tmdb" {
-		s.enrichWithDetails(item.ID, match.ExternalID)
+		s.enrichWithDetails(item.ID, match.ExternalID, item.MediaType)
 	}
 }
 
-// enrichWithDetails fetches TMDB details, creates genre tags, and optionally fetches OMDb ratings.
-func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string) {
+// enrichWithDetails fetches TMDB details, creates genre tags, fetches OMDb ratings, and populates cast.
+func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, mediaType models.MediaType) {
 	// Find the TMDB scraper
 	var tmdbScraper *metadata.TMDBScraper
 	for _, sc := range s.scrapers {
@@ -527,7 +530,14 @@ func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string) {
 		return
 	}
 
-	details, err := tmdbScraper.GetDetails(tmdbExternalID)
+	// Fetch details (movie vs TV have different endpoints)
+	var details *models.MetadataMatch
+	var err error
+	if mediaType == models.MediaTypeTVShows {
+		details, err = tmdbScraper.GetTVDetails(tmdbExternalID)
+	} else {
+		details, err = tmdbScraper.GetDetails(tmdbExternalID)
+	}
 	if err != nil {
 		log.Printf("Auto-match: TMDB details failed for %s: %v", tmdbExternalID, err)
 		return
@@ -543,19 +553,134 @@ func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string) {
 		omdbKey, err := s.settingsRepo.Get("omdb_api_key")
 		if err != nil {
 			log.Printf("Auto-match: settings lookup failed: %v", err)
-			return
-		}
-		if omdbKey != "" {
+		} else if omdbKey != "" {
 			ratings, err := metadata.FetchOMDbRatings(details.IMDBId, omdbKey)
 			if err != nil {
 				log.Printf("Auto-match: OMDb fetch failed for %s: %v", details.IMDBId, err)
-				return
-			}
-			if err := s.mediaRepo.UpdateRatings(itemID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); err != nil {
-				log.Printf("Auto-match: ratings update failed for %s: %v", itemID, err)
+			} else {
+				if err := s.mediaRepo.UpdateRatings(itemID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); err != nil {
+					log.Printf("Auto-match: ratings update failed for %s: %v", itemID, err)
+				}
 			}
 		}
 	}
+
+	// Fetch and populate cast/crew from TMDB credits
+	if s.performerRepo != nil {
+		var credits *metadata.TMDBCredits
+		if mediaType == models.MediaTypeTVShows {
+			credits, err = tmdbScraper.GetTVCredits(tmdbExternalID)
+		} else {
+			credits, err = tmdbScraper.GetMovieCredits(tmdbExternalID)
+		}
+		if err != nil {
+			log.Printf("Auto-match: TMDB credits failed for %s: %v", tmdbExternalID, err)
+		} else {
+			s.enrichWithCredits(itemID, credits)
+		}
+	}
+}
+
+// enrichWithCredits creates or finds performers from TMDB credits and links them to a media item.
+// Imports top 20 cast members and key crew (Director, Producer, Writer).
+func (s *Scanner) enrichWithCredits(itemID uuid.UUID, credits *metadata.TMDBCredits) {
+	if credits == nil {
+		return
+	}
+
+	// Import cast (top 20)
+	maxCast := 20
+	if len(credits.Cast) < maxCast {
+		maxCast = len(credits.Cast)
+	}
+	for i := 0; i < maxCast; i++ {
+		member := credits.Cast[i]
+		if member.Name == "" {
+			continue
+		}
+		performer, err := s.findOrCreatePerformer(member.Name, models.PerformerActor, member.ProfilePath)
+		if err != nil {
+			log.Printf("Auto-match: create performer %q failed: %v", member.Name, err)
+			continue
+		}
+		charName := member.Character
+		if err := s.performerRepo.LinkMedia(itemID, performer.ID, "actor", charName, member.Order); err != nil {
+			log.Printf("Auto-match: link performer %q to %s failed: %v", member.Name, itemID, err)
+		}
+	}
+
+	// Import key crew: Director, Producer, Writer
+	importedCrew := 0
+	for _, member := range credits.Crew {
+		if member.Name == "" {
+			continue
+		}
+		var perfType models.PerformerType
+		switch member.Job {
+		case "Director":
+			perfType = models.PerformerDirector
+		case "Producer", "Executive Producer":
+			perfType = models.PerformerProducer
+		case "Screenplay", "Writer", "Story":
+			perfType = models.PerformerOther
+		default:
+			continue
+		}
+		performer, err := s.findOrCreatePerformer(member.Name, perfType, member.ProfilePath)
+		if err != nil {
+			log.Printf("Auto-match: create crew %q failed: %v", member.Name, err)
+			continue
+		}
+		role := strings.ToLower(member.Job)
+		if err := s.performerRepo.LinkMedia(itemID, performer.ID, role, "", 100+importedCrew); err != nil {
+			log.Printf("Auto-match: link crew %q to %s failed: %v", member.Name, itemID, err)
+		}
+		importedCrew++
+	}
+}
+
+// findOrCreatePerformer looks up an existing performer by name or creates a new one.
+// If the performer exists but has no photo, and a profilePath is available, downloads the photo.
+func (s *Scanner) findOrCreatePerformer(name string, perfType models.PerformerType, profilePath string) (*models.Performer, error) {
+	existing, err := s.performerRepo.FindByName(name)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		// Download photo if the performer doesn't have one yet
+		if existing.PhotoPath == nil && profilePath != "" && s.posterDir != "" {
+			photoURL := "https://image.tmdb.org/t/p/w185" + profilePath
+			filename := "performer_" + existing.ID.String() + ".jpg"
+			if _, dlErr := metadata.DownloadPoster(photoURL, filepath.Join(s.posterDir, "posters"), filename); dlErr == nil {
+				webPath := "/previews/posters/" + filename
+				existing.PhotoPath = &webPath
+				_ = s.performerRepo.Update(existing)
+			}
+		}
+		return existing, nil
+	}
+
+	// Create new performer
+	p := &models.Performer{
+		ID:            uuid.New(),
+		Name:          name,
+		PerformerType: perfType,
+	}
+
+	// Download profile photo from TMDB
+	if profilePath != "" && s.posterDir != "" {
+		photoURL := "https://image.tmdb.org/t/p/w185" + profilePath
+		filename := "performer_" + p.ID.String() + ".jpg"
+		if _, dlErr := metadata.DownloadPoster(photoURL, filepath.Join(s.posterDir, "posters"), filename); dlErr == nil {
+			webPath := "/previews/posters/" + filename
+			p.PhotoPath = &webPath
+		}
+	}
+
+	if err := s.performerRepo.Create(p); err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 // linkGenreTags creates genre tags (if they don't exist) and links them to the media item.
@@ -647,9 +772,76 @@ func (s *Scanner) autoMatchTVShow(showID uuid.UUID) {
 		log.Printf("Auto-match: TV show DB update failed for %s: %v", showID, err)
 	}
 
-	// Queue episode-level metadata fetch for after all files are scanned
+	// Enrich with genres and OMDb ratings using TMDB TV details
 	if match.Source == "tmdb" && match.ExternalID != "" {
+		s.enrichTVShowDetails(showID, match.ExternalID)
+		// Queue episode-level metadata fetch for after all files are scanned
 		s.pendingEpisodeMeta[showID] = match.ExternalID
+	}
+}
+
+// enrichTVShowDetails fetches TV show details for genres and OMDb ratings,
+// and applies them to all episodes in the show.
+func (s *Scanner) enrichTVShowDetails(showID uuid.UUID, tmdbExternalID string) {
+	var tmdbScraper *metadata.TMDBScraper
+	for _, sc := range s.scrapers {
+		if t, ok := sc.(*metadata.TMDBScraper); ok {
+			tmdbScraper = t
+			break
+		}
+	}
+	if tmdbScraper == nil {
+		return
+	}
+
+	details, err := tmdbScraper.GetTVDetails(tmdbExternalID)
+	if err != nil {
+		log.Printf("Auto-match: TMDB TV details failed for %s: %v", tmdbExternalID, err)
+		return
+	}
+
+	// Get all episodes for this show to apply genres/ratings
+	episodes, err := s.mediaRepo.ListByTVShow(showID)
+	if err != nil {
+		log.Printf("Auto-match: failed to list episodes for genre/rating enrichment: %v", err)
+		return
+	}
+
+	// Link genre tags to all episodes
+	if s.tagRepo != nil && len(details.Genres) > 0 {
+		for _, ep := range episodes {
+			s.linkGenreTags(ep.ID, details.Genres)
+		}
+	}
+
+	// Fetch OMDb ratings and apply to all episodes
+	if s.settingsRepo != nil && details.IMDBId != "" {
+		omdbKey, err := s.settingsRepo.Get("omdb_api_key")
+		if err != nil {
+			log.Printf("Auto-match: settings lookup failed: %v", err)
+		} else if omdbKey != "" {
+			ratings, err := metadata.FetchOMDbRatings(details.IMDBId, omdbKey)
+			if err != nil {
+				log.Printf("Auto-match: OMDb fetch failed for TV %s: %v", details.IMDBId, err)
+			} else {
+				for _, ep := range episodes {
+					if err := s.mediaRepo.UpdateRatings(ep.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); err != nil {
+						log.Printf("Auto-match: ratings update failed for episode %s: %v", ep.ID, err)
+					}
+				}
+			}
+		}
+	}
+
+	// Fetch and link TV show cast to all episodes
+	if s.performerRepo != nil {
+		credits, err := tmdbScraper.GetTVCredits(tmdbExternalID)
+		if err != nil {
+			log.Printf("Auto-match: TMDB TV credits failed for %s: %v", tmdbExternalID, err)
+		} else if len(episodes) > 0 {
+			// Link cast to first episode as representative (avoid massive duplication)
+			s.enrichWithCredits(episodes[0].ID, credits)
+		}
 	}
 }
 

@@ -116,6 +116,12 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	media, err := s.mediaRepo.GetByID(mediaID)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "media not found")
+		return
+	}
+
 	var req struct {
 		Source      string   `json:"source"`
 		ExternalID  string   `json:"external_id"`
@@ -204,6 +210,27 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Fetch and populate cast/crew from TMDB credits
+	if req.Source == "tmdb" && req.ExternalID != "" {
+		for _, sc := range s.scrapers {
+			if t, ok := sc.(*metadata.TMDBScraper); ok {
+				var credits *metadata.TMDBCredits
+				var credErr error
+				if media.MediaType == models.MediaTypeTVShows {
+					credits, credErr = t.GetTVCredits(req.ExternalID)
+				} else {
+					credits, credErr = t.GetMovieCredits(req.ExternalID)
+				}
+				if credErr != nil {
+					log.Printf("Apply metadata: TMDB credits failed for %s: %v", req.ExternalID, credErr)
+				} else if credits != nil {
+					s.enrichWithCredits(mediaID, credits)
+				}
+				break
+			}
+		}
+	}
+
 	s.respondJSON(w, http.StatusOK, Response{Success: true})
 }
 
@@ -236,6 +263,104 @@ func (s *Server) linkGenreTags(mediaItemID uuid.UUID, genres []string) {
 			log.Printf("Apply metadata: assign genre tag %q to %s failed: %v", genre, mediaItemID, err)
 		}
 	}
+}
+
+// enrichWithCredits creates or finds performers from TMDB credits and links them to a media item.
+func (s *Server) enrichWithCredits(mediaItemID uuid.UUID, credits *metadata.TMDBCredits) {
+	if credits == nil {
+		return
+	}
+
+	// Import cast (top 20)
+	maxCast := 20
+	if len(credits.Cast) < maxCast {
+		maxCast = len(credits.Cast)
+	}
+	for i := 0; i < maxCast; i++ {
+		member := credits.Cast[i]
+		if member.Name == "" {
+			continue
+		}
+		performer, err := s.findOrCreatePerformer(member.Name, models.PerformerActor, member.ProfilePath)
+		if err != nil {
+			log.Printf("Apply metadata: create performer %q failed: %v", member.Name, err)
+			continue
+		}
+		charName := member.Character
+		if err := s.performerRepo.LinkMedia(mediaItemID, performer.ID, "actor", charName, member.Order); err != nil {
+			log.Printf("Apply metadata: link performer %q failed: %v", member.Name, err)
+		}
+	}
+
+	// Import key crew
+	importedCrew := 0
+	for _, member := range credits.Crew {
+		if member.Name == "" {
+			continue
+		}
+		var perfType models.PerformerType
+		switch member.Job {
+		case "Director":
+			perfType = models.PerformerDirector
+		case "Producer", "Executive Producer":
+			perfType = models.PerformerProducer
+		case "Screenplay", "Writer", "Story":
+			perfType = models.PerformerOther
+		default:
+			continue
+		}
+		performer, err := s.findOrCreatePerformer(member.Name, perfType, member.ProfilePath)
+		if err != nil {
+			log.Printf("Apply metadata: create crew %q failed: %v", member.Name, err)
+			continue
+		}
+		role := strings.ToLower(member.Job)
+		if err := s.performerRepo.LinkMedia(mediaItemID, performer.ID, role, "", 100+importedCrew); err != nil {
+			log.Printf("Apply metadata: link crew %q failed: %v", member.Name, err)
+		}
+		importedCrew++
+	}
+}
+
+// findOrCreatePerformer finds an existing performer by name or creates a new one with optional photo.
+func (s *Server) findOrCreatePerformer(name string, perfType models.PerformerType, profilePath string) (*models.Performer, error) {
+	existing, err := s.performerRepo.FindByName(name)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		// Download photo if missing
+		if existing.PhotoPath == nil && profilePath != "" && s.config.Paths.Preview != "" {
+			photoURL := "https://image.tmdb.org/t/p/w185" + profilePath
+			filename := "performer_" + existing.ID.String() + ".jpg"
+			if _, dlErr := metadata.DownloadPoster(photoURL, filepath.Join(s.config.Paths.Preview, "posters"), filename); dlErr == nil {
+				webPath := "/previews/posters/" + filename
+				existing.PhotoPath = &webPath
+				_ = s.performerRepo.Update(existing)
+			}
+		}
+		return existing, nil
+	}
+
+	p := &models.Performer{
+		ID:            uuid.New(),
+		Name:          name,
+		PerformerType: perfType,
+	}
+
+	if profilePath != "" && s.config.Paths.Preview != "" {
+		photoURL := "https://image.tmdb.org/t/p/w185" + profilePath
+		filename := "performer_" + p.ID.String() + ".jpg"
+		if _, dlErr := metadata.DownloadPoster(photoURL, filepath.Join(s.config.Paths.Preview, "posters"), filename); dlErr == nil {
+			webPath := "/previews/posters/" + filename
+			p.PhotoPath = &webPath
+		}
+	}
+
+	if err := s.performerRepo.Create(p); err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 func (s *Server) handleAutoMatch(w http.ResponseWriter, r *http.Request) {

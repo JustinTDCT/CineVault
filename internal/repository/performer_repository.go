@@ -142,6 +142,21 @@ func (r *PerformerRepository) GetMediaPerformers(mediaItemID uuid.UUID) ([]*mode
 	return performers, rows.Err()
 }
 
+// FindByName returns a performer matching the exact name (case-insensitive), or nil if not found.
+func (r *PerformerRepository) FindByName(name string) (*models.Performer, error) {
+	p := &models.Performer{}
+	query := `SELECT p.id, p.name, p.sort_name, p.performer_type, p.photo_path, p.bio, p.birth_date, p.death_date,
+		p.sort_position, p.created_at, p.updated_at, 0 as media_count
+		FROM performers p WHERE LOWER(p.name) = LOWER($1) LIMIT 1`
+	err := r.db.QueryRow(query, name).Scan(&p.ID, &p.Name, &p.SortName, &p.PerformerType,
+		&p.PhotoPath, &p.Bio, &p.BirthDate, &p.DeathDate,
+		&p.SortPosition, &p.CreatedAt, &p.UpdatedAt, &p.MediaCount)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return p, err
+}
+
 func (r *PerformerRepository) GetPerformerMedia(performerID uuid.UUID) ([]*models.MediaItem, error) {
 	query := `SELECT ` + mediaColumns + ` FROM media_items
 		WHERE id IN (SELECT media_item_id FROM media_performers WHERE performer_id = $1)
