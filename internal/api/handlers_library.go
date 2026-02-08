@@ -321,3 +321,38 @@ func (s *Server) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: result})
 }
+
+// handlePhashLibrary enqueues a perceptual hash computation job for a library.
+func (s *Server) handlePhashLibrary(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid library id")
+		return
+	}
+
+	library, err := s.libRepo.GetByID(id)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "library not found")
+		return
+	}
+
+	if s.jobQueue == nil {
+		s.respondError(w, http.StatusServiceUnavailable, "job queue not available")
+		return
+	}
+
+	uniqueID := "phash:" + id.String()
+	jobID, err := s.jobQueue.EnqueueUnique(jobs.TaskPhashLibrary, jobs.PhashLibraryPayload{
+		LibraryID: id.String(),
+	}, uniqueID, asynq.Timeout(6*time.Hour), asynq.Retention(1*time.Hour))
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	log.Printf("Phash job enqueued for library %q: %s", library.Name, jobID)
+	s.respondJSON(w, http.StatusAccepted, Response{Success: true, Data: map[string]string{
+		"job_id":  jobID,
+		"message": "phash job enqueued",
+	}})
+}

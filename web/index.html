@@ -1096,6 +1096,7 @@
         if (isAdmin) html += `<div class="lib-ctx-item" onclick="showEditLibraryForm('${libId}')"><span class="ctx-icon">&#9998;</span> Edit Library</div><div class="lib-ctx-sep"></div>`;
         html += `<div class="lib-ctx-item" onclick="sidebarScanLibrary('${libId}')"><span class="ctx-icon">&#128269;</span> Scan Library</div>`;
         html += `<div class="lib-ctx-item" onclick="sidebarMetadataRefresh('${libId}')"><span class="ctx-icon">&#8635;</span> Metadata Refresh</div>`;
+        html += `<div class="lib-ctx-item" onclick="sidebarRehashPhash('${libId}')"><span class="ctx-icon">&#128274;</span> Rehash pHash</div>`;
         menu.innerHTML = html;
         menu.dataset.libId = libId;
 
@@ -1142,6 +1143,15 @@
         toast('Metadata refresh started — unlocked items will be updated...');
         api('POST', '/libraries/' + libId + '/auto-match').then(data => {
             if (data.success) toast('Metadata refresh queued');
+            else toast('Failed: ' + (data.error || 'Unknown'), 'error');
+        }).catch(e => toast('Error: ' + e.message, 'error'));
+    }
+
+    function sidebarRehashPhash(libId) {
+        closeLibCtxMenu();
+        toast('pHash computation started...');
+        api('POST', '/libraries/' + libId + '/phash').then(data => {
+            if (data.success) toast('pHash job queued — duplicates will be analyzed');
             else toast('Failed: ' + (data.error || 'Unknown'), 'error');
         }).catch(e => toast('Error: ' + e.message, 'error'));
     }

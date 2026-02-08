@@ -178,6 +178,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("DELETE /api/v1/libraries/{id}", s.authMiddleware(s.handleDeleteLibrary, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/libraries/{id}/scan", s.authMiddleware(s.handleScanLibrary, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/libraries/{id}/auto-match", s.authMiddleware(s.handleAutoMatch, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/libraries/{id}/phash", s.authMiddleware(s.handlePhashLibrary, models.RoleAdmin))
 
 	// TV Shows
 	s.router.HandleFunc("GET /api/v1/libraries/{id}/shows", s.authMiddleware(s.handleListLibraryShows, models.RoleUser))
