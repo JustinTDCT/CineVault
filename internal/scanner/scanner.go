@@ -502,18 +502,18 @@ func (s *Scanner) countEligibleFiles(mediaType models.MediaType, scanPaths []str
 	return count
 }
 
-// generateScreenshotPoster extracts a frame from a video file at ~20% into
-// the duration and saves it as the poster image. This mimics StashApp's
-// behavior for libraries that don't pull external metadata.
+// generateScreenshotPoster extracts a frame from a video file at ~50% (halfway mark)
+// into the duration and saves it as the poster image for libraries that don't
+// pull external metadata or when no poster was found from scrapers.
 func (s *Scanner) generateScreenshotPoster(item *models.MediaItem) {
 	if s.ffmpegPath == "" || s.posterDir == "" {
 		return
 	}
 
-	// Determine seek position: 20% into the video (like StashApp)
+	// Determine seek position: 50% into the video (halfway mark)
 	seekSec := 5 // default for very short/unknown duration
 	if item.DurationSeconds != nil && *item.DurationSeconds > 0 {
-		seekSec = *item.DurationSeconds / 5 // 20%
+		seekSec = *item.DurationSeconds / 2 // 50% — halfway mark
 		if seekSec < 1 {
 			seekSec = 1
 		}
