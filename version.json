@@ -1,6 +1,6 @@
 {
-  "version": "0.28.0",
+  "version": "0.28.1",
   "phase": 3,
   "released": "2026-02-09",
-  "notes": "Multiple editions support: combine movie editions as parent/child, edition picker on play, editions tab in detail view, parent movie search in edit modal; child editions hidden from library grid"
+  "notes": "Continue Watching and Recently Watched now filter out content from hidden or disabled libraries"
 }

@@ -58,7 +58,9 @@ func (r *WatchHistoryRepository) ContinueWatching(userID uuid.UUID, limit int) (
 		       m.codec, m.container, m.poster_path, m.year, m.rating
 		FROM watch_history wh
 		JOIN media_items m ON wh.media_item_id = m.id
+		JOIN libraries l ON m.library_id = l.id
 		WHERE wh.user_id = $1 AND wh.completed = false AND wh.progress_seconds > 0
+		  AND l.is_enabled = true AND l.include_in_homepage = true
 		ORDER BY wh.last_watched_at DESC
 		LIMIT $2`
 
@@ -96,7 +98,9 @@ func (r *WatchHistoryRepository) RecentlyWatched(userID uuid.UUID, limit int) ([
 		       m.codec, m.container, m.poster_path, m.year, m.rating
 		FROM watch_history wh
 		JOIN media_items m ON wh.media_item_id = m.id
+		JOIN libraries l ON m.library_id = l.id
 		WHERE wh.user_id = $1
+		  AND l.is_enabled = true AND l.include_in_homepage = true
 		ORDER BY wh.last_watched_at DESC
 		LIMIT $2`
 
