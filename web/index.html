@@ -1235,8 +1235,8 @@
                 }
                 const introEnabled = fastLoginConfig && fastLoginConfig.success && fastLoginConfig.data && fastLoginConfig.data.login_intro_enabled === 'true';
                 if (introEnabled) {
-                    sessionStorage.setItem('intro_played', '1');
-                    await playLoginIntro(fastLoginConfig.data.login_intro_muted === 'true');
+                    const played = await playLoginIntro(fastLoginConfig.data.login_intro_muted === 'true');
+                    if (played) sessionStorage.setItem('intro_played', '1');
                 }
             }
 
@@ -1388,36 +1388,53 @@
     }
 
     // ──── Login Intro Video ────
-    function playLoginIntro(muted) {
+    function playLoginIntro(wantMuted) {
         return new Promise(function(resolve) {
             const overlay = document.getElementById('introOverlay');
             const video = document.getElementById('introVideo');
             overlay.classList.add('active');
-            video.muted = !!muted;
             video.playbackRate = 1.5;
             video.currentTime = 0;
+            video.muted = !!wantMuted;
 
-            video.onended = function() {
+            function onEnded() {
                 overlay.classList.add('fade-out');
                 setTimeout(function() {
                     overlay.classList.remove('active', 'fade-out');
-                    video.onended = null;
-                    video.onerror = null;
-                    resolve();
+                    cleanup();
+                    resolve(true);
                 }, 800);
-            };
+            }
 
-            video.onerror = function() {
+            function onError() {
                 overlay.classList.remove('active');
+                cleanup();
+                resolve(false);
+            }
+
+            function cleanup() {
                 video.onended = null;
                 video.onerror = null;
-                resolve();
-            };
+            }
+
+            video.onended = onEnded;
+            video.onerror = onError;
 
             video.play().catch(function() {
-                // Autoplay blocked by browser — skip intro silently
-                overlay.classList.remove('active');
-                resolve();
+                // Autoplay with audio blocked — retry muted (browsers always allow muted autoplay)
+                if (!video.muted) {
+                    video.muted = true;
+                    video.play().catch(function() {
+                        // Even muted failed — skip
+                        overlay.classList.remove('active');
+                        cleanup();
+                        resolve(false);
+                    });
+                } else {
+                    overlay.classList.remove('active');
+                    cleanup();
+                    resolve(false);
+                }
             });
         });
     }
@@ -1427,12 +1444,12 @@
         const msgDiv = document.getElementById('authMessage');
         try {
             const data = await api('POST', '/auth/login', { username: document.getElementById('loginUsername').value, password: document.getElementById('loginPassword').value });
-            if (data.success) { localStorage.setItem('token', data.data.token); localStorage.setItem('user', JSON.stringify(data.data.user)); msgDiv.innerHTML='<div class="message success">Login successful!</div>'; setTimeout(checkAuth, 400); }
+            if (data.success) { localStorage.setItem('token', data.data.token); localStorage.setItem('user', JSON.stringify(data.data.user)); checkAuth(); }
             else msgDiv.innerHTML='<div class="message error">'+(data.error||'Login failed')+'</div>';
         } catch { msgDiv.innerHTML='<div class="message error">Connection error</div>'; }
     });
 
-    document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.clear(); currentUser=null; if(ws)ws.close(); document.getElementById('fastLoginOverlay').classList.remove('active'); document.getElementById('loginModal').classList.remove('active'); checkAuth(); });
+    document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.clear(); sessionStorage.removeItem('intro_played'); currentUser=null; if(ws)ws.close(); document.getElementById('fastLoginOverlay').classList.remove('active'); document.getElementById('loginModal').classList.remove('active'); checkAuth(); });
 
     // ──── Sidebar Libraries ────
     async function loadSidebarCounts() {
