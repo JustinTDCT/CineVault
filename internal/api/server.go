@@ -31,6 +31,7 @@ type Server struct {
 	editionRepo    *repository.EditionRepository
 	sisterRepo     *repository.SisterRepository
 	collectionRepo *repository.CollectionRepository
+	seriesRepo     *repository.SeriesRepository
 	watchRepo      *repository.WatchHistoryRepository
 	performerRepo  *repository.PerformerRepository
 	tagRepo        *repository.TagRepository
@@ -97,6 +98,7 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 		editionRepo:    repository.NewEditionRepository(database.DB),
 		sisterRepo:     repository.NewSisterRepository(database.DB),
 		collectionRepo: repository.NewCollectionRepository(database.DB),
+		seriesRepo:     repository.NewSeriesRepository(database.DB),
 		watchRepo:      repository.NewWatchHistoryRepository(database.DB),
 		performerRepo:  performerRepo,
 		tagRepo:        tagRepo,
@@ -262,6 +264,16 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("POST /api/v1/collections/{id}/items", s.authMiddleware(s.handleAddCollectionItem, models.RoleUser))
 	s.router.HandleFunc("DELETE /api/v1/collections/{id}/items/{itemId}", s.authMiddleware(s.handleRemoveCollectionItem, models.RoleUser))
 	s.router.HandleFunc("DELETE /api/v1/collections/{id}", s.authMiddleware(s.handleDeleteCollection, models.RoleUser))
+
+	// Movie Series
+	s.router.HandleFunc("GET /api/v1/series", s.authMiddleware(s.handleListSeries, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/series", s.authMiddleware(s.handleCreateSeries, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/series/{id}", s.authMiddleware(s.handleGetSeries, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/series/{id}", s.authMiddleware(s.handleUpdateSeries, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/series/{id}", s.authMiddleware(s.handleDeleteSeries, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/series/{id}/items", s.authMiddleware(s.handleAddSeriesItem, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/series/{id}/items/{itemId}", s.authMiddleware(s.handleRemoveSeriesItem, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/media/{id}/series", s.authMiddleware(s.handleGetMediaSeries, models.RoleUser))
 
 	// Watch history
 	s.router.HandleFunc("POST /api/v1/watch/{mediaId}/progress", s.authMiddleware(s.handleUpdateProgress, models.RoleUser))

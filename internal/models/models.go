@@ -347,6 +347,32 @@ type SisterGroup struct {
 	Members []*MediaItem `json:"members,omitempty" db:"-"`
 }
 
+// ──────────────────── Movie Series ────────────────────
+
+type MovieSeries struct {
+	ID         uuid.UUID  `json:"id" db:"id"`
+	LibraryID  uuid.UUID  `json:"library_id" db:"library_id"`
+	Name       string     `json:"name" db:"name"`
+	PosterPath *string    `json:"poster_path,omitempty" db:"poster_path"`
+	CreatedAt  time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at" db:"updated_at"`
+	// Aggregated
+	ItemCount int               `json:"item_count,omitempty" db:"-"`
+	Items     []MovieSeriesItem `json:"items,omitempty" db:"-"`
+}
+
+type MovieSeriesItem struct {
+	ID          uuid.UUID  `json:"id" db:"id"`
+	SeriesID    uuid.UUID  `json:"series_id" db:"series_id"`
+	MediaItemID uuid.UUID  `json:"media_item_id" db:"media_item_id"`
+	SortOrder   int        `json:"sort_order" db:"sort_order"`
+	AddedAt     time.Time  `json:"added_at" db:"added_at"`
+	// Joined
+	Title      string  `json:"title,omitempty" db:"-"`
+	Year       *int    `json:"year,omitempty" db:"-"`
+	PosterPath *string `json:"poster_path,omitempty" db:"-"`
+}
+
 // ──────────────────── Collections ────────────────────
 
 type Collection struct {

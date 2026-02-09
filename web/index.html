@@ -876,6 +876,80 @@
             color: #5a6a7f; font-size: 0.78rem; margin-top: 4px;
         }
 
+        /* ── Series Modal & View ── */
+        .series-modal-overlay {
+            position: fixed; inset: 0; z-index: 3100;
+            background: rgba(10,25,41,0.92); backdrop-filter: blur(8px);
+            display: none; align-items: center; justify-content: center;
+        }
+        .series-modal-overlay.active { display: flex; }
+        .series-modal {
+            background: linear-gradient(135deg, rgba(26,35,50,0.97) 0%, rgba(13,27,42,0.99) 100%);
+            border: 1px solid rgba(0,217,255,0.3); border-radius: 20px;
+            padding: 36px 40px; width: 480px; max-width: 95vw;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto;
+        }
+        .series-modal-title {
+            font-size: 1.4rem; font-weight: 700; margin-bottom: 24px;
+            background: linear-gradient(135deg, #00D9FF 0%, #00B8DB 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .series-modal-actions {
+            display: flex; gap: 10px; justify-content: flex-end;
+            margin-top: 24px; padding-top: 18px;
+            border-top: 1px solid rgba(0,217,255,0.1);
+        }
+        .series-current-info {
+            padding: 10px 14px; border-radius: 10px; margin-bottom: 14px;
+            background: rgba(0,217,255,0.08); border: 1px solid rgba(0,217,255,0.15);
+            display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem;
+        }
+        .series-current-info .sci-name { color: #00D9FF; font-weight: 600; }
+        .series-current-info .sci-remove {
+            background: none; border: none; color: #ff6b6b; cursor: pointer; font-size: 0.8rem;
+            padding: 4px 8px; border-radius: 6px; transition: background 0.2s;
+        }
+        .series-current-info .sci-remove:hover { background: rgba(255,59,48,0.15); }
+        .series-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 22px; margin-bottom: 40px; }
+        .series-card {
+            background: rgba(30,36,50,0.7); border-radius: 10px; overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.06); cursor: pointer; transition: transform 0.2s, border-color 0.2s;
+        }
+        .series-card:hover { transform: translateY(-4px); border-color: rgba(0,217,255,0.3); }
+        .series-card .sc-poster { aspect-ratio: 2/3; background: rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 3rem; color: #3a4a5f; overflow: hidden; }
+        .series-card .sc-poster img { width: 100%; height: 100%; object-fit: cover; }
+        .series-card .sc-info { padding: 10px 12px; }
+        .series-card .sc-name { color: #e5e5e5; font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .series-card .sc-meta { color: #5a6a7f; font-size: 0.78rem; margin-top: 2px; }
+        .series-movie-list { display: flex; flex-direction: column; gap: 12px; }
+        .series-movie-item {
+            display: flex; align-items: center; gap: 16px; padding: 12px 16px;
+            background: rgba(30,36,50,0.7); border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);
+            cursor: pointer; transition: border-color 0.2s;
+        }
+        .series-movie-item:hover { border-color: rgba(0,217,255,0.3); }
+        .series-movie-item .smi-order {
+            width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            background: rgba(0,217,255,0.12); color: #00D9FF; font-weight: 700; font-size: 0.9rem; flex-shrink: 0;
+        }
+        .series-movie-item .smi-poster { width: 48px; height: 72px; border-radius: 8px; overflow: hidden; flex-shrink: 0; background: rgba(0,0,0,0.3); }
+        .series-movie-item .smi-poster img { width: 100%; height: 100%; object-fit: cover; }
+        .series-movie-item .smi-info { flex: 1; min-width: 0; }
+        .series-movie-item .smi-title { color: #e5e5e5; font-weight: 600; font-size: 0.9rem; }
+        .series-movie-item .smi-year { color: #5a6a7f; font-size: 0.78rem; margin-top: 2px; }
+        .series-movie-item .smi-remove {
+            background: none; border: none; color: #5a6a7f; cursor: pointer; font-size: 1.1rem;
+            padding: 6px; border-radius: 6px; transition: all 0.2s; flex-shrink: 0;
+        }
+        .series-movie-item .smi-remove:hover { color: #ff6b6b; background: rgba(255,59,48,0.1); }
+        .series-detail-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+        .series-detail-header h2 {
+            font-size: 1.5rem; font-weight: 700;
+            background: linear-gradient(135deg, #00D9FF 0%, #00B8DB 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .series-detail-actions { display: flex; gap: 8px; margin-left: auto; }
+
         /* ── Login Intro Overlay ── */
         .intro-overlay {
             position: fixed; inset: 0; z-index: 20000;
@@ -1077,11 +1151,39 @@
                 </div>
                 <div id="parentCurrentInfo" style="display:none;"></div>
             </div>
+            <div id="editSeriesGroup" style="display:none; margin-top:8px;">
+                <div id="editSeriesInfo"></div>
+                <button class="btn-secondary" style="font-size:0.82rem; padding:8px 14px;" onclick="openSeriesModal()">&#127910; Add to Series</button>
+            </div>
             <div id="editLockStatus" style="margin-top:8px;"></div>
             <div class="edit-modal-actions">
                 <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
                 <button class="btn-danger" id="editResetBtn" style="display:none;" onclick="resetMediaMeta()">&#8635; Reset Lock</button>
                 <button class="btn-primary" onclick="saveMediaEdit()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add to Series Modal -->
+    <div class="series-modal-overlay" id="seriesModalOverlay">
+        <div class="series-modal">
+            <div class="series-modal-title">Add to Series</div>
+            <input type="hidden" id="seriesMediaId">
+            <div class="form-group">
+                <label>Series Name</label>
+                <div style="position:relative;">
+                    <input type="text" id="seriesNameInput" placeholder="Select or type a new series name..." autocomplete="off" oninput="filterSeriesDropdown(this.value)" onfocus="showSeriesDropdown()">
+                    <div id="seriesDropdown" style="position:absolute;top:100%;left:0;right:0;z-index:10;display:none;max-height:200px;overflow-y:auto;background:linear-gradient(135deg,#1a2332 0%,#0d1b2a 100%);border:1px solid rgba(0,217,255,0.25);border-radius:0 0 10px 10px;box-shadow:0 8px 32px rgba(0,0,0,0.5);"></div>
+                </div>
+                <input type="hidden" id="seriesSelectedId">
+            </div>
+            <div class="form-group">
+                <label>Order in Series</label>
+                <input type="number" id="seriesOrderInput" min="1" placeholder="e.g. 1, 2, 3..." value="1">
+            </div>
+            <div class="series-modal-actions">
+                <button class="btn-secondary" onclick="closeSeriesModal()">Cancel</button>
+                <button class="btn-primary" onclick="saveToSeries()">Save</button>
             </div>
         </div>
     </div>
@@ -2313,7 +2415,8 @@
                 <div class="media-grid" id="libGrid"><div id="gridSentinel" class="load-more-sentinel"><div class="spinner"></div></div></div>
                 ${buildAlphaJump(letterIndex)}
             </div>
-            <div id="collectionsArea" style="display:none;"></div>`;
+            <div id="collectionsArea" style="display:none;"></div>
+            <div id="seriesArea" style="display:none;"></div>`;
 
         setupScrollObserver();
         loadMoreMedia();
@@ -2356,6 +2459,7 @@
             <div class="ft-sep"></div>
             <button class="ft-btn" id="ftGridBtn" onclick="showLibraryGrid()" title="Grid view">&#9638; Grid</button>
             <button class="ft-btn" id="ftCollBtn" onclick="showLibraryCollections()" title="Collections view">&#128218; Collections</button>
+            <button class="ft-btn" id="ftSeriesBtn" onclick="showLibrarySeries()" title="Series view">&#127910; Series</button>
             ${hasAnyFilter ? '<button class="ft-reset" onclick="resetLibFilters()" title="Reset filters">&#10005; Reset</button>' : ''}
         </div>`;
     }
@@ -2408,11 +2512,13 @@
         const countEl = document.getElementById('libItemCount');
         if (countEl) countEl.textContent = totalCount.toLocaleString() + ' items';
 
-        // Show grid, hide collections
+        // Show grid, hide collections and series
         const wrapper = document.getElementById('mediaGridWrapper');
         const collArea = document.getElementById('collectionsArea');
+        const serArea = document.getElementById('seriesArea');
         if (wrapper) wrapper.style.display = 'flex';
         if (collArea) collArea.style.display = 'none';
+        if (serArea) serArea.style.display = 'none';
 
         // Rebuild grid
         const grid = document.getElementById('libGrid');
@@ -2427,8 +2533,10 @@
         // Update toggle buttons
         const gridBtn = document.getElementById('ftGridBtn');
         const collBtn = document.getElementById('ftCollBtn');
+        const serBtn = document.getElementById('ftSeriesBtn');
         if (gridBtn) gridBtn.classList.add('active');
         if (collBtn) collBtn.classList.remove('active');
+        if (serBtn) serBtn.classList.remove('active');
 
         setupScrollObserver();
         loadMoreMedia();
@@ -2437,12 +2545,16 @@
     function showLibraryGrid() {
         const wrapper = document.getElementById('mediaGridWrapper');
         const collArea = document.getElementById('collectionsArea');
+        const serArea = document.getElementById('seriesArea');
         if (wrapper) wrapper.style.display = 'flex';
         if (collArea) collArea.style.display = 'none';
+        if (serArea) serArea.style.display = 'none';
         const gridBtn = document.getElementById('ftGridBtn');
         const collBtn = document.getElementById('ftCollBtn');
+        const serBtn = document.getElementById('ftSeriesBtn');
         if (gridBtn) gridBtn.classList.add('active');
         if (collBtn) collBtn.classList.remove('active');
+        if (serBtn) serBtn.classList.remove('active');
     }
 
     async function showLibraryCollections() {
@@ -2451,13 +2563,17 @@
 
         const wrapper = document.getElementById('mediaGridWrapper');
         const collArea = document.getElementById('collectionsArea');
+        const serArea = document.getElementById('seriesArea');
         if (wrapper) wrapper.style.display = 'none';
         if (collArea) collArea.style.display = 'block';
+        if (serArea) serArea.style.display = 'none';
 
         const gridBtn = document.getElementById('ftGridBtn');
         const collBtn = document.getElementById('ftCollBtn');
+        const serBtn = document.getElementById('ftSeriesBtn');
         if (gridBtn) gridBtn.classList.remove('active');
         if (collBtn) collBtn.classList.add('active');
+        if (serBtn) serBtn.classList.remove('active');
 
         collArea.innerHTML = '<div class="spinner"></div> Loading collections...';
         const data = await api('GET', '/collections?library_id=' + libId);
@@ -3160,6 +3276,16 @@
         } else {
             parentGroup.style.display = 'none';
         }
+        // Series info (movies and adult_movies only)
+        const seriesGroup = document.getElementById('editSeriesGroup');
+        const seriesInfo = document.getElementById('editSeriesInfo');
+        seriesInfo.innerHTML = '';
+        if (m.media_type === 'movies' || m.media_type === 'adult_movies') {
+            seriesGroup.style.display = '';
+            loadEditSeriesInfo(m.id);
+        } else {
+            seriesGroup.style.display = 'none';
+        }
         // Lock status
         const lockDiv = document.getElementById('editLockStatus');
         const resetBtn = document.getElementById('editResetBtn');
@@ -3293,6 +3419,237 @@
     // Close edit modal on Escape
     document.getElementById('editMediaOverlay').addEventListener('click', function(e) {
         if (e.target === this) closeEditModal();
+    });
+
+    // ──── Movie Series ────
+    let _seriesLibraryList = [];
+
+    async function showLibrarySeries() {
+        const libId = _gridState.libraryId;
+        if (!libId) return;
+
+        const wrapper = document.getElementById('mediaGridWrapper');
+        const collArea = document.getElementById('collectionsArea');
+        const serArea = document.getElementById('seriesArea');
+        if (wrapper) wrapper.style.display = 'none';
+        if (collArea) collArea.style.display = 'none';
+        if (serArea) serArea.style.display = 'block';
+
+        const gridBtn = document.getElementById('ftGridBtn');
+        const collBtn = document.getElementById('ftCollBtn');
+        const serBtn = document.getElementById('ftSeriesBtn');
+        if (gridBtn) gridBtn.classList.remove('active');
+        if (collBtn) collBtn.classList.remove('active');
+        if (serBtn) serBtn.classList.add('active');
+
+        serArea.innerHTML = '<div class="spinner"></div> Loading series...';
+        const data = await api('GET', '/series?library_id=' + libId);
+        const seriesList = (data.success && data.data) ? data.data : [];
+
+        if (seriesList.length === 0) {
+            serArea.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#127910;</div><div class="empty-state-title">No series</div><p>Add movies to a series from the edit modal</p></div>';
+            return;
+        }
+
+        serArea.innerHTML = '<div class="series-grid">' + seriesList.map(s => {
+            const poster = s.poster_path
+                ? `<img src="${posterSrc(s.poster_path, s.updated_at)}" alt="">`
+                : '&#127910;';
+            return `<div class="series-card" onclick="loadSeriesDetail('${s.id}')">
+                <div class="sc-poster">${poster}</div>
+                <div class="sc-info">
+                    <div class="sc-name">${s.name}</div>
+                    <div class="sc-meta">${s.item_count || 0} movie${(s.item_count||0) !== 1 ? 's' : ''}</div>
+                </div>
+            </div>`;
+        }).join('') + '</div>';
+    }
+
+    async function loadSeriesDetail(seriesId) {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = '<div class="spinner"></div> Loading...';
+        const data = await api('GET', '/series/' + seriesId);
+        if (!data.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Series not found</div></div>'; return; }
+        const s = data.data;
+        const items = s.items || [];
+
+        mc.innerHTML = `
+            <div class="series-detail-header">
+                <h2>${s.name}</h2>
+                <span class="tag tag-cyan">${items.length} movie${items.length !== 1 ? 's' : ''}</span>
+                <div class="series-detail-actions">
+                    <button class="btn-danger" onclick="deleteSeries('${s.id}')">&#128465; Delete Series</button>
+                </div>
+            </div>
+            <div class="series-movie-list" id="seriesMovieList">
+                ${items.length === 0 ? '<div class="empty-state"><p>No movies in this series yet</p></div>' :
+                items.map(item => `<div class="series-movie-item" onclick="loadMediaDetail('${item.media_item_id}')">
+                    <div class="smi-order">${item.sort_order}</div>
+                    <div class="smi-poster">${item.poster_path ? '<img src="'+posterSrc(item.poster_path, '')+'">' : '&#127910;'}</div>
+                    <div class="smi-info">
+                        <div class="smi-title">${item.title}</div>
+                        <div class="smi-year">${item.year || ''}</div>
+                    </div>
+                    <button class="smi-remove" onclick="event.stopPropagation();removeFromSeries('${s.id}','${item.id}')" title="Remove from series">&#10005;</button>
+                </div>`).join('')}
+            </div>
+            <button class="btn-secondary" style="margin-top:20px;" onclick="navigate('library','${s.library_id}')">&#8592; Back to Library</button>`;
+    }
+
+    async function deleteSeries(seriesId) {
+        if (!confirm('Delete this series? Movies will not be deleted.')) return;
+        const d = await api('DELETE', '/series/' + seriesId);
+        if (d.success) {
+            toast('Series deleted');
+            history.back();
+        } else {
+            toast(d.error || 'Failed to delete', 'error');
+        }
+    }
+
+    async function removeFromSeries(seriesId, itemId) {
+        if (!confirm('Remove this movie from the series?')) return;
+        const d = await api('DELETE', '/series/' + seriesId + '/items/' + itemId);
+        if (d.success) {
+            toast('Removed from series');
+            loadSeriesDetail(seriesId);
+        } else {
+            toast(d.error || 'Failed to remove', 'error');
+        }
+    }
+
+    // ── Add to Series Modal ──
+    function openSeriesModal() {
+        const mediaId = document.getElementById('editMediaId').value;
+        document.getElementById('seriesMediaId').value = mediaId;
+        document.getElementById('seriesNameInput').value = '';
+        document.getElementById('seriesSelectedId').value = '';
+        document.getElementById('seriesOrderInput').value = '1';
+
+        // Load series list for this library
+        const libId = _gridState.libraryId;
+        if (libId) {
+            api('GET', '/series?library_id=' + libId).then(data => {
+                _seriesLibraryList = (data.success && data.data) ? data.data : [];
+                renderSeriesDropdown(_seriesLibraryList);
+            });
+        }
+
+        document.getElementById('seriesModalOverlay').classList.add('active');
+    }
+
+    function closeSeriesModal() {
+        document.getElementById('seriesModalOverlay').classList.remove('active');
+        document.getElementById('seriesDropdown').style.display = 'none';
+    }
+
+    function renderSeriesDropdown(list) {
+        const dd = document.getElementById('seriesDropdown');
+        if (list.length === 0) {
+            dd.innerHTML = '<div style="padding:10px 14px;color:#5a6a7f;font-size:0.82rem;">No existing series — type a name to create one</div>';
+        } else {
+            dd.innerHTML = list.map(s =>
+                `<div style="padding:10px 14px;color:#b8c5d6;font-size:0.85rem;cursor:pointer;transition:background 0.15s;" onmouseenter="this.style.background='rgba(0,217,255,0.1)'" onmouseleave="this.style.background='none'" onclick="selectSeriesOption('${s.id}','${s.name.replace(/'/g,"\\'")}')">${s.name} <span style="color:#5a6a7f;font-size:0.75rem;">(${s.item_count||0} movies)</span></div>`
+            ).join('');
+        }
+    }
+
+    function showSeriesDropdown() {
+        const dd = document.getElementById('seriesDropdown');
+        renderSeriesDropdown(_seriesLibraryList);
+        dd.style.display = 'block';
+    }
+
+    function filterSeriesDropdown(query) {
+        const dd = document.getElementById('seriesDropdown');
+        document.getElementById('seriesSelectedId').value = '';
+        if (!query.trim()) {
+            renderSeriesDropdown(_seriesLibraryList);
+            dd.style.display = 'block';
+            return;
+        }
+        const filtered = _seriesLibraryList.filter(s => s.name.toLowerCase().includes(query.toLowerCase()));
+        if (filtered.length === 0) {
+            dd.innerHTML = '<div style="padding:10px 14px;color:#00D9FF;font-size:0.82rem;">&#10010; Create "' + query + '"</div>';
+        } else {
+            renderSeriesDropdown(filtered);
+        }
+        dd.style.display = 'block';
+    }
+
+    function selectSeriesOption(id, name) {
+        document.getElementById('seriesNameInput').value = name;
+        document.getElementById('seriesSelectedId').value = id;
+        document.getElementById('seriesDropdown').style.display = 'none';
+    }
+
+    async function saveToSeries() {
+        const mediaId = document.getElementById('seriesMediaId').value;
+        const name = document.getElementById('seriesNameInput').value.trim();
+        let seriesId = document.getElementById('seriesSelectedId').value;
+        const sortOrder = parseInt(document.getElementById('seriesOrderInput').value) || 1;
+
+        if (!name) { toast('Series name is required', 'error'); return; }
+
+        // If no existing series selected, create a new one
+        if (!seriesId) {
+            const libId = _gridState.libraryId;
+            if (!libId) { toast('Library not found', 'error'); return; }
+            const createRes = await api('POST', '/series', { library_id: libId, name: name });
+            if (!createRes.success) { toast(createRes.error || 'Failed to create series', 'error'); return; }
+            seriesId = createRes.data.id;
+        }
+
+        // Add the movie to the series
+        const addRes = await api('POST', '/series/' + seriesId + '/items', {
+            media_item_id: mediaId,
+            sort_order: sortOrder
+        });
+        if (addRes.success) {
+            toast('Added to series "' + name + '"');
+            closeSeriesModal();
+            // Refresh edit modal series info
+            loadEditSeriesInfo(mediaId);
+        } else {
+            toast(addRes.error || 'Failed to add to series', 'error');
+        }
+    }
+
+    async function loadEditSeriesInfo(mediaId) {
+        const seriesGroup = document.getElementById('editSeriesGroup');
+        const seriesInfo = document.getElementById('editSeriesInfo');
+        const data = await api('GET', '/media/' + mediaId + '/series');
+        if (data.success && data.data && data.data.in_series) {
+            const s = data.data;
+            seriesInfo.innerHTML = `<div class="series-current-info"><span class="sci-name">&#127910; ${s.series.name} — #${s.sort_order}</span><button class="sci-remove" onclick="removeMediaFromSeries('${s.series.id}','${s.item_id}','${mediaId}')">Remove</button></div>`;
+        } else {
+            seriesInfo.innerHTML = '';
+        }
+    }
+
+    async function removeMediaFromSeries(seriesId, itemId, mediaId) {
+        if (!confirm('Remove this movie from the series?')) return;
+        const d = await api('DELETE', '/series/' + seriesId + '/items/' + itemId);
+        if (d.success) {
+            toast('Removed from series');
+            loadEditSeriesInfo(mediaId);
+        } else {
+            toast(d.error || 'Failed to remove', 'error');
+        }
+    }
+
+    // Close series dropdown on click outside
+    document.addEventListener('click', function(e) {
+        const dd = document.getElementById('seriesDropdown');
+        const inp = document.getElementById('seriesNameInput');
+        if (dd && inp && !dd.contains(e.target) && e.target !== inp) {
+            dd.style.display = 'none';
+        }
+    });
+
+    // Close series modal on overlay click
+    document.getElementById('seriesModalOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closeSeriesModal();
     });
 
     // ──── Edit Profile ────

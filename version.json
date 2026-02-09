@@ -1,6 +1,6 @@
 {
-  "version": "0.28.1",
+  "version": "0.29.0",
   "phase": 3,
   "released": "2026-02-09",
-  "notes": "Continue Watching and Recently Watched now filter out content from hidden or disabled libraries"
+  "notes": "Movie Series feature — group movies into ordered franchises per library"
 }
