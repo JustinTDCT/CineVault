@@ -354,6 +354,18 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 		if result != nil && result.Match != nil {
 			log.Printf("Re-enrich: %q → %q (source=cache/%s)", item.Title, result.Match.Title, result.Source)
 
+			// Download poster if cache provides one
+			if result.Match.PosterURL != nil && s.posterDir != "" {
+				filename := item.ID.String() + ".jpg"
+				_, err := metadata.DownloadPoster(*result.Match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+				if err != nil {
+					log.Printf("Re-enrich: poster download failed for %s: %v", item.ID, err)
+				} else {
+					webPath := "/previews/posters/" + filename
+					_ = s.mediaRepo.UpdatePosterPath(item.ID, webPath)
+				}
+			}
+
 			// Link genre tags from cache
 			if s.tagRepo != nil && len(result.Genres) > 0 {
 				s.linkGenreTags(item.ID, result.Genres)
