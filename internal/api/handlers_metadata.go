@@ -518,9 +518,18 @@ func (s *Server) handleGetSystemSettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// Mask sensitive keys for display
-	if key, ok := settings["omdb_api_key"]; ok && len(key) > 4 {
-		settings["omdb_api_key"] = key[:4] + strings.Repeat("*", len(key)-4)
+	for _, sensitiveKey := range []string{"omdb_api_key"} {
+		if val, ok := settings[sensitiveKey]; ok && len(val) > 4 {
+			settings[sensitiveKey] = val[:4] + strings.Repeat("*", len(val)-4)
+		}
 	}
+	// For cache_server_api_key, expose only whether it exists (for the "Registered" indicator)
+	// but never return the actual value to the frontend
+	if val, ok := settings["cache_server_api_key"]; ok && val != "" {
+		settings["cache_server_api_key"] = "registered"
+	}
+	// Never expose the internal cache URL to the frontend
+	delete(settings, "cache_server_url")
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: settings})
 }
 
@@ -531,7 +540,20 @@ func (s *Server) handleUpdateSystemSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Sensitive keys that get masked – skip update if the value is still masked
+	sensitiveKeys := map[string]bool{"omdb_api_key": true}
+	// Internal keys that the frontend should never overwrite
+	internalKeys := map[string]bool{"cache_server_api_key": true, "cache_server_url": true}
+
 	for key, value := range req {
+		// Never allow the frontend to overwrite internal keys
+		if internalKeys[key] {
+			continue
+		}
+		// Don't overwrite real values with masked placeholders
+		if sensitiveKeys[key] && strings.Contains(value, "****") {
+			continue
+		}
 		if err := s.settingsRepo.Set(key, value); err != nil {
 			s.respondError(w, http.StatusInternalServerError, err.Error())
 			return

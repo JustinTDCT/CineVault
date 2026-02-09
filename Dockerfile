@@ -24,6 +24,9 @@ WORKDIR /app
 # Copy binary
 COPY --from=builder /build/cinevault .
 
+# Copy version metadata
+COPY --from=builder /build/version.json .
+
 # Copy web assets
 COPY --from=builder /build/web ./web
 

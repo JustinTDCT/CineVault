@@ -339,12 +339,40 @@ func (s *Scanner) reEnrichExistingItems(library *models.Library, onProgress Prog
 	log.Printf("Re-enrich: completed %d items", total)
 }
 
-// enrichItemFast enriches a single item using the combined TMDB details+credits endpoint
-// (1 TMDB call instead of 2) plus OMDb for ratings. Thread-safe for concurrent use.
+// enrichItemFast enriches a single item using the cache server or the combined
+// TMDB details+credits endpoint, plus OMDb for ratings. Thread-safe for concurrent use.
 func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.TMDBScraper, omdbKey string) {
 	searchQuery := metadata.CleanTitleForSearch(item.Title)
 	if searchQuery == "" {
 		return
+	}
+
+	// ── Try cache server first ──
+	cacheClient := s.getCacheClient()
+	if cacheClient != nil {
+		result := cacheClient.Lookup(searchQuery, item.Year, item.MediaType)
+		if result != nil && result.Match != nil {
+			log.Printf("Re-enrich: %q → %q (source=cache/%s)", item.Title, result.Match.Title, result.Source)
+
+			// Link genre tags from cache
+			if s.tagRepo != nil && len(result.Genres) > 0 {
+				s.linkGenreTags(item.ID, result.Genres)
+			}
+
+			// Apply OMDb ratings from cache
+			if result.Ratings != nil {
+				_ = s.mediaRepo.UpdateRatings(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore)
+			}
+
+			// Still need credits from TMDB
+			if s.performerRepo != nil && result.Match.ExternalID != "" && tmdbScraper != nil {
+				combined, err := tmdbScraper.GetDetailsWithCredits(result.Match.ExternalID)
+				if err == nil && combined.Credits != nil {
+					s.enrichWithCredits(item.ID, combined.Credits)
+				}
+			}
+			return
+		}
 	}
 
 	match := metadata.FindBestMatch(s.scrapers, searchQuery, item.MediaType, item.Year)
@@ -381,6 +409,11 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 	// Populate cast/crew from the credits already fetched
 	if s.performerRepo != nil && combined.Credits != nil {
 		s.enrichWithCredits(item.ID, combined.Credits)
+	}
+
+	// Contribute to cache server in background
+	if cacheClient != nil {
+		go cacheClient.Contribute(combined.Details)
 	}
 }
 
@@ -673,7 +706,22 @@ func (s *Scanner) extractEdition(filename string) string {
 
 // ──────────────────── Auto Metadata Population ────────────────────
 
+// getCacheClient returns a CacheClient if the cache server is enabled,
+// auto-registering if no API key exists yet.
+// Returns nil if the cache is disabled or registration fails.
+func (s *Scanner) getCacheClient() *metadata.CacheClient {
+	if s.settingsRepo == nil {
+		return nil
+	}
+	enabled, _ := s.settingsRepo.Get("cache_server_enabled")
+	if enabled == "false" {
+		return nil
+	}
+	return metadata.EnsureRegistered(s.settingsRepo)
+}
+
 // autoPopulateMetadata searches external sources and applies the best match.
+// When the cache server is enabled, it is tried first; direct TMDB is the fallback.
 func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.MediaItem) {
 	if len(s.scrapers) == 0 || !metadata.ShouldAutoMatch(item.MediaType) {
 		return
@@ -696,6 +744,19 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 	searchQuery := metadata.CleanTitleForSearch(item.Title)
 	if searchQuery == "" {
 		return
+	}
+
+	// ── Try cache server first ──
+	cacheClient := s.getCacheClient()
+	if cacheClient != nil {
+		result := cacheClient.Lookup(searchQuery, item.Year, item.MediaType)
+		if result != nil && result.Match != nil {
+			log.Printf("Auto-match: %q → %q (source=cache/%s, confidence=%.2f)",
+				item.Title, result.Match.Title, result.Source, result.Confidence)
+			s.applyCacheResult(item, result)
+			return
+		}
+		// Cache miss or unreachable – fall through to direct TMDB
 	}
 
 	match := metadata.FindBestMatch(s.scrapers, searchQuery, item.MediaType, item.Year)
@@ -731,6 +792,73 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 	// Get TMDB details for genres, IMDB ID, OMDb ratings, and cast
 	if match.Source == "tmdb" {
 		s.enrichWithDetails(item.ID, match.ExternalID, item.MediaType)
+	}
+
+	// Contribute to cache server in background
+	if cacheClient != nil && match.Source == "tmdb" {
+		go cacheClient.Contribute(match)
+	}
+}
+
+// applyCacheResult uses a cache server hit to populate metadata, genres, and ratings
+// without making any direct TMDB/OMDb API calls.
+func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.CacheLookupResult) {
+	match := result.Match
+
+	// Download poster if available
+	var posterPath *string
+	if match.PosterURL != nil && s.posterDir != "" {
+		filename := item.ID.String() + ".jpg"
+		_, err := metadata.DownloadPoster(*match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+		if err != nil {
+			log.Printf("Auto-match: poster download failed for %s: %v", item.ID, err)
+		} else {
+			webPath := "/previews/posters/" + filename
+			posterPath = &webPath
+		}
+	}
+
+	// Update metadata
+	if err := s.mediaRepo.UpdateMetadata(item.ID, match.Title, match.Year,
+		match.Description, match.Rating, posterPath, match.ContentRating); err != nil {
+		log.Printf("Auto-match: DB update failed for %s: %v", item.ID, err)
+	}
+
+	// Link genre tags from cache
+	if s.tagRepo != nil && len(result.Genres) > 0 {
+		s.linkGenreTags(item.ID, result.Genres)
+	}
+
+	// Apply OMDb ratings from cache
+	if result.Ratings != nil {
+		if err := s.mediaRepo.UpdateRatings(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore); err != nil {
+			log.Printf("Auto-match: ratings update failed for %s: %v", item.ID, err)
+		}
+	}
+
+	// Still fetch cast/crew from TMDB if we have a TMDB ID (cast not stored in cache)
+	if s.performerRepo != nil && match.ExternalID != "" {
+		var tmdbScraper *metadata.TMDBScraper
+		for _, sc := range s.scrapers {
+			if t, ok := sc.(*metadata.TMDBScraper); ok {
+				tmdbScraper = t
+				break
+			}
+		}
+		if tmdbScraper != nil {
+			var credits *metadata.TMDBCredits
+			var err error
+			if item.MediaType == models.MediaTypeTVShows {
+				credits, err = tmdbScraper.GetTVCredits(match.ExternalID)
+			} else {
+				credits, err = tmdbScraper.GetMovieCredits(match.ExternalID)
+			}
+			if err != nil {
+				log.Printf("Auto-match: TMDB credits failed for %s: %v", match.ExternalID, err)
+			} else {
+				s.enrichWithCredits(item.ID, credits)
+			}
+		}
 	}
 }
 

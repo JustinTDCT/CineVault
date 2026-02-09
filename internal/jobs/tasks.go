@@ -382,6 +382,13 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	// Fetch OMDb API key once
 	omdbKey, _ := h.settingsRepo.Get("omdb_api_key")
 
+	// Check if cache server is enabled and auto-register if needed
+	var cacheClient *metadata.CacheClient
+	cacheEnabled, _ := h.settingsRepo.Get("cache_server_enabled")
+	if cacheEnabled != "false" {
+		cacheClient = metadata.EnsureRegistered(h.settingsRepo)
+	}
+
 	updated := 0
 	var lastBroadcast time.Time
 	for i, item := range items {
@@ -420,6 +427,39 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		var yearHint *int
 		if item.Year != nil && *item.Year > 0 {
 			yearHint = item.Year
+		}
+
+		// ── Try cache server first ──
+		if cacheClient != nil {
+			result := cacheClient.Lookup(query, yearHint, item.MediaType)
+			if result != nil && result.Match != nil {
+				best := result.Match
+
+				// Download poster
+				var posterPath *string
+				if best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
+					filename := item.ID.String() + ".jpg"
+					_, dlErr := metadata.DownloadPoster(*best.PosterURL, filepath.Join(h.cfg.Paths.Preview, "posters"), filename)
+					if dlErr == nil {
+						webPath := "/previews/posters/" + filename
+						posterPath = &webPath
+					}
+				}
+
+				// Apply metadata
+				if err := h.mediaRepo.UpdateMetadata(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath, best.ContentRating); err != nil {
+					log.Printf("Metadata: update failed for %s: %v", item.FileName, err)
+				} else {
+					// Apply cached ratings
+					if result.Ratings != nil {
+						_ = h.mediaRepo.UpdateRatings(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore)
+					}
+					updated++
+				}
+				time.Sleep(100 * time.Millisecond) // lighter rate-limit for cache hits
+				continue
+			}
+			// Cache miss – fall through to direct TMDB
 		}
 
 		best := metadata.FindBestMatch(h.scrapers, query, item.MediaType, yearHint)
@@ -467,6 +507,11 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			if omdbErr == nil {
 				_ = h.mediaRepo.UpdateRatings(item.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore)
 			}
+		}
+
+		// Contribute to cache in background
+		if cacheClient != nil && best.Source == "tmdb" {
+			go cacheClient.Contribute(best)
 		}
 
 		updated++

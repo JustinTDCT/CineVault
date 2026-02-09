@@ -686,6 +686,15 @@
             background: rgba(52,199,89,0.15); color: #51cf66;
             border: 1px solid rgba(52,199,89,0.3);
         }
+
+        /* Toggle switch / slider */
+        .toggle-switch { position: relative; display: inline-block; width: 48px; height: 26px; vertical-align: middle; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #2a3441; border: 1px solid #3a4a5c; border-radius: 26px; transition: 0.25s; }
+        .toggle-slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 2px; bottom: 2px; background: #8a9bae; border-radius: 50%; transition: 0.25s; }
+        .toggle-switch input:checked + .toggle-slider { background: rgba(0,217,255,0.25); border-color: #00D9FF; }
+        .toggle-switch input:checked + .toggle-slider:before { transform: translateX(22px); background: #00D9FF; }
+        .toggle-label { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; color: #c8d6e5; font-size: 0.95rem; }
     </style>
 </head>
 <body>
@@ -2710,7 +2719,23 @@
             </div>`;
 
         if (currentUser?.role==='admin') {
+            const cacheEnabled = sys.cache_server_enabled !== 'false';
+            const cacheRegistered = sys.cache_server_api_key === 'registered';
             html += `
+            <div class="settings-card" style="grid-column:1/-1;">
+                <h3>Metadata Cache Server</h3>
+                <p style="color:#8a9bae;margin-bottom:16px;">Speed up metadata lookups by using the CineVault cache server. When enabled, cached results are used first; if the cache is unavailable, CineVault falls back to direct TMDB/OMDb API calls automatically.</p>
+                <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setCacheEnabled" ${cacheEnabled?'checked':''}><span class="toggle-slider"></span></span>
+                        Enable Cache Server
+                    </label>
+                    <span style="font-size:0.8rem;color:${cacheRegistered?'#4caf50':'#5a6a7f'};">
+                        <span class="status-dot ${cacheRegistered?'green':''}"></span>
+                        ${cacheRegistered?'Registered':'Not yet registered'}
+                    </span>
+                </div>
+            </div>
             <div class="settings-card" style="grid-column:1/-1;">
                 <h3>Metadata Enrichment</h3>
                 <p style="color:#8a9bae;margin-bottom:16px;">Configure external API keys for additional metadata enrichment. An OMDb API key enables IMDB ratings, Rotten Tomatoes scores, and audience scores.</p>
@@ -2722,7 +2747,9 @@
                     </div>
                     <p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">Get a free key at <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" style="color:#00D9FF;">omdbapi.com</a></p>
                 </div>
-                <button class="btn-primary" onclick="saveSystemSettings()">Save API Key</button>
+            </div>
+            <div style="grid-column:1/-1;text-align:right;">
+                <button class="btn-primary" onclick="saveSystemSettings()">Save Settings</button>
             </div>`;
         }
 
@@ -2739,8 +2766,19 @@
     }
 
     async function saveSystemSettings() {
-        const key = document.getElementById('setOmdbKey').value.trim();
-        const d = await api('PUT', '/settings/system', { omdb_api_key: key });
+        const settings = {};
+
+        // OMDb key
+        const omdbEl = document.getElementById('setOmdbKey');
+        if (omdbEl) settings.omdb_api_key = omdbEl.value.trim();
+
+        // Cache server: only the toggle
+        const cacheEnabledEl = document.getElementById('setCacheEnabled');
+        if (cacheEnabledEl) {
+            settings.cache_server_enabled = cacheEnabledEl.checked ? 'true' : 'false';
+        }
+
+        const d = await api('PUT', '/settings/system', settings);
         if(d.success) toast('System settings saved!'); else toast(d.error,'error');
     }
 
