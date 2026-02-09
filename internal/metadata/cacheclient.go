@@ -33,10 +33,11 @@ func NewCacheClient(baseURL, apiKey string) *CacheClient {
 // ── Cache Server Response Types ──
 
 type cacheLookupRequest struct {
-	Title    string `json:"title"`
-	Year     *int   `json:"year,omitempty"`
-	Type     string `json:"type"`
-	FileHash string `json:"file_hash,omitempty"`
+	Title        string `json:"title"`
+	Year         *int   `json:"year,omitempty"`
+	Type         string `json:"type"`
+	FileHash     string `json:"file_hash,omitempty"`
+	IncludeAdult bool   `json:"include_adult,omitempty"`
 }
 
 type cacheEntry struct {
@@ -107,9 +108,10 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 	}
 
 	reqBody := cacheLookupRequest{
-		Title: title,
-		Year:  year,
-		Type:  cacheType,
+		Title:        title,
+		Year:         year,
+		Type:         cacheType,
+		IncludeAdult: mediaType == models.MediaTypeAdultMovies,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
