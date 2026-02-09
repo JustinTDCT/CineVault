@@ -1,6 +1,6 @@
 {
-  "version": "0.24.01",
+  "version": "0.25.0",
   "phase": 3,
   "released": "2026-02-09",
-  "notes": "Fix TMDB metadata lookup for adult movie libraries by adding include_adult parameter"
+  "notes": "ThePornDB integration for adult movie metadata; PornDB searched first, TMDB as fallback"
 }
