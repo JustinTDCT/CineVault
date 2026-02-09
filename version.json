@@ -1,6 +1,6 @@
 {
-  "version": "0.24.0",
+  "version": "0.24.01",
   "phase": 3,
   "released": "2026-02-09",
-  "notes": "Dedicated settings page with left navigation; moved Libraries, Metadata, Video settings out of index"
+  "notes": "Fix TMDB metadata lookup for adult movie libraries by adding include_adult parameter"
 }

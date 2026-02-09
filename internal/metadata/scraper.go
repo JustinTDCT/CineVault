@@ -71,6 +71,11 @@ func (s *TMDBScraper) Search(query string, mediaType models.MediaType, year *int
 	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s",
 		searchType, s.apiKey, url.QueryEscape(query))
 
+	// TMDB filters out adult content by default; include it for adult libraries
+	if mediaType == models.MediaTypeAdultMovies {
+		reqURL += "&include_adult=true"
+	}
+
 	// Pass year to TMDB for more accurate results
 	if year != nil && *year > 0 {
 		if searchType == "tv" {
