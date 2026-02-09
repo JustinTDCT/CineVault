@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CineVault — Settings</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #0a1929 0%, #1a2332 50%, #0d1b2a 100%);
+            background-attachment: fixed;
+            color: #e5e5e5;
+            overflow-x: hidden;
+        }
+
+        .settings-container { display: flex; height: 100vh; }
+
+        /* ── Settings Sidebar ── */
+        .settings-sidebar {
+            width: 240px; min-width: 240px;
+            background: linear-gradient(180deg, rgba(13,27,42,0.95) 0%, rgba(10,25,41,0.98) 100%);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(0,217,255,0.15);
+            padding: 25px 0; display: flex; flex-direction: column;
+            box-shadow: 4px 0 20px rgba(0,0,0,0.3); overflow-y: auto;
+        }
+
+        .settings-back {
+            padding: 0 20px 20px; display: flex; align-items: center; gap: 10px;
+            color: #8a9bae; font-size: 0.85rem; cursor: pointer; transition: all 0.2s;
+            text-decoration: none; border-bottom: 1px solid rgba(0,217,255,0.1);
+            margin-bottom: 8px;
+        }
+        .settings-back:hover { color: #00D9FF; }
+        .settings-back-icon { font-size: 1rem; }
+
+        .settings-logo {
+            padding: 0 20px 8px; font-size: 1.1rem; font-weight: 700;
+            background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; letter-spacing: 0.5px;
+        }
+
+        .settings-nav-label {
+            padding: 12px 20px 6px; font-size: 0.65rem; text-transform: uppercase;
+            letter-spacing: 1.5px; color: #5a6a7f; font-weight: 600;
+        }
+
+        .settings-nav-item {
+            padding: 11px 20px; margin: 2px 10px; color: #b8c5d6; cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+            display: flex; align-items: center; gap: 12px;
+            font-size: 0.88rem; border-radius: 10px; position: relative;
+        }
+        .settings-nav-item::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+            background: linear-gradient(180deg, #00D9FF 0%, #0099CC 100%);
+            border-radius: 0 3px 3px 0; opacity: 0; transition: opacity 0.3s;
+        }
+        .settings-nav-item:hover {
+            background: linear-gradient(135deg, rgba(0,217,255,0.12) 0%, rgba(0,153,204,0.08) 100%);
+            color: #00D9FF; transform: translateX(3px);
+        }
+        .settings-nav-item.active {
+            background: linear-gradient(135deg, rgba(0,217,255,0.18) 0%, rgba(0,153,204,0.12) 100%);
+            color: #00D9FF; box-shadow: 0 4px 12px rgba(0,217,255,0.2);
+        }
+        .settings-nav-item.active::before { opacity: 1; }
+        .settings-nav-icon { width: 20px; text-align: center; font-size: 0.95rem; }
+
+        /* ── Main Content ── */
+        .settings-main { flex: 1; overflow-y: auto; padding: 35px 45px; }
+
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; }
+        .section-title {
+            font-size: 1.5rem; font-weight: 700;
+            background: linear-gradient(135deg, #00D9FF 0%, #00B8DB 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .section-desc { color: #8a9bae; font-size: 0.88rem; margin-bottom: 24px; max-width: 600px; line-height: 1.5; }
+
+        /* ── Settings Grid & Cards ── */
+        .settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .settings-card {
+            padding: 25px; border-radius: 16px;
+            background: linear-gradient(135deg, rgba(26,35,50,0.6) 0%, rgba(13,27,42,0.8) 100%);
+            border: 1px solid rgba(0,217,255,0.15);
+        }
+        .settings-card h3 { color: #00D9FF; margin-bottom: 16px; font-size: 1.1rem; }
+        .settings-card.full-width { grid-column: 1 / -1; }
+
+        /* ── Buttons ── */
+        .btn-primary {
+            background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
+            color: #0a1929; padding: 12px 24px; border: none; border-radius: 12px;
+            font-weight: 600; cursor: pointer; font-size: 0.9rem;
+            box-shadow: 0 6px 20px rgba(0,217,255,0.3); transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(0,217,255,0.5); }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, rgba(0,217,255,0.15) 0%, rgba(0,153,204,0.1) 100%);
+            color: #00D9FF; padding: 10px 20px; border: 1px solid rgba(0,217,255,0.3);
+            border-radius: 12px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: all 0.3s;
+        }
+        .btn-secondary:hover { background: linear-gradient(135deg, rgba(0,217,255,0.25) 0%, rgba(0,153,204,0.2) 100%); box-shadow: 0 4px 16px rgba(0,217,255,0.3); }
+
+        .btn-danger {
+            background: linear-gradient(135deg, rgba(255,59,48,0.15) 0%, rgba(255,59,48,0.1) 100%);
+            color: #ff6b6b; padding: 10px 20px; border: 1px solid rgba(255,59,48,0.3);
+            border-radius: 12px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: all 0.3s;
+        }
+        .btn-danger:hover { background: linear-gradient(135deg, rgba(255,59,48,0.25) 0%, rgba(255,59,48,0.2) 100%); }
+
+        .btn-small { padding: 6px 14px; font-size: 0.78rem; }
+
+        /* ── Form ── */
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #b8c5d6; font-size: 0.85rem; font-weight: 500; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%; padding: 12px 14px;
+            background: linear-gradient(135deg, rgba(10,25,41,0.6) 0%, rgba(13,27,42,0.8) 100%);
+            border: 1px solid rgba(0,217,255,0.2); border-radius: 12px;
+            color: #e5e5e5; font-size: 0.9rem; transition: all 0.3s; font-family: inherit;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: #00D9FF; box-shadow: 0 0 20px rgba(0,217,255,0.2); }
+        .form-group select option { background: #1a2332; color: #e5e5e5; }
+
+        /* ── Tags ── */
+        .tag { display: inline-block; padding: 3px 10px; border-radius: 8px; font-size: 0.72rem; font-weight: 600; margin-right: 6px; margin-top: 8px; }
+        .tag-cyan { background: rgba(0,217,255,0.15); color: #00D9FF; border: 1px solid rgba(0,217,255,0.3); }
+        .tag-purple { background: rgba(168,85,247,0.15); color: #a78bfa; border: 1px solid rgba(168,85,247,0.3); }
+        .tag-green { background: rgba(52,199,89,0.15); color: #51cf66; border: 1px solid rgba(52,199,89,0.3); }
+        .tag-orange { background: rgba(255,159,64,0.15); color: #ffa94d; border: 1px solid rgba(255,159,64,0.3); }
+        .tag-red { background: rgba(255,59,48,0.15); color: #ff6b6b; border: 1px solid rgba(255,59,48,0.3); }
+
+        /* ── Toast ── */
+        .toast-container { position: fixed; bottom: 30px; right: 30px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+        .toast { padding: 14px 24px; border-radius: 12px; font-size: 0.9rem; animation: slideInRight 0.3s ease-out; box-shadow: 0 8px 24px rgba(0,0,0,0.5); backdrop-filter: blur(20px); }
+        .toast.success { background: rgba(10,25,41,0.95); border: 1px solid rgba(52,199,89,0.5); color: #51cf66; }
+        .toast.error { background: rgba(10,25,41,0.95); border: 1px solid rgba(255,59,48,0.5); color: #ff6b6b; }
+        @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        .message { padding: 12px; border-radius: 12px; margin-bottom: 18px; font-size: 0.85rem; }
+        .message.error { background: linear-gradient(135deg, rgba(255,59,48,0.15) 0%, rgba(255,59,48,0.1) 100%); border: 1px solid rgba(255,59,48,0.4); color: #ff6b6b; }
+        .message.success { background: linear-gradient(135deg, rgba(52,199,89,0.15) 0%, rgba(52,199,89,0.1) 100%); border: 1px solid rgba(52,199,89,0.4); color: #51cf66; }
+
+        /* ── Spinner ── */
+        .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(0,217,255,0.3); border-top: 2px solid #00D9FF; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(13,27,42,0.5); }
+        ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(0,217,255,0.4) 0%, rgba(0,153,204,0.4) 100%); border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(0,217,255,0.6) 0%, rgba(0,153,204,0.6) 100%); }
+
+        /* ── Option Toggle Row ── */
+        .option-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 14px 16px; border-radius: 12px; margin-bottom: 10px;
+            background: linear-gradient(135deg, rgba(26,35,50,0.5) 0%, rgba(13,27,42,0.7) 100%);
+            border: 1px solid rgba(0,217,255,0.08);
+        }
+        .option-row-info { flex: 1; }
+        .option-row-label { color: #e5e5e5; font-size: 0.9rem; font-weight: 600; }
+        .option-row-desc { color: #8a9bae; font-size: 0.78rem; margin-top: 2px; }
+        .toggle-btns { display: flex; gap: 0; }
+        .toggle-btns label {
+            padding: 6px 16px; cursor: pointer; font-size: 0.82rem; font-weight: 600;
+            color: #8a9bae; background: rgba(0,0,0,0.3); border: 1px solid rgba(0,217,255,0.15);
+            transition: all 0.2s;
+        }
+        .toggle-btns label:first-child { border-radius: 8px 0 0 8px; }
+        .toggle-btns label:last-child { border-radius: 0 8px 8px 0; border-left: none; }
+        .toggle-btns input[type="radio"] { display: none; }
+        .toggle-btns input[type="radio"]:checked + span { color: #0a1929; }
+        .toggle-btns label:has(input:checked) {
+            background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
+            color: #0a1929; border-color: #00D9FF;
+        }
+        .toggle-btns label:has(input:checked) span { color: #0a1929; }
+
+        /* ── Library Cards ── */
+        .library-card {
+            padding: 22px;
+            background: linear-gradient(135deg, rgba(26,35,50,0.6) 0%, rgba(13,27,42,0.8) 100%);
+            border: 1px solid rgba(0,217,255,0.2); border-radius: 16px; margin-bottom: 14px;
+            transition: all 0.3s; box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .library-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,217,255,0.2); border-color: rgba(0,217,255,0.4); }
+        .library-card h3 {
+            background: linear-gradient(135deg, #00D9FF 0%, #00B8DB 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+            margin-bottom: 8px; font-size: 1.1rem;
+        }
+        .library-actions { display: flex; gap: 10px; align-items: center; }
+        .lib-settings-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+        .scan-progress { margin-top: 8px; display: none; }
+        .scan-progress.active { display: block; }
+        .scan-progress-bar { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+        .scan-progress-fill { height: 100%; background: linear-gradient(90deg, #00D9FF 0%, #0099CC 100%); box-shadow: 0 0 8px rgba(0,217,255,0.5); border-radius: 3px; width: 0%; transition: width 0.3s ease; }
+        .scan-progress-text { color: #8a9bae; font-size: 0.75rem; margin-top: 4px; display: flex; justify-content: space-between; }
+        .scan-progress-text .filename { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* ── Library Folders ── */
+        .folder-list { display: flex; flex-direction: column; gap: 8px; }
+        .folder-row {
+            display: flex; gap: 8px; align-items: center;
+            padding: 8px 12px; border-radius: 10px;
+            background: rgba(0,0,0,0.2); border: 1px solid rgba(0,217,255,0.1);
+        }
+        .folder-row input { flex: 1; }
+        .folder-remove {
+            background: none; border: none; color: #ff6b6b; cursor: pointer;
+            font-size: 1.1rem; padding: 4px 8px; border-radius: 6px; transition: background 0.2s;
+        }
+        .folder-remove:hover { background: rgba(255,59,48,0.15); }
+        .folder-add-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            color: #00D9FF; background: none; border: 1px dashed rgba(0,217,255,0.3);
+            padding: 8px 14px; border-radius: 10px; cursor: pointer;
+            font-size: 0.85rem; margin-top: 4px; transition: all 0.2s;
+        }
+        .folder-add-btn:hover { background: rgba(0,217,255,0.08); border-color: rgba(0,217,255,0.5); }
+
+        /* ── Empty State ── */
+        .empty-state { text-align: center; padding: 60px 25px; color: #8a9bae; background: linear-gradient(135deg, rgba(26,35,50,0.4) 0%, rgba(13,27,42,0.6) 100%); border-radius: 20px; border: 1px solid rgba(0,217,255,0.1); margin: 10px 0 30px; }
+        .empty-state-icon { font-size: 3.5rem; margin-bottom: 18px; }
+        .empty-state-title { font-size: 1.2rem; margin-bottom: 8px; color: #b8c5d6; font-weight: 600; }
+
+        /* ── Placeholder Section ── */
+        .placeholder-section {
+            text-align: center; padding: 80px 30px;
+            background: linear-gradient(135deg, rgba(26,35,50,0.3) 0%, rgba(13,27,42,0.5) 100%);
+            border-radius: 20px; border: 1px dashed rgba(0,217,255,0.15);
+        }
+        .placeholder-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.5; }
+        .placeholder-title { font-size: 1.1rem; color: #5a6a7f; font-weight: 600; margin-bottom: 8px; }
+        .placeholder-desc { color: #4a5a6a; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    <div class="settings-container">
+        <!-- Settings Sidebar -->
+        <div class="settings-sidebar">
+            <a class="settings-back" href="index.html">
+                <span class="settings-back-icon">&#8592;</span>
+                <span>Back to CineVault</span>
+            </a>
+            <div class="settings-logo">Settings</div>
+
+            <div class="settings-nav-label">Playback</div>
+            <div class="settings-nav-item active" data-section="video">
+                <span class="settings-nav-icon">&#127916;</span><span>Video</span>
+            </div>
+            <div class="settings-nav-item" data-section="transcoder">
+                <span class="settings-nav-icon">&#9881;</span><span>Transcoder</span>
+            </div>
+
+            <div class="settings-nav-label">Access</div>
+            <div class="settings-nav-item" data-section="users">
+                <span class="settings-nav-icon">&#128101;</span><span>Users</span>
+            </div>
+            <div class="settings-nav-item" data-section="security">
+                <span class="settings-nav-icon">&#128274;</span><span>Security</span>
+            </div>
+            <div class="settings-nav-item" data-section="experience">
+                <span class="settings-nav-icon">&#127912;</span><span>Experience</span>
+            </div>
+
+            <div class="settings-nav-label">Content</div>
+            <div class="settings-nav-item" data-section="libraries">
+                <span class="settings-nav-icon">&#128218;</span><span>Libraries</span>
+            </div>
+            <div class="settings-nav-item" data-section="metadata">
+                <span class="settings-nav-icon">&#128196;</span><span>Metadata</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="settings-main" id="settingsContent">
+            <div class="spinner"></div> Loading...
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+    const API = '/api/v1';
+    let currentUser = null;
+
+    function headers() { return { 'Authorization': 'Bearer ' + localStorage.getItem('token'), 'Content-Type': 'application/json' }; }
+
+    async function api(method, path, body) {
+        const opts = { method, headers: headers() };
+        if (body) opts.body = JSON.stringify(body);
+        try { const res = await fetch(API + path, opts); return res.json(); } catch(e) { return { success: false, error: e.message }; }
+    }
+
+    function toast(msg, type='success') {
+        const c = document.getElementById('toastContainer');
+        const t = document.createElement('div');
+        t.className = 'toast message ' + type;
+        t.textContent = msg;
+        c.appendChild(t);
+        setTimeout(() => t.remove(), 4000);
+    }
+
+    const MEDIA_ICONS = { movies:'&#127916;', adult_movies:'&#128274;', tv_shows:'&#128250;', music:'&#127925;', music_videos:'&#127911;', home_videos:'&#127909;', other_videos:'&#128253;', images:'&#128247;', audiobooks:'&#128214;' };
+    const MEDIA_LABELS = { movies:'Movies', adult_movies:'Adult Movies', tv_shows:'TV Shows', music:'Music', music_videos:'Music Videos', home_videos:'Home Videos', other_videos:'Other Videos', images:'Photos', audiobooks:'Audiobooks' };
+
+    // ──── Auth Check ────
+    function checkAuth() {
+        const token = localStorage.getItem('token');
+        const user = localStorage.getItem('user');
+        if (token && user) {
+            currentUser = JSON.parse(user);
+            navigateSection(getInitialSection());
+        } else {
+            window.location.href = 'index.html';
+        }
+    }
+
+    function getInitialSection() {
+        const hash = window.location.hash.replace('#', '');
+        return hash || 'video';
+    }
+
+    // ──── Section Navigation ────
+    function navigateSection(section) {
+        document.querySelectorAll('.settings-nav-item').forEach(i => i.classList.remove('active'));
+        const navItem = document.querySelector(`.settings-nav-item[data-section="${section}"]`);
+        if (navItem) navItem.classList.add('active');
+        window.location.hash = section;
+
+        switch(section) {
+            case 'video': loadVideoSection(); break;
+            case 'transcoder': loadTranscoderSection(); break;
+            case 'users': loadUsersSection(); break;
+            case 'security': loadSecuritySection(); break;
+            case 'experience': loadExperienceSection(); break;
+            case 'libraries': loadLibrariesSection(); break;
+            case 'metadata': loadMetadataSection(); break;
+            default: loadVideoSection();
+        }
+    }
+
+    document.querySelectorAll('.settings-nav-item[data-section]').forEach(item => {
+        item.addEventListener('click', () => navigateSection(item.dataset.section));
+    });
+
+    // ──── Video Section ────
+    async function loadVideoSection() {
+        const mc = document.getElementById('settingsContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Video</h2></div>
+            <p class="section-desc">Configure playback preferences and video quality settings.</p>
+            <div class="settings-grid" id="videoGrid"><div class="spinner"></div></div>`;
+
+        const prefs = await api('GET', '/settings/playback');
+        const p = prefs.success ? prefs.data : { playback_mode: 'always_ask', preferred_quality: '1080p', auto_play_next: true };
+
+        document.getElementById('videoGrid').innerHTML = `
+            <div class="settings-card">
+                <h3>Playback Preferences</h3>
+                <div class="form-group"><label>Edition Playback Mode</label>
+                    <select id="setPbMode">
+                        <option value="always_ask" ${p.playback_mode==='always_ask'?'selected':''}>Always Ask</option>
+                        <option value="play_default" ${p.playback_mode==='play_default'?'selected':''}>Play Default</option>
+                        <option value="highest_quality" ${p.playback_mode==='highest_quality'?'selected':''}>Highest Quality</option>
+                        <option value="lowest_quality" ${p.playback_mode==='lowest_quality'?'selected':''}>Lowest Quality</option>
+                        <option value="last_played" ${p.playback_mode==='last_played'?'selected':''}>Last Played</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Preferred Quality</label>
+                    <select id="setPbQuality">
+                        <option value="360p" ${p.preferred_quality==='360p'?'selected':''}>360p</option>
+                        <option value="480p" ${p.preferred_quality==='480p'?'selected':''}>480p</option>
+                        <option value="720p" ${p.preferred_quality==='720p'?'selected':''}>720p</option>
+                        <option value="1080p" ${p.preferred_quality==='1080p'?'selected':''}>1080p</option>
+                        <option value="4K" ${p.preferred_quality==='4K'?'selected':''}>4K</option>
+                    </select>
+                </div>
+                <div class="form-group"><label><input type="checkbox" id="setPbAutoPlay" ${p.auto_play_next?'checked':''}> Auto-play next episode</label></div>
+                <button class="btn-primary" onclick="savePlaybackPrefs()">Save</button>
+            </div>`;
+    }
+
+    async function savePlaybackPrefs() {
+        const d = await api('PUT', '/settings/playback', {
+            playback_mode: document.getElementById('setPbMode').value,
+            preferred_quality: document.getElementById('setPbQuality').value,
+            auto_play_next: document.getElementById('setPbAutoPlay').checked
+        });
+        if (d.success) toast('Playback settings saved!'); else toast(d.error, 'error');
+    }
+
+    // ──── Transcoder Section ────
+    function loadTranscoderSection() {
+        document.getElementById('settingsContent').innerHTML = `
+            <div class="section-header"><h2 class="section-title">Transcoder</h2></div>
+            <p class="section-desc">Configure transcoding settings for media playback compatibility.</p>
+            <div class="placeholder-section">
+                <div class="placeholder-icon">&#9881;</div>
+                <div class="placeholder-title">Transcoder Settings</div>
+                <div class="placeholder-desc">Transcoding configuration will be available here.</div>
+            </div>`;
+    }
+
+    // ──── Users Section ────
+    async function loadUsersSection() {
+        const mc = document.getElementById('settingsContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Users</h2></div>
+            <p class="section-desc">Manage user accounts and roles.</p>
+            <div class="settings-grid" id="usersGrid"><div class="spinner"></div></div>`;
+
+        const accountHtml = `
+            <div class="settings-card">
+                <h3>Current Account</h3>
+                <p style="color:#8a9bae;margin-bottom:12px;">Logged in as <strong style="color:#00D9FF;">${currentUser?.username}</strong></p>
+                <p style="color:#8a9bae;">Role: <span class="tag tag-cyan">${currentUser?.role}</span></p>
+            </div>`;
+
+        let usersHtml = '';
+        if (currentUser?.role === 'admin') {
+            const users = await api('GET', '/users');
+            if (users.success && users.data) {
+                usersHtml = `<div class="settings-card">
+                    <h3>All Users</h3>
+                    ${users.data.map(u => `<div style="display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:10px;background:rgba(0,0,0,0.2);margin-bottom:8px;">
+                        <span style="width:10px;height:10px;border-radius:50%;display:inline-block;background:${u.is_active?'#51cf66':'#ff6b6b'};box-shadow:0 0 8px ${u.is_active?'rgba(52,199,89,0.5)':'rgba(255,59,48,0.5)'};"></span>
+                        <strong style="flex:1;">${u.username}</strong>
+                        <span class="tag tag-cyan">${u.role}</span>
+                        <span style="color:#5a6a7f;font-size:0.78rem;">${u.email||''}</span>
+                    </div>`).join('')}
+                </div>`;
+            }
+        }
+
+        document.getElementById('usersGrid').innerHTML = accountHtml + usersHtml;
+    }
+
+    // ──── Security Section ────
+    function loadSecuritySection() {
+        document.getElementById('settingsContent').innerHTML = `
+            <div class="section-header"><h2 class="section-title">Security</h2></div>
+            <p class="section-desc">Configure PIN protection and security settings for your CineVault instance.</p>
+            <div class="placeholder-section">
+                <div class="placeholder-icon">&#128274;</div>
+                <div class="placeholder-title">PIN & Security Settings</div>
+                <div class="placeholder-desc">PIN lock and security configuration will be available here.</div>
+            </div>`;
+    }
+
+    // ──── Experience Section ────
+    function loadExperienceSection() {
+        document.getElementById('settingsContent').innerHTML = `
+            <div class="section-header"><h2 class="section-title">Experience</h2></div>
+            <p class="section-desc">Customize login behavior and user experience preferences.</p>
+            <div class="placeholder-section">
+                <div class="placeholder-icon">&#127912;</div>
+                <div class="placeholder-title">Login & Experience Options</div>
+                <div class="placeholder-desc">Login options and experience customization will be available here.</div>
+            </div>`;
+    }
+
+    // ──── Libraries Section ────
+    async function loadLibrariesSection() {
+        const mc = document.getElementById('settingsContent');
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Libraries</h2>${isAdmin?'<button class="btn-primary" onclick="showCreateLibrary()">+ Add Library</button>':''}</div>
+            <p class="section-desc">Manage your media libraries, folders, and scanning preferences.</p>
+            <div id="libList"><div class="spinner"></div> Loading...</div>`;
+
+        const data = await api('GET', '/libraries');
+        const div = document.getElementById('libList');
+        if (data.success && data.data && data.data.length > 0) {
+            div.innerHTML = data.data.map(lib => {
+                const accessLabel = {everyone:'Everyone',select_users:'Select People',admin_only:'Admin Only'}[lib.access_level]||'Everyone';
+                const accessColor = {everyone:'tag-green',select_users:'tag-purple',admin_only:'tag-red'}[lib.access_level]||'tag-green';
+                const folderPaths = (lib.folders && lib.folders.length > 0) ? lib.folders.map(f => f.folder_path).join(', ') : lib.path;
+                const folderCount = (lib.folders && lib.folders.length > 1) ? `<span class="tag tag-orange" style="margin-left:6px;">${lib.folders.length} folders</span>` : '';
+                let settingsTags = '';
+                if (!lib.include_in_homepage) settingsTags += '<span class="tag tag-red" style="margin-left:4px;">Hidden from Home</span>';
+                if (!lib.include_in_search) settingsTags += '<span class="tag tag-red" style="margin-left:4px;">Hidden from Search</span>';
+                if (!lib.retrieve_metadata) settingsTags += '<span class="tag tag-orange" style="margin-left:4px;">No Metadata</span>';
+                if (lib.media_type === 'adult_movies' && lib.adult_content_type) settingsTags += `<span class="tag tag-purple" style="margin-left:4px;">${lib.adult_content_type === 'clips' ? 'Clips' : 'Movies'}</span>`;
+                return `<div class="library-card" id="lib-card-${lib.id}"><div style="flex:1;"><h3>${lib.name}</h3><p style="color:#8a9bae;font-size:0.85rem;"><span class="tag tag-cyan">${MEDIA_LABELS[lib.media_type]||lib.media_type}</span>${lib.season_grouping?'<span class="tag tag-purple" style="margin-left:6px;">Season Grouping</span>':''}<span class="tag ${accessColor}" style="margin-left:6px;">${accessLabel}</span>${folderCount}<span style="margin-left:8px;">${folderPaths}</span></p><div class="lib-settings-tags">${settingsTags}</div><p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">${lib.last_scan_at?'Last scan: '+new Date(lib.last_scan_at).toLocaleString():'Never scanned'}</p><div class="scan-progress" id="scan-progress-${lib.id}"><div class="scan-progress-bar"><div class="scan-progress-fill" id="scan-fill-${lib.id}"></div></div><div class="scan-progress-text"><span class="filename" id="scan-file-${lib.id}"></span><span id="scan-count-${lib.id}"></span></div></div></div><div class="library-actions">${isAdmin?`<button class="btn-secondary btn-small" onclick="showEditLibraryForm('${lib.id}')">&#9998; Edit</button><button class="btn-secondary btn-small" id="scan-btn-${lib.id}" onclick="scanLibrary('${lib.id}',this)">&#128269; Scan</button><button class="btn-danger btn-small" onclick="deleteLibrary('${lib.id}')">Delete</button>`:''}</div></div>`;
+            }).join('');
+        } else {
+            div.innerHTML = `<div class="empty-state"><div class="empty-state-icon">&#128218;</div><div class="empty-state-title">No libraries configured</div><p>Create your first library to start organizing media</p></div>`;
+        }
+    }
+
+    async function scanLibrary(id, btn) {
+        btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Scanning...';
+        const prog = document.getElementById('scan-progress-' + id);
+        if (prog) prog.classList.add('active');
+        try {
+            const data = await api('POST', '/libraries/' + id + '/scan');
+            if (data.success) {
+                if (data.data.job_id) { toast('Scan job started...'); }
+                else {
+                    const r = data.data;
+                    toast(`Scan: ${r.files_added} added, ${r.files_found} total`);
+                    loadLibrariesSection();
+                }
+            } else {
+                toast('Scan failed: ' + (data.error||'Unknown'), 'error');
+                btn.disabled = false; btn.innerHTML = '&#128269; Scan';
+                if (prog) prog.classList.remove('active');
+            }
+        } catch(e) {
+            toast('Scan error: ' + e.message, 'error');
+            btn.disabled = false; btn.innerHTML = '&#128269; Scan';
+            if (prog) prog.classList.remove('active');
+        }
+    }
+
+    async function deleteLibrary(id) {
+        if (!confirm('Delete this library and all its media?')) return;
+        const d = await api('DELETE', '/libraries/' + id);
+        if (d.success) { toast('Library deleted'); loadLibrariesSection(); }
+        else toast('Failed: ' + d.error, 'error');
+    }
+
+    async function showEditLibraryForm(libId) {
+        const data = await api('GET', '/libraries/' + libId);
+        if (!data.success) { toast('Failed to load library', 'error'); return; }
+        const lib = data.data;
+        const mc = document.getElementById('settingsContent');
+        const types = Object.entries(MEDIA_LABELS).map(([k,v])=>`<option value="${k}" ${k===lib.media_type?'selected':''}>${v}</option>`).join('');
+        const folders = (lib.folders && lib.folders.length > 0) ? lib.folders : [{ folder_path: lib.path }];
+        const folderRows = folders.map((f, i) => `<div class="folder-row" data-idx="${i}">
+            <input type="text" class="lib-folder-input" placeholder="/media/folder" style="flex:1;" value="${f.folder_path || ''}">
+            <button class="btn-secondary" onclick="openFolderBrowser(${i})" style="white-space:nowrap;padding:8px 12px;font-size:0.8rem;">&#128193; Browse</button>
+            ${i > 0 ? '<button class="folder-remove" onclick="removeFolderRow(this)" title="Remove folder">&#10005;</button>' : ''}
+        </div>`).join('');
+
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Edit Library</h2></div>
+        <div style="max-width:560px;">
+            <input type="hidden" id="editLibId" value="${lib.id}">
+            <div class="form-group"><label>Name</label><input type="text" id="libName" value="${lib.name}"></div>
+            <div class="form-group"><label>Media Type</label><select id="libType" disabled>${types}</select>
+                <p style="color:#5a6a7f;font-size:0.75rem;margin-top:4px;">Media type cannot be changed after creation</p>
+            </div>
+
+            <div class="form-group">
+                <label>Folders</label>
+                <p style="color:#8a9bae;font-size:0.78rem;margin-bottom:8px;">At least one folder is required. Add more to scan multiple locations.</p>
+                <div class="folder-list" id="folderList">${folderRows}</div>
+                <button class="folder-add-btn" onclick="addFolderRow()">+ Add Folder</button>
+            </div>
+            <div id="pathBrowser" style="display:none;margin-bottom:18px;background:rgba(0,0,0,0.3);border:1px solid rgba(0,217,255,0.15);border-radius:12px;padding:14px;max-height:350px;overflow-y:auto;"></div>
+
+            <div id="seasonGroupingOpt" style="${lib.media_type === 'tv_shows' ? '' : 'display:none;'}">
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Group by Season</div>
+                        <div class="option-row-desc">Parse SxxExx from filenames to group episodes by season</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="seasonGrouping" value="yes" ${lib.season_grouping?'checked':''}><span>Yes</span></label>
+                        <label><input type="radio" name="seasonGrouping" value="no" ${!lib.season_grouping?'checked':''}><span>No</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <div id="adultContentOpt" style="${lib.media_type === 'adult_movies' ? '' : 'display:none;'}">
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Content Type</div>
+                        <div class="option-row-desc">Clips &amp; Scenes will not retrieve metadata. Movies will scrape from TMDB.</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="adultContentType" value="movies" ${(!lib.adult_content_type || lib.adult_content_type === 'movies')?'checked':''}><span>Movies</span></label>
+                        <label><input type="radio" name="adultContentType" value="clips" ${lib.adult_content_type === 'clips'?'checked':''}><span>Clips</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Library Permissions</label>
+                <select id="libAccess" onchange="onAccessChange()">
+                    <option value="everyone" ${lib.access_level==='everyone'?'selected':''}>Everyone</option>
+                    <option value="select_users" ${lib.access_level==='select_users'?'selected':''}>Select People</option>
+                    <option value="admin_only" ${lib.access_level==='admin_only'?'selected':''}>Admin Only</option>
+                </select>
+            </div>
+            <div id="userSelectPanel" style="${lib.access_level==='select_users'?'':'display:none;'}margin-bottom:18px;background:rgba(0,0,0,0.3);border:1px solid rgba(0,217,255,0.15);border-radius:12px;padding:14px;">
+                <p style="color:#8a9bae;font-size:0.8rem;margin-bottom:10px;">Select users who can access this library:</p>
+                <div id="userCheckboxList"><div class="spinner"></div></div>
+            </div>
+
+            <div style="margin-bottom:18px;">
+                <label style="display:block;margin-bottom:10px;font-weight:600;color:#e5e5e5;">Library Options</label>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Include in Homepage</div>
+                        <div class="option-row-desc">Show this library's media on the home screen</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="includeHomepage" value="yes" ${lib.include_in_homepage?'checked':''}><span>Yes</span></label>
+                        <label><input type="radio" name="includeHomepage" value="no" ${!lib.include_in_homepage?'checked':''}><span>No</span></label>
+                    </div>
+                </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Include in Search</div>
+                        <div class="option-row-desc">Allow this library's items to appear in search results</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="includeSearch" value="yes" ${lib.include_in_search?'checked':''}><span>Yes</span></label>
+                        <label><input type="radio" name="includeSearch" value="no" ${!lib.include_in_search?'checked':''}><span>No</span></label>
+                    </div>
+                </div>
+                <div class="option-row" id="metadataOpt">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Retrieve Metadata</div>
+                        <div class="option-row-desc">Auto-populate from TMDB/MusicBrainz/OpenLibrary on scan</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="retrieveMetadata" value="yes" ${lib.retrieve_metadata?'checked':''}><span>Yes</span></label>
+                        <label><input type="radio" name="retrieveMetadata" value="no" ${!lib.retrieve_metadata?'checked':''}><span>No</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn-primary" onclick="saveEditLibrary()">Save Changes</button>
+            <button class="btn-secondary" style="margin-left:12px;" onclick="loadLibrariesSection()">Cancel</button>
+        </div>`;
+
+        if (lib.access_level === 'select_users') {
+            const usersData = await api('GET', '/users');
+            const list = document.getElementById('userCheckboxList');
+            const allowed = lib.allowed_users ? lib.allowed_users.map(u => u.toString()) : [];
+            if (usersData.success && usersData.data && usersData.data.length > 0) {
+                list.innerHTML = usersData.data.filter(u => u.role !== 'admin').map(u =>
+                    `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;color:#e5e5e5;">
+                        <input type="checkbox" class="user-perm-cb" value="${u.id}" ${allowed.includes(u.id)?'checked':''}>
+                        <span>${u.username}</span>
+                        <span style="color:#5a6a7f;font-size:0.75rem;margin-left:auto;">${u.role}</span>
+                    </label>`
+                ).join('');
+                if (list.innerHTML === '') list.innerHTML = '<p style="color:#5a6a7f;font-size:0.85rem;">No non-admin users found</p>';
+            }
+        }
+    }
+
+    async function saveEditLibrary() {
+        const id = document.getElementById('editLibId').value;
+        const name = document.getElementById('libName').value;
+        const media_type = document.getElementById('libType').value;
+        const folderInputs = document.querySelectorAll('.lib-folder-input');
+        const folders = [...folderInputs].map(i => i.value.trim()).filter(Boolean);
+        if (!name || folders.length === 0) { toast('Name and at least one folder required', 'error'); return; }
+
+        const season_grouping = media_type === 'tv_shows' && document.querySelector('input[name="seasonGrouping"]:checked')?.value === 'yes';
+        const access_level = document.getElementById('libAccess').value;
+        const allowed_users = [...document.querySelectorAll('.user-perm-cb:checked')].map(cb => cb.value);
+        const include_in_homepage = document.querySelector('input[name="includeHomepage"]:checked')?.value === 'yes';
+        const include_in_search = document.querySelector('input[name="includeSearch"]:checked')?.value === 'yes';
+        const retrieve_metadata = document.querySelector('input[name="retrieveMetadata"]:checked')?.value === 'yes';
+
+        let adult_content_type = null;
+        if (media_type === 'adult_movies') {
+            adult_content_type = document.querySelector('input[name="adultContentType"]:checked')?.value || 'movies';
+        }
+
+        const d = await api('PUT', '/libraries/' + id, {
+            name, path: folders[0], folders, is_enabled: true,
+            season_grouping, access_level, allowed_users,
+            include_in_homepage, include_in_search, retrieve_metadata, adult_content_type
+        });
+        if (d.success) { toast('Library updated!'); loadLibrariesSection(); }
+        else toast('Failed: ' + d.error, 'error');
+    }
+
+    function showCreateLibrary() {
+        const mc = document.getElementById('settingsContent');
+        const types = Object.entries(MEDIA_LABELS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Create Library</h2></div>
+        <div style="max-width:560px;">
+            <div class="form-group"><label>Name</label><input type="text" id="libName" placeholder="My Movies"></div>
+            <div class="form-group"><label>Media Type</label><select id="libType" onchange="onLibTypeChange()">${types}</select></div>
+
+            <div class="form-group">
+                <label>Folders</label>
+                <p style="color:#8a9bae;font-size:0.78rem;margin-bottom:8px;">At least one folder is required. Add more to scan multiple locations.</p>
+                <div class="folder-list" id="folderList">
+                    <div class="folder-row" data-idx="0">
+                        <input type="text" class="lib-folder-input" placeholder="/media/movies" style="flex:1;">
+                        <button class="btn-secondary" onclick="openFolderBrowser(0)" style="white-space:nowrap;padding:8px 12px;font-size:0.8rem;">&#128193; Browse</button>
+                    </div>
+                </div>
+                <button class="folder-add-btn" onclick="addFolderRow()">+ Add Folder</button>
+            </div>
+            <div id="pathBrowser" style="display:none;margin-bottom:18px;background:rgba(0,0,0,0.3);border:1px solid rgba(0,217,255,0.15);border-radius:12px;padding:14px;max-height:350px;overflow-y:auto;"></div>
+
+            <div id="seasonGroupingOpt" style="display:none;">
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Group by Season</div>
+                        <div class="option-row-desc">Parse SxxExx from filenames to group episodes by season</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="seasonGrouping" value="yes" checked><span>Yes</span></label>
+                        <label><input type="radio" name="seasonGrouping" value="no"><span>No</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <div id="adultContentOpt" style="display:none;">
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Content Type</div>
+                        <div class="option-row-desc">Clips &amp; Scenes will not retrieve metadata. Movies will scrape from TMDB.</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="adultContentType" value="movies" checked><span>Movies</span></label>
+                        <label><input type="radio" name="adultContentType" value="clips"><span>Clips</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Library Permissions</label>
+                <select id="libAccess" onchange="onAccessChange()">
+                    <option value="everyone">Everyone</option>
+                    <option value="select_users">Select People</option>
+                    <option value="admin_only">Admin Only</option>
+                </select>
+            </div>
+            <div id="userSelectPanel" style="display:none;margin-bottom:18px;background:rgba(0,0,0,0.3);border:1px solid rgba(0,217,255,0.15);border-radius:12px;padding:14px;">
+                <p style="color:#8a9bae;font-size:0.8rem;margin-bottom:10px;">Select users who can access this library:</p>
+                <div id="userCheckboxList"><div class="spinner"></div></div>
+            </div>
+
+            <div style="margin-bottom:18px;">
+                <label style="display:block;margin-bottom:10px;font-weight:600;color:#e5e5e5;">Library Options</label>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Include in Homepage</div>
+                        <div class="option-row-desc">Show this library's media on the home screen</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="includeHomepage" value="yes" checked><span>Yes</span></label>
+                        <label><input type="radio" name="includeHomepage" value="no"><span>No</span></label>
+                    </div>
+                </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Include in Search</div>
+                        <div class="option-row-desc">Allow this library's items to appear in search results</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="includeSearch" value="yes" checked><span>Yes</span></label>
+                        <label><input type="radio" name="includeSearch" value="no"><span>No</span></label>
+                    </div>
+                </div>
+                <div class="option-row" id="metadataOpt">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Retrieve Metadata</div>
+                        <div class="option-row-desc">Auto-populate from TMDB/MusicBrainz/OpenLibrary on scan</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="retrieveMetadata" value="yes" checked><span>Yes</span></label>
+                        <label><input type="radio" name="retrieveMetadata" value="no"><span>No</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn-primary" onclick="createLibrary()">Create Library</button>
+            <button class="btn-secondary" style="margin-left:12px;" onclick="loadLibrariesSection()">Cancel</button>
+        </div>`;
+        onLibTypeChange();
+    }
+
+    let activeFolderIdx = null;
+
+    function addFolderRow() {
+        const list = document.getElementById('folderList');
+        const idx = list.children.length;
+        const row = document.createElement('div');
+        row.className = 'folder-row';
+        row.dataset.idx = idx;
+        row.innerHTML = `<input type="text" class="lib-folder-input" placeholder="/media/folder" style="flex:1;">
+            <button class="btn-secondary" onclick="openFolderBrowser(${idx})" style="white-space:nowrap;padding:8px 12px;font-size:0.8rem;">&#128193; Browse</button>
+            <button class="folder-remove" onclick="removeFolderRow(this)" title="Remove folder">&#10005;</button>`;
+        list.appendChild(row);
+    }
+
+    function removeFolderRow(btn) {
+        const row = btn.closest('.folder-row');
+        const list = document.getElementById('folderList');
+        if (list.children.length <= 1) { toast('At least one folder is required', 'error'); return; }
+        row.remove();
+    }
+
+    function openFolderBrowser(idx) {
+        activeFolderIdx = idx;
+        const inputs = document.querySelectorAll('.lib-folder-input');
+        const currentPath = inputs[idx]?.value || '/media';
+        openPathBrowser(currentPath);
+    }
+
+    function onLibTypeChange() {
+        const type = document.getElementById('libType').value;
+        const seasonOpt = document.getElementById('seasonGroupingOpt');
+        const adultOpt = document.getElementById('adultContentOpt');
+        if (seasonOpt) seasonOpt.style.display = (type === 'tv_shows') ? '' : 'none';
+        if (adultOpt) adultOpt.style.display = (type === 'adult_movies') ? '' : 'none';
+    }
+
+    async function onAccessChange() {
+        const val = document.getElementById('libAccess').value;
+        const panel = document.getElementById('userSelectPanel');
+        if (val === 'select_users') {
+            panel.style.display = '';
+            const data = await api('GET', '/users');
+            const list = document.getElementById('userCheckboxList');
+            if (data.success && data.data && data.data.length > 0) {
+                list.innerHTML = data.data
+                    .filter(u => u.role !== 'admin')
+                    .map(u => `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;color:#e5e5e5;">
+                        <input type="checkbox" class="user-perm-cb" value="${u.id}">
+                        <span>${u.username}</span>
+                        <span style="color:#5a6a7f;font-size:0.75rem;margin-left:auto;">${u.role}</span>
+                    </label>`).join('');
+                if (list.innerHTML === '') list.innerHTML = '<p style="color:#5a6a7f;font-size:0.85rem;">No non-admin users found</p>';
+            } else {
+                list.innerHTML = '<p style="color:#5a6a7f;font-size:0.85rem;">No users found</p>';
+            }
+        } else {
+            panel.style.display = 'none';
+        }
+    }
+
+    async function openPathBrowser(path) {
+        const browser = document.getElementById('pathBrowser');
+        browser.style.display = 'block';
+        await loadPathEntries(path || '/media');
+    }
+
+    async function loadPathEntries(path) {
+        const browser = document.getElementById('pathBrowser');
+        browser.innerHTML = '<div class="spinner" style="margin:10px auto;"></div>';
+        const data = await api('GET', '/browse?path=' + encodeURIComponent(path));
+        if (!data.success) { browser.innerHTML = '<p style="color:#ff5555;">Failed to browse</p>'; return; }
+        const d = data.data;
+        let html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(0,217,255,0.1);">
+            <span style="color:#00D9FF;font-size:0.8rem;font-weight:600;">&#128194; ${d.path}</span>
+            <button class="btn-secondary" style="margin-left:auto;padding:4px 12px;font-size:0.75rem;" onclick="selectBrowsePath('${d.path}')">&#10003; Select This</button>
+        </div>`;
+        if (d.parent) {
+            html += `<div onclick="loadPathEntries('${d.parent}')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-radius:8px;color:#8a9bae;font-size:0.85rem;transition:background 0.2s;" onmouseover="this.style.background='rgba(0,217,255,0.08)'" onmouseout="this.style.background='transparent'">&#11168; ..</div>`;
+        }
+        if (d.entries && d.entries.length > 0) {
+            d.entries.forEach(e => {
+                html += `<div onclick="loadPathEntries('${e.path}')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-radius:8px;color:#e5e5e5;font-size:0.85rem;transition:background 0.2s;" onmouseover="this.style.background='rgba(0,217,255,0.08)'" onmouseout="this.style.background='transparent'">&#128193; ${e.name}</div>`;
+            });
+        } else if (!d.parent) {
+            html += '<p style="color:#5a6a7f;font-size:0.8rem;text-align:center;margin:12px 0;">No subdirectories</p>';
+        } else {
+            html += '<p style="color:#5a6a7f;font-size:0.8rem;text-align:center;margin:12px 0;">Empty folder</p>';
+        }
+        browser.innerHTML = html;
+    }
+
+    function selectBrowsePath(path) {
+        if (activeFolderIdx !== null) {
+            const inputs = document.querySelectorAll('.lib-folder-input');
+            if (inputs[activeFolderIdx]) inputs[activeFolderIdx].value = path;
+            activeFolderIdx = null;
+        }
+        document.getElementById('pathBrowser').style.display = 'none';
+    }
+
+    async function createLibrary() {
+        const name = document.getElementById('libName').value;
+        const media_type = document.getElementById('libType').value;
+        const folderInputs = document.querySelectorAll('.lib-folder-input');
+        const folders = [...folderInputs].map(i => i.value.trim()).filter(Boolean);
+        if (!name || folders.length === 0) { toast('Name and at least one folder required', 'error'); return; }
+
+        const season_grouping = media_type === 'tv_shows' && document.querySelector('input[name="seasonGrouping"]:checked')?.value === 'yes';
+        const access_level = document.getElementById('libAccess').value;
+        const allowed_users = [...document.querySelectorAll('.user-perm-cb:checked')].map(cb => cb.value);
+        const include_in_homepage = document.querySelector('input[name="includeHomepage"]:checked')?.value === 'yes';
+        const include_in_search = document.querySelector('input[name="includeSearch"]:checked')?.value === 'yes';
+        const retrieve_metadata = document.querySelector('input[name="retrieveMetadata"]:checked')?.value === 'yes';
+
+        let adult_content_type = null;
+        if (media_type === 'adult_movies') {
+            adult_content_type = document.querySelector('input[name="adultContentType"]:checked')?.value || 'movies';
+        }
+
+        const d = await api('POST', '/libraries', {
+            name, media_type, path: folders[0], folders, is_enabled: true,
+            season_grouping, access_level, allowed_users,
+            include_in_homepage, include_in_search, retrieve_metadata, adult_content_type
+        });
+        if (d.success) { toast('Library created!'); loadLibrariesSection(); }
+        else toast('Failed: ' + d.error, 'error');
+    }
+
+    // ──── Metadata Section ────
+    async function loadMetadataSection() {
+        const mc = document.getElementById('settingsContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Metadata</h2></div>
+            <p class="section-desc">Configure external API keys and metadata enrichment sources.</p>
+            <div class="settings-grid" id="metadataGrid"><div class="spinner"></div></div>`;
+
+        if (currentUser?.role !== 'admin') {
+            document.getElementById('metadataGrid').innerHTML = `<div class="settings-card">
+                <h3>Access Restricted</h3>
+                <p style="color:#8a9bae;">Only administrators can configure metadata settings.</p>
+            </div>`;
+            return;
+        }
+
+        const sysSett = await api('GET', '/settings/system');
+        const sys = sysSett.success ? sysSett.data : {};
+
+        document.getElementById('metadataGrid').innerHTML = `
+            <div class="settings-card full-width">
+                <h3>Metadata Enrichment</h3>
+                <p style="color:#8a9bae;margin-bottom:16px;">Configure external API keys for additional metadata enrichment. An OMDb API key enables IMDB ratings, Rotten Tomatoes scores, and audience scores.</p>
+                <div class="form-group">
+                    <label>OMDb API Key</label>
+                    <div style="display:flex;gap:10px;">
+                        <input type="password" id="setOmdbKey" value="${sys.omdb_api_key||''}" placeholder="Enter your OMDb API key" style="flex:1;">
+                        <button class="btn-secondary" onclick="document.getElementById('setOmdbKey').type=document.getElementById('setOmdbKey').type==='password'?'text':'password'">&#128065;</button>
+                    </div>
+                    <p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">Get a free key at <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" style="color:#00D9FF;">omdbapi.com</a></p>
+                </div>
+                <button class="btn-primary" onclick="saveSystemSettings()">Save API Key</button>
+            </div>`;
+    }
+
+    async function saveSystemSettings() {
+        const key = document.getElementById('setOmdbKey').value.trim();
+        const d = await api('PUT', '/settings/system', { omdb_api_key: key });
+        if (d.success) toast('System settings saved!'); else toast(d.error, 'error');
+    }
+
+    // ──── Init ────
+    checkAuth();
+    </script>
+</body>
+</html>

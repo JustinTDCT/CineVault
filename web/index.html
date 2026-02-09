@@ -120,50 +120,6 @@
         .view-all { color: #8a9bae; font-size: 0.9rem; cursor: pointer; padding: 8px 16px; border-radius: 8px; transition: all 0.3s; }
         .view-all:hover { color: #00D9FF; background: rgba(0,217,255,0.1); }
 
-        /* ── Filter Toolbar ── */
-        .filter-toolbar {
-            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-            padding: 10px 16px; margin-bottom: 16px; border-radius: 10px;
-            background: rgba(30,36,50,0.85); backdrop-filter: blur(12px);
-            border: 1px solid rgba(255,255,255,0.06);
-        }
-        .filter-toolbar select {
-            background: rgba(255,255,255,0.07); color: #c5d0dc; border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 6px; padding: 6px 28px 6px 10px; font-size: 0.82rem; cursor: pointer;
-            appearance: none; -webkit-appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238a9bae'/%3E%3C/svg%3E");
-            background-repeat: no-repeat; background-position: right 8px center;
-        }
-        .filter-toolbar select:hover { border-color: rgba(0,217,255,0.4); }
-        .filter-toolbar select:focus { outline: none; border-color: #00D9FF; }
-        .filter-toolbar .ft-sep {
-            width: 1px; height: 24px; background: rgba(255,255,255,0.1); margin: 0 4px;
-        }
-        .filter-toolbar .ft-label { color: #5a6a7f; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; }
-        .filter-toolbar .ft-btn {
-            background: rgba(255,255,255,0.07); color: #8a9bae; border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 6px; padding: 6px 12px; font-size: 0.82rem; cursor: pointer; transition: all 0.2s;
-        }
-        .filter-toolbar .ft-btn:hover { border-color: rgba(0,217,255,0.4); color: #00D9FF; }
-        .filter-toolbar .ft-btn.active { background: rgba(0,217,255,0.15); color: #00D9FF; border-color: rgba(0,217,255,0.4); }
-        .filter-toolbar .ft-reset {
-            background: none; border: none; color: #5a6a7f; font-size: 0.78rem; cursor: pointer; padding: 4px 8px;
-        }
-        .filter-toolbar .ft-reset:hover { color: #ff6b6b; }
-
-        /* ── Collection Cards ── */
-        .collection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 22px; margin-bottom: 40px; }
-        .collection-card {
-            background: rgba(30,36,50,0.7); border-radius: 10px; overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.06); cursor: pointer; transition: transform 0.2s, border-color 0.2s;
-        }
-        .collection-card:hover { transform: translateY(-4px); border-color: rgba(0,217,255,0.3); }
-        .collection-card .cc-poster { aspect-ratio: 2/3; background: rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 3rem; color: #3a4a5f; overflow: hidden; }
-        .collection-card .cc-poster img { width: 100%; height: 100%; object-fit: cover; }
-        .collection-card .cc-info { padding: 10px 12px; }
-        .collection-card .cc-name { color: #e5e5e5; font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .collection-card .cc-meta { color: #5a6a7f; font-size: 0.78rem; margin-top: 2px; }
-
         /* ── Media Grid ── */
         .media-grid-wrapper { display: flex; gap: 0; position: relative; }
         .media-grid-wrapper .media-grid { flex: 1; min-width: 0; }
@@ -255,7 +211,7 @@
         }
         .search-box input:focus { outline: none; border-color: #00D9FF; background: linear-gradient(135deg, rgba(26,35,50,0.8) 0%, rgba(13,27,42,0.95) 100%); box-shadow: 0 0 20px rgba(0,217,255,0.2); }
 
-        .user-menu { display: flex; align-items: center; gap: 15px; position: relative; }
+        .user-menu { display: flex; align-items: center; gap: 15px; }
         .user-avatar {
             width: 40px; height: 40px; border-radius: 50%;
             background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
@@ -264,32 +220,6 @@
             box-shadow: 0 4px 16px rgba(0,217,255,0.4); transition: all 0.3s; font-size: 0.95rem;
         }
         .user-avatar:hover { transform: scale(1.05); box-shadow: 0 6px 20px rgba(0,217,255,0.6); }
-
-        /* ── User Dropdown Menu ── */
-        .user-dropdown {
-            position: absolute; top: calc(100% + 10px); right: 0; z-index: 9999;
-            display: none; min-width: 200px;
-            background: linear-gradient(135deg, #1a2332 0%, #0d1b2a 100%);
-            border: 1px solid rgba(0,217,255,0.25); border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,217,255,0.08);
-            padding: 6px 0; animation: ctxFadeIn 0.15s ease;
-        }
-        .user-dropdown.open { display: block; }
-        .user-dropdown-header {
-            padding: 14px 16px 10px; border-bottom: 1px solid rgba(0,217,255,0.1);
-            margin-bottom: 4px;
-        }
-        .user-dropdown-name { font-weight: 600; color: #e5e5e5; font-size: 0.9rem; }
-        .user-dropdown-role { color: #5a6a7f; font-size: 0.75rem; text-transform: capitalize; margin-top: 2px; }
-        .user-dropdown-item {
-            padding: 10px 16px; color: #b8c5d6; font-size: 0.85rem; cursor: pointer;
-            display: flex; align-items: center; gap: 10px; transition: all 0.15s;
-        }
-        .user-dropdown-item:hover { background: rgba(0,217,255,0.1); color: #00D9FF; }
-        .user-dropdown-item .ud-icon { width: 18px; text-align: center; font-size: 0.9rem; }
-        .user-dropdown-sep { height: 1px; background: rgba(0,217,255,0.1); margin: 4px 12px; }
-        .user-dropdown-item.logout { color: #ff6b6b; }
-        .user-dropdown-item.logout:hover { background: rgba(255,107,107,0.1); color: #ff6b6b; }
 
         /* ── Empty State ── */
         .empty-state { text-align: center; padding: 60px 25px; color: #8a9bae; background: linear-gradient(135deg, rgba(26,35,50,0.4) 0%, rgba(13,27,42,0.6) 100%); border-radius: 20px; border: 1px solid rgba(0,217,255,0.1); margin: 10px 0 30px; }
@@ -712,138 +642,9 @@
             background: rgba(52,199,89,0.15); color: #51cf66;
             border: 1px solid rgba(52,199,89,0.3);
         }
-
-        /* Toggle switch / slider */
-        .toggle-switch { position: relative; display: inline-block; width: 48px; height: 26px; vertical-align: middle; }
-        .toggle-switch input { opacity: 0; width: 0; height: 0; }
-        .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #2a3441; border: 1px solid #3a4a5c; border-radius: 26px; transition: 0.25s; }
-        .toggle-slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 2px; bottom: 2px; background: #8a9bae; border-radius: 50%; transition: 0.25s; }
-        .toggle-switch input:checked + .toggle-slider { background: rgba(0,217,255,0.25); border-color: #00D9FF; }
-        .toggle-switch input:checked + .toggle-slider:before { transform: translateX(22px); background: #00D9FF; }
-        .toggle-label { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; color: #c8d6e5; font-size: 0.95rem; }
-
-        /* ── Fast Login Screen ── */
-        .fast-login-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10000;
-            background: linear-gradient(135deg, #0a1929 0%, #1a2332 50%, #0d1b2a 100%);
-            display: none; flex-direction: column; align-items: center; justify-content: center;
-        }
-        .fast-login-overlay.active { display: flex; }
-        .fast-login-title { font-size: 1.8rem; font-weight: 700; color: #e5e5e5; margin-bottom: 40px; }
-        .fast-login-back {
-            position: absolute; top: 30px; left: 30px; color: #8a9bae; font-size: 1rem;
-            cursor: pointer; display: flex; align-items: center; gap: 8px; transition: color 0.2s;
-        }
-        .fast-login-back:hover { color: #00D9FF; }
-        .fast-login-grid {
-            display: flex; flex-wrap: wrap; gap: 30px; justify-content: center; max-width: 900px;
-        }
-        .fast-login-user {
-            width: 180px; padding: 24px 16px 18px; border-radius: 16px;
-            background: linear-gradient(145deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
-            border: 1px solid rgba(255,255,255,0.08);
-            cursor: pointer; text-align: center; transition: all 0.3s;
-        }
-        .fast-login-user:hover {
-            transform: translateY(-4px); border-color: rgba(0,217,255,0.3);
-            box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,217,255,0.15);
-        }
-        .fast-login-avatar {
-            width: 100px; height: 100px; border-radius: 50%; margin: 0 auto 16px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 2.4rem; font-weight: 600; color: rgba(255,255,255,0.85);
-            position: relative;
-        }
-        .fast-login-avatar::before {
-            content: ''; position: absolute; inset: -4px; border-radius: 50%;
-            border: 3px solid rgba(255,255,255,0.08);
-        }
-        .fast-login-user-name { font-size: 1rem; color: #c8d6e5; font-weight: 500; }
-        .fast-login-badges { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
-        .fast-login-badge {
-            font-size: 0.7rem; padding: 2px 8px; border-radius: 8px; font-weight: 600;
-        }
-        .fast-login-badge.admin {
-            background: rgba(255,193,7,0.15); color: #ffc107; border: 1px solid rgba(255,193,7,0.3);
-        }
-        .fast-login-badge.pin-set {
-            background: rgba(76,175,80,0.15); color: #4caf50; border: 1px solid rgba(76,175,80,0.3);
-        }
-        .fast-login-badge.no-pin {
-            background: rgba(255,152,0,0.15); color: #ff9800; border: 1px solid rgba(255,152,0,0.3);
-        }
-
-        /* PIN Entry */
-        .pin-entry-container {
-            display: none; flex-direction: column; align-items: center; gap: 24px;
-        }
-        .pin-entry-container.active { display: flex; }
-        .pin-entry-user-info { display: flex; align-items: center; gap: 20px; }
-        .pin-entry-user-card {
-            width: 140px; padding: 16px 12px; border-radius: 14px; text-align: center;
-            background: linear-gradient(145deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
-            border: 1px solid rgba(255,255,255,0.08);
-        }
-        .pin-entry-avatar {
-            width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 10px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 2rem; font-weight: 600; color: rgba(255,255,255,0.85);
-        }
-        .pin-entry-name { font-size: 0.9rem; color: #c8d6e5; }
-        .pin-boxes {
-            display: flex; gap: 12px;
-        }
-        .pin-box {
-            width: 60px; height: 72px; border-radius: 12px;
-            background: rgba(255,255,255,0.04); border: 2px solid rgba(255,255,255,0.1);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 1.8rem; color: #e5e5e5; font-weight: 700;
-            transition: all 0.2s;
-        }
-        .pin-box.active { border-color: #00D9FF; background: rgba(0,217,255,0.06); }
-        .pin-box.filled { border-color: rgba(255,255,255,0.25); }
-        .pin-forgot {
-            color: #5a6a7f; font-size: 0.85rem; cursor: pointer; transition: color 0.2s;
-        }
-        .pin-forgot:hover { color: #00D9FF; }
-        .pin-error { color: #ff6b6b; font-size: 0.85rem; min-height: 1.2em; }
-        .pin-hidden-input {
-            position: absolute; left: -9999px; opacity: 0;
-        }
-        .fast-login-fallback {
-            margin-top: 30px; color: #5a6a7f; font-size: 0.85rem; cursor: pointer;
-        }
-        .fast-login-fallback:hover { color: #00D9FF; }
-
-        /* Helper text for settings */
-        .settings-helper {
-            color: #5a6a7f; font-size: 0.78rem; margin-top: 4px;
-        }
-
-        /* ── Login Intro Overlay ── */
-        .intro-overlay {
-            position: fixed; inset: 0; z-index: 20000;
-            background: #000; display: none;
-            opacity: 1; transition: opacity 0.8s ease;
-        }
-        .intro-overlay.active { display: block; }
-        .intro-overlay.fade-out { opacity: 0; }
-        .intro-overlay video {
-            position: absolute; inset: 0;
-            width: 100%; height: 100%; object-fit: cover;
-            transform: scale(1.2);
-            pointer-events: none;
-        }
     </style>
 </head>
 <body>
-    <!-- Login Intro Video -->
-    <div class="intro-overlay" id="introOverlay">
-        <video id="introVideo" preload="auto" playsinline>
-            <source src="/assets/intro.mp4" type="video/mp4">
-        </video>
-    </div>
-
     <div class="app-container">
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
@@ -852,13 +653,34 @@
             <div class="nav-section">
                 <div class="nav-label">Main</div>
                 <div class="nav-item active" data-view="home"><span class="nav-icon">&#127968;</span><span>Home</span></div>
-                <div class="nav-item" data-view="libraries"><span class="nav-icon">&#128218;</span><span>Libraries</span></div>
             </div>
 
             <div class="nav-section" id="librariesNav">
                 <div class="nav-label">Libraries</div>
             </div>
 
+            <div class="nav-section">
+                <div class="nav-label">Organize</div>
+                <div class="nav-item" data-view="collections"><span class="nav-icon">&#11088;</span><span>Collections</span></div>
+                <div class="nav-item" data-view="performers"><span class="nav-icon">&#128100;</span><span>Performers</span></div>
+                <div class="nav-item" data-view="tags"><span class="nav-icon">&#127991;</span><span>Tags</span></div>
+                <div class="nav-item" data-view="studios"><span class="nav-icon">&#127980;</span><span>Studios</span></div>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-label">Manage</div>
+                <div class="nav-item" data-view="duplicates"><span class="nav-icon">&#128257;</span><span>Duplicate Review</span><span class="nav-badge" id="dupBadge" style="display:none;">0</span></div>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-label">System</div>
+                <div class="nav-item" id="settingsNavItem"><span class="nav-icon">&#9881;</span><span>Settings</span></div>
+                <div class="nav-item" data-view="admin"><span class="nav-icon">&#128736;</span><span>Admin</span></div>
+            </div>
+
+            <div style="margin-top: auto; padding: 15px 0;">
+                <div class="nav-item" id="logoutBtn" style="color: #ff6b6b;"><span class="nav-icon">&#128682;</span><span>Logout</span></div>
+            </div>
         </div>
 
         <!-- Main Content -->
@@ -880,24 +702,14 @@
                     </div>
                     <span class="ws-status" id="wsStatus" style="display:none;"></span>
                     <div class="user-avatar" id="userAvatar">?</div>
-                    <div class="user-dropdown" id="userDropdown">
-                        <div class="user-dropdown-header">
-                            <div class="user-dropdown-name" id="udName"></div>
-                            <div class="user-dropdown-role" id="udRole"></div>
-                        </div>
-                        <div class="user-dropdown-item" onclick="navigate('profile')"><span class="ud-icon">&#9998;</span> Edit Profile</div>
-                        <div class="user-dropdown-item" id="udSettingsItem" onclick="navigate('settings')" style="display:none;"><span class="ud-icon">&#9881;</span> Settings</div>
-                        <div class="user-dropdown-sep"></div>
-                        <div class="user-dropdown-item logout" id="udLogoutBtn"><span class="ud-icon">&#128682;</span> Logout</div>
-                    </div>
                 </div>
             </div>
             <div class="main-content" id="mainContent"></div>
         </div>
     </div>
 
-    <!-- Login Modal (standard) -->
-    <div class="modal" id="loginModal">
+    <!-- Login Modal -->
+    <div class="modal active" id="loginModal">
         <div class="modal-content">
             <h2 class="modal-title">Welcome to CineVault</h2>
             <div id="authMessage"></div>
@@ -907,33 +719,6 @@
                 <button type="submit" class="btn-primary" style="width: 100%; margin-top: 10px;">Login</button>
             </form>
         </div>
-    </div>
-
-    <!-- Fast Login Overlay -->
-    <div class="fast-login-overlay" id="fastLoginOverlay">
-        <div class="fast-login-back" id="fastLoginBack" style="display:none;" onclick="fastLoginShowUsers()">&#10094; Enter PIN</div>
-        <div class="fast-login-title" id="fastLoginTitle">Select User</div>
-
-        <!-- User Grid -->
-        <div class="fast-login-grid" id="fastLoginGrid"></div>
-
-        <!-- PIN Entry -->
-        <div class="pin-entry-container" id="pinEntryContainer">
-            <div class="pin-entry-user-info">
-                <div class="pin-entry-user-card">
-                    <div class="pin-entry-avatar" id="pinEntryAvatar"></div>
-                    <div class="pin-entry-name" id="pinEntryName"></div>
-                </div>
-                <div>
-                    <div class="pin-boxes" id="pinBoxes"></div>
-                    <div class="pin-error" id="pinError"></div>
-                </div>
-            </div>
-            <input type="text" class="pin-hidden-input" id="pinHiddenInput" inputmode="numeric" autocomplete="off" autofocus>
-            <div class="pin-forgot" onclick="fastLoginShowStandard()">Use password instead</div>
-        </div>
-
-        <div class="fast-login-fallback" onclick="fastLoginShowStandard()">Use username &amp; password</div>
     </div>
 
     <!-- Video Player Overlay -->
@@ -1227,232 +1012,19 @@
     }
 
     // ──── Auth ────
-    let fastLoginConfig = null;
-    let fastLoginUsers = [];
-    let selectedFastUser = null;
-    let pinLength = 4;
-
-    async function checkAuth() {
+    function checkAuth() {
         const token = localStorage.getItem('token');
         const user = localStorage.getItem('user');
         if (token && user) {
             currentUser = JSON.parse(user);
             document.getElementById('loginModal').classList.remove('active');
-            document.getElementById('fastLoginOverlay').classList.remove('active');
             document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
-
-            // Play intro if enabled and not yet played this session
-            if (!sessionStorage.getItem('intro_played')) {
-                if (!fastLoginConfig) {
-                    try {
-                        const res = await fetch(API + '/auth/fast-login/settings');
-                        fastLoginConfig = await res.json();
-                    } catch(e) { fastLoginConfig = { success: false }; }
-                }
-                const introEnabled = fastLoginConfig && fastLoginConfig.success && fastLoginConfig.data && fastLoginConfig.data.login_intro_enabled === 'true';
-                if (introEnabled) {
-                    const played = await playLoginIntro(fastLoginConfig.data.login_intro_muted === 'true');
-                    if (played) sessionStorage.setItem('intro_played', '1');
-                }
-            }
-
             loadHomeView();
             loadSidebarCounts();
             connectWS();
         } else {
-            try {
-                const res = await fetch(API + '/auth/fast-login/settings');
-                fastLoginConfig = await res.json();
-            } catch { fastLoginConfig = { success: false }; }
-
-            if (fastLoginConfig && fastLoginConfig.success && fastLoginConfig.data && fastLoginConfig.data.fast_login_enabled === 'true') {
-                pinLength = parseInt(fastLoginConfig.data.fast_login_pin_length) || 4;
-                showFastLogin();
-            } else {
-                document.getElementById('loginModal').classList.add('active');
-            }
+            document.getElementById('loginModal').classList.add('active');
         }
-    }
-
-    // ──── Fast Login ────
-    async function showFastLogin() {
-        document.getElementById('fastLoginOverlay').classList.add('active');
-        document.getElementById('loginModal').classList.remove('active');
-        try {
-            const res = await fetch(API + '/auth/fast-login/users');
-            const data = await res.json();
-            fastLoginUsers = data.success ? (data.data || []) : [];
-        } catch { fastLoginUsers = []; }
-        fastLoginShowUsers();
-    }
-
-    function userColor(name) {
-        const colors = [
-            ['#6c9a8b','#8fb8a8'],['#9a8b6c','#b8a88f'],['#6c7d9a','#8f9db8'],
-            ['#9a6c7d','#b88f9d'],['#7d9a6c','#9db88f'],['#8b6c9a','#a88fb8'],
-            ['#6c9a9a','#8fb8b8'],['#9a9a6c','#b8b88f']
-        ];
-        let hash = 0;
-        for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-        return colors[Math.abs(hash) % colors.length];
-    }
-
-    function fastLoginShowUsers() {
-        const grid = document.getElementById('fastLoginGrid');
-        const pinEntry = document.getElementById('pinEntryContainer');
-        const back = document.getElementById('fastLoginBack');
-        const title = document.getElementById('fastLoginTitle');
-        const fallback = document.querySelector('.fast-login-fallback');
-        grid.style.display = 'flex';
-        pinEntry.classList.remove('active');
-        back.style.display = 'none';
-        title.textContent = 'Select User';
-        if (fallback) fallback.style.display = '';
-        selectedFastUser = null;
-
-        grid.innerHTML = fastLoginUsers.map(u => {
-            const dn = u.display_name || u.username;
-            const initial = dn[0].toUpperCase();
-            const [bg, circle] = userColor(dn);
-            let badges = '';
-            if (u.has_pin) badges += '<span class="fast-login-badge pin-set">&#128274;</span>';
-            if (u.role === 'admin') badges += '<span class="fast-login-badge admin">&#128081;</span>';
-            return '<div class="fast-login-user" onclick="fastLoginSelectUser(\'' + u.id + '\')" style="background:linear-gradient(145deg, ' + bg + '33 0%, ' + bg + '11 100%);border-color:' + bg + '44;">' +
-                '<div class="fast-login-avatar" style="background:radial-gradient(circle, ' + circle + ' 0%, ' + bg + ' 100%);">' + initial +
-                '<div class="fast-login-badges" style="position:absolute;bottom:-4px;left:0;right:0;">' + badges + '</div></div>' +
-                '<div class="fast-login-user-name">' + dn + '</div></div>';
-        }).join('');
-    }
-
-    function fastLoginSelectUser(userId) {
-        selectedFastUser = fastLoginUsers.find(u => u.id === userId);
-        if (!selectedFastUser) return;
-        if (!selectedFastUser.has_pin) { fastLoginShowStandard(); return; }
-
-        document.getElementById('fastLoginGrid').style.display = 'none';
-        document.getElementById('pinEntryContainer').classList.add('active');
-        document.getElementById('fastLoginBack').style.display = 'flex';
-        document.getElementById('fastLoginTitle').textContent = 'Enter PIN';
-        const fallback = document.querySelector('.fast-login-fallback');
-        if (fallback) fallback.style.display = 'none';
-
-        const dn = selectedFastUser.display_name || selectedFastUser.username;
-        const [bg, circle] = userColor(dn);
-        document.getElementById('pinEntryAvatar').style.background = 'radial-gradient(circle, ' + circle + ' 0%, ' + bg + ' 100%)';
-        document.getElementById('pinEntryAvatar').textContent = dn[0].toUpperCase();
-        document.getElementById('pinEntryName').textContent = dn;
-        document.getElementById('pinError').textContent = '';
-
-        let boxesHtml = '';
-        for (let i = 0; i < pinLength; i++) boxesHtml += '<div class="pin-box' + (i === 0 ? ' active' : '') + '" id="pinBox' + i + '"></div>';
-        document.getElementById('pinBoxes').innerHTML = boxesHtml;
-
-        const hi = document.getElementById('pinHiddenInput');
-        hi.value = '';
-        hi.maxLength = pinLength;
-        setTimeout(function(){ hi.focus(); }, 100);
-        document.getElementById('pinBoxes').onclick = function(){ hi.focus(); };
-    }
-
-    document.getElementById('pinHiddenInput').addEventListener('input', async function() {
-        const val = this.value.replace(/\D/g, '').substring(0, pinLength);
-        this.value = val;
-        for (let i = 0; i < pinLength; i++) {
-            const box = document.getElementById('pinBox' + i);
-            if (!box) continue;
-            box.textContent = i < val.length ? '\u25CF' : '';
-            box.className = 'pin-box' + (i < val.length ? ' filled' : '') + (i === val.length ? ' active' : '');
-        }
-        if (val.length === pinLength && selectedFastUser) {
-            document.getElementById('pinError').textContent = '';
-            try {
-                const res = await fetch(API + '/auth/fast-login', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: selectedFastUser.id, pin: val })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    localStorage.setItem('token', data.data.token);
-                    localStorage.setItem('user', JSON.stringify(data.data.user));
-                    checkAuth();
-                } else {
-                    document.getElementById('pinError').textContent = data.error || 'Invalid PIN';
-                    this.value = '';
-                    for (let i = 0; i < pinLength; i++) {
-                        const box = document.getElementById('pinBox' + i);
-                        if (box) { box.textContent = ''; box.className = 'pin-box' + (i === 0 ? ' active' : ''); }
-                    }
-                }
-            } catch {
-                document.getElementById('pinError').textContent = 'Connection error';
-                this.value = '';
-            }
-        }
-    });
-
-    document.getElementById('pinHiddenInput').addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') fastLoginShowUsers();
-    });
-
-    function fastLoginShowStandard() {
-        document.getElementById('fastLoginOverlay').classList.remove('active');
-        document.getElementById('loginModal').classList.add('active');
-        if (selectedFastUser) {
-            document.getElementById('loginUsername').value = selectedFastUser.username;
-            document.getElementById('loginPassword').focus();
-        }
-    }
-
-    // ──── Login Intro Video ────
-    function playLoginIntro(wantMuted) {
-        return new Promise(function(resolve) {
-            const overlay = document.getElementById('introOverlay');
-            const video = document.getElementById('introVideo');
-            overlay.classList.add('active');
-            video.playbackRate = 1.5;
-            video.currentTime = 0;
-            video.muted = !!wantMuted;
-
-            function onEnded() {
-                overlay.classList.add('fade-out');
-                setTimeout(function() {
-                    overlay.classList.remove('active', 'fade-out');
-                    cleanup();
-                    resolve(true);
-                }, 800);
-            }
-
-            function onError() {
-                overlay.classList.remove('active');
-                cleanup();
-                resolve(false);
-            }
-
-            function cleanup() {
-                video.onended = null;
-                video.onerror = null;
-            }
-
-            video.onended = onEnded;
-            video.onerror = onError;
-
-            video.play().catch(function() {
-                // Autoplay with audio blocked — retry muted (browsers always allow muted autoplay)
-                if (!video.muted) {
-                    video.muted = true;
-                    video.play().catch(function() {
-                        // Even muted failed — skip
-                        overlay.classList.remove('active');
-                        cleanup();
-                        resolve(false);
-                    });
-                } else {
-                    overlay.classList.remove('active');
-                    cleanup();
-                    resolve(false);
-                }
-            });
-        });
     }
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -1460,44 +1032,12 @@
         const msgDiv = document.getElementById('authMessage');
         try {
             const data = await api('POST', '/auth/login', { username: document.getElementById('loginUsername').value, password: document.getElementById('loginPassword').value });
-            if (data.success) { localStorage.setItem('token', data.data.token); localStorage.setItem('user', JSON.stringify(data.data.user)); checkAuth(); }
+            if (data.success) { localStorage.setItem('token', data.data.token); localStorage.setItem('user', JSON.stringify(data.data.user)); msgDiv.innerHTML='<div class="message success">Login successful!</div>'; setTimeout(checkAuth, 400); }
             else msgDiv.innerHTML='<div class="message error">'+(data.error||'Login failed')+'</div>';
         } catch { msgDiv.innerHTML='<div class="message error">Connection error</div>'; }
     });
 
-    // ──── User Avatar Dropdown ────
-    function doLogout() {
-        localStorage.clear(); sessionStorage.removeItem('intro_played'); currentUser=null;
-        if(ws) ws.close();
-        document.getElementById('fastLoginOverlay').classList.remove('active');
-        document.getElementById('loginModal').classList.remove('active');
-        closeUserDropdown();
-        checkAuth();
-    }
-    document.getElementById('udLogoutBtn').addEventListener('click', doLogout);
-
-    document.getElementById('userAvatar').addEventListener('click', (e) => {
-        e.stopPropagation();
-        const dd = document.getElementById('userDropdown');
-        if (dd.classList.contains('open')) { closeUserDropdown(); return; }
-        // Populate dropdown header
-        if (currentUser) {
-            const nameEl = document.getElementById('udName');
-            const fn = currentUser.first_name || '';
-            const ln = currentUser.last_name || '';
-            nameEl.textContent = (fn + ' ' + ln).trim() || currentUser.username;
-            document.getElementById('udRole').textContent = currentUser.role;
-            document.getElementById('udSettingsItem').style.display = currentUser.role === 'admin' ? '' : 'none';
-        }
-        dd.classList.add('open');
-    });
-
-    function closeUserDropdown() {
-        document.getElementById('userDropdown').classList.remove('open');
-    }
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('.user-menu')) closeUserDropdown();
-    });
+    document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.clear(); currentUser=null; if(ws)ws.close(); document.getElementById('loginModal').classList.add('active'); });
 
     // ──── Sidebar Libraries ────
     async function loadSidebarCounts() {
@@ -1555,7 +1095,6 @@
         if (isAdmin) html += `<div class="lib-ctx-item" onclick="showEditLibraryForm('${libId}')"><span class="ctx-icon">&#9998;</span> Edit Library</div><div class="lib-ctx-sep"></div>`;
         html += `<div class="lib-ctx-item" onclick="sidebarScanLibrary('${libId}')"><span class="ctx-icon">&#128269;</span> Scan Library</div>`;
         html += `<div class="lib-ctx-item" onclick="sidebarMetadataRefresh('${libId}')"><span class="ctx-icon">&#8635;</span> Metadata Refresh</div>`;
-        html += `<div class="lib-ctx-item" onclick="sidebarRehashPhash('${libId}')"><span class="ctx-icon">&#128274;</span> Rehash pHash</div>`;
         menu.innerHTML = html;
         menu.dataset.libId = libId;
 
@@ -1602,15 +1141,6 @@
         toast('Metadata refresh started — unlocked items will be updated...');
         api('POST', '/libraries/' + libId + '/auto-match').then(data => {
             if (data.success) toast('Metadata refresh queued');
-            else toast('Failed: ' + (data.error || 'Unknown'), 'error');
-        }).catch(e => toast('Error: ' + e.message, 'error'));
-    }
-
-    function sidebarRehashPhash(libId) {
-        closeLibCtxMenu();
-        toast('pHash computation started...');
-        api('POST', '/libraries/' + libId + '/phash').then(data => {
-            if (data.success) toast('pHash job queued — duplicates will be analyzed');
             else toast('Failed: ' + (data.error || 'Unknown'), 'error');
         }).catch(e => toast('Error: ' + e.message, 'error'));
     }
@@ -1771,7 +1301,6 @@
 
     // ──── Navigation ────
     function navigate(view, extra) {
-        closeUserDropdown();
         document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
         if (view === 'library' && extra) {
             const navItem = document.querySelector(`.nav-item[data-view="library"][data-id="${extra}"]`);
@@ -1790,15 +1319,16 @@
             case 'tags': loadTagsView(); break;
             case 'studios': loadStudiosView(); break;
             case 'duplicates': loadDuplicatesView(); break;
-            case 'settings': loadSettingsView(); break;
+            case 'settings': window.location.href = 'settings.html'; break;
             case 'admin': loadAdminView(); break;
-            case 'profile': loadProfileView(); break;
         }
     }
 
     document.querySelectorAll('.nav-item[data-view]').forEach(item => {
         item.addEventListener('click', () => navigate(item.dataset.view, item.dataset.type));
     });
+
+    document.getElementById('settingsNavItem').addEventListener('click', () => { window.location.href = 'settings.html'; });
 
     let searchTimeout;
     document.getElementById('searchInput').addEventListener('input', (e) => {
@@ -1999,30 +1529,17 @@
     }
 
     // ──── Paginated Media Grid with Alpha Jump ────
-    let _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [], filters: {} };
+    let _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [] };
 
     function teardownGrid() {
         if (_gridState.observer) { _gridState.observer.disconnect(); _gridState.observer = null; }
-        _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [], filters: {} };
-    }
-
-    // Build query string from current filters
-    function buildFilterQS() {
-        const f = _gridState.filters || {};
-        const params = [];
-        if (f.genre) params.push('genre=' + encodeURIComponent(f.genre));
-        if (f.folder) params.push('folder=' + encodeURIComponent(f.folder));
-        if (f.content_rating) params.push('content_rating=' + encodeURIComponent(f.content_rating));
-        if (f.edition) params.push('edition=' + encodeURIComponent(f.edition));
-        if (f.sort) params.push('sort=' + encodeURIComponent(f.sort));
-        if (f.order) params.push('order=' + encodeURIComponent(f.order));
-        return params.length > 0 ? '&' + params.join('&') : '';
+        _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [] };
     }
 
     async function loadMoreMedia() {
         if (_gridState.loading || _gridState.done) return;
         _gridState.loading = true;
-        const m = await api('GET', '/libraries/' + _gridState.libraryId + '/media?limit=200&offset=' + _gridState.offset + buildFilterQS());
+        const m = await api('GET', '/libraries/' + _gridState.libraryId + '/media?limit=200&offset=' + _gridState.offset);
         const items = (m.success && m.data && m.data.items) ? m.data.items : [];
         _gridState.total = m.data ? m.data.total : _gridState.total;
 
@@ -2190,26 +1707,19 @@
             return;
         }
 
-        _gridState.libraryId = libraryId;
-
-        // Fetch filter options and letter index in parallel
-        const [filterData, idxData] = await Promise.all([
-            api('GET', '/libraries/' + libraryId + '/filters'),
-            api('GET', '/libraries/' + libraryId + '/media/index' + (buildFilterQS() ? '?' + buildFilterQS().substring(1) : ''))
-        ]);
-        const filterOpts = (filterData.success && filterData.data) ? filterData.data : {};
+        // Fetch letter index for jump bar
+        const idxData = await api('GET', '/libraries/' + libraryId + '/media/index');
         const letterIndex = (idxData.success && idxData.data) ? idxData.data : [];
+        _gridState.libraryId = libraryId;
         _gridState.letterIndex = letterIndex;
 
         const totalCount = letterIndex.reduce((s, e) => s + e.count, 0);
 
-        mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2><span class="tag tag-cyan" style="margin-left:12px;">${MEDIA_LABELS[type]||type}</span><span class="tag" id="libItemCount" style="margin-left:8px;">${totalCount.toLocaleString()} items</span></div>
-            ${buildFilterToolbar(filterOpts)}
-            <div class="media-grid-wrapper" id="mediaGridWrapper">
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2><span class="tag tag-cyan" style="margin-left:12px;">${MEDIA_LABELS[type]||type}</span><span class="tag" style="margin-left:8px;">${totalCount.toLocaleString()} items</span></div>
+            <div class="media-grid-wrapper">
                 <div class="media-grid" id="libGrid"><div id="gridSentinel" class="load-more-sentinel"><div class="spinner"></div></div></div>
                 ${buildAlphaJump(letterIndex)}
-            </div>
-            <div id="collectionsArea" style="display:none;"></div>`;
+            </div>`;
 
         setupScrollObserver();
         loadMoreMedia();
@@ -2217,165 +1727,6 @@
         // Update active letter on scroll
         const container = document.getElementById('mainContent');
         container.addEventListener('scroll', () => { requestAnimationFrame(updateAlphaCount); });
-    }
-
-    // ──── Filter Toolbar ────
-    function buildFilterToolbar(opts) {
-        const genreOpts = (opts.genres || []).map(g => `<option value="${g}">${g}</option>`).join('');
-        const folderOpts = (opts.folders || []).map(f => {
-            const short = f.split('/').filter(Boolean).pop() || f;
-            return `<option value="${f}">${short}</option>`;
-        }).join('');
-        const crOpts = (opts.content_ratings || []).map(c => `<option value="${c}">${c}</option>`).join('');
-        const edOpts = (opts.editions || []).map(e => `<option value="${e}">${e}</option>`).join('');
-
-        const hasAnyFilter = genreOpts || folderOpts || crOpts || edOpts;
-
-        return `<div class="filter-toolbar" id="filterToolbar">
-            ${genreOpts ? `<select id="ftGenre" onchange="applyLibFilter()"><option value="">All Genres</option>${genreOpts}</select>` : ''}
-            ${folderOpts ? `<select id="ftFolder" onchange="applyLibFilter()"><option value="">All Folders</option>${folderOpts}</select>` : ''}
-            ${crOpts ? `<select id="ftRating" onchange="applyLibFilter()"><option value="">All Ratings</option>${crOpts}</select>` : ''}
-            ${edOpts ? `<select id="ftEdition" onchange="applyLibFilter()"><option value="">All Editions</option>${edOpts}</select>` : ''}
-            <div class="ft-sep"></div>
-            <span class="ft-label">Sort</span>
-            <select id="ftSort" onchange="applyLibFilter()">
-                <option value="">Title</option>
-                <option value="year">Year</option>
-                <option value="rt_rating">Rotten Tomatoes</option>
-                <option value="rating">TMDB Rating</option>
-                <option value="audience_score">Audience Score</option>
-            </select>
-            <select id="ftOrder" onchange="applyLibFilter()">
-                <option value="asc">A→Z / Low→High</option>
-                <option value="desc">Z→A / High→Low</option>
-            </select>
-            <div class="ft-sep"></div>
-            <button class="ft-btn" id="ftGridBtn" onclick="showLibraryGrid()" title="Grid view">&#9638; Grid</button>
-            <button class="ft-btn" id="ftCollBtn" onclick="showLibraryCollections()" title="Collections view">&#128218; Collections</button>
-            ${hasAnyFilter ? '<button class="ft-reset" onclick="resetLibFilters()" title="Reset filters">&#10005; Reset</button>' : ''}
-        </div>`;
-    }
-
-    function applyLibFilter() {
-        const f = {};
-        const genre = document.getElementById('ftGenre');
-        const folder = document.getElementById('ftFolder');
-        const rating = document.getElementById('ftRating');
-        const edition = document.getElementById('ftEdition');
-        const sort = document.getElementById('ftSort');
-        const order = document.getElementById('ftOrder');
-        if (genre && genre.value) f.genre = genre.value;
-        if (folder && folder.value) f.folder = folder.value;
-        if (rating && rating.value) f.content_rating = rating.value;
-        if (edition && edition.value) f.edition = edition.value;
-        if (sort && sort.value) f.sort = sort.value;
-        if (order && order.value !== 'asc') f.order = order.value;
-        _gridState.filters = f;
-        reloadLibraryGrid();
-    }
-
-    function resetLibFilters() {
-        const ids = ['ftGenre','ftFolder','ftRating','ftEdition','ftSort','ftOrder'];
-        ids.forEach(id => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
-        _gridState.filters = {};
-        reloadLibraryGrid();
-    }
-
-    async function reloadLibraryGrid() {
-        const libId = _gridState.libraryId;
-        if (!libId) return;
-
-        // Reset grid state but keep libraryId and filters
-        const filters = _gridState.filters;
-        if (_gridState.observer) { _gridState.observer.disconnect(); _gridState.observer = null; }
-        _gridState.offset = 0;
-        _gridState.total = 0;
-        _gridState.loading = false;
-        _gridState.done = false;
-        _gridState.filters = filters;
-
-        // Refresh letter index with filters
-        const qs = buildFilterQS();
-        const idxData = await api('GET', '/libraries/' + libId + '/media/index' + (qs ? '?' + qs.substring(1) : ''));
-        const letterIndex = (idxData.success && idxData.data) ? idxData.data : [];
-        _gridState.letterIndex = letterIndex;
-
-        const totalCount = letterIndex.reduce((s, e) => s + e.count, 0);
-        const countEl = document.getElementById('libItemCount');
-        if (countEl) countEl.textContent = totalCount.toLocaleString() + ' items';
-
-        // Show grid, hide collections
-        const wrapper = document.getElementById('mediaGridWrapper');
-        const collArea = document.getElementById('collectionsArea');
-        if (wrapper) wrapper.style.display = 'flex';
-        if (collArea) collArea.style.display = 'none';
-
-        // Rebuild grid
-        const grid = document.getElementById('libGrid');
-        if (grid) {
-            grid.innerHTML = '<div id="gridSentinel" class="load-more-sentinel"><div class="spinner"></div></div>';
-        }
-
-        // Rebuild alpha jump
-        const existingJump = document.querySelector('.alpha-jump');
-        if (existingJump) existingJump.outerHTML = buildAlphaJump(letterIndex);
-
-        // Update toggle buttons
-        const gridBtn = document.getElementById('ftGridBtn');
-        const collBtn = document.getElementById('ftCollBtn');
-        if (gridBtn) gridBtn.classList.add('active');
-        if (collBtn) collBtn.classList.remove('active');
-
-        setupScrollObserver();
-        loadMoreMedia();
-    }
-
-    function showLibraryGrid() {
-        const wrapper = document.getElementById('mediaGridWrapper');
-        const collArea = document.getElementById('collectionsArea');
-        if (wrapper) wrapper.style.display = 'flex';
-        if (collArea) collArea.style.display = 'none';
-        const gridBtn = document.getElementById('ftGridBtn');
-        const collBtn = document.getElementById('ftCollBtn');
-        if (gridBtn) gridBtn.classList.add('active');
-        if (collBtn) collBtn.classList.remove('active');
-    }
-
-    async function showLibraryCollections() {
-        const libId = _gridState.libraryId;
-        if (!libId) return;
-
-        const wrapper = document.getElementById('mediaGridWrapper');
-        const collArea = document.getElementById('collectionsArea');
-        if (wrapper) wrapper.style.display = 'none';
-        if (collArea) collArea.style.display = 'block';
-
-        const gridBtn = document.getElementById('ftGridBtn');
-        const collBtn = document.getElementById('ftCollBtn');
-        if (gridBtn) gridBtn.classList.remove('active');
-        if (collBtn) collBtn.classList.add('active');
-
-        collArea.innerHTML = '<div class="spinner"></div> Loading collections...';
-        const data = await api('GET', '/collections?library_id=' + libId);
-        const collections = (data.success && data.data) ? data.data : [];
-
-        if (collections.length === 0) {
-            collArea.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128218;</div><div class="empty-state-title">No collections</div><p>Create a collection for this library to see it here</p></div>';
-            return;
-        }
-
-        collArea.innerHTML = '<div class="collection-grid">' + collections.map(c => {
-            const poster = c.poster_path
-                ? `<img src="${c.poster_path}" alt="">`
-                : '&#128218;';
-            return `<div class="collection-card" onclick="navigate('collection','${c.id}')">
-                <div class="cc-poster">${poster}</div>
-                <div class="cc-info">
-                    <div class="cc-name">${c.name}</div>
-                    <div class="cc-meta">${c.item_count || 0} item${(c.item_count||0) !== 1 ? 's' : ''}</div>
-                </div>
-            </div>`;
-        }).join('') + '</div>';
     }
 
     function renderShowCard(show) {
@@ -3101,256 +2452,7 @@
         if (e.target === this) closeEditModal();
     });
 
-    // ──── Edit Profile ────
-    async function loadProfileView() {
-        const mc = document.getElementById('mainContent');
-        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Edit Profile</h2></div><div class="settings-grid" id="profileGrid"><div class="spinner"></div></div>`;
-
-        const profileData = await api('GET', '/profile');
-        if (!profileData.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Failed to load profile</div></div>'; return; }
-        const u = profileData.data;
-
-        // Get PIN length setting for validation
-        let pinLength = 4;
-        try {
-            const flSettings = await api('GET', '/auth/fast-login/settings');
-            if (flSettings.success && flSettings.data) pinLength = parseInt(flSettings.data.fast_login_pin_length) || 4;
-        } catch(e) {}
-
-        document.getElementById('profileGrid').innerHTML = `
-            <div class="settings-card">
-                <h3>Personal Information</h3>
-                <div class="form-group"><label>Username</label><input type="text" value="${u.username || ''}" disabled style="opacity:0.6;cursor:not-allowed;"></div>
-                <div class="edit-field-row">
-                    <div class="form-group"><label>First Name</label><input type="text" id="profFirstName" value="${u.first_name || ''}" placeholder="Enter first name"></div>
-                    <div class="form-group"><label>Last Name</label><input type="text" id="profLastName" value="${u.last_name || ''}" placeholder="Enter last name"></div>
-                </div>
-                <div class="form-group"><label>Email</label><input type="email" id="profEmail" value="${u.email || ''}" placeholder="Enter email"></div>
-                <button class="btn-primary" onclick="saveProfile()">Save Changes</button>
-            </div>
-            <div class="settings-card">
-                <h3>Security</h3>
-                <div class="form-group">
-                    <label>New Password</label>
-                    <input type="password" id="profPassword" placeholder="Leave blank to keep current">
-                </div>
-                <div class="form-group">
-                    <label>Confirm Password</label>
-                    <input type="password" id="profPasswordConfirm" placeholder="Confirm new password">
-                </div>
-                <button class="btn-primary" onclick="saveProfilePassword()" style="margin-bottom:20px;">Change Password</button>
-                <div style="border-top:1px solid rgba(0,217,255,0.1);padding-top:16px;margin-top:4px;">
-                    <h3 style="margin-bottom:12px;">Login PIN</h3>
-                    <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:12px;">Set a ${pinLength}-digit PIN for quick login. ${u.has_pin ? '<span style="color:#51cf66;">PIN is set.</span>' : '<span style="color:#5a6a7f;">No PIN set.</span>'}</p>
-                    <div class="form-group">
-                        <label>New PIN (${pinLength} digits)</label>
-                        <input type="password" id="profPin" placeholder="Enter ${pinLength}-digit PIN" maxlength="${pinLength}" pattern="[0-9]*" inputmode="numeric">
-                    </div>
-                    <button class="btn-primary" onclick="saveProfilePin(${pinLength})">Set PIN</button>
-                </div>
-            </div>`;
-    }
-
-    async function saveProfile() {
-        const body = {
-            first_name: document.getElementById('profFirstName').value.trim(),
-            last_name: document.getElementById('profLastName').value.trim(),
-            email: document.getElementById('profEmail').value.trim()
-        };
-        if (!body.email) { toast('Email is required', 'error'); return; }
-        const d = await api('PUT', '/profile', body);
-        if (d.success) {
-            toast('Profile updated!');
-            // Update local user data
-            currentUser = { ...currentUser, ...d.data };
-            localStorage.setItem('user', JSON.stringify(currentUser));
-        } else toast(d.error || 'Failed to update profile', 'error');
-    }
-
-    async function saveProfilePassword() {
-        const pw = document.getElementById('profPassword').value;
-        const pwc = document.getElementById('profPasswordConfirm').value;
-        if (!pw) { toast('Please enter a new password', 'error'); return; }
-        if (pw !== pwc) { toast('Passwords do not match', 'error'); return; }
-        if (pw.length < 4) { toast('Password must be at least 4 characters', 'error'); return; }
-        const d = await api('PUT', '/profile', { password: pw });
-        if (d.success) {
-            toast('Password updated!');
-            document.getElementById('profPassword').value = '';
-            document.getElementById('profPasswordConfirm').value = '';
-        } else toast(d.error || 'Failed to update password', 'error');
-    }
-
-    async function saveProfilePin(pinLength) {
-        const pin = document.getElementById('profPin').value;
-        if (!pin || pin.length !== pinLength) { toast(`PIN must be exactly ${pinLength} digits`, 'error'); return; }
-        if (!/^\d+$/.test(pin)) { toast('PIN must contain only digits', 'error'); return; }
-        const d = await api('PUT', '/auth/pin', { pin });
-        if (d.success) {
-            toast('PIN updated!');
-            document.getElementById('profPin').value = '';
-            loadProfileView(); // Refresh to show updated PIN status
-        } else toast(d.error || 'Failed to set PIN', 'error');
-    }
-
-    // ──── Settings ────
-    async function loadSettingsView() {
-        const mc=document.getElementById('mainContent');
-        mc.innerHTML=`<div class="section-header"><h2 class="section-title">Settings</h2></div><div class="settings-grid" id="settingsGrid"><div class="spinner"></div></div>`;
-        const [prefs, sysSett] = await Promise.all([
-            api('GET','/settings/playback'),
-            currentUser?.role==='admin' ? api('GET','/settings/system') : Promise.resolve({success:false})
-        ]);
-        const p=prefs.success?prefs.data:{playback_mode:'always_ask',preferred_quality:'1080p',auto_play_next:true};
-        const sys=sysSett.success?sysSett.data:{};
-
-        let html = `
-            <div class="settings-card">
-                <h3>Playback Preferences</h3>
-                <div class="form-group"><label>Edition Playback Mode</label><select id="setPbMode"><option value="always_ask" ${p.playback_mode==='always_ask'?'selected':''}>Always Ask</option><option value="play_default" ${p.playback_mode==='play_default'?'selected':''}>Play Default</option><option value="highest_quality" ${p.playback_mode==='highest_quality'?'selected':''}>Highest Quality</option><option value="lowest_quality" ${p.playback_mode==='lowest_quality'?'selected':''}>Lowest Quality</option><option value="last_played" ${p.playback_mode==='last_played'?'selected':''}>Last Played</option></select></div>
-                <div class="form-group"><label>Preferred Quality</label><select id="setPbQuality"><option value="360p" ${p.preferred_quality==='360p'?'selected':''}>360p</option><option value="480p" ${p.preferred_quality==='480p'?'selected':''}>480p</option><option value="720p" ${p.preferred_quality==='720p'?'selected':''}>720p</option><option value="1080p" ${p.preferred_quality==='1080p'?'selected':''}>1080p</option><option value="4K" ${p.preferred_quality==='4K'?'selected':''}>4K</option></select></div>
-                <div class="form-group"><label><input type="checkbox" id="setPbAutoPlay" ${p.auto_play_next?'checked':''}> Auto-play next</label></div>
-                <button class="btn-primary" onclick="savePlaybackPrefs()">Save</button>
-            </div>
-            <div class="settings-card">
-                <h3>Account</h3>
-                <p style="color:#8a9bae;margin-bottom:12px;">Logged in as <strong style="color:#00D9FF;">${currentUser?.username}</strong></p>
-                <p style="color:#8a9bae;margin-bottom:12px;">Role: <span class="tag tag-cyan">${currentUser?.role}</span></p>
-                <h4 style="margin-top:16px;margin-bottom:8px;color:#c8d6e5;">Fast Login PIN</h4>
-                <p class="settings-helper" style="margin-bottom:10px;">Set a numeric PIN for quick login via the Fast Login screen.</p>
-                <div class="form-group">
-                    <label>PIN</label>
-                    <div style="display:flex;gap:10px;">
-                        <input type="password" id="setMyPin" placeholder="Enter PIN" style="flex:1;" inputmode="numeric" maxlength="10">
-                        <button class="btn-primary btn-small" onclick="saveMyPin()">Set PIN</button>
-                    </div>
-                </div>
-            </div>`;
-
-        if (currentUser?.role==='admin') {
-            const fastLoginEnabled = sys.fast_login_enabled !== 'false';
-            const fastLoginPinLen = sys.fast_login_pin_length || '4';
-            const introEnabled = sys.login_intro_enabled !== 'false';
-            const introMuted = sys.login_intro_muted === 'true';
-            html += `
-            <div class="settings-card" style="grid-column:1/-1;">
-                <h3>Login Options</h3>
-                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
-                    <label class="toggle-label" style="margin-bottom:0;">
-                        <span class="toggle-switch"><input type="checkbox" id="setFastLoginEnabled" ${fastLoginEnabled?'checked':''}><span class="toggle-slider"></span></span>
-                        Use Fast Login
-                    </label>
-                </div>
-                <p class="settings-helper" style="margin-bottom:16px;">Display user icons and have them enter a PIN instead of login name and password.</p>
-                <div class="form-group">
-                    <label>Fast Login PIN Length</label>
-                    <select id="setFastLoginPinLen">
-                        <option value="4" ${fastLoginPinLen==='4'?'selected':''}>4 digits</option>
-                        <option value="5" ${fastLoginPinLen==='5'?'selected':''}>5 digits</option>
-                        <option value="6" ${fastLoginPinLen==='6'?'selected':''}>6 digits</option>
-                        <option value="8" ${fastLoginPinLen==='8'?'selected':''}>8 digits</option>
-                    </select>
-                    <p class="settings-helper">The length of the PIN number for the user if using Fast Login.</p>
-                </div>
-                <hr style="border:none;border-top:1px solid rgba(255,255,255,0.06);margin:20px 0;">
-                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
-                    <label class="toggle-label" style="margin-bottom:0;">
-                        <span class="toggle-switch"><input type="checkbox" id="setIntroSkip" ${introEnabled?'':'checked'}><span class="toggle-slider"></span></span>
-                        Skip Intro on Login
-                    </label>
-                </div>
-                <p class="settings-helper" style="margin-bottom:16px;">When disabled, a cinematic intro plays after login on each new session.</p>
-                <div class="form-group" style="display:flex;align-items:center;gap:16px;">
-                    <label class="toggle-label" style="margin-bottom:0;">
-                        <span class="toggle-switch"><input type="checkbox" id="setIntroMuted" ${introMuted?'checked':''}><span class="toggle-slider"></span></span>
-                        No Audio on Intro
-                    </label>
-                </div>
-                <p class="settings-helper">Mute the intro video audio. When disabled, audio plays with the intro.</p>
-            </div>`;
-
-            const cacheEnabled = sys.cache_server_enabled !== 'false';
-            const cacheRegistered = sys.cache_server_api_key === 'registered';
-            html += `
-            <div class="settings-card" style="grid-column:1/-1;">
-                <h3>Metadata Cache Server</h3>
-                <p style="color:#8a9bae;margin-bottom:16px;">Speed up metadata lookups by using the CineVault cache server. When enabled, cached results are used first; if the cache is unavailable, CineVault falls back to direct TMDB/OMDb API calls automatically.</p>
-                <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;">
-                    <label class="toggle-label" style="margin-bottom:0;">
-                        <span class="toggle-switch"><input type="checkbox" id="setCacheEnabled" ${cacheEnabled?'checked':''}><span class="toggle-slider"></span></span>
-                        Enable Cache Server
-                    </label>
-                    <span style="font-size:0.8rem;color:${cacheRegistered?'#4caf50':'#5a6a7f'};">
-                        <span class="status-dot ${cacheRegistered?'green':''}"></span>
-                        ${cacheRegistered?'Registered':'Not yet registered'}
-                    </span>
-                </div>
-            </div>
-            <div class="settings-card" style="grid-column:1/-1;">
-                <h3>Metadata Enrichment</h3>
-                <p style="color:#8a9bae;margin-bottom:16px;">Configure external API keys for additional metadata enrichment. An OMDb API key enables IMDB ratings, Rotten Tomatoes scores, and audience scores.</p>
-                <div class="form-group">
-                    <label>OMDb API Key</label>
-                    <div style="display:flex;gap:10px;">
-                        <input type="password" id="setOmdbKey" value="${sys.omdb_api_key||''}" placeholder="Enter your OMDb API key" style="flex:1;">
-                        <button class="btn-secondary" onclick="document.getElementById('setOmdbKey').type=document.getElementById('setOmdbKey').type==='password'?'text':'password'">&#128065;</button>
-                    </div>
-                    <p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">Get a free key at <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" style="color:#00D9FF;">omdbapi.com</a></p>
-                </div>
-            </div>
-            <div style="grid-column:1/-1;text-align:right;">
-                <button class="btn-primary" onclick="saveSystemSettings()">Save Settings</button>
-            </div>`;
-        }
-
-        document.getElementById('settingsGrid').innerHTML = html;
-    }
-
-    async function savePlaybackPrefs() {
-        const d=await api('PUT','/settings/playback',{
-            playback_mode: document.getElementById('setPbMode').value,
-            preferred_quality: document.getElementById('setPbQuality').value,
-            auto_play_next: document.getElementById('setPbAutoPlay').checked
-        });
-        if(d.success) toast('Settings saved!'); else toast(d.error,'error');
-    }
-
-    async function saveSystemSettings() {
-        const settings = {};
-
-        // Fast Login settings
-        const flEnabledEl = document.getElementById('setFastLoginEnabled');
-        if (flEnabledEl) settings.fast_login_enabled = flEnabledEl.checked ? 'true' : 'false';
-        const flPinLenEl = document.getElementById('setFastLoginPinLen');
-        if (flPinLenEl) settings.fast_login_pin_length = flPinLenEl.value;
-
-        // Intro settings (Skip Intro toggle is inverted: checked = skip = disabled)
-        const introSkipEl = document.getElementById('setIntroSkip');
-        if (introSkipEl) settings.login_intro_enabled = introSkipEl.checked ? 'false' : 'true';
-        const introMutedEl = document.getElementById('setIntroMuted');
-        if (introMutedEl) settings.login_intro_muted = introMutedEl.checked ? 'true' : 'false';
-
-        // OMDb key
-        const omdbEl = document.getElementById('setOmdbKey');
-        if (omdbEl) settings.omdb_api_key = omdbEl.value.trim();
-
-        // Cache server: only the toggle
-        const cacheEnabledEl = document.getElementById('setCacheEnabled');
-        if (cacheEnabledEl) {
-            settings.cache_server_enabled = cacheEnabledEl.checked ? 'true' : 'false';
-        }
-
-        const d = await api('PUT', '/settings/system', settings);
-        if(d.success) toast('System settings saved!'); else toast(d.error,'error');
-    }
-
-    async function saveMyPin() {
-        const pin = document.getElementById('setMyPin').value;
-        if (!pin) { toast('Please enter a PIN', 'error'); return; }
-        const d = await api('PUT', '/auth/pin', { pin: pin });
-        if (d.success) { toast('PIN saved!'); document.getElementById('setMyPin').value = ''; }
-        else toast(d.error, 'error');
-    }
+    // ──── Settings (moved to settings.html) ────
 
     // ──── Admin ────
     async function loadAdminView() {

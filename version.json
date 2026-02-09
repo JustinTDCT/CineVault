@@ -1,6 +1,6 @@
 {
-  "version": "0.23.0",
+  "version": "0.24.0",
   "phase": 3,
   "released": "2026-02-09",
-  "notes": "User profile dropdown menu with Edit Profile page; removed sidebar clutter"
+  "notes": "Dedicated settings page with left navigation; moved Libraries, Metadata, Video settings out of index"
 }
