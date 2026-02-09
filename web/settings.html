@@ -232,6 +232,21 @@
         .empty-state-icon { font-size: 3.5rem; margin-bottom: 18px; }
         .empty-state-title { font-size: 1.2rem; margin-bottom: 8px; color: #b8c5d6; font-weight: 600; }
 
+        /* ── Toggle Switch ── */
+        .toggle-switch { position: relative; display: inline-block; width: 48px; height: 26px; vertical-align: middle; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #2a3441; border: 1px solid #3a4a5c; border-radius: 26px; transition: 0.25s; }
+        .toggle-slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 2px; bottom: 2px; background: #8a9bae; border-radius: 50%; transition: 0.25s; }
+        .toggle-switch input:checked + .toggle-slider { background: rgba(0,217,255,0.25); border-color: #00D9FF; }
+        .toggle-switch input:checked + .toggle-slider:before { transform: translateX(22px); background: #00D9FF; }
+        .toggle-label { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; color: #c8d6e5; font-size: 0.95rem; }
+        .settings-helper { color: #5a6a7f; font-size: 0.78rem; margin-top: 4px; }
+
+        /* ── Status Dot ── */
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+        .status-dot.green { background: #51cf66; box-shadow: 0 0 8px rgba(52,199,89,0.5); }
+        .status-dot.red { background: #ff6b6b; box-shadow: 0 0 8px rgba(255,59,48,0.5); }
+
         /* ── Placeholder Section ── */
         .placeholder-section {
             text-align: center; padding: 80px 30px;
@@ -445,27 +460,128 @@
     }
 
     // ──── Security Section ────
-    function loadSecuritySection() {
-        document.getElementById('settingsContent').innerHTML = `
-            <div class="section-header"><h2 class="section-title">Security</h2></div>
+    async function loadSecuritySection() {
+        const mc = document.getElementById('settingsContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Security</h2></div>
             <p class="section-desc">Configure PIN protection and security settings for your CineVault instance.</p>
-            <div class="placeholder-section">
-                <div class="placeholder-icon">&#128274;</div>
-                <div class="placeholder-title">PIN & Security Settings</div>
-                <div class="placeholder-desc">PIN lock and security configuration will be available here.</div>
+            <div class="settings-grid" id="securityGrid"><div class="spinner"></div></div>`;
+
+        let html = `
+            <div class="settings-card">
+                <h3>Fast Login PIN</h3>
+                <p class="settings-helper" style="margin-bottom:14px;">Set a numeric PIN for quick login via the Fast Login screen.</p>
+                <div class="form-group">
+                    <label>PIN</label>
+                    <div style="display:flex;gap:10px;">
+                        <input type="password" id="setMyPin" placeholder="Enter PIN" style="flex:1;" inputmode="numeric" maxlength="10">
+                        <button class="btn-primary btn-small" onclick="saveMyPin()">Set PIN</button>
+                    </div>
+                </div>
             </div>`;
+
+        if (currentUser?.role === 'admin') {
+            const sysSett = await api('GET', '/settings/system');
+            const sys = sysSett.success ? sysSett.data : {};
+            const fastLoginEnabled = sys.fast_login_enabled !== 'false';
+            const fastLoginPinLen = sys.fast_login_pin_length || '4';
+            html += `
+            <div class="settings-card">
+                <h3>Fast Login</h3>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setFastLoginEnabled" ${fastLoginEnabled?'checked':''}><span class="toggle-slider"></span></span>
+                        Use Fast Login
+                    </label>
+                </div>
+                <p class="settings-helper" style="margin-bottom:16px;">Display user icons and have them enter a PIN instead of login name and password.</p>
+                <div class="form-group">
+                    <label>Fast Login PIN Length</label>
+                    <select id="setFastLoginPinLen">
+                        <option value="4" ${fastLoginPinLen==='4'?'selected':''}>4 digits</option>
+                        <option value="5" ${fastLoginPinLen==='5'?'selected':''}>5 digits</option>
+                        <option value="6" ${fastLoginPinLen==='6'?'selected':''}>6 digits</option>
+                        <option value="8" ${fastLoginPinLen==='8'?'selected':''}>8 digits</option>
+                    </select>
+                    <p class="settings-helper">The length of the PIN number for the user if using Fast Login.</p>
+                </div>
+                <div style="text-align:right;margin-top:16px;">
+                    <button class="btn-primary" onclick="saveSecuritySettings()">Save</button>
+                </div>
+            </div>`;
+        }
+
+        document.getElementById('securityGrid').innerHTML = html;
+    }
+
+    async function saveMyPin() {
+        const pin = document.getElementById('setMyPin').value;
+        if (!pin) { toast('Please enter a PIN', 'error'); return; }
+        const d = await api('PUT', '/auth/pin', { pin: pin });
+        if (d.success) { toast('PIN saved!'); document.getElementById('setMyPin').value = ''; }
+        else toast(d.error, 'error');
+    }
+
+    async function saveSecuritySettings() {
+        const settings = {};
+        const flEnabledEl = document.getElementById('setFastLoginEnabled');
+        if (flEnabledEl) settings.fast_login_enabled = flEnabledEl.checked ? 'true' : 'false';
+        const flPinLenEl = document.getElementById('setFastLoginPinLen');
+        if (flPinLenEl) settings.fast_login_pin_length = flPinLenEl.value;
+        const d = await api('PUT', '/settings/system', settings);
+        if (d.success) toast('Security settings saved!'); else toast(d.error, 'error');
     }
 
     // ──── Experience Section ────
-    function loadExperienceSection() {
-        document.getElementById('settingsContent').innerHTML = `
-            <div class="section-header"><h2 class="section-title">Experience</h2></div>
+    async function loadExperienceSection() {
+        const mc = document.getElementById('settingsContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Experience</h2></div>
             <p class="section-desc">Customize login behavior and user experience preferences.</p>
-            <div class="placeholder-section">
-                <div class="placeholder-icon">&#127912;</div>
-                <div class="placeholder-title">Login & Experience Options</div>
-                <div class="placeholder-desc">Login options and experience customization will be available here.</div>
+            <div class="settings-grid" id="experienceGrid"><div class="spinner"></div></div>`;
+
+        if (currentUser?.role !== 'admin') {
+            document.getElementById('experienceGrid').innerHTML = `<div class="settings-card">
+                <h3>Access Restricted</h3>
+                <p style="color:#8a9bae;">Only administrators can configure experience settings.</p>
             </div>`;
+            return;
+        }
+
+        const sysSett = await api('GET', '/settings/system');
+        const sys = sysSett.success ? sysSett.data : {};
+        const introEnabled = sys.login_intro_enabled !== 'false';
+        const introMuted = sys.login_intro_muted === 'true';
+
+        document.getElementById('experienceGrid').innerHTML = `
+            <div class="settings-card full-width">
+                <h3>Login Intro</h3>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setIntroSkip" ${introEnabled?'':'checked'}><span class="toggle-slider"></span></span>
+                        Skip Intro on Login
+                    </label>
+                </div>
+                <p class="settings-helper" style="margin-bottom:16px;">When disabled, a cinematic intro plays after login on each new session.</p>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setIntroMuted" ${introMuted?'checked':''}><span class="toggle-slider"></span></span>
+                        No Audio on Intro
+                    </label>
+                </div>
+                <p class="settings-helper">Mute the intro video audio. When disabled, audio plays with the intro.</p>
+                <div style="text-align:right;margin-top:20px;">
+                    <button class="btn-primary" onclick="saveExperienceSettings()">Save</button>
+                </div>
+            </div>`;
+    }
+
+    async function saveExperienceSettings() {
+        const settings = {};
+        const introSkipEl = document.getElementById('setIntroSkip');
+        if (introSkipEl) settings.login_intro_enabled = introSkipEl.checked ? 'false' : 'true';
+        const introMutedEl = document.getElementById('setIntroMuted');
+        if (introMutedEl) settings.login_intro_muted = introMutedEl.checked ? 'true' : 'false';
+        const d = await api('PUT', '/settings/system', settings);
+        if (d.success) toast('Experience settings saved!'); else toast(d.error, 'error');
     }
 
     // ──── Libraries Section ────
@@ -912,7 +1028,7 @@
     async function loadMetadataSection() {
         const mc = document.getElementById('settingsContent');
         mc.innerHTML = `<div class="section-header"><h2 class="section-title">Metadata</h2></div>
-            <p class="section-desc">Configure external API keys and metadata enrichment sources.</p>
+            <p class="section-desc">Configure metadata sources, cache server, and API keys.</p>
             <div class="settings-grid" id="metadataGrid"><div class="spinner"></div></div>`;
 
         if (currentUser?.role !== 'admin') {
@@ -925,8 +1041,24 @@
 
         const sysSett = await api('GET', '/settings/system');
         const sys = sysSett.success ? sysSett.data : {};
+        const cacheEnabled = sys.cache_server_enabled !== 'false';
+        const cacheRegistered = sys.cache_server_api_key === 'registered';
 
         document.getElementById('metadataGrid').innerHTML = `
+            <div class="settings-card full-width">
+                <h3>Metadata Cache Server</h3>
+                <p style="color:#8a9bae;margin-bottom:16px;">Speed up metadata lookups by using the CineVault cache server. When enabled, cached results are used first; if the cache is unavailable, CineVault falls back to direct TMDB/OMDb API calls automatically.</p>
+                <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setCacheEnabled" ${cacheEnabled?'checked':''}><span class="toggle-slider"></span></span>
+                        Enable Cache Server
+                    </label>
+                    <span style="font-size:0.8rem;color:${cacheRegistered?'#4caf50':'#5a6a7f'};">
+                        <span class="status-dot ${cacheRegistered?'green':''}"></span>
+                        ${cacheRegistered?'Registered':'Not yet registered'}
+                    </span>
+                </div>
+            </div>
             <div class="settings-card full-width">
                 <h3>Metadata Enrichment</h3>
                 <p style="color:#8a9bae;margin-bottom:16px;">Configure external API keys for additional metadata enrichment. An OMDb API key enables IMDB ratings, Rotten Tomatoes scores, and audience scores.</p>
@@ -938,14 +1070,20 @@
                     </div>
                     <p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">Get a free key at <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" style="color:#00D9FF;">omdbapi.com</a></p>
                 </div>
-                <button class="btn-primary" onclick="saveSystemSettings()">Save API Key</button>
+            </div>
+            <div style="grid-column:1/-1;text-align:right;">
+                <button class="btn-primary" onclick="saveMetadataSettings()">Save Settings</button>
             </div>`;
     }
 
-    async function saveSystemSettings() {
-        const key = document.getElementById('setOmdbKey').value.trim();
-        const d = await api('PUT', '/settings/system', { omdb_api_key: key });
-        if (d.success) toast('System settings saved!'); else toast(d.error, 'error');
+    async function saveMetadataSettings() {
+        const settings = {};
+        const omdbEl = document.getElementById('setOmdbKey');
+        if (omdbEl) settings.omdb_api_key = omdbEl.value.trim();
+        const cacheEnabledEl = document.getElementById('setCacheEnabled');
+        if (cacheEnabledEl) settings.cache_server_enabled = cacheEnabledEl.checked ? 'true' : 'false';
+        const d = await api('PUT', '/settings/system', settings);
+        if (d.success) toast('Metadata settings saved!'); else toast(d.error, 'error');
     }
 
     // ──── Init ────
