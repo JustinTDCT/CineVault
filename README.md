@@ -1,46 +1,66 @@
 # CineVault
 
-Self-hosted media server with AI-powered organization, duplicate detection, and multi-format support.
+> **This is still under heavy development and is far from complete but you are welcome to try it out and give me feedback. I am taking what I like best from Plex, Jellyfin, and StashApp and making one media player that does it all.**
 
-## Phase 3 - Complete Systems
+Self-hosted media server with AI-powered organization, duplicate detection, and multi-format streaming.
 
-### All 9 Media Types
-Movies, Adult Movies, TV Shows, Music, Music Videos, Home Videos, Other Videos, Photos, Audiobooks
+## What's Working
 
-### Core Features
-- Multi-user authentication (Admin/User/Guest) with JWT
-- Library scanning with ffprobe metadata extraction and DB persistence
-- TV show hierarchy auto-creation (show/season/episode from file paths)
-- Edition groups (Director's Cut, Remastered, etc.)
-- Sister groups (link related content)
-- User collections (curate favorites)
-- Watch history / continue watching
+### Media Management
+- **9 media types** — Movies, Adult Movies, TV Shows, Music, Music Videos, Home Videos, Other Videos, Photos, Audiobooks
+- **Multi-folder libraries** with folder browser, per-library permissions (Everyone / Select Users / Admin Only)
+- **Library scanning** with ffprobe metadata extraction and DB persistence
+- **TV show hierarchy** auto-created from file paths (show / season / episode)
+- **Edition groups** (Director's Cut, Remastered, etc.)
+- **Sister groups** for linking related content
+- **User collections** for curating favorites
+- **Drag-and-drop sort ordering** for media, collections, editions, performers
 
-### Phase 3 Features
-- **Background Job Queue** - Asynq + Redis for async scan, fingerprint, preview generation, metadata scraping
-- **WebSocket Real-Time Updates** - Live notifications for job progress, scan updates, toast messages
-- **HLS Streaming** - On-the-fly FFmpeg transcoding with hardware acceleration detection (NVENC, QSV, VAAPI)
-- **Direct Play** - Range-request streaming for compatible formats
-- **HLS.js Video Player** - Full player UI with quality selection, seek, keyboard shortcuts
-- **Preview Generation** - Thumbnail extraction, sprite sheets, animated previews via FFmpeg
-- **Duplicate Detection** - Perceptual hashing (pHash) and audio fingerprinting with similarity comparison
-- **Metadata Scraping** - TMDB (movies/TV), MusicBrainz (music), Open Library (audiobooks)
-- **Performers / People** - Actor, director, musician, narrator entities with media linking
-- **Tags / Genres** - Hierarchical tag system with categories (genre, tag, custom)
-- **Studios / Labels** - Studio, label, publisher, network, distributor entities
-- **Sort Order** - Drag-and-drop ordering for media, collections, editions, performers
-- **Media Detail Page** - Full metadata display, cast, tags, file info, play/identify actions
-- **Settings Page** - Playback preferences (mode, quality, auto-play)
-- **Admin Panel** - User management, job queue monitor, system status
-- **Duplicate Review Queue** - Review and resolve duplicate pairs
+### Playback & Streaming
+- **Direct Play** — Range-request streaming for natively compatible formats (MP4, WebM)
+- **MPEG-TS Remux** — On-the-fly FFmpeg remux for MKV/AVI with mpegts.js playback
+- **HLS Transcoding** — Hardware-accelerated transcoding (NVENC, QSV, VAAPI) with quality selection
+- **Full video player UI** — Play/pause, seek, skip, volume, fullscreen, keyboard shortcuts
+- **Watch history & continue watching**
+
+### Metadata & Enrichment
+- **TMDB** scraping for movies and TV shows
+- **MusicBrainz** for music metadata
+- **Open Library** for audiobooks
+- **OMDb API** integration for IMDB ratings, Rotten Tomatoes, audience scores
+- **Metadata cache server** for faster lookups with automatic fallback to direct API calls
+- **Per-item metadata lock** to prevent overwrites on re-scan
+
+### Duplicate Detection
+- **Perceptual hashing (pHash)** and audio fingerprinting with similarity scoring
+- **Review queue** — side-by-side comparison, merge as edition, delete, or ignore
+- **Badge count** in sidebar for pending duplicates
+
+### People, Tags & Studios
+- **Performers / People** — Actors, directors, musicians, narrators with media linking
+- **Tags / Genres** — Hierarchical tag system with categories
+- **Studios / Labels** — Studio, label, publisher, network, distributor entities
+
+### Authentication & Access
+- **Multi-user** with roles (Admin / User / Guest) and JWT auth
+- **Fast Login** — PIN-based quick login with user avatar selection screen
+- **Cinematic login intro** with admin toggle for skip/mute
+- **User profile editing** with display name, email, avatar
+
+### UI & Experience
+- **Dedicated settings page** with left navigation (Video, Transcoder, Users, Security, Experience, Libraries, Metadata)
+- **Admin panel** — System status, user management, job queue monitor
+- **User avatar dropdown** — Edit Profile, Settings, Logout
+- **Real-time WebSocket updates** — Live scan progress, job status, toast notifications
+- **Background job queue** (Asynq + Redis) for async scanning, fingerprinting, preview generation, metadata scraping
 
 ## Tech Stack
 
 - **Backend**: Go 1.24
 - **Database**: PostgreSQL 16
 - **Cache/Queue**: Redis 7 + Asynq
-- **Streaming**: FFmpeg (HLS transcoding)
-- **Frontend**: HLS.js, SortableJS
+- **Streaming**: FFmpeg (HLS transcoding, MPEG-TS remux)
+- **Frontend**: Single-page HTML app, mpegts.js, HLS.js, SortableJS
 - **Deployment**: Docker Compose
 
 ## Quick Start
@@ -66,6 +86,7 @@ Server starts on `http://localhost:8080`
 ### Authentication
 - `POST /api/v1/auth/register` - Register new user
 - `POST /api/v1/auth/login` - Login and get JWT token
+- `PUT /api/v1/auth/pin` - Set fast login PIN
 
 ### Libraries
 - `GET /api/v1/libraries` - List all libraries
@@ -119,7 +140,7 @@ Server starts on `http://localhost:8080`
 - `POST /api/v1/duplicates/resolve` - Resolve duplicate (merge/delete/ignore/sister/edition)
 
 ### Edition Groups / Sister Groups / Collections
-- Full CRUD endpoints (same as Phase 2)
+- Full CRUD endpoints
 
 ### Watch History
 - `POST /api/v1/watch/{mediaId}/progress` - Update watch progress
@@ -131,56 +152,12 @@ Server starts on `http://localhost:8080`
 ### Settings & Admin
 - `GET /api/v1/settings/playback` - Get playback preferences
 - `PUT /api/v1/settings/playback` - Update playback preferences
+- `GET /api/v1/settings/system` - Get system settings (Admin)
+- `PUT /api/v1/settings/system` - Update system settings (Admin)
 - `GET /api/v1/jobs` - List recent jobs (Admin)
 - `GET /api/v1/jobs/{id}` - Get job status (Admin)
 - `PATCH /api/v1/sort` - Update sort order for any entity type (Admin)
 - `GET /api/v1/users` - List users (Admin)
-
-## Project Structure
-
-```
-cinevault/
-  cmd/cinevault/main.go          # Entry point, job queue setup
-  internal/
-    api/
-      server.go                  # HTTP server, 70+ routes, middleware
-      websocket.go               # WebSocket hub + handler
-      handlers_auth.go           # Auth & user endpoints
-      handlers_library.go        # Library CRUD + async scan
-      handlers_media.go          # Media CRUD + search
-      handlers_stream.go         # HLS + direct play streaming
-      handlers_performers.go     # Performer CRUD + media linking
-      handlers_tags.go           # Tag CRUD + media assignment
-      handlers_studios.go        # Studio CRUD + media linking
-      handlers_duplicates.go     # Duplicate review + resolution
-      handlers_metadata.go       # Metadata identify/apply, sort, jobs, prefs
-      handlers_editions.go       # Edition group endpoints
-      handlers_sisters.go        # Sister group endpoints
-      handlers_collections.go    # Collection endpoints
-      handlers_watch.go          # Watch history endpoints
-    auth/auth.go                 # JWT + bcrypt
-    config/config.go             # Env-based config (TMDB_API_KEY)
-    db/db.go                     # PostgreSQL connection
-    ffmpeg/ffprobe.go            # FFprobe wrapper
-    fingerprint/fingerprint.go   # pHash + audio fingerprinting
-    jobs/
-      queue.go                   # Asynq client/server
-      tasks.go                   # Task handlers (scan, fingerprint, preview, metadata)
-    metadata/scraper.go          # TMDB, MusicBrainz, Open Library scrapers
-    models/models.go             # All data models (40+ structs)
-    preview/preview.go           # Thumbnail, sprite sheet, animated preview generation
-    repository/                  # 15 repository files
-    scanner/scanner.go           # Media scanner with DB persistence
-    stream/
-      transcoder.go              # FFmpeg HLS transcoding + HW accel
-      direct.go                  # Direct file streaming with range requests
-  migrations/
-    001_initial_schema.up.sql
-    002_phase2_schema.up.sql
-    003_phase3_schema.up.sql     # 9 new tables, 4 new enum types
-  docker/docker-compose.yml
-  web/index.html                 # Full SPA with video player
-```
 
 ## Environment Variables
 
@@ -197,7 +174,3 @@ cinevault/
 | `TMDB_API_KEY` | (empty) | TMDB API key for metadata |
 | `FFMPEG_PATH` | `/usr/bin/ffmpeg` | FFmpeg binary path |
 | `FFPROBE_PATH` | `/usr/bin/ffprobe` | FFprobe binary path |
-
-## Development
-
-See `CINEVAULT_DESIGN.md` for full architecture and roadmap.
