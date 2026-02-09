@@ -30,12 +30,15 @@ type Scanner struct {
 	tagRepo       *repository.TagRepository
 	performerRepo *repository.PerformerRepository
 	settingsRepo  *repository.SettingsRepository
+	sisterRepo    *repository.SisterRepository
 	scrapers      []metadata.Scraper
 	posterDir     string
 	// matchedShows tracks TV show IDs already matched this scan to avoid duplicate lookups
 	matchedShows  map[uuid.UUID]bool
 	// pendingEpisodeMeta tracks show IDs → TMDB external IDs for post-scan episode metadata fetch
 	pendingEpisodeMeta map[uuid.UUID]string
+	// pendingMultiParts tracks multi-part files by "dir|baseTitle" for post-scan sister grouping
+	pendingMultiParts map[string][]multiPartEntry
 	// mu protects concurrent access during parallel enrichment
 	mu sync.Mutex
 }
@@ -83,7 +86,7 @@ func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepos
 	tvRepo *repository.TVRepository, musicRepo *repository.MusicRepository,
 	audiobookRepo *repository.AudiobookRepository, galleryRepo *repository.GalleryRepository,
 	tagRepo *repository.TagRepository, performerRepo *repository.PerformerRepository,
-	settingsRepo *repository.SettingsRepository,
+	settingsRepo *repository.SettingsRepository, sisterRepo *repository.SisterRepository,
 	scrapers []metadata.Scraper, posterDir string,
 ) *Scanner {
 	return &Scanner{
@@ -97,10 +100,12 @@ func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepos
 		tagRepo:            tagRepo,
 		performerRepo:      performerRepo,
 		settingsRepo:       settingsRepo,
+		sisterRepo:         sisterRepo,
 		scrapers:           scrapers,
 		posterDir:          posterDir,
 		matchedShows:       make(map[uuid.UUID]bool),
 		pendingEpisodeMeta: make(map[uuid.UUID]string),
+		pendingMultiParts:  make(map[string][]multiPartEntry),
 	}
 }
 
@@ -176,7 +181,10 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				return nil
 			}
 
-			// Create media item
+			// Parse filename based on media type to pre-fill metadata
+			parsed := s.parseFilename(info.Name(), library.MediaType)
+
+			// Create media item with parsed metadata
 			item := &models.MediaItem{
 				ID:          uuid.New(),
 				LibraryID:   library.ID,
@@ -184,12 +192,31 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				FilePath:    path,
 				FileName:    info.Name(),
 				FileSize:    info.Size(),
-				Title:       s.titleFromFilename(info.Name()),
-				Year:        s.extractYear(info.Name()),
-				EditionType: s.extractEdition(info.Name()),
+				Title:       parsed.Title,
+				Year:        parsed.Year,
+				EditionType: parsed.Edition,
 			}
 
-			// Probe with ffprobe for video/audio types
+			// Pre-fill resolution/container from filename (ffprobe will override if available)
+			if parsed.Resolution != "" {
+				item.Resolution = &parsed.Resolution
+			}
+			if parsed.Container != "" {
+				item.Container = &parsed.Container
+			}
+			// Pre-fill music disc/track numbers
+			if parsed.DiscNumber != nil {
+				item.DiscNumber = parsed.DiscNumber
+			}
+			if parsed.TrackNumber != nil {
+				item.TrackNumber = parsed.TrackNumber
+			}
+			// Set sort position for multi-part files (part number determines play order)
+			if parsed.PartNumber != nil {
+				item.SortPosition = *parsed.PartNumber
+			}
+
+			// Probe with ffprobe for video/audio types (overrides filename-parsed values)
 			if s.isProbeableType(library.MediaType) {
 				probe, probeErr := s.ffprobe.Probe(path)
 				if probeErr != nil {
@@ -207,10 +234,27 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				}
 			}
 
+			// Handle music hierarchy: find/create artist and album from parsed filename
+			if (library.MediaType == models.MediaTypeMusic || library.MediaType == models.MediaTypeMusicVideos) && parsed.Artist != "" {
+				if err := s.handleMusicHierarchy(library, item, parsed); err != nil {
+					log.Printf("Music hierarchy error for %s: %v", path, err)
+				}
+			}
+
 			// Persist
 			if err := s.mediaRepo.Create(item); err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("insert failed %s: %v", path, err))
 				return nil
+			}
+
+			// Track multi-part files for post-scan sister grouping
+			if parsed.PartNumber != nil && parsed.BaseTitle != "" {
+				dir := filepath.Dir(path)
+				key := dir + "|" + parsed.BaseTitle
+				s.pendingMultiParts[key] = append(s.pendingMultiParts[key], multiPartEntry{
+					ItemID:     item.ID,
+					PartNumber: *parsed.PartNumber,
+				})
 			}
 
 			// If TV with season grouping, increment season episode count
@@ -238,6 +282,11 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 		}
 	}
 
+	// Post-scan: group multi-part files (CD-x, DISC-x, PART-x) into sister groups
+	if len(s.pendingMultiParts) > 0 {
+		s.groupMultiPartFiles()
+	}
+
 	// Post-scan: fetch episode-level metadata for matched TV shows
 	if shouldRetrieveMetadata && len(s.pendingEpisodeMeta) > 0 {
 		log.Printf("Fetching episode metadata for %d TV show(s)...", len(s.pendingEpisodeMeta))
@@ -254,6 +303,7 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 	// Reset trackers for next scan
 	s.matchedShows = make(map[uuid.UUID]bool)
 	s.pendingEpisodeMeta = make(map[uuid.UUID]string)
+	s.pendingMultiParts = make(map[string][]multiPartEntry)
 
 	return result, nil
 }

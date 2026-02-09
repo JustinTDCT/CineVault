@@ -1,6 +1,6 @@
 {
-  "version": "0.26.0",
+  "version": "0.27.0",
   "phase": 3,
   "released": "2026-02-09",
-  "notes": "Full metadata flow: TPDB+TMDB+OMDB for adult, TMDB+OMDB for movies/TV, MusicBrainz for music, OpenLibrary for audiobooks; cache-first for all types; poster deduplication"
+  "notes": "Type-aware filename parsing: pre-fills metadata during ingestion for movies, TV, music, adult, and music videos; auto-creates artist/album hierarchy for music; multi-part file grouping (CD/DISC/PART) via sister groups"
 }
