@@ -185,11 +185,21 @@ func (s *Server) handleFastLoginSettings(w http.ResponseWriter, r *http.Request)
 	if pinLen == "" {
 		pinLen = "4"
 	}
+	introEnabled, _ := s.settingsRepo.Get("login_intro_enabled")
+	if introEnabled == "" {
+		introEnabled = "true"
+	}
+	introMuted, _ := s.settingsRepo.Get("login_intro_muted")
+	if introMuted == "" {
+		introMuted = "false"
+	}
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data: map[string]string{
 			"fast_login_enabled":    enabled,
 			"fast_login_pin_length": pinLen,
+			"login_intro_enabled":   introEnabled,
+			"login_intro_muted":     introMuted,
 		},
 	})
 }

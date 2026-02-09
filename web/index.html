@@ -793,9 +793,29 @@
         .settings-helper {
             color: #5a6a7f; font-size: 0.78rem; margin-top: 4px;
         }
+
+        /* ── Login Intro Overlay ── */
+        .intro-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 20000;
+            background: #000; display: none; align-items: center; justify-content: center;
+            opacity: 1; transition: opacity 0.8s ease;
+        }
+        .intro-overlay.active { display: flex; }
+        .intro-overlay.fade-out { opacity: 0; }
+        .intro-overlay video {
+            width: 100vw; height: 100vh; object-fit: cover;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
+    <!-- Login Intro Video -->
+    <div class="intro-overlay" id="introOverlay">
+        <video id="introVideo" preload="auto" playsinline>
+            <source src="/assets/intro.mp4" type="video/mp4">
+        </video>
+    </div>
+
     <div class="app-container">
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
@@ -1204,6 +1224,22 @@
             document.getElementById('loginModal').classList.remove('active');
             document.getElementById('fastLoginOverlay').classList.remove('active');
             document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
+
+            // Play intro if enabled and not yet played this session
+            if (!sessionStorage.getItem('intro_played')) {
+                if (!fastLoginConfig) {
+                    try {
+                        const res = await fetch(API + '/auth/fast-login/settings');
+                        fastLoginConfig = await res.json();
+                    } catch(e) { fastLoginConfig = { success: false }; }
+                }
+                const introEnabled = fastLoginConfig && fastLoginConfig.success && fastLoginConfig.data && fastLoginConfig.data.login_intro_enabled === 'true';
+                if (introEnabled) {
+                    sessionStorage.setItem('intro_played', '1');
+                    await playLoginIntro(fastLoginConfig.data.login_intro_muted === 'true');
+                }
+            }
+
             loadHomeView();
             loadSidebarCounts();
             connectWS();
@@ -1349,6 +1385,41 @@
             document.getElementById('loginUsername').value = selectedFastUser.username;
             document.getElementById('loginPassword').focus();
         }
+    }
+
+    // ──── Login Intro Video ────
+    function playLoginIntro(muted) {
+        return new Promise(function(resolve) {
+            const overlay = document.getElementById('introOverlay');
+            const video = document.getElementById('introVideo');
+            overlay.classList.add('active');
+            video.muted = !!muted;
+            video.playbackRate = 1.5;
+            video.currentTime = 0;
+
+            video.onended = function() {
+                overlay.classList.add('fade-out');
+                setTimeout(function() {
+                    overlay.classList.remove('active', 'fade-out');
+                    video.onended = null;
+                    video.onerror = null;
+                    resolve();
+                }, 800);
+            };
+
+            video.onerror = function() {
+                overlay.classList.remove('active');
+                video.onended = null;
+                video.onerror = null;
+                resolve();
+            };
+
+            video.play().catch(function() {
+                // Autoplay blocked by browser — skip intro silently
+                overlay.classList.remove('active');
+                resolve();
+            });
+        });
     }
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -3000,6 +3071,8 @@
         if (currentUser?.role==='admin') {
             const fastLoginEnabled = sys.fast_login_enabled !== 'false';
             const fastLoginPinLen = sys.fast_login_pin_length || '4';
+            const introEnabled = sys.login_intro_enabled !== 'false';
+            const introMuted = sys.login_intro_muted === 'true';
             html += `
             <div class="settings-card" style="grid-column:1/-1;">
                 <h3>Login Options</h3>
@@ -3020,6 +3093,21 @@
                     </select>
                     <p class="settings-helper">The length of the PIN number for the user if using Fast Login.</p>
                 </div>
+                <hr style="border:none;border-top:1px solid rgba(255,255,255,0.06);margin:20px 0;">
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setIntroSkip" ${introEnabled?'':'checked'}><span class="toggle-slider"></span></span>
+                        Skip Intro on Login
+                    </label>
+                </div>
+                <p class="settings-helper" style="margin-bottom:16px;">When disabled, a cinematic intro plays after login on each new session.</p>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setIntroMuted" ${introMuted?'checked':''}><span class="toggle-slider"></span></span>
+                        No Audio on Intro
+                    </label>
+                </div>
+                <p class="settings-helper">Mute the intro video audio. When disabled, audio plays with the intro.</p>
             </div>`;
 
             const cacheEnabled = sys.cache_server_enabled !== 'false';
@@ -3076,6 +3164,12 @@
         if (flEnabledEl) settings.fast_login_enabled = flEnabledEl.checked ? 'true' : 'false';
         const flPinLenEl = document.getElementById('setFastLoginPinLen');
         if (flPinLenEl) settings.fast_login_pin_length = flPinLenEl.value;
+
+        // Intro settings (Skip Intro toggle is inverted: checked = skip = disabled)
+        const introSkipEl = document.getElementById('setIntroSkip');
+        if (introSkipEl) settings.login_intro_enabled = introSkipEl.checked ? 'false' : 'true';
+        const introMutedEl = document.getElementById('setIntroMuted');
+        if (introMutedEl) settings.login_intro_muted = introMutedEl.checked ? 'true' : 'false';
 
         // OMDb key
         const omdbEl = document.getElementById('setOmdbKey');

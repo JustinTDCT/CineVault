@@ -1,6 +1,6 @@
 {
-  "version": "0.21.0",
+  "version": "0.22.0",
   "phase": 3,
   "released": "2026-02-09",
-  "notes": "Fast Login with PIN-based authentication, user selection screen"
+  "notes": "Login intro video with admin controls for skip and audio mute"
 }
