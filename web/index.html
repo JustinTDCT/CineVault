@@ -1088,6 +1088,7 @@
     const MEDIA_ICONS = { movies:'&#127916;', adult_movies:'&#128274;', tv_shows:'&#128250;', music:'&#127925;', music_videos:'&#127911;', home_videos:'&#127909;', other_videos:'&#128253;', images:'&#128247;', audiobooks:'&#128214;' };
     const MEDIA_LABELS = { movies:'Movies', adult_movies:'Adult Movies', tv_shows:'TV Shows', music:'Music', music_videos:'Music Videos', home_videos:'Home Videos', other_videos:'Other Videos', images:'Photos', audiobooks:'Audiobooks' };
     function mediaIcon(type) { return MEDIA_ICONS[type] || '&#128191;'; }
+    function posterSrc(path, updatedAt) { if (!path) return ''; const ts = updatedAt ? new Date(updatedAt).getTime() : Date.now(); return path + '?v=' + ts; }
     function formatDuration(sec) { if (!sec) return ''; const m = Math.floor(sec/60); const s = sec%60; return m + ':' + String(s).padStart(2,'0'); }
     function formatTime(sec) { const h = Math.floor(sec/3600); const m = Math.floor((sec%3600)/60); const s = Math.floor(sec%60); return (h>0?h+':':'')+String(m).padStart(h>0?2:1,'0')+':'+String(s).padStart(2,'0'); }
 
@@ -1814,7 +1815,7 @@
         const edBadge = item.edition_count && item.edition_count > 1 ? `<span class="edition-badge">${item.edition_count} editions</span>` : '';
         return `<div class="media-card" onclick="loadMediaDetail('${item.id}')">
             <div class="media-poster" style="position:relative;">
-                ${item.poster_path ? '<img src="'+item.poster_path+'" alt="">' : mediaIcon(item.media_type)}
+                ${item.poster_path ? '<img src="'+posterSrc(item.poster_path, item.updated_at)+'" alt="">' : mediaIcon(item.media_type)}
                 ${res ? '<span class="quality-badge">'+res+'</span>' : ''}
                 ${edBadge}
                 <div class="play-overlay"><div class="play-button">&#9654;</div></div>
@@ -1840,7 +1841,7 @@
                     const pct = wh.duration_seconds ? Math.round(wh.progress_seconds/wh.duration_seconds*100) : 0;
                     return `<div class="media-card" onclick="playMedia('${item.id}','${item.title||''}')">
                         <div class="media-poster">
-                            ${item.poster_path ? '<img src="'+item.poster_path+'">' : mediaIcon(item.media_type||'movies')}
+                            ${item.poster_path ? '<img src="'+posterSrc(item.poster_path, item.updated_at)+'">' : mediaIcon(item.media_type||'movies')}
                             <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
                             <div class="play-overlay"><div class="play-button">&#9654;</div></div>
                         </div>
@@ -1895,7 +1896,7 @@
 
         mc.innerHTML = `
             <div class="detail-hero">
-                <div class="detail-poster">${m.poster_path ? '<img src="'+m.poster_path+'">' : mediaIcon(m.media_type)}</div>
+                <div class="detail-poster">${m.poster_path ? '<img src="'+posterSrc(m.poster_path, m.updated_at)+'">' : mediaIcon(m.media_type)}</div>
                 <div class="detail-info">
                     <h1>${m.title}</h1>
                     <div class="meta-row">${meta}</div>
@@ -2365,7 +2366,7 @@
 
         collArea.innerHTML = '<div class="collection-grid">' + collections.map(c => {
             const poster = c.poster_path
-                ? `<img src="${c.poster_path}" alt="">`
+                ? `<img src="${posterSrc(c.poster_path, c.updated_at)}" alt="">`
                 : '&#128218;';
             return `<div class="collection-card" onclick="navigate('collection','${c.id}')">
                 <div class="cc-poster">${poster}</div>
@@ -2382,7 +2383,7 @@
         const desc = show.description ? show.description.substring(0, 100) + '...' : '';
         return `<div class="media-card" onclick="loadShowView('${show.id}')">
             <div class="media-poster">
-                ${show.poster_path ? '<img src="'+show.poster_path+'" alt="">' : '&#128250;'}
+                ${show.poster_path ? '<img src="'+posterSrc(show.poster_path, show.updated_at)+'" alt="">' : '&#128250;'}
             </div>
             <div class="media-info"><div class="media-title">${show.title}</div><div class="media-meta">${year}</div></div>
         </div>`;
@@ -2399,7 +2400,7 @@
 
         const heroHTML = `
             <div class="detail-hero">
-                <div class="detail-poster">${show.poster_path ? '<img src="'+show.poster_path+'">' : '&#128250;'}</div>
+                <div class="detail-poster">${show.poster_path ? '<img src="'+posterSrc(show.poster_path, show.updated_at)+'">' : '&#128250;'}</div>
                 <div class="detail-info">
                     <h1>${show.title}</h1>
                     <div class="meta-row">${show.year ? show.year + ' \u00b7 ' : ''}${seasons.length} Season${seasons.length !== 1 ? 's' : ''} \u00b7 ${totalEps} Episode${totalEps !== 1 ? 's' : ''}</div>
@@ -2421,7 +2422,7 @@
                 <div class="media-grid" id="seasonsGrid">
                     ${seasons.map(s => `<div class="media-card" onclick="loadSeasonView('${showId}','${s.id}', ${s.season_number})">
                         <div class="media-poster">
-                            ${s.poster_path ? '<img src="'+s.poster_path+'" alt="">' : (show.poster_path ? '<img src="'+show.poster_path+'" alt="">' : '&#128250;')}
+                            ${s.poster_path ? '<img src="'+posterSrc(s.poster_path, s.updated_at)+'" alt="">' : (show.poster_path ? '<img src="'+posterSrc(show.poster_path, show.updated_at)+'" alt="">' : '&#128250;')}
                         </div>
                         <div class="media-info">
                             <div class="media-title">${s.title || 'Season ' + s.season_number}</div>
@@ -2446,7 +2447,7 @@
 
         mc.innerHTML = `
             <div class="detail-hero">
-                <div class="detail-poster">${season && season.poster_path ? '<img src="'+season.poster_path+'">' : (show.poster_path ? '<img src="'+show.poster_path+'">' : '&#128250;')}</div>
+                <div class="detail-poster">${season && season.poster_path ? '<img src="'+posterSrc(season.poster_path, season.updated_at)+'">' : (show.poster_path ? '<img src="'+posterSrc(show.poster_path, show.updated_at)+'">' : '&#128250;')}</div>
                 <div class="detail-info">
                     <h1>${show.title}</h1>
                     <div class="meta-row">Season ${seasonNum} \u00b7 ${epCount} Episode${epCount !== 1 ? 's' : ''}</div>
@@ -2472,7 +2473,7 @@
                 const meta = [epNum, dur, res].filter(Boolean).join(' \u00b7 ');
                 return `<div class="media-card" onclick="loadMediaDetail('${ep.id}')">
                     <div class="media-poster">
-                        ${ep.poster_path ? '<img src="'+ep.poster_path+'" alt="">' : '&#128250;'}
+                        ${ep.poster_path ? '<img src="'+posterSrc(ep.poster_path, ep.updated_at)+'" alt="">' : '&#128250;'}
                         ${res ? '<span class="quality-badge">'+res+'</span>' : ''}
                         <div class="play-overlay"><div class="play-button">&#9654;</div></div>
                     </div>
@@ -2915,7 +2916,7 @@
         const shortPath = filePath.length > 60 ? '...' + filePath.slice(-57) : filePath;
         return `<div class="dup-card">
             <div class="dup-card-header">
-                <div class="dup-card-poster">${item.poster_path ? '<img src="'+item.poster_path+'">' : '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:2rem;color:#4a5568;">&#127910;</div>'}</div>
+                <div class="dup-card-poster">${item.poster_path ? '<img src="'+posterSrc(item.poster_path, item.updated_at)+'">' : '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:2rem;color:#4a5568;">&#127910;</div>'}</div>
                 <div class="dup-card-meta">
                     <h4>${item.title}</h4>
                     <p>${item.year || 'N/A'}${res ? ' &middot; ' + res : ''}${fileSize ? ' &middot; ' + fileSize : ''}</p>
