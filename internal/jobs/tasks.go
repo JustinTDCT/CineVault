@@ -456,7 +456,7 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 					}
 					updated++
 				}
-				time.Sleep(100 * time.Millisecond) // lighter rate-limit for cache hits
+				// No delay needed for cache hits — it's our own server
 				continue
 			}
 			// Cache miss – fall through to direct TMDB
