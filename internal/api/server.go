@@ -151,9 +151,12 @@ func (s *Server) setupRoutes() {
 	fs := http.FileServer(http.Dir("web"))
 	s.router.Handle("/", fs)
 
-	// Preview files
+	// Preview files (no-cache so updated posters are always revalidated)
 	previewFS := http.StripPrefix("/previews/", http.FileServer(http.Dir(s.config.Paths.Preview)))
-	s.router.Handle("/previews/", previewFS)
+	s.router.Handle("/previews/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		previewFS.ServeHTTP(w, r)
+	}))
 
 	// Public
 	s.router.HandleFunc("GET /health", s.handleHealth)
