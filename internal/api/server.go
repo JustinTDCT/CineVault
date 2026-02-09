@@ -172,6 +172,10 @@ func (s *Server) setupRoutes() {
 	// Users (admin)
 	s.router.HandleFunc("GET /api/v1/users", s.authMiddleware(s.handleListUsers, models.RoleAdmin))
 
+	// Profile (authenticated user)
+	s.router.HandleFunc("GET /api/v1/profile", s.authMiddleware(s.handleGetProfile, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/profile", s.authMiddleware(s.handleUpdateProfile, models.RoleUser))
+
 	// PIN management
 	s.router.HandleFunc("PUT /api/v1/auth/pin", s.authMiddleware(s.handleSetPin, models.RoleUser))
 	s.router.HandleFunc("PUT /api/v1/users/{id}/pin", s.authMiddleware(s.handleAdminSetPin, models.RoleAdmin))

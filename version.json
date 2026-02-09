@@ -1,6 +1,6 @@
 {
-  "version": "0.22.0",
+  "version": "0.23.0",
   "phase": 3,
   "released": "2026-02-09",
-  "notes": "Login intro video with admin controls for skip and audio mute"
+  "notes": "User profile dropdown menu with Edit Profile page; removed sidebar clutter"
 }

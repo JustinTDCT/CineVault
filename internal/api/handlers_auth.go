@@ -351,5 +351,67 @@ func (s *Server) handleAdminSetPin(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, Response{Success: true})
 }
 
+// ──────────────────── Profile ────────────────────
+
+type UpdateProfileRequest struct {
+	FirstName *string `json:"first_name"`
+	LastName  *string `json:"last_name"`
+	Email     *string `json:"email"`
+	Password  *string `json:"password"`
+}
+
+// handleGetProfile returns the current user's profile.
+func (s *Server) handleGetProfile(w http.ResponseWriter, r *http.Request) {
+	userID := s.getUserID(r)
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	user.PasswordHash = ""
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: user})
+}
+
+// handleUpdateProfile updates the current user's profile fields.
+func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
+	var req UpdateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	userID := s.getUserID(r)
+
+	// Update profile fields (first_name, last_name, email)
+	if req.FirstName != nil || req.LastName != nil || req.Email != nil {
+		if err := s.userRepo.UpdateProfile(userID, req.FirstName, req.LastName, req.Email); err != nil {
+			s.respondError(w, http.StatusInternalServerError, "failed to update profile")
+			return
+		}
+	}
+
+	// Update password if provided
+	if req.Password != nil && *req.Password != "" {
+		hashedPassword, err := s.auth.HashPassword(*req.Password)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, "failed to hash password")
+			return
+		}
+		if err := s.userRepo.UpdatePassword(userID, hashedPassword); err != nil {
+			s.respondError(w, http.StatusInternalServerError, "failed to update password")
+			return
+		}
+	}
+
+	// Return updated user
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to fetch updated profile")
+		return
+	}
+	user.PasswordHash = ""
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: user})
+}
+
 // Ensure imports are used
 var _ = strings.TrimSpace

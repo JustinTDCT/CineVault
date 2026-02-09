@@ -56,6 +56,8 @@ type User struct {
 	PasswordHash string    `json:"-" db:"password_hash"`
 	PinHash      *string   `json:"-" db:"pin_hash"`
 	DisplayName  *string   `json:"display_name,omitempty" db:"display_name"`
+	FirstName    *string   `json:"first_name,omitempty" db:"first_name"`
+	LastName     *string   `json:"last_name,omitempty" db:"last_name"`
 	Role         UserRole  `json:"role" db:"role"`
 	IsActive     bool      `json:"is_active" db:"is_active"`
 	HasPin       bool      `json:"has_pin" db:"-"`
