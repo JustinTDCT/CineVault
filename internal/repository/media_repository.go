@@ -15,7 +15,7 @@ type MediaFilter struct {
 	Folder        string // folder path prefix
 	ContentRating string // e.g. "PG-13"
 	Edition       string // e.g. "Director's Cut"
-	Sort          string // "title" (default), "year", "rt_rating", "rating", "audience_score"
+	Sort          string // "title" (default), "year", "resolution", "duration", "rt_rating", "rating", "audience_score"
 	Order         string // "asc" (default), "desc"
 }
 
@@ -185,6 +185,10 @@ func buildFilterClauses(f *MediaFilter, paramStart int) (string, string, string,
 			orderCol = "m.rating"
 		case "audience_score":
 			orderCol = "m.audience_score"
+		case "resolution":
+			orderCol = "m.height"
+		case "duration":
+			orderCol = "m.duration_seconds"
 		}
 	}
 	dir := "ASC"
