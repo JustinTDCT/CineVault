@@ -54,8 +54,11 @@ type User struct {
 	Username     string    `json:"username" db:"username"`
 	Email        string    `json:"email" db:"email"`
 	PasswordHash string    `json:"-" db:"password_hash"`
+	PinHash      *string   `json:"-" db:"pin_hash"`
+	DisplayName  *string   `json:"display_name,omitempty" db:"display_name"`
 	Role         UserRole  `json:"role" db:"role"`
 	IsActive     bool      `json:"is_active" db:"is_active"`
+	HasPin       bool      `json:"has_pin" db:"-"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 }

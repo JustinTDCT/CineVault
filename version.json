@@ -1,6 +1,6 @@
 {
-  "version": "0.20.0",
+  "version": "0.21.0",
   "phase": 3,
   "released": "2026-02-09",
-  "notes": "Library filters (genre, folder, content rating, edition), sorting, and collections view"
+  "notes": "Fast Login with PIN-based authentication, user selection screen"
 }

@@ -2,7 +2,11 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
+	"unicode"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
@@ -122,3 +126,220 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: users})
 }
+
+// ──────────────────── Fast Login ────────────────────
+
+type FastLoginUsersResponse struct {
+	ID          uuid.UUID      `json:"id"`
+	Username    string         `json:"username"`
+	DisplayName *string        `json:"display_name,omitempty"`
+	Role        models.UserRole `json:"role"`
+	HasPin      bool           `json:"has_pin"`
+}
+
+type PinLoginRequest struct {
+	UserID uuid.UUID `json:"user_id"`
+	Pin    string    `json:"pin"`
+}
+
+type SetPinRequest struct {
+	Pin string `json:"pin"`
+}
+
+// handleFastLoginUsers returns the list of active users for the fast login screen (public).
+func (s *Server) handleFastLoginUsers(w http.ResponseWriter, r *http.Request) {
+	// Check if fast login is enabled
+	enabled, _ := s.settingsRepo.Get("fast_login_enabled")
+	if enabled != "true" {
+		s.respondError(w, http.StatusForbidden, "fast login is disabled")
+		return
+	}
+
+	users, err := s.userRepo.List()
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to list users")
+		return
+	}
+
+	var result []FastLoginUsersResponse
+	for _, u := range users {
+		if !u.IsActive {
+			continue
+		}
+		result = append(result, FastLoginUsersResponse{
+			ID:          u.ID,
+			Username:    u.Username,
+			DisplayName: u.DisplayName,
+			Role:        u.Role,
+			HasPin:      u.HasPin,
+		})
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: result})
+}
+
+// handleFastLoginSettings returns fast login config (public).
+func (s *Server) handleFastLoginSettings(w http.ResponseWriter, r *http.Request) {
+	enabled, _ := s.settingsRepo.Get("fast_login_enabled")
+	pinLen, _ := s.settingsRepo.Get("fast_login_pin_length")
+	if pinLen == "" {
+		pinLen = "4"
+	}
+	s.respondJSON(w, http.StatusOK, Response{
+		Success: true,
+		Data: map[string]string{
+			"fast_login_enabled":    enabled,
+			"fast_login_pin_length": pinLen,
+		},
+	})
+}
+
+// handlePinLogin authenticates a user by PIN (public).
+func (s *Server) handlePinLogin(w http.ResponseWriter, r *http.Request) {
+	enabled, _ := s.settingsRepo.Get("fast_login_enabled")
+	if enabled != "true" {
+		s.respondError(w, http.StatusForbidden, "fast login is disabled")
+		return
+	}
+
+	var req PinLoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	user, err := s.userRepo.GetByID(req.UserID)
+	if err != nil {
+		s.respondError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+
+	if !user.IsActive {
+		s.respondError(w, http.StatusForbidden, "account is disabled")
+		return
+	}
+
+	if user.PinHash == nil || *user.PinHash == "" {
+		s.respondError(w, http.StatusUnauthorized, "no PIN set for this user")
+		return
+	}
+
+	if err := s.auth.VerifyPassword(*user.PinHash, req.Pin); err != nil {
+		s.respondError(w, http.StatusUnauthorized, "invalid PIN")
+		return
+	}
+
+	token, err := s.auth.GenerateToken(user)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to generate token")
+		return
+	}
+
+	user.PasswordHash = ""
+	s.respondJSON(w, http.StatusOK, Response{
+		Success: true,
+		Data:    LoginResponse{Token: token, User: user},
+	})
+}
+
+// handleSetPin sets or updates the current user's PIN.
+func (s *Server) handleSetPin(w http.ResponseWriter, r *http.Request) {
+	var req SetPinRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate PIN is all digits
+	for _, c := range req.Pin {
+		if !unicode.IsDigit(c) {
+			s.respondError(w, http.StatusBadRequest, "PIN must contain only digits")
+			return
+		}
+	}
+
+	// Validate PIN length against setting
+	pinLenStr, _ := s.settingsRepo.Get("fast_login_pin_length")
+	if pinLenStr == "" {
+		pinLenStr = "4"
+	}
+	requiredLen, _ := strconv.Atoi(pinLenStr)
+	if len(req.Pin) != requiredLen {
+		s.respondError(w, http.StatusBadRequest, fmt.Sprintf("PIN must be exactly %d digits", requiredLen))
+		return
+	}
+
+	userID := s.getUserID(r)
+	hashedPin, err := s.auth.HashPassword(req.Pin)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to hash PIN")
+		return
+	}
+
+	if err := s.userRepo.UpdatePinHash(userID, &hashedPin); err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to set PIN")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true})
+}
+
+// handleAdminSetPin allows an admin to set a PIN for any user.
+func (s *Server) handleAdminSetPin(w http.ResponseWriter, r *http.Request) {
+	userID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	var req SetPinRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Allow empty pin to clear it
+	if req.Pin == "" {
+		if err := s.userRepo.UpdatePinHash(userID, nil); err != nil {
+			s.respondError(w, http.StatusInternalServerError, "failed to clear PIN")
+			return
+		}
+		s.respondJSON(w, http.StatusOK, Response{Success: true})
+		return
+	}
+
+	// Validate PIN is all digits
+	for _, c := range req.Pin {
+		if !unicode.IsDigit(c) {
+			s.respondError(w, http.StatusBadRequest, "PIN must contain only digits")
+			return
+		}
+	}
+
+	// Validate PIN length against setting
+	pinLenStr, _ := s.settingsRepo.Get("fast_login_pin_length")
+	if pinLenStr == "" {
+		pinLenStr = "4"
+	}
+	requiredLen, _ := strconv.Atoi(pinLenStr)
+	if len(req.Pin) != requiredLen {
+		s.respondError(w, http.StatusBadRequest, fmt.Sprintf("PIN must be exactly %d digits", requiredLen))
+		return
+	}
+
+	hashedPin, err := s.auth.HashPassword(req.Pin)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to hash PIN")
+		return
+	}
+
+	if err := s.userRepo.UpdatePinHash(userID, &hashedPin); err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to set PIN")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true})
+}
+
+// Ensure imports are used
+var _ = strings.TrimSpace

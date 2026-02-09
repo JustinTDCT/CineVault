@@ -695,6 +695,104 @@
         .toggle-switch input:checked + .toggle-slider { background: rgba(0,217,255,0.25); border-color: #00D9FF; }
         .toggle-switch input:checked + .toggle-slider:before { transform: translateX(22px); background: #00D9FF; }
         .toggle-label { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; color: #c8d6e5; font-size: 0.95rem; }
+
+        /* ── Fast Login Screen ── */
+        .fast-login-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10000;
+            background: linear-gradient(135deg, #0a1929 0%, #1a2332 50%, #0d1b2a 100%);
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .fast-login-overlay.active { display: flex; }
+        .fast-login-title { font-size: 1.8rem; font-weight: 700; color: #e5e5e5; margin-bottom: 40px; }
+        .fast-login-back {
+            position: absolute; top: 30px; left: 30px; color: #8a9bae; font-size: 1rem;
+            cursor: pointer; display: flex; align-items: center; gap: 8px; transition: color 0.2s;
+        }
+        .fast-login-back:hover { color: #00D9FF; }
+        .fast-login-grid {
+            display: flex; flex-wrap: wrap; gap: 30px; justify-content: center; max-width: 900px;
+        }
+        .fast-login-user {
+            width: 180px; padding: 24px 16px 18px; border-radius: 16px;
+            background: linear-gradient(145deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+            border: 1px solid rgba(255,255,255,0.08);
+            cursor: pointer; text-align: center; transition: all 0.3s;
+        }
+        .fast-login-user:hover {
+            transform: translateY(-4px); border-color: rgba(0,217,255,0.3);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,217,255,0.15);
+        }
+        .fast-login-avatar {
+            width: 100px; height: 100px; border-radius: 50%; margin: 0 auto 16px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 2.4rem; font-weight: 600; color: rgba(255,255,255,0.85);
+            position: relative;
+        }
+        .fast-login-avatar::before {
+            content: ''; position: absolute; inset: -4px; border-radius: 50%;
+            border: 3px solid rgba(255,255,255,0.08);
+        }
+        .fast-login-user-name { font-size: 1rem; color: #c8d6e5; font-weight: 500; }
+        .fast-login-badges { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
+        .fast-login-badge {
+            font-size: 0.7rem; padding: 2px 8px; border-radius: 8px; font-weight: 600;
+        }
+        .fast-login-badge.admin {
+            background: rgba(255,193,7,0.15); color: #ffc107; border: 1px solid rgba(255,193,7,0.3);
+        }
+        .fast-login-badge.pin-set {
+            background: rgba(76,175,80,0.15); color: #4caf50; border: 1px solid rgba(76,175,80,0.3);
+        }
+        .fast-login-badge.no-pin {
+            background: rgba(255,152,0,0.15); color: #ff9800; border: 1px solid rgba(255,152,0,0.3);
+        }
+
+        /* PIN Entry */
+        .pin-entry-container {
+            display: none; flex-direction: column; align-items: center; gap: 24px;
+        }
+        .pin-entry-container.active { display: flex; }
+        .pin-entry-user-info { display: flex; align-items: center; gap: 20px; }
+        .pin-entry-user-card {
+            width: 140px; padding: 16px 12px; border-radius: 14px; text-align: center;
+            background: linear-gradient(145deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .pin-entry-avatar {
+            width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 2rem; font-weight: 600; color: rgba(255,255,255,0.85);
+        }
+        .pin-entry-name { font-size: 0.9rem; color: #c8d6e5; }
+        .pin-boxes {
+            display: flex; gap: 12px;
+        }
+        .pin-box {
+            width: 60px; height: 72px; border-radius: 12px;
+            background: rgba(255,255,255,0.04); border: 2px solid rgba(255,255,255,0.1);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.8rem; color: #e5e5e5; font-weight: 700;
+            transition: all 0.2s;
+        }
+        .pin-box.active { border-color: #00D9FF; background: rgba(0,217,255,0.06); }
+        .pin-box.filled { border-color: rgba(255,255,255,0.25); }
+        .pin-forgot {
+            color: #5a6a7f; font-size: 0.85rem; cursor: pointer; transition: color 0.2s;
+        }
+        .pin-forgot:hover { color: #00D9FF; }
+        .pin-error { color: #ff6b6b; font-size: 0.85rem; min-height: 1.2em; }
+        .pin-hidden-input {
+            position: absolute; left: -9999px; opacity: 0;
+        }
+        .fast-login-fallback {
+            margin-top: 30px; color: #5a6a7f; font-size: 0.85rem; cursor: pointer;
+        }
+        .fast-login-fallback:hover { color: #00D9FF; }
+
+        /* Helper text for settings */
+        .settings-helper {
+            color: #5a6a7f; font-size: 0.78rem; margin-top: 4px;
+        }
     </style>
 </head>
 <body>
@@ -762,8 +860,8 @@
         </div>
     </div>
 
-    <!-- Login Modal -->
-    <div class="modal active" id="loginModal">
+    <!-- Login Modal (standard) -->
+    <div class="modal" id="loginModal">
         <div class="modal-content">
             <h2 class="modal-title">Welcome to CineVault</h2>
             <div id="authMessage"></div>
@@ -773,6 +871,33 @@
                 <button type="submit" class="btn-primary" style="width: 100%; margin-top: 10px;">Login</button>
             </form>
         </div>
+    </div>
+
+    <!-- Fast Login Overlay -->
+    <div class="fast-login-overlay" id="fastLoginOverlay">
+        <div class="fast-login-back" id="fastLoginBack" style="display:none;" onclick="fastLoginShowUsers()">&#10094; Enter PIN</div>
+        <div class="fast-login-title" id="fastLoginTitle">Select User</div>
+
+        <!-- User Grid -->
+        <div class="fast-login-grid" id="fastLoginGrid"></div>
+
+        <!-- PIN Entry -->
+        <div class="pin-entry-container" id="pinEntryContainer">
+            <div class="pin-entry-user-info">
+                <div class="pin-entry-user-card">
+                    <div class="pin-entry-avatar" id="pinEntryAvatar"></div>
+                    <div class="pin-entry-name" id="pinEntryName"></div>
+                </div>
+                <div>
+                    <div class="pin-boxes" id="pinBoxes"></div>
+                    <div class="pin-error" id="pinError"></div>
+                </div>
+            </div>
+            <input type="text" class="pin-hidden-input" id="pinHiddenInput" inputmode="numeric" autocomplete="off" autofocus>
+            <div class="pin-forgot" onclick="fastLoginShowStandard()">Use password instead</div>
+        </div>
+
+        <div class="fast-login-fallback" onclick="fastLoginShowStandard()">Use username &amp; password</div>
     </div>
 
     <!-- Video Player Overlay -->
@@ -1066,18 +1191,163 @@
     }
 
     // ──── Auth ────
-    function checkAuth() {
+    let fastLoginConfig = null;
+    let fastLoginUsers = [];
+    let selectedFastUser = null;
+    let pinLength = 4;
+
+    async function checkAuth() {
         const token = localStorage.getItem('token');
         const user = localStorage.getItem('user');
         if (token && user) {
             currentUser = JSON.parse(user);
             document.getElementById('loginModal').classList.remove('active');
+            document.getElementById('fastLoginOverlay').classList.remove('active');
             document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
             loadHomeView();
             loadSidebarCounts();
             connectWS();
         } else {
-            document.getElementById('loginModal').classList.add('active');
+            try {
+                const res = await fetch(API + '/auth/fast-login/settings');
+                fastLoginConfig = await res.json();
+            } catch { fastLoginConfig = { success: false }; }
+
+            if (fastLoginConfig && fastLoginConfig.success && fastLoginConfig.data && fastLoginConfig.data.fast_login_enabled === 'true') {
+                pinLength = parseInt(fastLoginConfig.data.fast_login_pin_length) || 4;
+                showFastLogin();
+            } else {
+                document.getElementById('loginModal').classList.add('active');
+            }
+        }
+    }
+
+    // ──── Fast Login ────
+    async function showFastLogin() {
+        document.getElementById('fastLoginOverlay').classList.add('active');
+        document.getElementById('loginModal').classList.remove('active');
+        try {
+            const res = await fetch(API + '/auth/fast-login/users');
+            const data = await res.json();
+            fastLoginUsers = data.success ? (data.data || []) : [];
+        } catch { fastLoginUsers = []; }
+        fastLoginShowUsers();
+    }
+
+    function userColor(name) {
+        const colors = [
+            ['#6c9a8b','#8fb8a8'],['#9a8b6c','#b8a88f'],['#6c7d9a','#8f9db8'],
+            ['#9a6c7d','#b88f9d'],['#7d9a6c','#9db88f'],['#8b6c9a','#a88fb8'],
+            ['#6c9a9a','#8fb8b8'],['#9a9a6c','#b8b88f']
+        ];
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        return colors[Math.abs(hash) % colors.length];
+    }
+
+    function fastLoginShowUsers() {
+        const grid = document.getElementById('fastLoginGrid');
+        const pinEntry = document.getElementById('pinEntryContainer');
+        const back = document.getElementById('fastLoginBack');
+        const title = document.getElementById('fastLoginTitle');
+        const fallback = document.querySelector('.fast-login-fallback');
+        grid.style.display = 'flex';
+        pinEntry.classList.remove('active');
+        back.style.display = 'none';
+        title.textContent = 'Select User';
+        if (fallback) fallback.style.display = '';
+        selectedFastUser = null;
+
+        grid.innerHTML = fastLoginUsers.map(u => {
+            const dn = u.display_name || u.username;
+            const initial = dn[0].toUpperCase();
+            const [bg, circle] = userColor(dn);
+            let badges = '';
+            if (u.has_pin) badges += '<span class="fast-login-badge pin-set">&#128274;</span>';
+            if (u.role === 'admin') badges += '<span class="fast-login-badge admin">&#128081;</span>';
+            return '<div class="fast-login-user" onclick="fastLoginSelectUser(\'' + u.id + '\')" style="background:linear-gradient(145deg, ' + bg + '33 0%, ' + bg + '11 100%);border-color:' + bg + '44;">' +
+                '<div class="fast-login-avatar" style="background:radial-gradient(circle, ' + circle + ' 0%, ' + bg + ' 100%);">' + initial +
+                '<div class="fast-login-badges" style="position:absolute;bottom:-4px;left:0;right:0;">' + badges + '</div></div>' +
+                '<div class="fast-login-user-name">' + dn + '</div></div>';
+        }).join('');
+    }
+
+    function fastLoginSelectUser(userId) {
+        selectedFastUser = fastLoginUsers.find(u => u.id === userId);
+        if (!selectedFastUser) return;
+        if (!selectedFastUser.has_pin) { fastLoginShowStandard(); return; }
+
+        document.getElementById('fastLoginGrid').style.display = 'none';
+        document.getElementById('pinEntryContainer').classList.add('active');
+        document.getElementById('fastLoginBack').style.display = 'flex';
+        document.getElementById('fastLoginTitle').textContent = 'Enter PIN';
+        const fallback = document.querySelector('.fast-login-fallback');
+        if (fallback) fallback.style.display = 'none';
+
+        const dn = selectedFastUser.display_name || selectedFastUser.username;
+        const [bg, circle] = userColor(dn);
+        document.getElementById('pinEntryAvatar').style.background = 'radial-gradient(circle, ' + circle + ' 0%, ' + bg + ' 100%)';
+        document.getElementById('pinEntryAvatar').textContent = dn[0].toUpperCase();
+        document.getElementById('pinEntryName').textContent = dn;
+        document.getElementById('pinError').textContent = '';
+
+        let boxesHtml = '';
+        for (let i = 0; i < pinLength; i++) boxesHtml += '<div class="pin-box' + (i === 0 ? ' active' : '') + '" id="pinBox' + i + '"></div>';
+        document.getElementById('pinBoxes').innerHTML = boxesHtml;
+
+        const hi = document.getElementById('pinHiddenInput');
+        hi.value = '';
+        hi.maxLength = pinLength;
+        setTimeout(function(){ hi.focus(); }, 100);
+        document.getElementById('pinBoxes').onclick = function(){ hi.focus(); };
+    }
+
+    document.getElementById('pinHiddenInput').addEventListener('input', async function() {
+        const val = this.value.replace(/\D/g, '').substring(0, pinLength);
+        this.value = val;
+        for (let i = 0; i < pinLength; i++) {
+            const box = document.getElementById('pinBox' + i);
+            if (!box) continue;
+            box.textContent = i < val.length ? '\u25CF' : '';
+            box.className = 'pin-box' + (i < val.length ? ' filled' : '') + (i === val.length ? ' active' : '');
+        }
+        if (val.length === pinLength && selectedFastUser) {
+            document.getElementById('pinError').textContent = '';
+            try {
+                const res = await fetch(API + '/auth/fast-login', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: selectedFastUser.id, pin: val })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    localStorage.setItem('token', data.data.token);
+                    localStorage.setItem('user', JSON.stringify(data.data.user));
+                    checkAuth();
+                } else {
+                    document.getElementById('pinError').textContent = data.error || 'Invalid PIN';
+                    this.value = '';
+                    for (let i = 0; i < pinLength; i++) {
+                        const box = document.getElementById('pinBox' + i);
+                        if (box) { box.textContent = ''; box.className = 'pin-box' + (i === 0 ? ' active' : ''); }
+                    }
+                }
+            } catch {
+                document.getElementById('pinError').textContent = 'Connection error';
+                this.value = '';
+            }
+        }
+    });
+
+    document.getElementById('pinHiddenInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') fastLoginShowUsers();
+    });
+
+    function fastLoginShowStandard() {
+        document.getElementById('fastLoginOverlay').classList.remove('active');
+        document.getElementById('loginModal').classList.add('active');
+        if (selectedFastUser) {
+            document.getElementById('loginUsername').value = selectedFastUser.username;
+            document.getElementById('loginPassword').focus();
         }
     }
 
@@ -1091,7 +1361,7 @@
         } catch { msgDiv.innerHTML='<div class="message error">Connection error</div>'; }
     });
 
-    document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.clear(); currentUser=null; if(ws)ws.close(); document.getElementById('loginModal').classList.add('active'); });
+    document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.clear(); currentUser=null; if(ws)ws.close(); document.getElementById('fastLoginOverlay').classList.remove('active'); document.getElementById('loginModal').classList.remove('active'); checkAuth(); });
 
     // ──── Sidebar Libraries ────
     async function loadSidebarCounts() {
@@ -2715,10 +2985,43 @@
             <div class="settings-card">
                 <h3>Account</h3>
                 <p style="color:#8a9bae;margin-bottom:12px;">Logged in as <strong style="color:#00D9FF;">${currentUser?.username}</strong></p>
-                <p style="color:#8a9bae;">Role: <span class="tag tag-cyan">${currentUser?.role}</span></p>
+                <p style="color:#8a9bae;margin-bottom:12px;">Role: <span class="tag tag-cyan">${currentUser?.role}</span></p>
+                <h4 style="margin-top:16px;margin-bottom:8px;color:#c8d6e5;">Fast Login PIN</h4>
+                <p class="settings-helper" style="margin-bottom:10px;">Set a numeric PIN for quick login via the Fast Login screen.</p>
+                <div class="form-group">
+                    <label>PIN</label>
+                    <div style="display:flex;gap:10px;">
+                        <input type="password" id="setMyPin" placeholder="Enter PIN" style="flex:1;" inputmode="numeric" maxlength="10">
+                        <button class="btn-primary btn-small" onclick="saveMyPin()">Set PIN</button>
+                    </div>
+                </div>
             </div>`;
 
         if (currentUser?.role==='admin') {
+            const fastLoginEnabled = sys.fast_login_enabled !== 'false';
+            const fastLoginPinLen = sys.fast_login_pin_length || '4';
+            html += `
+            <div class="settings-card" style="grid-column:1/-1;">
+                <h3>Login Options</h3>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setFastLoginEnabled" ${fastLoginEnabled?'checked':''}><span class="toggle-slider"></span></span>
+                        Use Fast Login
+                    </label>
+                </div>
+                <p class="settings-helper" style="margin-bottom:16px;">Display user icons and have them enter a PIN instead of login name and password.</p>
+                <div class="form-group">
+                    <label>Fast Login PIN Length</label>
+                    <select id="setFastLoginPinLen">
+                        <option value="4" ${fastLoginPinLen==='4'?'selected':''}>4 digits</option>
+                        <option value="5" ${fastLoginPinLen==='5'?'selected':''}>5 digits</option>
+                        <option value="6" ${fastLoginPinLen==='6'?'selected':''}>6 digits</option>
+                        <option value="8" ${fastLoginPinLen==='8'?'selected':''}>8 digits</option>
+                    </select>
+                    <p class="settings-helper">The length of the PIN number for the user if using Fast Login.</p>
+                </div>
+            </div>`;
+
             const cacheEnabled = sys.cache_server_enabled !== 'false';
             const cacheRegistered = sys.cache_server_api_key === 'registered';
             html += `
@@ -2768,6 +3071,12 @@
     async function saveSystemSettings() {
         const settings = {};
 
+        // Fast Login settings
+        const flEnabledEl = document.getElementById('setFastLoginEnabled');
+        if (flEnabledEl) settings.fast_login_enabled = flEnabledEl.checked ? 'true' : 'false';
+        const flPinLenEl = document.getElementById('setFastLoginPinLen');
+        if (flPinLenEl) settings.fast_login_pin_length = flPinLenEl.value;
+
         // OMDb key
         const omdbEl = document.getElementById('setOmdbKey');
         if (omdbEl) settings.omdb_api_key = omdbEl.value.trim();
@@ -2780,6 +3089,14 @@
 
         const d = await api('PUT', '/settings/system', settings);
         if(d.success) toast('System settings saved!'); else toast(d.error,'error');
+    }
+
+    async function saveMyPin() {
+        const pin = document.getElementById('setMyPin').value;
+        if (!pin) { toast('Please enter a PIN', 'error'); return; }
+        const d = await api('PUT', '/auth/pin', { pin: pin });
+        if (d.success) { toast('PIN saved!'); document.getElementById('setMyPin').value = ''; }
+        else toast(d.error, 'error');
     }
 
     // ──── Admin ────

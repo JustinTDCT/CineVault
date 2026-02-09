@@ -161,11 +161,20 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("POST /api/v1/auth/register", s.handleRegister)
 	s.router.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
 
+	// Fast Login (public — no auth required)
+	s.router.HandleFunc("GET /api/v1/auth/fast-login/settings", s.handleFastLoginSettings)
+	s.router.HandleFunc("GET /api/v1/auth/fast-login/users", s.handleFastLoginUsers)
+	s.router.HandleFunc("POST /api/v1/auth/fast-login", s.handlePinLogin)
+
 	// WebSocket
 	s.router.HandleFunc("GET /api/v1/ws", s.handleWebSocket)
 
 	// Users (admin)
 	s.router.HandleFunc("GET /api/v1/users", s.authMiddleware(s.handleListUsers, models.RoleAdmin))
+
+	// PIN management
+	s.router.HandleFunc("PUT /api/v1/auth/pin", s.authMiddleware(s.handleSetPin, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/users/{id}/pin", s.authMiddleware(s.handleAdminSetPin, models.RoleAdmin))
 
 	// Filesystem browse (admin only)
 	s.router.HandleFunc("GET /api/v1/browse", s.authMiddleware(s.handleBrowse, models.RoleAdmin))
