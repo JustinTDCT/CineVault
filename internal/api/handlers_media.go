@@ -6,8 +6,27 @@ import (
 	"strconv"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
+	"github.com/JustinTDCT/CineVault/internal/repository"
 	"github.com/google/uuid"
 )
+
+// parseMediaFilter extracts filter/sort params from the request query string.
+func parseMediaFilter(r *http.Request) *repository.MediaFilter {
+	q := r.URL.Query()
+	f := &repository.MediaFilter{
+		Genre:         q.Get("genre"),
+		Folder:        q.Get("folder"),
+		ContentRating: q.Get("content_rating"),
+		Edition:       q.Get("edition"),
+		Sort:          q.Get("sort"),
+		Order:         q.Get("order"),
+	}
+	// Only return a filter if at least one field is set
+	if f.Genre == "" && f.Folder == "" && f.ContentRating == "" && f.Edition == "" && f.Sort == "" && f.Order == "" {
+		return nil
+	}
+	return f
+}
 
 func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 	libraryID, err := uuid.Parse(r.PathValue("id"))
@@ -29,13 +48,15 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	media, err := s.mediaRepo.ListByLibrary(libraryID, limit, offset)
+	f := parseMediaFilter(r)
+
+	media, err := s.mediaRepo.ListByLibraryFiltered(libraryID, limit, offset, f)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, "failed to list media")
 		return
 	}
 
-	count, _ := s.mediaRepo.CountByLibrary(libraryID)
+	count, _ := s.mediaRepo.CountByLibraryFiltered(libraryID, f)
 
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
@@ -55,7 +76,9 @@ func (s *Server) handleMediaLetterIndex(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	index, err := s.mediaRepo.LetterIndex(libraryID)
+	f := parseMediaFilter(r)
+
+	index, err := s.mediaRepo.LetterIndexFiltered(libraryID, f)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, "failed to build letter index")
 		return

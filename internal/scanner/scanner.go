@@ -724,7 +724,7 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 
 	// Update the media item with matched metadata
 	if err := s.mediaRepo.UpdateMetadata(item.ID, match.Title, match.Year,
-		match.Description, match.Rating, posterPath); err != nil {
+		match.Description, match.Rating, posterPath, match.ContentRating); err != nil {
 		log.Printf("Auto-match: DB update failed for %s: %v", item.ID, err)
 	}
 
@@ -759,6 +759,11 @@ func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, med
 	if err != nil {
 		log.Printf("Auto-match: TMDB details failed for %s: %v", tmdbExternalID, err)
 		return
+	}
+
+	// Update content rating if available (from TMDB release_dates)
+	if details.ContentRating != nil {
+		_ = s.mediaRepo.UpdateContentRating(itemID, *details.ContentRating)
 	}
 
 	// Create/link genre tags
@@ -1175,7 +1180,7 @@ func (s *Scanner) fetchEpisodeMetadata(showID uuid.UUID, tmdbShowID string) {
 				}
 			}
 
-			if err := s.mediaRepo.UpdateMetadata(ep.ID, epTitle, nil, desc, rating, posterPath); err != nil {
+			if err := s.mediaRepo.UpdateMetadata(ep.ID, epTitle, nil, desc, rating, posterPath, nil); err != nil {
 				log.Printf("Auto-match: episode metadata update failed for %s: %v", ep.ID, err)
 			} else {
 				log.Printf("Auto-match episode: S%02dE%02d → %q", season.SeasonNumber, *ep.EpisodeNumber, epTitle)

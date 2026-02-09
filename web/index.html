@@ -120,6 +120,50 @@
         .view-all { color: #8a9bae; font-size: 0.9rem; cursor: pointer; padding: 8px 16px; border-radius: 8px; transition: all 0.3s; }
         .view-all:hover { color: #00D9FF; background: rgba(0,217,255,0.1); }
 
+        /* ── Filter Toolbar ── */
+        .filter-toolbar {
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+            padding: 10px 16px; margin-bottom: 16px; border-radius: 10px;
+            background: rgba(30,36,50,0.85); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .filter-toolbar select {
+            background: rgba(255,255,255,0.07); color: #c5d0dc; border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px; padding: 6px 28px 6px 10px; font-size: 0.82rem; cursor: pointer;
+            appearance: none; -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238a9bae'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: right 8px center;
+        }
+        .filter-toolbar select:hover { border-color: rgba(0,217,255,0.4); }
+        .filter-toolbar select:focus { outline: none; border-color: #00D9FF; }
+        .filter-toolbar .ft-sep {
+            width: 1px; height: 24px; background: rgba(255,255,255,0.1); margin: 0 4px;
+        }
+        .filter-toolbar .ft-label { color: #5a6a7f; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .filter-toolbar .ft-btn {
+            background: rgba(255,255,255,0.07); color: #8a9bae; border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px; padding: 6px 12px; font-size: 0.82rem; cursor: pointer; transition: all 0.2s;
+        }
+        .filter-toolbar .ft-btn:hover { border-color: rgba(0,217,255,0.4); color: #00D9FF; }
+        .filter-toolbar .ft-btn.active { background: rgba(0,217,255,0.15); color: #00D9FF; border-color: rgba(0,217,255,0.4); }
+        .filter-toolbar .ft-reset {
+            background: none; border: none; color: #5a6a7f; font-size: 0.78rem; cursor: pointer; padding: 4px 8px;
+        }
+        .filter-toolbar .ft-reset:hover { color: #ff6b6b; }
+
+        /* ── Collection Cards ── */
+        .collection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 22px; margin-bottom: 40px; }
+        .collection-card {
+            background: rgba(30,36,50,0.7); border-radius: 10px; overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.06); cursor: pointer; transition: transform 0.2s, border-color 0.2s;
+        }
+        .collection-card:hover { transform: translateY(-4px); border-color: rgba(0,217,255,0.3); }
+        .collection-card .cc-poster { aspect-ratio: 2/3; background: rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 3rem; color: #3a4a5f; overflow: hidden; }
+        .collection-card .cc-poster img { width: 100%; height: 100%; object-fit: cover; }
+        .collection-card .cc-info { padding: 10px 12px; }
+        .collection-card .cc-name { color: #e5e5e5; font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .collection-card .cc-meta { color: #5a6a7f; font-size: 0.78rem; margin-top: 2px; }
+
         /* ── Media Grid ── */
         .media-grid-wrapper { display: flex; gap: 0; position: relative; }
         .media-grid-wrapper .media-grid { flex: 1; min-width: 0; }
@@ -1538,17 +1582,30 @@
     }
 
     // ──── Paginated Media Grid with Alpha Jump ────
-    let _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [] };
+    let _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [], filters: {} };
 
     function teardownGrid() {
         if (_gridState.observer) { _gridState.observer.disconnect(); _gridState.observer = null; }
-        _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [] };
+        _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [], filters: {} };
+    }
+
+    // Build query string from current filters
+    function buildFilterQS() {
+        const f = _gridState.filters || {};
+        const params = [];
+        if (f.genre) params.push('genre=' + encodeURIComponent(f.genre));
+        if (f.folder) params.push('folder=' + encodeURIComponent(f.folder));
+        if (f.content_rating) params.push('content_rating=' + encodeURIComponent(f.content_rating));
+        if (f.edition) params.push('edition=' + encodeURIComponent(f.edition));
+        if (f.sort) params.push('sort=' + encodeURIComponent(f.sort));
+        if (f.order) params.push('order=' + encodeURIComponent(f.order));
+        return params.length > 0 ? '&' + params.join('&') : '';
     }
 
     async function loadMoreMedia() {
         if (_gridState.loading || _gridState.done) return;
         _gridState.loading = true;
-        const m = await api('GET', '/libraries/' + _gridState.libraryId + '/media?limit=200&offset=' + _gridState.offset);
+        const m = await api('GET', '/libraries/' + _gridState.libraryId + '/media?limit=200&offset=' + _gridState.offset + buildFilterQS());
         const items = (m.success && m.data && m.data.items) ? m.data.items : [];
         _gridState.total = m.data ? m.data.total : _gridState.total;
 
@@ -1716,19 +1773,26 @@
             return;
         }
 
-        // Fetch letter index for jump bar
-        const idxData = await api('GET', '/libraries/' + libraryId + '/media/index');
-        const letterIndex = (idxData.success && idxData.data) ? idxData.data : [];
         _gridState.libraryId = libraryId;
+
+        // Fetch filter options and letter index in parallel
+        const [filterData, idxData] = await Promise.all([
+            api('GET', '/libraries/' + libraryId + '/filters'),
+            api('GET', '/libraries/' + libraryId + '/media/index' + (buildFilterQS() ? '?' + buildFilterQS().substring(1) : ''))
+        ]);
+        const filterOpts = (filterData.success && filterData.data) ? filterData.data : {};
+        const letterIndex = (idxData.success && idxData.data) ? idxData.data : [];
         _gridState.letterIndex = letterIndex;
 
         const totalCount = letterIndex.reduce((s, e) => s + e.count, 0);
 
-        mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2><span class="tag tag-cyan" style="margin-left:12px;">${MEDIA_LABELS[type]||type}</span><span class="tag" style="margin-left:8px;">${totalCount.toLocaleString()} items</span></div>
-            <div class="media-grid-wrapper">
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2><span class="tag tag-cyan" style="margin-left:12px;">${MEDIA_LABELS[type]||type}</span><span class="tag" id="libItemCount" style="margin-left:8px;">${totalCount.toLocaleString()} items</span></div>
+            ${buildFilterToolbar(filterOpts)}
+            <div class="media-grid-wrapper" id="mediaGridWrapper">
                 <div class="media-grid" id="libGrid"><div id="gridSentinel" class="load-more-sentinel"><div class="spinner"></div></div></div>
                 ${buildAlphaJump(letterIndex)}
-            </div>`;
+            </div>
+            <div id="collectionsArea" style="display:none;"></div>`;
 
         setupScrollObserver();
         loadMoreMedia();
@@ -1736,6 +1800,165 @@
         // Update active letter on scroll
         const container = document.getElementById('mainContent');
         container.addEventListener('scroll', () => { requestAnimationFrame(updateAlphaCount); });
+    }
+
+    // ──── Filter Toolbar ────
+    function buildFilterToolbar(opts) {
+        const genreOpts = (opts.genres || []).map(g => `<option value="${g}">${g}</option>`).join('');
+        const folderOpts = (opts.folders || []).map(f => {
+            const short = f.split('/').filter(Boolean).pop() || f;
+            return `<option value="${f}">${short}</option>`;
+        }).join('');
+        const crOpts = (opts.content_ratings || []).map(c => `<option value="${c}">${c}</option>`).join('');
+        const edOpts = (opts.editions || []).map(e => `<option value="${e}">${e}</option>`).join('');
+
+        const hasAnyFilter = genreOpts || folderOpts || crOpts || edOpts;
+
+        return `<div class="filter-toolbar" id="filterToolbar">
+            ${genreOpts ? `<select id="ftGenre" onchange="applyLibFilter()"><option value="">All Genres</option>${genreOpts}</select>` : ''}
+            ${folderOpts ? `<select id="ftFolder" onchange="applyLibFilter()"><option value="">All Folders</option>${folderOpts}</select>` : ''}
+            ${crOpts ? `<select id="ftRating" onchange="applyLibFilter()"><option value="">All Ratings</option>${crOpts}</select>` : ''}
+            ${edOpts ? `<select id="ftEdition" onchange="applyLibFilter()"><option value="">All Editions</option>${edOpts}</select>` : ''}
+            <div class="ft-sep"></div>
+            <span class="ft-label">Sort</span>
+            <select id="ftSort" onchange="applyLibFilter()">
+                <option value="">Title</option>
+                <option value="year">Year</option>
+                <option value="rt_rating">Rotten Tomatoes</option>
+                <option value="rating">TMDB Rating</option>
+                <option value="audience_score">Audience Score</option>
+            </select>
+            <select id="ftOrder" onchange="applyLibFilter()">
+                <option value="asc">A→Z / Low→High</option>
+                <option value="desc">Z→A / High→Low</option>
+            </select>
+            <div class="ft-sep"></div>
+            <button class="ft-btn" id="ftGridBtn" onclick="showLibraryGrid()" title="Grid view">&#9638; Grid</button>
+            <button class="ft-btn" id="ftCollBtn" onclick="showLibraryCollections()" title="Collections view">&#128218; Collections</button>
+            ${hasAnyFilter ? '<button class="ft-reset" onclick="resetLibFilters()" title="Reset filters">&#10005; Reset</button>' : ''}
+        </div>`;
+    }
+
+    function applyLibFilter() {
+        const f = {};
+        const genre = document.getElementById('ftGenre');
+        const folder = document.getElementById('ftFolder');
+        const rating = document.getElementById('ftRating');
+        const edition = document.getElementById('ftEdition');
+        const sort = document.getElementById('ftSort');
+        const order = document.getElementById('ftOrder');
+        if (genre && genre.value) f.genre = genre.value;
+        if (folder && folder.value) f.folder = folder.value;
+        if (rating && rating.value) f.content_rating = rating.value;
+        if (edition && edition.value) f.edition = edition.value;
+        if (sort && sort.value) f.sort = sort.value;
+        if (order && order.value !== 'asc') f.order = order.value;
+        _gridState.filters = f;
+        reloadLibraryGrid();
+    }
+
+    function resetLibFilters() {
+        const ids = ['ftGenre','ftFolder','ftRating','ftEdition','ftSort','ftOrder'];
+        ids.forEach(id => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
+        _gridState.filters = {};
+        reloadLibraryGrid();
+    }
+
+    async function reloadLibraryGrid() {
+        const libId = _gridState.libraryId;
+        if (!libId) return;
+
+        // Reset grid state but keep libraryId and filters
+        const filters = _gridState.filters;
+        if (_gridState.observer) { _gridState.observer.disconnect(); _gridState.observer = null; }
+        _gridState.offset = 0;
+        _gridState.total = 0;
+        _gridState.loading = false;
+        _gridState.done = false;
+        _gridState.filters = filters;
+
+        // Refresh letter index with filters
+        const qs = buildFilterQS();
+        const idxData = await api('GET', '/libraries/' + libId + '/media/index' + (qs ? '?' + qs.substring(1) : ''));
+        const letterIndex = (idxData.success && idxData.data) ? idxData.data : [];
+        _gridState.letterIndex = letterIndex;
+
+        const totalCount = letterIndex.reduce((s, e) => s + e.count, 0);
+        const countEl = document.getElementById('libItemCount');
+        if (countEl) countEl.textContent = totalCount.toLocaleString() + ' items';
+
+        // Show grid, hide collections
+        const wrapper = document.getElementById('mediaGridWrapper');
+        const collArea = document.getElementById('collectionsArea');
+        if (wrapper) wrapper.style.display = 'flex';
+        if (collArea) collArea.style.display = 'none';
+
+        // Rebuild grid
+        const grid = document.getElementById('libGrid');
+        if (grid) {
+            grid.innerHTML = '<div id="gridSentinel" class="load-more-sentinel"><div class="spinner"></div></div>';
+        }
+
+        // Rebuild alpha jump
+        const existingJump = document.querySelector('.alpha-jump');
+        if (existingJump) existingJump.outerHTML = buildAlphaJump(letterIndex);
+
+        // Update toggle buttons
+        const gridBtn = document.getElementById('ftGridBtn');
+        const collBtn = document.getElementById('ftCollBtn');
+        if (gridBtn) gridBtn.classList.add('active');
+        if (collBtn) collBtn.classList.remove('active');
+
+        setupScrollObserver();
+        loadMoreMedia();
+    }
+
+    function showLibraryGrid() {
+        const wrapper = document.getElementById('mediaGridWrapper');
+        const collArea = document.getElementById('collectionsArea');
+        if (wrapper) wrapper.style.display = 'flex';
+        if (collArea) collArea.style.display = 'none';
+        const gridBtn = document.getElementById('ftGridBtn');
+        const collBtn = document.getElementById('ftCollBtn');
+        if (gridBtn) gridBtn.classList.add('active');
+        if (collBtn) collBtn.classList.remove('active');
+    }
+
+    async function showLibraryCollections() {
+        const libId = _gridState.libraryId;
+        if (!libId) return;
+
+        const wrapper = document.getElementById('mediaGridWrapper');
+        const collArea = document.getElementById('collectionsArea');
+        if (wrapper) wrapper.style.display = 'none';
+        if (collArea) collArea.style.display = 'block';
+
+        const gridBtn = document.getElementById('ftGridBtn');
+        const collBtn = document.getElementById('ftCollBtn');
+        if (gridBtn) gridBtn.classList.remove('active');
+        if (collBtn) collBtn.classList.add('active');
+
+        collArea.innerHTML = '<div class="spinner"></div> Loading collections...';
+        const data = await api('GET', '/collections?library_id=' + libId);
+        const collections = (data.success && data.data) ? data.data : [];
+
+        if (collections.length === 0) {
+            collArea.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128218;</div><div class="empty-state-title">No collections</div><p>Create a collection for this library to see it here</p></div>';
+            return;
+        }
+
+        collArea.innerHTML = '<div class="collection-grid">' + collections.map(c => {
+            const poster = c.poster_path
+                ? `<img src="${c.poster_path}" alt="">`
+                : '&#128218;';
+            return `<div class="collection-card" onclick="navigate('collection','${c.id}')">
+                <div class="cc-poster">${poster}</div>
+                <div class="cc-info">
+                    <div class="cc-name">${c.name}</div>
+                    <div class="cc-meta">${c.item_count || 0} item${(c.item_count||0) !== 1 ? 's' : ''}</div>
+                </div>
+            </div>`;
+        }).join('') + '</div>';
     }
 
     function renderShowCard(show) {

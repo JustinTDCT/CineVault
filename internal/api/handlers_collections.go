@@ -10,7 +10,20 @@ import (
 
 func (s *Server) handleListCollections(w http.ResponseWriter, r *http.Request) {
 	userID := s.getUserID(r)
-	collections, err := s.collectionRepo.ListByUser(userID)
+
+	// Optional library_id filter
+	var collections []*models.Collection
+	var err error
+	if libIDStr := r.URL.Query().Get("library_id"); libIDStr != "" {
+		libID, parseErr := uuid.Parse(libIDStr)
+		if parseErr != nil {
+			s.respondError(w, http.StatusBadRequest, "invalid library_id")
+			return
+		}
+		collections, err = s.collectionRepo.ListByUserAndLibrary(userID, libID)
+	} else {
+		collections, err = s.collectionRepo.ListByUser(userID)
+	}
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, "failed to list collections")
 		return

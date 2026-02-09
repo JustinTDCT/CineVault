@@ -86,6 +86,34 @@ func (r *CollectionRepository) ListByUser(userID uuid.UUID) ([]*models.Collectio
 	return collections, rows.Err()
 }
 
+func (r *CollectionRepository) ListByUserAndLibrary(userID, libraryID uuid.UUID) ([]*models.Collection, error) {
+	query := `
+		SELECT c.id, c.user_id, c.library_id, c.name, c.description, c.poster_path,
+		       c.collection_type, c.visibility, c.item_sort_mode, c.sort_position,
+		       c.created_at, c.updated_at,
+		       (SELECT COUNT(*) FROM collection_items ci WHERE ci.collection_id = c.id) as item_count
+		FROM collections c
+		WHERE c.user_id = $1 AND c.library_id = $2
+		ORDER BY c.sort_position, c.name`
+	rows, err := r.db.Query(query, userID, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var collections []*models.Collection
+	for rows.Next() {
+		c := &models.Collection{}
+		if err := rows.Scan(&c.ID, &c.UserID, &c.LibraryID, &c.Name, &c.Description,
+			&c.PosterPath, &c.CollectionType, &c.Visibility, &c.ItemSortMode,
+			&c.SortPosition, &c.CreatedAt, &c.UpdatedAt, &c.ItemCount); err != nil {
+			return nil, err
+		}
+		collections = append(collections, c)
+	}
+	return collections, rows.Err()
+}
+
 func (r *CollectionRepository) Update(c *models.Collection) error {
 	query := `
 		UPDATE collections

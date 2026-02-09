@@ -427,6 +427,23 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			continue
 		}
 
+		// Enrich with TMDB details (content_rating, full genres, IMDB ID)
+		if best.Source == "tmdb" {
+			for _, sc := range h.scrapers {
+				if tmdb, ok := sc.(*metadata.TMDBScraper); ok {
+					if details, err := tmdb.GetDetails(best.ExternalID); err == nil {
+						if details.ContentRating != nil {
+							best.ContentRating = details.ContentRating
+						}
+						if details.IMDBId != "" {
+							best.IMDBId = details.IMDBId
+						}
+					}
+					break
+				}
+			}
+		}
+
 		// Download poster if available
 		var posterPath *string
 		if best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
@@ -439,7 +456,7 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		}
 
 		// Apply metadata
-		if err := h.mediaRepo.UpdateMetadata(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath); err != nil {
+		if err := h.mediaRepo.UpdateMetadata(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath, best.ContentRating); err != nil {
 			log.Printf("Metadata: update failed for %s: %v", item.FileName, err)
 			continue
 		}

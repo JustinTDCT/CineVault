@@ -3,10 +3,21 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
 )
+
+// MediaFilter holds optional filter and sort parameters for media queries.
+type MediaFilter struct {
+	Genre         string // genre tag name
+	Folder        string // folder path prefix
+	ContentRating string // e.g. "PG-13"
+	Edition       string // e.g. "Director's Cut"
+	Sort          string // "title" (default), "year", "rt_rating", "rating", "audience_score"
+	Order         string // "asc" (default), "desc"
+}
 
 type MediaRepository struct {
 	db *sql.DB
@@ -27,7 +38,16 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	author_id, book_id, chapter_number,
 	image_gallery_id, sister_group_id,
 	imdb_rating, rt_rating, audience_score,
-	edition_type, sort_position, metadata_locked, duplicate_status, added_at, updated_at`
+	edition_type, content_rating, sort_position, metadata_locked, duplicate_status, added_at, updated_at`
+
+// prefixedMediaColumns returns mediaColumns with each column prefixed by the given alias (e.g. "m.").
+func prefixedMediaColumns(prefix string) string {
+	cols := strings.Split(mediaColumns, ",")
+	for i, c := range cols {
+		cols[i] = prefix + strings.TrimSpace(c)
+	}
+	return strings.Join(cols, ", ")
+}
 
 func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.MediaItem, error) {
 	item := &models.MediaItem{}
@@ -44,7 +64,7 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.AuthorID, &item.BookID, &item.ChapterNumber,
 		&item.ImageGalleryID, &item.SisterGroupID,
 		&item.IMDBRating, &item.RTRating, &item.AudienceScore,
-		&item.EditionType, &item.SortPosition, &item.MetadataLocked, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
+		&item.EditionType, &item.ContentRating, &item.SortPosition, &item.MetadataLocked, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
 }
@@ -107,13 +127,94 @@ func (r *MediaRepository) GetByFilePath(filePath string) (*models.MediaItem, err
 	return item, err
 }
 
-func (r *MediaRepository) ListByLibrary(libraryID uuid.UUID, limit, offset int) ([]*models.MediaItem, error) {
-	query := `SELECT ` + mediaColumns + `
-		FROM media_items WHERE library_id = $1
-		ORDER BY COALESCE(sort_title, title)
-		LIMIT $2 OFFSET $3`
+// buildFilterClauses builds JOIN, WHERE, and ORDER BY fragments from a MediaFilter.
+// paramStart is the next parameter index (e.g. 2 if $1 is libraryID).
+// Returns (joinSQL, whereSQL, orderSQL, args).
+func buildFilterClauses(f *MediaFilter, paramStart int) (string, string, string, []interface{}) {
+	var joins []string
+	var wheres []string
+	var args []interface{}
+	p := paramStart
 
-	rows, err := r.db.Query(query, libraryID, limit, offset)
+	if f != nil {
+		if f.Genre != "" {
+			joins = append(joins, fmt.Sprintf(
+				`JOIN media_tags mt ON mt.media_item_id = m.id JOIN tags t ON t.id = mt.tag_id AND t.category = 'genre' AND t.name = $%d`, p))
+			args = append(args, f.Genre)
+			p++
+		}
+		if f.Folder != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.file_path LIKE $%d`, p))
+			args = append(args, f.Folder+"%")
+			p++
+		}
+		if f.ContentRating != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.content_rating = $%d`, p))
+			args = append(args, f.ContentRating)
+			p++
+		}
+		if f.Edition != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.edition_type = $%d`, p))
+			args = append(args, f.Edition)
+			p++
+		}
+	}
+
+	joinSQL := ""
+	if len(joins) > 0 {
+		joinSQL = " " + strings.Join(joins, " ")
+	}
+
+	whereSQL := ""
+	if len(wheres) > 0 {
+		whereSQL = " AND " + strings.Join(wheres, " AND ")
+	}
+
+	// Build ORDER BY
+	orderCol := "COALESCE(m.sort_title, m.title)"
+	if f != nil {
+		switch f.Sort {
+		case "year":
+			orderCol = "m.year"
+		case "rt_rating":
+			orderCol = "m.rt_rating"
+		case "rating":
+			orderCol = "m.rating"
+		case "audience_score":
+			orderCol = "m.audience_score"
+		}
+	}
+	dir := "ASC"
+	if f != nil && strings.EqualFold(f.Order, "desc") {
+		dir = "DESC"
+	}
+	orderSQL := fmt.Sprintf(" ORDER BY %s %s NULLS LAST", orderCol, dir)
+
+	return joinSQL, whereSQL, orderSQL, args
+}
+
+func (r *MediaRepository) ListByLibrary(libraryID uuid.UUID, limit, offset int) ([]*models.MediaItem, error) {
+	return r.ListByLibraryFiltered(libraryID, limit, offset, nil)
+}
+
+func (r *MediaRepository) ListByLibraryFiltered(libraryID uuid.UUID, limit, offset int, f *MediaFilter) ([]*models.MediaItem, error) {
+	joinSQL, whereSQL, orderSQL, filterArgs := buildFilterClauses(f, 2)
+
+	// Build the column list with m. prefix for the main query
+	query := `SELECT ` + prefixedMediaColumns("m.") + `
+		FROM media_items m` + joinSQL + `
+		WHERE m.library_id = $1` + whereSQL + orderSQL
+
+	// Add LIMIT/OFFSET
+	pLimit := len(filterArgs) + 2
+	pOffset := pLimit + 1
+	query += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, pLimit, pOffset)
+
+	allArgs := []interface{}{libraryID}
+	allArgs = append(allArgs, filterArgs...)
+	allArgs = append(allArgs, limit, offset)
+
+	rows, err := r.db.Query(query, allArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -198,24 +299,43 @@ func (r *MediaRepository) SearchInLibraries(query string, libraryIDs []uuid.UUID
 }
 
 func (r *MediaRepository) CountByLibrary(libraryID uuid.UUID) (int, error) {
+	return r.CountByLibraryFiltered(libraryID, nil)
+}
+
+func (r *MediaRepository) CountByLibraryFiltered(libraryID uuid.UUID, f *MediaFilter) (int, error) {
+	joinSQL, whereSQL, _, filterArgs := buildFilterClauses(f, 2)
+	query := `SELECT COUNT(*) FROM media_items m` + joinSQL + ` WHERE m.library_id = $1` + whereSQL
+
+	allArgs := []interface{}{libraryID}
+	allArgs = append(allArgs, filterArgs...)
+
 	var count int
-	err := r.db.QueryRow(`SELECT COUNT(*) FROM media_items WHERE library_id = $1`, libraryID).Scan(&count)
+	err := r.db.QueryRow(query, allArgs...).Scan(&count)
 	return count, err
 }
 
 // LetterIndex returns the cumulative offset for each starting letter (sorted alphabetically).
 // Result: [{"letter":"#","count":5,"offset":0},{"letter":"A","count":120,"offset":5}, ...]
 func (r *MediaRepository) LetterIndex(libraryID uuid.UUID) ([]map[string]interface{}, error) {
+	return r.LetterIndexFiltered(libraryID, nil)
+}
+
+func (r *MediaRepository) LetterIndexFiltered(libraryID uuid.UUID, f *MediaFilter) ([]map[string]interface{}, error) {
+	joinSQL, whereSQL, _, filterArgs := buildFilterClauses(f, 2)
 	query := `
 		SELECT
-			CASE WHEN UPPER(LEFT(COALESCE(sort_title, title), 1)) BETWEEN 'A' AND 'Z'
-			     THEN UPPER(LEFT(COALESCE(sort_title, title), 1))
+			CASE WHEN UPPER(LEFT(COALESCE(m.sort_title, m.title), 1)) BETWEEN 'A' AND 'Z'
+			     THEN UPPER(LEFT(COALESCE(m.sort_title, m.title), 1))
 			     ELSE '#' END AS letter,
 			COUNT(*) AS cnt
-		FROM media_items WHERE library_id = $1
+		FROM media_items m` + joinSQL + `
+		WHERE m.library_id = $1` + whereSQL + `
 		GROUP BY letter ORDER BY letter`
 
-	rows, err := r.db.Query(query, libraryID)
+	allArgs := []interface{}{libraryID}
+	allArgs = append(allArgs, filterArgs...)
+
+	rows, err := r.db.Query(query, allArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -251,10 +371,10 @@ func (r *MediaRepository) Delete(id uuid.UUID) error {
 	return nil
 }
 
-func (r *MediaRepository) UpdateMetadata(id uuid.UUID, title string, year *int, description *string, rating *float64, posterPath *string) error {
+func (r *MediaRepository) UpdateMetadata(id uuid.UUID, title string, year *int, description *string, rating *float64, posterPath *string, contentRating *string) error {
 	query := `UPDATE media_items SET title = $1, year = $2, description = $3, rating = $4,
-		poster_path = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6`
-	_, err := r.db.Exec(query, title, year, description, rating, posterPath, id)
+		poster_path = $5, content_rating = $6, updated_at = CURRENT_TIMESTAMP WHERE id = $7`
+	_, err := r.db.Exec(query, title, year, description, rating, posterPath, contentRating, id)
 	return err
 }
 
@@ -355,6 +475,12 @@ func (r *MediaRepository) UpdatePhash(id uuid.UUID, phash string) error {
 // UpdatePosterPath sets the poster image path for a media item.
 func (r *MediaRepository) UpdatePosterPath(id uuid.UUID, posterPath string) error {
 	_, err := r.db.Exec(`UPDATE media_items SET poster_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, posterPath, id)
+	return err
+}
+
+// UpdateContentRating sets the content rating (e.g. PG-13, R) for a media item.
+func (r *MediaRepository) UpdateContentRating(id uuid.UUID, contentRating string) error {
+	_, err := r.db.Exec(`UPDATE media_items SET content_rating = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, contentRating, id)
 	return err
 }
 
@@ -487,4 +613,88 @@ func (r *MediaRepository) CountUnreviewedDuplicates() (int, error) {
 	var count int
 	err := r.db.QueryRow(`SELECT COUNT(*) FROM media_items WHERE duplicate_status IN ('exact','potential')`).Scan(&count)
 	return count, err
+}
+
+// FilterOptions holds the distinct filter values available for a library.
+type FilterOptions struct {
+	Genres         []string `json:"genres"`
+	Folders        []string `json:"folders"`
+	ContentRatings []string `json:"content_ratings"`
+	Editions       []string `json:"editions"`
+}
+
+// GetLibraryFilterOptions returns the distinct values available for filtering a library.
+func (r *MediaRepository) GetLibraryFilterOptions(libraryID uuid.UUID) (*FilterOptions, error) {
+	opts := &FilterOptions{}
+
+	// Genres from tags via media_tags
+	genreRows, err := r.db.Query(`
+		SELECT DISTINCT t.name FROM tags t
+		JOIN media_tags mt ON mt.tag_id = t.id
+		JOIN media_items m ON m.id = mt.media_item_id
+		WHERE m.library_id = $1 AND t.category = 'genre'
+		ORDER BY t.name`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer genreRows.Close()
+	for genreRows.Next() {
+		var name string
+		if err := genreRows.Scan(&name); err != nil {
+			return nil, err
+		}
+		opts.Genres = append(opts.Genres, name)
+	}
+
+	// Folders from library_folders
+	folderRows, err := r.db.Query(`
+		SELECT folder_path FROM library_folders
+		WHERE library_id = $1 ORDER BY sort_position`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer folderRows.Close()
+	for folderRows.Next() {
+		var path string
+		if err := folderRows.Scan(&path); err != nil {
+			return nil, err
+		}
+		opts.Folders = append(opts.Folders, path)
+	}
+
+	// Content ratings
+	crRows, err := r.db.Query(`
+		SELECT DISTINCT content_rating FROM media_items
+		WHERE library_id = $1 AND content_rating IS NOT NULL AND content_rating != ''
+		ORDER BY content_rating`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer crRows.Close()
+	for crRows.Next() {
+		var cr string
+		if err := crRows.Scan(&cr); err != nil {
+			return nil, err
+		}
+		opts.ContentRatings = append(opts.ContentRatings, cr)
+	}
+
+	// Edition types
+	edRows, err := r.db.Query(`
+		SELECT DISTINCT edition_type FROM media_items
+		WHERE library_id = $1 AND edition_type != ''
+		ORDER BY edition_type`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer edRows.Close()
+	for edRows.Next() {
+		var ed string
+		if err := edRows.Scan(&ed); err != nil {
+			return nil, err
+		}
+		opts.Editions = append(opts.Editions, ed)
+	}
+
+	return opts, nil
 }

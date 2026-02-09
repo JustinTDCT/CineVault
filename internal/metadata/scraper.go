@@ -184,12 +184,40 @@ func titleSimilarity(query, result string) float64 {
 	return score
 }
 
+// ──────── TMDB release dates / content rating helpers ────────
+
+type tmdbReleaseDateCountry struct {
+	ISO31661     string             `json:"iso_3166_1"`
+	ReleaseDates []tmdbReleaseEntry `json:"release_dates"`
+}
+
+type tmdbReleaseEntry struct {
+	Certification string `json:"certification"`
+	Type          int    `json:"type"`
+}
+
+// extractUSCertification returns the US MPAA certification (e.g. "PG-13", "R")
+// from the TMDB release_dates response. Returns nil if not found.
+func extractUSCertification(countries []tmdbReleaseDateCountry) *string {
+	for _, c := range countries {
+		if c.ISO31661 == "US" {
+			for _, rd := range c.ReleaseDates {
+				if rd.Certification != "" {
+					cert := rd.Certification
+					return &cert
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, error) {
 	if s.apiKey == "" {
 		return nil, fmt.Errorf("TMDB API key not configured")
 	}
 
-	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s", externalID, s.apiKey)
+	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&append_to_response=release_dates", externalID, s.apiKey)
 	resp, err := s.client.Get(reqURL)
 	if err != nil {
 		return nil, err
@@ -208,6 +236,9 @@ func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, erro
 			ID   int    `json:"id"`
 			Name string `json:"name"`
 		} `json:"genres"`
+		ReleaseDates struct {
+			Results []tmdbReleaseDateCountry `json:"results"`
+		} `json:"release_dates"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, err
@@ -232,17 +263,20 @@ func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, erro
 		genres = append(genres, g.Name)
 	}
 
+	contentRating := extractUSCertification(r.ReleaseDates.Results)
+
 	return &models.MetadataMatch{
-		Source:      "tmdb",
-		ExternalID:  fmt.Sprintf("%d", r.ID),
-		Title:       r.Title,
-		Year:        year,
-		Description: &overview,
-		PosterURL:   posterURL,
-		Rating:      &rating,
-		Genres:      genres,
-		IMDBId:      r.IMDBId,
-		Confidence:  1.0,
+		Source:        "tmdb",
+		ExternalID:    fmt.Sprintf("%d", r.ID),
+		Title:         r.Title,
+		Year:          year,
+		Description:   &overview,
+		PosterURL:     posterURL,
+		Rating:        &rating,
+		Genres:        genres,
+		IMDBId:        r.IMDBId,
+		ContentRating: contentRating,
+		Confidence:    1.0,
 	}, nil
 }
 
@@ -259,7 +293,7 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 		return nil, fmt.Errorf("TMDB API key not configured")
 	}
 
-	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&append_to_response=credits",
+	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&append_to_response=credits,release_dates",
 		externalID, s.apiKey)
 	resp, err := s.client.Get(reqURL)
 	if err != nil {
@@ -283,7 +317,10 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 			ID   int    `json:"id"`
 			Name string `json:"name"`
 		} `json:"genres"`
-		Credits TMDBCredits `json:"credits"`
+		Credits      TMDBCredits `json:"credits"`
+		ReleaseDates struct {
+			Results []tmdbReleaseDateCountry `json:"results"`
+		} `json:"release_dates"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, err
@@ -308,18 +345,21 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 		genres = append(genres, g.Name)
 	}
 
+	contentRating := extractUSCertification(r.ReleaseDates.Results)
+
 	return &DetailsWithCredits{
 		Details: &models.MetadataMatch{
-			Source:      "tmdb",
-			ExternalID:  fmt.Sprintf("%d", r.ID),
-			Title:       r.Title,
-			Year:        year,
-			Description: &overview,
-			PosterURL:   posterURL,
-			Rating:      &rating,
-			Genres:      genres,
-			IMDBId:      r.IMDBId,
-			Confidence:  1.0,
+			Source:        "tmdb",
+			ExternalID:    fmt.Sprintf("%d", r.ID),
+			Title:         r.Title,
+			Year:          year,
+			Description:   &overview,
+			PosterURL:     posterURL,
+			Rating:        &rating,
+			Genres:        genres,
+			IMDBId:        r.IMDBId,
+			ContentRating: contentRating,
+			Confidence:    1.0,
 		},
 		Credits: &r.Credits,
 	}, nil

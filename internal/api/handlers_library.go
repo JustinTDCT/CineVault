@@ -356,3 +356,20 @@ func (s *Server) handlePhashLibrary(w http.ResponseWriter, r *http.Request) {
 		"message": "phash job enqueued",
 	}})
 }
+
+// handleLibraryFilters returns available filter options for a library.
+func (s *Server) handleLibraryFilters(w http.ResponseWriter, r *http.Request) {
+	libraryID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid library ID")
+		return
+	}
+
+	opts, err := s.mediaRepo.GetLibraryFilterOptions(libraryID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to get filter options")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: opts})
+}

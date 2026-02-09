@@ -151,6 +151,7 @@ type MediaItem struct {
 	RTRating         *int       `json:"rt_rating,omitempty" db:"rt_rating"`
 	AudienceScore    *int       `json:"audience_score,omitempty" db:"audience_score"`
 	EditionType      string     `json:"edition_type" db:"edition_type"`
+	ContentRating    *string    `json:"content_rating,omitempty" db:"content_rating"`
 	MetadataLocked   bool       `json:"metadata_locked" db:"metadata_locked"`
 	DuplicateStatus  string     `json:"duplicate_status" db:"duplicate_status"`
 	AddedAt          time.Time  `json:"added_at" db:"added_at"`
@@ -579,16 +580,17 @@ type JobRecord struct {
 // ──────────────────── Metadata Match ────────────────────
 
 type MetadataMatch struct {
-	Source      string   `json:"source"`
-	ExternalID  string   `json:"external_id"`
-	Title       string   `json:"title"`
-	Year        *int     `json:"year,omitempty"`
-	Description *string  `json:"description,omitempty"`
-	PosterURL   *string  `json:"poster_url,omitempty"`
-	Rating      *float64 `json:"rating,omitempty"`
-	Genres      []string `json:"genres,omitempty"`
-	IMDBId      string   `json:"imdb_id,omitempty"`
-	Confidence  float64  `json:"confidence"`
+	Source        string   `json:"source"`
+	ExternalID    string   `json:"external_id"`
+	Title         string   `json:"title"`
+	Year          *int     `json:"year,omitempty"`
+	Description   *string  `json:"description,omitempty"`
+	PosterURL     *string  `json:"poster_url,omitempty"`
+	Rating        *float64 `json:"rating,omitempty"`
+	Genres        []string `json:"genres,omitempty"`
+	IMDBId        string   `json:"imdb_id,omitempty"`
+	ContentRating *string  `json:"content_rating,omitempty"`
+	Confidence    float64  `json:"confidence"`
 }
 
 // ──────────────────── Duplicate Pair ────────────────────
