@@ -806,8 +806,13 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		s.enrichWithDetails(item.ID, match.ExternalID, item.MediaType)
 	}
 
-	// Contribute to cache server in background
-	if cacheClient != nil && match.Source == "tmdb" {
+	// For MusicBrainz/OpenLibrary, enrich with full details
+	if match.Source == "musicbrainz" || match.Source == "openlibrary" {
+		s.enrichNonTMDBDetails(item.ID, match)
+	}
+
+	// Contribute to cache server in background (all sources)
+	if cacheClient != nil {
 		go cacheClient.Contribute(match)
 	}
 }
@@ -870,6 +875,48 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 			} else {
 				s.enrichWithCredits(item.ID, credits)
 			}
+		}
+	}
+}
+
+// enrichNonTMDBDetails fetches full details from MusicBrainz or OpenLibrary
+// and applies genres to the media item.
+func (s *Scanner) enrichNonTMDBDetails(itemID uuid.UUID, match *models.MetadataMatch) {
+	var scraper metadata.Scraper
+	for _, sc := range s.scrapers {
+		if sc.Name() == match.Source {
+			scraper = sc
+			break
+		}
+	}
+	if scraper == nil {
+		return
+	}
+
+	details, err := scraper.GetDetails(match.ExternalID)
+	if err != nil {
+		log.Printf("Auto-match: %s details failed for %s: %v", match.Source, match.ExternalID, err)
+		return
+	}
+
+	// Apply genres from detailed metadata
+	if s.tagRepo != nil && len(details.Genres) > 0 {
+		s.linkGenreTags(itemID, details.Genres)
+	}
+
+	// Update description if we got a better one from details
+	if details.Description != nil && *details.Description != "" {
+		_ = s.mediaRepo.UpdateMetadata(itemID, details.Title, details.Year,
+			details.Description, details.Rating, nil, details.ContentRating)
+	}
+
+	// Update poster if details have one and we don't yet
+	if details.PosterURL != nil && s.posterDir != "" {
+		filename := itemID.String() + ".jpg"
+		_, dlErr := metadata.DownloadPoster(*details.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+		if dlErr == nil {
+			webPath := "/previews/posters/" + filename
+			_ = s.mediaRepo.UpdatePosterPath(itemID, webPath)
 		}
 	}
 }

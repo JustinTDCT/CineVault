@@ -1,6 +1,6 @@
 {
-  "version": "0.25.0",
+  "version": "0.26.0",
   "phase": 3,
   "released": "2026-02-09",
-  "notes": "ThePornDB integration for adult movie metadata; PornDB searched first, TMDB as fallback"
+  "notes": "Full metadata flow: TPDB+TMDB+OMDB for adult, TMDB+OMDB for movies/TV, MusicBrainz for music, OpenLibrary for audiobooks; cache-first for all types; poster deduplication"
 }

@@ -99,13 +99,26 @@ type CacheLookupResult struct {
 
 // ── Lookup ──
 
+// mediaTypeToCacheType maps CineVault media types to cache server media types.
+func mediaTypeToCacheType(mediaType models.MediaType) string {
+	switch mediaType {
+	case models.MediaTypeTVShows:
+		return "tv"
+	case models.MediaTypeMusic:
+		return "music"
+	case models.MediaTypeMusicVideos:
+		return "music_video"
+	case models.MediaTypeAudiobooks:
+		return "audiobook"
+	default:
+		return "movie"
+	}
+}
+
 // Lookup queries the cache server for metadata. Returns nil if the cache
 // server is unreachable or returns a miss.
 func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType) *CacheLookupResult {
-	cacheType := "movie"
-	if mediaType == models.MediaTypeTVShows {
-		cacheType = "tv"
-	}
+	cacheType := mediaTypeToCacheType(mediaType)
 
 	reqBody := cacheLookupRequest{
 		Title:        title,
@@ -157,9 +170,15 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 		Source:     lookupResp.Source,
 	}
 
+	// Determine the metadata source from the cache response
+	metadataSource := "tmdb"
+	if lookupResp.Source == "porndb" || lookupResp.Source == "musicbrainz" || lookupResp.Source == "openlibrary" {
+		metadataSource = lookupResp.Source
+	}
+
 	// Convert cache entry to MetadataMatch
 	match := &models.MetadataMatch{
-		Source:     "tmdb",
+		Source:     metadataSource,
 		ExternalID: fmt.Sprintf("%d", entry.TMDBID),
 		Title:      entry.Title,
 		Year:       entry.Year,
@@ -204,15 +223,24 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 // ── Contribute ──
 
 // Contribute pushes a locally-fetched metadata result back to the cache server
-// so other instances can benefit.
+// so other instances can benefit. Supports TMDB, MusicBrainz, and OpenLibrary sources.
 func (c *CacheClient) Contribute(match *models.MetadataMatch) {
-	if match == nil || match.Source != "tmdb" || match.ExternalID == "" {
+	if match == nil || match.ExternalID == "" {
+		return
+	}
+
+	// Only contribute sources the cache server understands
+	switch match.Source {
+	case "tmdb", "musicbrainz", "openlibrary":
+		// OK
+	default:
 		return
 	}
 
 	tmdbID, err := strconv.Atoi(match.ExternalID)
 	if err != nil {
-		return
+		// For non-numeric IDs (MusicBrainz UUIDs, OpenLibrary keys), use 0
+		tmdbID = 0
 	}
 
 	var genresJSON *string
@@ -222,9 +250,18 @@ func (c *CacheClient) Contribute(match *models.MetadataMatch) {
 		genresJSON = &s
 	}
 
+	// Map source to cache server media type
+	mediaType := "movie"
+	switch match.Source {
+	case "musicbrainz":
+		mediaType = "music"
+	case "openlibrary":
+		mediaType = "audiobook"
+	}
+
 	req := cacheContributeRequest{
 		TMDBID:        tmdbID,
-		MediaType:     "movie", // default
+		MediaType:     mediaType,
 		Title:         match.Title,
 		Year:          match.Year,
 		Description:   match.Description,

@@ -620,11 +620,17 @@ func NewMusicBrainzScraper() *MusicBrainzScraper {
 func (s *MusicBrainzScraper) Name() string { return "musicbrainz" }
 
 func (s *MusicBrainzScraper) Search(query string, mediaType models.MediaType, year *int) ([]*models.MetadataMatch, error) {
-	reqURL := fmt.Sprintf("https://musicbrainz.org/ws/2/recording/?query=%s&fmt=json&limit=10",
-		url.QueryEscape(query))
+	// For music, search releases (albums); for music videos, search recordings
+	endpoint := "release"
+	if mediaType == models.MediaTypeMusicVideos {
+		endpoint = "recording"
+	}
+
+	reqURL := fmt.Sprintf("https://musicbrainz.org/ws/2/%s/?query=%s&fmt=json&limit=10",
+		endpoint, url.QueryEscape(query))
 
 	req, _ := http.NewRequest("GET", reqURL, nil)
-	req.Header.Set("User-Agent", "CineVault/0.3.0 (https://github.com/JustinTDCT/CineVault)")
+	req.Header.Set("User-Agent", "CineVault/1.0 (https://github.com/JustinTDCT/CineVault)")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -632,34 +638,356 @@ func (s *MusicBrainzScraper) Search(query string, mediaType models.MediaType, ye
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == 503 {
+		return nil, fmt.Errorf("MusicBrainz rate limited")
+	}
+
+	if endpoint == "recording" {
+		var result struct {
+			Recordings []struct {
+				ID             string `json:"id"`
+				Title          string `json:"title"`
+				Score          int    `json:"score"`
+				Length         int    `json:"length"`
+				FirstReleaseDate string `json:"first-release-date"`
+				ArtistCredit   []struct {
+					Name   string `json:"name"`
+					Artist struct {
+						Name string `json:"name"`
+					} `json:"artist"`
+				} `json:"artist-credit"`
+				Releases []struct {
+					ID    string `json:"id"`
+					Title string `json:"title"`
+					Date  string `json:"date"`
+				} `json:"releases"`
+			} `json:"recordings"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return nil, err
+		}
+
+		var matches []*models.MetadataMatch
+		for _, r := range result.Recordings {
+			// Extract year
+			var year *int
+			dateStr := r.FirstReleaseDate
+			if dateStr != "" && len(dateStr) >= 4 {
+				y := 0
+				fmt.Sscanf(dateStr[:4], "%d", &y)
+				if y > 0 {
+					year = &y
+				}
+			}
+			// Build description with artist names
+			var desc *string
+			var artists []string
+			for _, ac := range r.ArtistCredit {
+				name := ac.Name
+				if ac.Artist.Name != "" {
+					name = ac.Artist.Name
+				}
+				artists = append(artists, name)
+			}
+			if len(artists) > 0 {
+				d := "Recording by " + strings.Join(artists, ", ")
+				desc = &d
+			}
+
+			matches = append(matches, &models.MetadataMatch{
+				Source:      "musicbrainz",
+				ExternalID:  r.ID,
+				Title:       r.Title,
+				Year:        year,
+				Description: desc,
+				Confidence:  float64(r.Score) / 100.0,
+			})
+		}
+		return matches, nil
+	}
+
+	// Release search
 	var result struct {
-		Recordings []struct {
-			ID    string `json:"id"`
-			Title string `json:"title"`
-			Score int    `json:"score"`
-		} `json:"recordings"`
+		Releases []struct {
+			ID           string `json:"id"`
+			Title        string `json:"title"`
+			Score        int    `json:"score"`
+			Date         string `json:"date"`
+			Country      string `json:"country"`
+			ArtistCredit []struct {
+				Name   string `json:"name"`
+				Artist struct {
+					Name string `json:"name"`
+				} `json:"artist"`
+			} `json:"artist-credit"`
+			ReleaseGroup struct {
+				PrimaryType string `json:"primary-type"`
+			} `json:"release-group"`
+			CoverArtArchive struct {
+				Front bool `json:"front"`
+			} `json:"cover-art-archive"`
+		} `json:"releases"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
 	}
 
 	var matches []*models.MetadataMatch
-	for _, r := range result.Recordings {
+	for _, r := range result.Releases {
+		var year *int
+		if r.Date != "" && len(r.Date) >= 4 {
+			y := 0
+			fmt.Sscanf(r.Date[:4], "%d", &y)
+			if y > 0 {
+				year = &y
+			}
+		}
+
+		var desc *string
+		var artists []string
+		for _, ac := range r.ArtistCredit {
+			name := ac.Name
+			if ac.Artist.Name != "" {
+				name = ac.Artist.Name
+			}
+			artists = append(artists, name)
+		}
+		if len(artists) > 0 {
+			releaseType := "Release"
+			if r.ReleaseGroup.PrimaryType != "" {
+				releaseType = r.ReleaseGroup.PrimaryType
+			}
+			d := releaseType + " by " + strings.Join(artists, ", ")
+			desc = &d
+		}
+
+		// Cover art URL (if available)
+		var posterURL *string
+		if r.CoverArtArchive.Front {
+			p := fmt.Sprintf("https://coverartarchive.org/release/%s/front-500", r.ID)
+			posterURL = &p
+		}
+
 		matches = append(matches, &models.MetadataMatch{
-			Source:     "musicbrainz",
-			ExternalID: r.ID,
-			Title:      r.Title,
-			Confidence: float64(r.Score) / 100.0,
+			Source:      "musicbrainz",
+			ExternalID:  r.ID,
+			Title:       r.Title,
+			Year:        year,
+			Description: desc,
+			PosterURL:   posterURL,
+			Confidence:  float64(r.Score) / 100.0,
 		})
 	}
 	return matches, nil
 }
 
+// GetDetails fetches detailed metadata for a MusicBrainz recording or release.
 func (s *MusicBrainzScraper) GetDetails(externalID string) (*models.MetadataMatch, error) {
+	// Try as a release first (more common for music libraries), then recording
+	match, err := s.getReleaseDetails(externalID)
+	if err != nil || match == nil {
+		match, err = s.getRecordingDetails(externalID)
+	}
+	if match == nil {
+		return &models.MetadataMatch{
+			Source:     "musicbrainz",
+			ExternalID: externalID,
+			Confidence: 1.0,
+		}, nil
+	}
+	return match, err
+}
+
+func (s *MusicBrainzScraper) getReleaseDetails(releaseID string) (*models.MetadataMatch, error) {
+	reqURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?inc=artists+recordings+tags+release-groups&fmt=json", releaseID)
+
+	req, _ := http.NewRequest("GET", reqURL, nil)
+	req.Header.Set("User-Agent", "CineVault/1.0 (https://github.com/JustinTDCT/CineVault)")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("MusicBrainz release details returned %d", resp.StatusCode)
+	}
+
+	var r struct {
+		ID           string `json:"id"`
+		Title        string `json:"title"`
+		Date         string `json:"date"`
+		ArtistCredit []struct {
+			Name   string `json:"name"`
+			Artist struct {
+				Name string `json:"name"`
+			} `json:"artist"`
+		} `json:"artist-credit"`
+		ReleaseGroup struct {
+			Title       string `json:"title"`
+			PrimaryType string `json:"primary-type"`
+		} `json:"release-group"`
+		Tags []struct {
+			Name  string `json:"name"`
+			Count int    `json:"count"`
+		} `json:"tags"`
+		CoverArtArchive struct {
+			Front bool `json:"front"`
+		} `json:"cover-art-archive"`
+		Media []struct {
+			TrackCount int `json:"track-count"`
+			Tracks     []struct {
+				Title  string `json:"title"`
+				Length int    `json:"length"`
+			} `json:"tracks"`
+		} `json:"media"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return nil, err
+	}
+
+	var year *int
+	if r.Date != "" && len(r.Date) >= 4 {
+		y := 0
+		fmt.Sscanf(r.Date[:4], "%d", &y)
+		if y > 0 {
+			year = &y
+		}
+	}
+
+	var desc *string
+	var artists []string
+	for _, ac := range r.ArtistCredit {
+		name := ac.Name
+		if ac.Artist.Name != "" {
+			name = ac.Artist.Name
+		}
+		artists = append(artists, name)
+	}
+	if len(artists) > 0 {
+		releaseType := "Release"
+		if r.ReleaseGroup.PrimaryType != "" {
+			releaseType = r.ReleaseGroup.PrimaryType
+		}
+		d := releaseType + " by " + strings.Join(artists, ", ")
+		desc = &d
+	}
+
+	var genres []string
+	for _, t := range r.Tags {
+		genres = append(genres, t.Name)
+	}
+
+	var posterURL *string
+	if r.CoverArtArchive.Front {
+		p := fmt.Sprintf("https://coverartarchive.org/release/%s/front-500", r.ID)
+		posterURL = &p
+	}
+
 	return &models.MetadataMatch{
-		Source:     "musicbrainz",
-		ExternalID: externalID,
-		Confidence: 1.0,
+		Source:      "musicbrainz",
+		ExternalID:  r.ID,
+		Title:       r.Title,
+		Year:        year,
+		Description: desc,
+		PosterURL:   posterURL,
+		Genres:      genres,
+		Confidence:  1.0,
+	}, nil
+}
+
+func (s *MusicBrainzScraper) getRecordingDetails(recordingID string) (*models.MetadataMatch, error) {
+	reqURL := fmt.Sprintf("https://musicbrainz.org/ws/2/recording/%s?inc=artists+releases+tags&fmt=json", recordingID)
+
+	req, _ := http.NewRequest("GET", reqURL, nil)
+	req.Header.Set("User-Agent", "CineVault/1.0 (https://github.com/JustinTDCT/CineVault)")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("MusicBrainz recording details returned %d", resp.StatusCode)
+	}
+
+	var r struct {
+		ID             string `json:"id"`
+		Title          string `json:"title"`
+		Length         int    `json:"length"`
+		FirstReleaseDate string `json:"first-release-date"`
+		ArtistCredit   []struct {
+			Name   string `json:"name"`
+			Artist struct {
+				Name string `json:"name"`
+			} `json:"artist"`
+		} `json:"artist-credit"`
+		Releases []struct {
+			ID    string `json:"id"`
+			Title string `json:"title"`
+			Date  string `json:"date"`
+			CoverArtArchive struct {
+				Front bool `json:"front"`
+			} `json:"cover-art-archive"`
+		} `json:"releases"`
+		Tags []struct {
+			Name  string `json:"name"`
+			Count int    `json:"count"`
+		} `json:"tags"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return nil, err
+	}
+
+	var year *int
+	if r.FirstReleaseDate != "" && len(r.FirstReleaseDate) >= 4 {
+		y := 0
+		fmt.Sscanf(r.FirstReleaseDate[:4], "%d", &y)
+		if y > 0 {
+			year = &y
+		}
+	}
+
+	var desc *string
+	var artists []string
+	for _, ac := range r.ArtistCredit {
+		name := ac.Name
+		if ac.Artist.Name != "" {
+			name = ac.Artist.Name
+		}
+		artists = append(artists, name)
+	}
+	if len(artists) > 0 {
+		d := "Recording by " + strings.Join(artists, ", ")
+		desc = &d
+	}
+
+	var genres []string
+	for _, t := range r.Tags {
+		genres = append(genres, t.Name)
+	}
+
+	// Try to get cover art from the first release
+	var posterURL *string
+	for _, rel := range r.Releases {
+		if rel.CoverArtArchive.Front {
+			p := fmt.Sprintf("https://coverartarchive.org/release/%s/front-500", rel.ID)
+			posterURL = &p
+			break
+		}
+	}
+
+	return &models.MetadataMatch{
+		Source:      "musicbrainz",
+		ExternalID:  r.ID,
+		Title:       r.Title,
+		Year:        year,
+		Description: desc,
+		PosterURL:   posterURL,
+		Genres:      genres,
+		Confidence:  1.0,
 	}, nil
 }
 
@@ -693,6 +1021,8 @@ func (s *OpenLibraryScraper) Search(query string, mediaType models.MediaType, ye
 			AuthorName  []string `json:"author_name"`
 			FirstPublish int     `json:"first_publish_year"`
 			CoverI      int      `json:"cover_i"`
+			Subject     []string `json:"subject"`
+			Publisher   []string `json:"publisher"`
 		} `json:"docs"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -708,27 +1038,141 @@ func (s *OpenLibraryScraper) Search(query string, mediaType models.MediaType, ye
 		}
 		var posterURL *string
 		if d.CoverI > 0 {
-			p := fmt.Sprintf("https://covers.openlibrary.org/b/id/%d-M.jpg", d.CoverI)
+			p := fmt.Sprintf("https://covers.openlibrary.org/b/id/%d-L.jpg", d.CoverI)
 			posterURL = &p
 		}
+		// Build description from author(s)
+		var desc *string
+		if len(d.AuthorName) > 0 {
+			description := "By " + strings.Join(d.AuthorName, ", ")
+			desc = &description
+		}
+		// Use subjects as genres (top 5)
+		var genres []string
+		limit := 5
+		if len(d.Subject) < limit {
+			limit = len(d.Subject)
+		}
+		if limit > 0 {
+			genres = d.Subject[:limit]
+		}
+
+		conf := titleSimilarity(query, d.Title)
+		if year != nil && d.FirstPublish > 0 && *year == d.FirstPublish {
+			conf += 0.15
+			if conf > 1.0 {
+				conf = 1.0
+			}
+		}
+
 		matches = append(matches, &models.MetadataMatch{
-			Source:     "openlibrary",
-			ExternalID: d.Key,
-			Title:      d.Title,
-			Year:       year,
-			PosterURL:  posterURL,
-			Confidence: 0.7,
+			Source:      "openlibrary",
+			ExternalID:  d.Key,
+			Title:       d.Title,
+			Year:        year,
+			Description: desc,
+			PosterURL:   posterURL,
+			Genres:      genres,
+			Confidence:  conf,
 		})
 	}
 	return matches, nil
 }
 
+// GetDetails fetches full work details from Open Library including description,
+// subjects, covers, and author information.
 func (s *OpenLibraryScraper) GetDetails(externalID string) (*models.MetadataMatch, error) {
-	return &models.MetadataMatch{
+	// Fetch work details
+	reqURL := fmt.Sprintf("https://openlibrary.org%s.json", externalID)
+	resp, err := s.client.Get(reqURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return &models.MetadataMatch{
+			Source:     "openlibrary",
+			ExternalID: externalID,
+			Confidence: 1.0,
+		}, nil
+	}
+
+	var work struct {
+		Key         string      `json:"key"`
+		Title       string      `json:"title"`
+		Description interface{} `json:"description"` // string or {type, value}
+		Subjects    []string    `json:"subjects"`
+		Covers      []int       `json:"covers"`
+		Authors     []struct {
+			Author struct {
+				Key string `json:"key"`
+			} `json:"author"`
+		} `json:"authors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&work); err != nil {
+		return nil, err
+	}
+
+	match := &models.MetadataMatch{
 		Source:     "openlibrary",
 		ExternalID: externalID,
+		Title:      work.Title,
 		Confidence: 1.0,
-	}, nil
+	}
+
+	// Description (can be string or {type, value} object)
+	if work.Description != nil {
+		switch v := work.Description.(type) {
+		case string:
+			match.Description = &v
+		case map[string]interface{}:
+			if val, ok := v["value"].(string); ok {
+				match.Description = &val
+			}
+		}
+	}
+
+	// Cover art (use the largest available)
+	if len(work.Covers) > 0 {
+		p := fmt.Sprintf("https://covers.openlibrary.org/b/id/%d-L.jpg", work.Covers[0])
+		match.PosterURL = &p
+	}
+
+	// Subjects as genres (top 10)
+	if len(work.Subjects) > 0 {
+		limit := 10
+		if len(work.Subjects) < limit {
+			limit = len(work.Subjects)
+		}
+		match.Genres = work.Subjects[:limit]
+	}
+
+	// Fetch author names
+	var authorNames []string
+	for _, aRef := range work.Authors {
+		if aRef.Author.Key == "" {
+			continue
+		}
+		authorResp, err := s.client.Get(fmt.Sprintf("https://openlibrary.org%s.json", aRef.Author.Key))
+		if err != nil {
+			continue
+		}
+		var author struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(authorResp.Body).Decode(&author); err == nil && author.Name != "" {
+			authorNames = append(authorNames, author.Name)
+		}
+		authorResp.Body.Close()
+		time.Sleep(100 * time.Millisecond) // Rate limit
+	}
+	if len(authorNames) > 0 && match.Description == nil {
+		desc := "By " + strings.Join(authorNames, ", ")
+		match.Description = &desc
+	}
+
+	return match, nil
 }
 
 // ──────────────────── OMDb ────────────────────

@@ -467,7 +467,7 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			continue
 		}
 
-		// Enrich with TMDB details (content_rating, full genres, IMDB ID)
+		// Enrich with source-specific details
 		if best.Source == "tmdb" {
 			for _, sc := range h.scrapers {
 				if tmdb, ok := sc.(*metadata.TMDBScraper); ok {
@@ -477,6 +477,28 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 						}
 						if details.IMDBId != "" {
 							best.IMDBId = details.IMDBId
+						}
+						// Merge genres from details
+						if len(details.Genres) > 0 && len(best.Genres) == 0 {
+							best.Genres = details.Genres
+						}
+					}
+					break
+				}
+			}
+		} else if best.Source == "musicbrainz" || best.Source == "openlibrary" {
+			// Fetch full details from non-TMDB sources
+			for _, sc := range h.scrapers {
+				if sc.Name() == best.Source {
+					if details, err := sc.GetDetails(best.ExternalID); err == nil {
+						if details.Description != nil && best.Description == nil {
+							best.Description = details.Description
+						}
+						if len(details.Genres) > 0 && len(best.Genres) == 0 {
+							best.Genres = details.Genres
+						}
+						if details.PosterURL != nil && best.PosterURL == nil {
+							best.PosterURL = details.PosterURL
 						}
 					}
 					break
@@ -501,7 +523,7 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			continue
 		}
 
-		// Fetch OMDb ratings if we have an IMDB ID
+		// Fetch OMDb ratings if we have an IMDB ID (TMDB sources only)
 		if best.IMDBId != "" && omdbKey != "" {
 			ratings, omdbErr := metadata.FetchOMDbRatings(best.IMDBId, omdbKey)
 			if omdbErr == nil {
@@ -509,8 +531,8 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			}
 		}
 
-		// Contribute to cache in background
-		if cacheClient != nil && best.Source == "tmdb" {
+		// Contribute to cache in background (all sources)
+		if cacheClient != nil {
 			go cacheClient.Contribute(best)
 		}
 

@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"crypto/md5"
 	"fmt"
 	"io"
 	"log"
@@ -124,6 +125,9 @@ func CleanTitleForSearch(title string) string {
 
 // DownloadPoster fetches an image from a URL and saves it to destPath.
 // Returns the saved file path on success.
+// If a poster already exists for this item, compares content hashes:
+//   - If identical: skips the download and returns the existing path
+//   - If different: saves the new poster alongside the existing one with a suffix
 func DownloadPoster(posterURL, destDir, filename string) (string, error) {
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return "", fmt.Errorf("create poster dir: %w", err)
@@ -142,16 +146,69 @@ func DownloadPoster(posterURL, destDir, filename string) (string, error) {
 		return "", fmt.Errorf("poster download returned %d", resp.StatusCode)
 	}
 
-	f, err := os.Create(destPath)
+	// Read entire response into memory for hash comparison
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("create poster file: %w", err)
+		return "", fmt.Errorf("read poster body: %w", err)
 	}
-	defer f.Close()
 
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		os.Remove(destPath)
+	newHash := hashBytes(data)
+
+	// Check if a poster already exists with the same content
+	existingFiles := findExistingPosters(destDir, filename)
+	for _, ef := range existingFiles {
+		existingHash, err := hashFile(ef)
+		if err != nil {
+			continue
+		}
+		if existingHash == newHash {
+			// Same image already exists — skip saving a duplicate
+			log.Printf("Poster dedup: %s matches existing %s, skipping", filename, filepath.Base(ef))
+			return ef, nil
+		}
+	}
+
+	// If the primary filename already exists and has different content,
+	// save the new poster with an alternative suffix
+	if len(existingFiles) > 0 {
+		ext := filepath.Ext(filename)
+		base := strings.TrimSuffix(filename, ext)
+		altNum := len(existingFiles) // e.g., _alt1, _alt2, ...
+		destPath = filepath.Join(destDir, fmt.Sprintf("%s_alt%d%s", base, altNum, ext))
+	}
+
+	// Save the new poster
+	if err := os.WriteFile(destPath, data, 0644); err != nil {
 		return "", fmt.Errorf("write poster: %w", err)
 	}
 
 	return destPath, nil
+}
+
+// hashBytes computes a hex-encoded MD5 hash of the given data.
+func hashBytes(data []byte) string {
+	h := md5.Sum(data)
+	return fmt.Sprintf("%x", h)
+}
+
+// hashFile computes a hex-encoded MD5 hash of a file's contents.
+func hashFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return hashBytes(data), nil
+}
+
+// findExistingPosters returns all poster files for a given item in the directory.
+// For filename "abc-123.jpg", it matches "abc-123.jpg", "abc-123_alt1.jpg", etc.
+func findExistingPosters(dir, filename string) []string {
+	ext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
+	pattern := filepath.Join(dir, base+"*"+ext)
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil
+	}
+	return matches
 }
