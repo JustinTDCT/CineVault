@@ -229,3 +229,189 @@ func (r *EditionRepository) SetDefault(groupID, itemID uuid.UUID) error {
 	}
 	return tx.Commit()
 }
+
+// ──────────────────── Edition Parent/Child Helpers ────────────────────
+
+// EditionMediaDetail holds edition item info with joined media item details.
+type EditionMediaDetail struct {
+	EditionItemID     uuid.UUID  `json:"edition_item_id"`
+	EditionGroupID    uuid.UUID  `json:"edition_group_id"`
+	MediaItemID       uuid.UUID  `json:"media_item_id"`
+	EditionType       string     `json:"edition_type"`
+	CustomEditionName *string    `json:"custom_edition_name,omitempty"`
+	DisplayName       *string    `json:"display_name,omitempty"`
+	IsDefault         bool       `json:"is_default"`
+	SortOrder         int        `json:"sort_order"`
+	// Joined media fields
+	Title           string  `json:"title"`
+	Resolution      *string `json:"resolution,omitempty"`
+	Width           *int    `json:"width,omitempty"`
+	Height          *int    `json:"height,omitempty"`
+	DurationSeconds *int    `json:"duration_seconds,omitempty"`
+	Codec           *string `json:"codec,omitempty"`
+	Container       *string `json:"container,omitempty"`
+	AudioCodec      *string `json:"audio_codec,omitempty"`
+	AudioChannels   *int    `json:"audio_channels,omitempty"`
+	FileSize        int64   `json:"file_size"`
+	PosterPath      *string `json:"poster_path,omitempty"`
+}
+
+// ListItemsWithMedia returns edition items for a group with joined media details.
+func (r *EditionRepository) ListItemsWithMedia(groupID uuid.UUID) ([]EditionMediaDetail, error) {
+	query := `
+		SELECT ei.id, ei.edition_group_id, ei.media_item_id, ei.edition_type,
+		       ei.custom_edition_name, ei.display_name, ei.is_default, ei.sort_order,
+		       m.title, m.resolution, m.width, m.height, m.duration_seconds,
+		       m.codec, m.container, m.audio_codec, m.audio_channels,
+		       m.file_size, m.poster_path
+		FROM edition_items ei
+		JOIN media_items m ON m.id = ei.media_item_id
+		WHERE ei.edition_group_id = $1
+		ORDER BY ei.is_default DESC, ei.sort_order`
+	rows, err := r.db.Query(query, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []EditionMediaDetail
+	for rows.Next() {
+		var d EditionMediaDetail
+		if err := rows.Scan(
+			&d.EditionItemID, &d.EditionGroupID, &d.MediaItemID, &d.EditionType,
+			&d.CustomEditionName, &d.DisplayName, &d.IsDefault, &d.SortOrder,
+			&d.Title, &d.Resolution, &d.Width, &d.Height, &d.DurationSeconds,
+			&d.Codec, &d.Container, &d.AudioCodec, &d.AudioChannels,
+			&d.FileSize, &d.PosterPath,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, d)
+	}
+	return items, rows.Err()
+}
+
+// GetGroupByMediaID finds the edition group containing a given media item.
+func (r *EditionRepository) GetGroupByMediaID(mediaItemID uuid.UUID) (*uuid.UUID, error) {
+	var groupID uuid.UUID
+	err := r.db.QueryRow(
+		`SELECT edition_group_id FROM edition_items WHERE media_item_id = $1 LIMIT 1`,
+		mediaItemID).Scan(&groupID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &groupID, nil
+}
+
+// SetParent links childID as a child edition of parentID.
+// If the parent is already in a group, adds child to that group.
+// Otherwise creates a new group with parent as default and adds child.
+func (r *EditionRepository) SetParent(childID, parentID uuid.UUID, editionType string, userID uuid.UUID) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Check if child is already in a group — remove first
+	_, _ = tx.Exec(`DELETE FROM edition_items WHERE media_item_id = $1`, childID)
+
+	// Find parent's existing group
+	var groupID uuid.UUID
+	err = tx.QueryRow(
+		`SELECT edition_group_id FROM edition_items WHERE media_item_id = $1 LIMIT 1`,
+		parentID).Scan(&groupID)
+
+	if err == sql.ErrNoRows {
+		// Create new group using parent's metadata
+		groupID = uuid.New()
+		_, err = tx.Exec(`INSERT INTO edition_groups
+			(id, library_id, media_type, title, sort_title, year, description, poster_path, backdrop_path)
+			SELECT $1, library_id, media_type, title, sort_title, year, description, poster_path, backdrop_path
+			FROM media_items WHERE id = $2`,
+			groupID, parentID)
+		if err != nil {
+			return fmt.Errorf("create edition group: %w", err)
+		}
+
+		// Add parent as default item
+		parentItemID := uuid.New()
+		_, err = tx.Exec(`INSERT INTO edition_items
+			(id, edition_group_id, media_item_id, edition_type, is_default, sort_order, added_by)
+			VALUES ($1, $2, $3, (SELECT edition_type FROM media_items WHERE id = $3), true, 0, $4)`,
+			parentItemID, groupID, parentID, userID)
+		if err != nil {
+			return fmt.Errorf("add parent to group: %w", err)
+		}
+
+		// Set default edition pointer
+		_, _ = tx.Exec(`UPDATE edition_groups SET default_edition_id = $1 WHERE id = $2`,
+			parentItemID, groupID)
+	} else if err != nil {
+		return err
+	}
+
+	// Determine sort order
+	var sortOrder int
+	tx.QueryRow(`SELECT COALESCE(MAX(sort_order), 0) + 1 FROM edition_items WHERE edition_group_id = $1`,
+		groupID).Scan(&sortOrder)
+
+	// Add child to group
+	if editionType == "" {
+		editionType = "Alternate"
+	}
+	childItemID := uuid.New()
+	_, err = tx.Exec(`INSERT INTO edition_items
+		(id, edition_group_id, media_item_id, edition_type, is_default, sort_order, added_by)
+		VALUES ($1, $2, $3, $4, false, $5, $6)
+		ON CONFLICT (edition_group_id, media_item_id) DO NOTHING`,
+		childItemID, groupID, childID, editionType, sortOrder, userID)
+	if err != nil {
+		return fmt.Errorf("add child to group: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+// RemoveFromGroup removes a media item from its edition group.
+// If the group drops to 1 or 0 items, deletes the group entirely.
+func (r *EditionRepository) RemoveFromGroup(mediaItemID uuid.UUID) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Find the group
+	var groupID uuid.UUID
+	err = tx.QueryRow(
+		`SELECT edition_group_id FROM edition_items WHERE media_item_id = $1 LIMIT 1`,
+		mediaItemID).Scan(&groupID)
+	if err == sql.ErrNoRows {
+		return nil // not in a group
+	}
+	if err != nil {
+		return err
+	}
+
+	// Remove the item
+	_, err = tx.Exec(`DELETE FROM edition_items WHERE media_item_id = $1`, mediaItemID)
+	if err != nil {
+		return err
+	}
+
+	// Check remaining count
+	var remaining int
+	tx.QueryRow(`SELECT COUNT(*) FROM edition_items WHERE edition_group_id = $1`, groupID).Scan(&remaining)
+
+	if remaining <= 1 {
+		// Delete the remaining item and the group
+		_, _ = tx.Exec(`DELETE FROM edition_items WHERE edition_group_id = $1`, groupID)
+		_, _ = tx.Exec(`DELETE FROM edition_groups WHERE id = $1`, groupID)
+	}
+
+	return tx.Commit()
+}

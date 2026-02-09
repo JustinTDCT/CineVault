@@ -160,6 +160,9 @@ func buildFilterClauses(f *MediaFilter, paramStart int) (string, string, string,
 		}
 	}
 
+	// Always exclude child editions (non-default edition items) from library listings
+	wheres = append(wheres, `NOT EXISTS (SELECT 1 FROM edition_items ei WHERE ei.media_item_id = m.id AND ei.is_default = false)`)
+
 	joinSQL := ""
 	if len(joins) > 0 {
 		joinSQL = " " + strings.Join(joins, " ")
@@ -278,6 +281,7 @@ func (r *MediaRepository) SearchInLibraries(query string, libraryIDs []uuid.UUID
 		FROM media_items
 		WHERE (title ILIKE $1 OR file_name ILIKE $1)
 		  AND library_id IN (` + inClause + `)
+		  AND NOT EXISTS (SELECT 1 FROM edition_items ei WHERE ei.media_item_id = media_items.id AND ei.is_default = false)
 		ORDER BY title
 		LIMIT ` + limitParam
 
@@ -697,4 +701,48 @@ func (r *MediaRepository) GetLibraryFilterOptions(libraryID uuid.UUID) (*FilterO
 	}
 
 	return opts, nil
+}
+
+// PopulateEditionCounts enriches a slice of MediaItems with edition group info.
+// For each item that is the default edition in a group, sets EditionGroupID and EditionCount.
+func (r *MediaRepository) PopulateEditionCounts(items []*models.MediaItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	// Build ID list
+	ids := make([]interface{}, len(items))
+	placeholders := make([]string, len(items))
+	idMap := make(map[uuid.UUID]*models.MediaItem, len(items))
+	for i, item := range items {
+		ids[i] = item.ID
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		idMap[item.ID] = item
+	}
+
+	query := `SELECT ei.media_item_id, ei.edition_group_id, cnt.total
+		FROM edition_items ei
+		JOIN (SELECT edition_group_id, COUNT(*) AS total FROM edition_items GROUP BY edition_group_id) cnt
+			ON cnt.edition_group_id = ei.edition_group_id
+		WHERE ei.media_item_id IN (` + strings.Join(placeholders, ",") + `)`
+
+	rows, err := r.db.Query(query, ids...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var mediaID, groupID uuid.UUID
+		var total int
+		if err := rows.Scan(&mediaID, &groupID, &total); err != nil {
+			return err
+		}
+		if item, ok := idMap[mediaID]; ok {
+			gid := groupID
+			item.EditionGroupID = &gid
+			item.EditionCount = total
+		}
+	}
+	return rows.Err()
 }

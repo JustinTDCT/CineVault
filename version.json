@@ -1,6 +1,6 @@
 {
-  "version": "0.27.0",
+  "version": "0.28.0",
   "phase": 3,
   "released": "2026-02-09",
-  "notes": "Type-aware filename parsing: pre-fills metadata during ingestion for movies, TV, music, adult, and music videos; auto-creates artist/album hierarchy for music; multi-part file grouping (CD/DISC/PART) via sister groups"
+  "notes": "Multiple editions support: combine movie editions as parent/child, edition picker on play, editions tab in detail view, parent movie search in edit modal; child editions hidden from library grid"
 }

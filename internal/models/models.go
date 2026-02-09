@@ -152,6 +152,9 @@ type MediaItem struct {
 	Phash            *string    `json:"phash,omitempty" db:"phash"`
 	AudioFingerprint *string    `json:"audio_fingerprint,omitempty" db:"audio_fingerprint"`
 	SortPosition     int        `json:"sort_position" db:"sort_position"`
+	// Edition fields (transient, not stored in DB)
+	EditionGroupID *uuid.UUID `json:"edition_group_id,omitempty" db:"-"`
+	EditionCount   int        `json:"edition_count,omitempty" db:"-"`
 	IMDBRating       *float64   `json:"imdb_rating,omitempty" db:"imdb_rating"`
 	RTRating         *int       `json:"rt_rating,omitempty" db:"rt_rating"`
 	AudienceScore    *int       `json:"audience_score,omitempty" db:"audience_score"`

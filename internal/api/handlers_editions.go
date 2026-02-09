@@ -112,6 +112,42 @@ func (s *Server) handleAddEditionItem(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusCreated, Response{Success: true, Data: item})
 }
 
+// handleGetMediaEditions returns all editions for the edition group containing the given media item.
+func (s *Server) handleGetMediaEditions(w http.ResponseWriter, r *http.Request) {
+	mediaID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media ID")
+		return
+	}
+
+	// Find the edition group for this media item
+	groupID, err := s.editionRepo.GetGroupByMediaID(mediaID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if groupID == nil {
+		s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{
+			"has_editions": false,
+			"editions":     []interface{}{},
+		}})
+		return
+	}
+
+	// Get all editions with media details
+	editions, err := s.editionRepo.ListItemsWithMedia(*groupID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{
+		"has_editions":    true,
+		"edition_group_id": groupID,
+		"editions":        editions,
+	}})
+}
+
 func (s *Server) handleRemoveEditionItem(w http.ResponseWriter, r *http.Request) {
 	groupID, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

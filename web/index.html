@@ -552,6 +552,62 @@
         .dup-actions .btn-edition { background: linear-gradient(135deg, #a855f7, #7c3aed); color: #fff; border: none; }
         .nav-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: #ff6b6b; color: #fff; font-size: 0.7rem; font-weight: 700; margin-left: auto; }
         .edition-badge { position: absolute; bottom: 8px; left: 8px; padding: 2px 8px; border-radius: 8px; background: rgba(168,85,247,0.85); color: #fff; font-size: 0.7rem; font-weight: 600; backdrop-filter: blur(4px); }
+        /* ── Edition Picker Modal ── */
+        .edition-picker-overlay {
+            position: fixed; inset: 0; z-index: 3200;
+            background: rgba(10,25,41,0.92); backdrop-filter: blur(8px);
+            display: none; align-items: center; justify-content: center;
+        }
+        .edition-picker-overlay.active { display: flex; }
+        .edition-picker {
+            background: linear-gradient(135deg, rgba(26,35,50,0.97) 0%, rgba(13,27,42,0.99) 100%);
+            border: 1px solid rgba(168,85,247,0.3); border-radius: 20px;
+            padding: 32px; width: 90%; max-width: 700px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+        .edition-picker-title {
+            font-size: 1.3rem; font-weight: 700; margin-bottom: 20px;
+            background: linear-gradient(135deg, #a855f7, #7c3aed);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .edition-picker-card {
+            display: flex; align-items: center; gap: 16px;
+            padding: 14px 18px; border-radius: 12px;
+            background: rgba(0,0,0,0.25); border: 2px solid rgba(255,255,255,0.06);
+            margin-bottom: 10px; cursor: pointer; transition: all 0.2s;
+        }
+        .edition-picker-card:hover { border-color: rgba(168,85,247,0.5); background: rgba(168,85,247,0.1); }
+        .edition-picker-card .ep-type { font-weight: 600; color: #e5e5e5; font-size: 0.95rem; min-width: 140px; }
+        .edition-picker-card .ep-meta { color: #8899aa; font-size: 0.82rem; flex: 1; }
+        .edition-picker-card .ep-default { background: rgba(168,85,247,0.3); color: #d4a5ff; padding: 2px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 600; }
+        .edition-picker-card .ep-play { background: linear-gradient(135deg, #00D9FF, #00B8DB); color: #0a1929; border: none; padding: 6px 16px; border-radius: 8px; font-weight: 600; font-size: 0.82rem; cursor: pointer; }
+        /* ── Edition Tab Table ── */
+        .edition-tab-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .edition-tab-table th { text-align: left; color: #5a6a7f; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); font-weight: 600; }
+        .edition-tab-table td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); color: #c5d0dc; }
+        .edition-tab-table tr:hover td { background: rgba(168,85,247,0.05); }
+        .edition-tab-default { background: rgba(168,85,247,0.25); color: #d4a5ff; padding: 2px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 600; }
+        .edition-tab-play { background: none; border: 1px solid rgba(0,217,255,0.4); color: #00D9FF; padding: 3px 12px; border-radius: 6px; font-size: 0.78rem; cursor: pointer; transition: all 0.2s; }
+        .edition-tab-play:hover { background: rgba(0,217,255,0.15); }
+        /* ── Parent Movie Search ── */
+        .parent-search-wrap { position: relative; }
+        .parent-search-results {
+            position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+            background: #0d1b2a; border: 1px solid rgba(0,217,255,0.3); border-radius: 10px;
+            max-height: 200px; overflow-y: auto; display: none;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+        .parent-search-results.active { display: block; }
+        .parent-search-result {
+            padding: 8px 14px; cursor: pointer; font-size: 0.85rem; color: #c5d0dc;
+            border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.15s;
+        }
+        .parent-search-result:hover { background: rgba(0,217,255,0.1); }
+        .parent-search-result .psr-year { color: #5a6a7f; margin-left: 8px; }
+        .parent-current { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: rgba(168,85,247,0.1); border: 1px solid rgba(168,85,247,0.3); border-radius: 10px; margin-top: 6px; }
+        .parent-current .pc-title { flex: 1; color: #d4a5ff; font-size: 0.85rem; }
+        .parent-current .pc-remove { background: none; border: 1px solid rgba(255,100,100,0.4); color: #ff6b6b; padding: 3px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; }
+        .parent-current .pc-remove:hover { background: rgba(255,100,100,0.15); }
         /* ── Merge Edition Modal ── */
         .merge-modal-overlay {
             position: fixed; inset: 0; z-index: 3100;
@@ -1012,6 +1068,15 @@
                     </select>
                 </div>
             </div>
+            <div class="form-group" id="parentMovieGroup" style="display:none;">
+                <label>Parent Movie</label>
+                <div class="parent-search-wrap">
+                    <input type="text" id="parentMovieSearch" placeholder="Search for parent movie..." autocomplete="off" oninput="searchParentMovie(this.value)">
+                    <input type="hidden" id="parentMovieId">
+                    <div class="parent-search-results" id="parentSearchResults"></div>
+                </div>
+                <div id="parentCurrentInfo" style="display:none;"></div>
+            </div>
             <div id="editLockStatus" style="margin-top:8px;"></div>
             <div class="edit-modal-actions">
                 <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
@@ -1047,6 +1112,17 @@
             <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">
                 <button class="btn-secondary" onclick="closeMergeModal()">Cancel</button>
                 <button class="btn-primary" onclick="submitMergeEdition()" style="background:linear-gradient(135deg,#a855f7,#7c3aed);">Merge</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edition Picker Modal -->
+    <div class="edition-picker-overlay" id="editionPickerOverlay">
+        <div class="edition-picker">
+            <div class="edition-picker-title">Select Edition to Play</div>
+            <div id="editionPickerList"></div>
+            <div style="display:flex;justify-content:flex-end;margin-top:20px;">
+                <button class="btn-secondary" onclick="closeEditionPicker()">Cancel</button>
             </div>
         </div>
     </div>
@@ -1812,7 +1888,7 @@
         const year = item.year || '';
         const res = item.resolution || '';
         const meta = [year, dur, res].filter(Boolean).join(' \u00b7 ');
-        const edBadge = item.edition_count && item.edition_count > 1 ? `<span class="edition-badge">${item.edition_count} editions</span>` : '';
+        const edBadge = item.edition_count && item.edition_count > 1 ? `<span class="edition-badge">Multiple Editions</span>` : '';
         return `<div class="media-card" onclick="loadMediaDetail('${item.id}')">
             <div class="media-poster" style="position:relative;">
                 ${item.poster_path ? '<img src="'+posterSrc(item.poster_path, item.updated_at)+'" alt="">' : mediaIcon(item.media_type)}
@@ -1912,6 +1988,7 @@
                     <div style="margin-bottom:10px;">
                         ${m.metadata_locked ? '<span class="lock-badge locked">&#128274; Metadata Locked</span>' : ''}
                         <span class="tag tag-cyan">${MEDIA_LABELS[m.media_type]||m.media_type}</span>
+                        ${m.edition_count > 1 ? '<span class="tag" style="background:rgba(168,85,247,0.3);color:#d4a5ff;">Multiple Editions</span>' : ''}
                         ${m.file_size ? '<span class="tag tag-purple">'+(m.file_size/1024/1024).toFixed(0)+' MB</span>' : ''}
                         ${m.audio_codec ? '<span class="tag tag-green">'+m.audio_codec+'</span>' : ''}
                         ${m.bitrate ? '<span class="tag tag-orange">'+(m.bitrate/1000).toFixed(0)+' kbps</span>' : ''}
@@ -1920,6 +1997,7 @@
                         <button class="detail-tab active" onclick="showDetailTab(this,'info','${m.id}')">Info</button>
                         <button class="detail-tab" onclick="showDetailTab(this,'cast','${m.id}')">Cast</button>
                         <button class="detail-tab" onclick="showDetailTab(this,'tags-tab','${m.id}')">Tags</button>
+                        ${m.edition_count > 1 ? '<button class="detail-tab" onclick="showDetailTab(this,\'editions\',\''+m.id+'\')">Editions</button>' : ''}
                         <button class="detail-tab" onclick="showDetailTab(this,'file','${m.id}')">File</button>
                     </div>
                     <div class="detail-tab-content" id="detailTabContent">
@@ -1980,6 +2058,32 @@
                 tc.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"><h4 style="color:#e5e5e5;margin:0;">Cast &amp; Crew</h4></div><div class="cast-row"><button class="cast-row-arrow left" onclick="document.getElementById('castScroll').scrollLeft-=400">&#8249;</button><div class="cast-row-scroll" id="castScroll">${all}</div><button class="cast-row-arrow right" onclick="document.getElementById('castScroll').scrollLeft+=400">&#8250;</button></div>`;
             } else {
                 tc.innerHTML = '<p style="color:#5a6a7f;">No cast information available</p>';
+            }
+        } else if (tab === 'editions') {
+            tc.innerHTML = '<div class="spinner"></div>';
+            const edRes = await api('GET', '/media/' + mediaId + '/editions');
+            if (edRes.success && edRes.data.has_editions && edRes.data.editions && edRes.data.editions.length > 0) {
+                const eds = edRes.data.editions;
+                const rows = eds.map(e => {
+                    const dur = e.duration_seconds ? formatDuration(e.duration_seconds) : '-';
+                    const res = e.resolution || '-';
+                    const codec = e.codec || '-';
+                    const size = e.file_size ? (e.file_size/1024/1024).toFixed(0)+' MB' : '-';
+                    const audio = e.audio_codec || '-';
+                    const defBadge = e.is_default ? ' <span class="edition-tab-default">Default</span>' : '';
+                    return `<tr>
+                        <td>${e.edition_type}${defBadge}</td>
+                        <td>${dur}</td><td>${res}</td><td>${codec}</td><td>${audio}</td><td>${size}</td>
+                        <td><button class="edition-tab-play" onclick="playMedia('${e.media_item_id}','${e.title.replace(/'/g,"\\'")}')">&#9654; Play</button></td>
+                    </tr>`;
+                }).join('');
+                tc.innerHTML = `<h4 style="color:#e5e5e5;margin:0 0 14px;">Editions (${eds.length})</h4>
+                    <table class="edition-tab-table">
+                        <thead><tr><th>Edition</th><th>Runtime</th><th>Resolution</th><th>Codec</th><th>Audio</th><th>Size</th><th></th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>`;
+            } else {
+                tc.innerHTML = '<p style="color:#5a6a7f;">No editions found</p>';
             }
         } else if (tab === 'file') {
             tc.innerHTML = '<p style="color:#5a6a7f;">Loading file info...</p>';
@@ -3028,6 +3132,34 @@
         document.getElementById('editRating').value = m.rating != null ? m.rating : '';
         // Edition type (always shown)
         document.getElementById('editEditionType').value = m.edition_type || 'Theatrical';
+        // Parent Movie field (movies and adult_movies only)
+        const parentGroup = document.getElementById('parentMovieGroup');
+        const parentSearch = document.getElementById('parentMovieSearch');
+        const parentIdField = document.getElementById('parentMovieId');
+        const parentInfo = document.getElementById('parentCurrentInfo');
+        parentSearch.value = '';
+        parentIdField.value = '';
+        parentInfo.style.display = 'none';
+        parentInfo.innerHTML = '';
+        document.getElementById('parentSearchResults').classList.remove('active');
+        if (m.media_type === 'movies' || m.media_type === 'adult_movies') {
+            parentGroup.style.display = '';
+            // Check if already in an edition group
+            const edRes = await api('GET', '/media/' + id + '/editions');
+            if (edRes.success && edRes.data.has_editions) {
+                const eds = edRes.data.editions || [];
+                const parent = eds.find(e => e.is_default);
+                if (parent && parent.media_item_id !== m.id) {
+                    parentInfo.style.display = '';
+                    parentInfo.innerHTML = `<div class="parent-current"><span class="pc-title">&#128279; Parent: ${parent.title} (${parent.edition_type})</span><button class="pc-remove" onclick="removeEditionParent('${m.id}')">Remove</button></div>`;
+                } else if (parent && parent.media_item_id === m.id && eds.length > 1) {
+                    parentInfo.style.display = '';
+                    parentInfo.innerHTML = `<div class="parent-current"><span class="pc-title">&#11088; This is the parent movie (${eds.length} editions)</span></div>`;
+                }
+            }
+        } else {
+            parentGroup.style.display = 'none';
+        }
         // Lock status
         const lockDiv = document.getElementById('editLockStatus');
         const resetBtn = document.getElementById('editResetBtn');
@@ -3066,6 +3198,14 @@
             edition_type: editionType
         });
         if (d.success) {
+            // Set edition parent if one was selected
+            const parentId = document.getElementById('parentMovieId').value;
+            if (parentId) {
+                await api('POST', '/media/' + id + '/edition-parent', {
+                    parent_id: parentId,
+                    edition_type: editionType
+                });
+            }
             toast('Changes saved! Metadata locked.');
             closeEditModal();
             // If triggered from duplicate review, mark as addressed
@@ -3095,6 +3235,60 @@
             toast(d.error || 'Reset failed', 'error');
         }
     }
+
+    // ──── Parent Movie Search ────
+    let _parentSearchTimer = null;
+    function searchParentMovie(query) {
+        clearTimeout(_parentSearchTimer);
+        const results = document.getElementById('parentSearchResults');
+        if (query.length < 2) { results.classList.remove('active'); return; }
+        _parentSearchTimer = setTimeout(async () => {
+            const d = await api('GET', '/media/search?q=' + encodeURIComponent(query));
+            if (!d.success || !d.data || d.data.length === 0) { results.classList.remove('active'); return; }
+            const editId = document.getElementById('editMediaId').value;
+            const items = d.data.filter(i => i.id !== editId && (i.media_type === 'movies' || i.media_type === 'adult_movies'));
+            if (items.length === 0) { results.classList.remove('active'); return; }
+            results.innerHTML = items.slice(0, 10).map(i =>
+                `<div class="parent-search-result" onclick="selectParentMovie('${i.id}','${i.title.replace(/'/g,"\\'")}',${i.year||'null'})">${i.title}<span class="psr-year">${i.year||''}</span></div>`
+            ).join('');
+            results.classList.add('active');
+        }, 300);
+    }
+
+    function selectParentMovie(id, title, year) {
+        document.getElementById('parentMovieId').value = id;
+        document.getElementById('parentMovieSearch').value = '';
+        document.getElementById('parentSearchResults').classList.remove('active');
+        const info = document.getElementById('parentCurrentInfo');
+        info.style.display = '';
+        info.innerHTML = `<div class="parent-current"><span class="pc-title">&#128279; Parent: ${title}${year ? ' ('+year+')' : ''}</span><button class="pc-remove" onclick="clearParentSelection()">Remove</button></div>`;
+    }
+
+    function clearParentSelection() {
+        document.getElementById('parentMovieId').value = '';
+        document.getElementById('parentCurrentInfo').style.display = 'none';
+        document.getElementById('parentCurrentInfo').innerHTML = '';
+    }
+
+    async function removeEditionParent(mediaId) {
+        if (!confirm('Remove this movie from its edition group?')) return;
+        const d = await api('DELETE', '/media/' + mediaId + '/edition-parent');
+        if (d.success) {
+            toast('Removed from edition group');
+            closeEditModal();
+            loadMediaDetail(mediaId);
+        } else {
+            toast(d.error || 'Failed to remove', 'error');
+        }
+    }
+
+    // Close parent search on click outside
+    document.addEventListener('click', function(e) {
+        const wrap = document.querySelector('.parent-search-wrap');
+        if (wrap && !wrap.contains(e.target)) {
+            document.getElementById('parentSearchResults').classList.remove('active');
+        }
+    });
 
     // Close edit modal on Escape
     document.getElementById('editMediaOverlay').addEventListener('click', function(e) {
@@ -3245,6 +3439,16 @@
     }
 
     async function playMedia(mediaId, title) {
+        // Check if this item has multiple editions — show picker if so
+        const edCheck = await api('GET', '/media/' + mediaId + '/editions');
+        if (edCheck.success && edCheck.data.has_editions && edCheck.data.editions && edCheck.data.editions.length > 1) {
+            showEditionPicker(edCheck.data.editions, title);
+            return;
+        }
+        playMediaDirect(mediaId, title);
+    }
+
+    async function playMediaDirect(mediaId, title) {
         currentMediaId = mediaId;
         const overlay = document.getElementById('playerOverlay');
         const video = document.getElementById('videoPlayer');
@@ -3412,6 +3616,39 @@
             startHLSPlay(currentMediaId, quality, token);
         }
     }
+
+    // ──── Edition Picker ────
+    function showEditionPicker(editions, title) {
+        const list = document.getElementById('editionPickerList');
+        list.innerHTML = editions.map(e => {
+            const dur = e.duration_seconds ? formatDuration(e.duration_seconds) : '';
+            const res = e.resolution || '';
+            const codec = e.codec || '';
+            const audio = e.audio_codec || '';
+            const metaParts = [dur, res, codec, audio].filter(Boolean).join(' \u00b7 ');
+            const defBadge = e.is_default ? '<span class="ep-default">Default</span>' : '';
+            return `<div class="edition-picker-card" onclick="pickEditionAndPlay('${e.media_item_id}','${(e.display_name || e.title).replace(/'/g,"\\'")}')">
+                <span class="ep-type">${e.edition_type} ${defBadge}</span>
+                <span class="ep-meta">${metaParts}</span>
+                <button class="ep-play">&#9654; Play</button>
+            </div>`;
+        }).join('');
+        document.getElementById('editionPickerOverlay').classList.add('active');
+    }
+
+    function pickEditionAndPlay(mediaId, title) {
+        closeEditionPicker();
+        playMediaDirect(mediaId, title);
+    }
+
+    function closeEditionPicker() {
+        document.getElementById('editionPickerOverlay').classList.remove('active');
+    }
+
+    // Close edition picker on overlay click
+    document.getElementById('editionPickerOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closeEditionPicker();
+    });
 
     function closePlayer() {
         const overlay = document.getElementById('playerOverlay');

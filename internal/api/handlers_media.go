@@ -56,6 +56,9 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enrich items with edition group info (edition_count, edition_group_id)
+	_ = s.mediaRepo.PopulateEditionCounts(media)
+
 	count, _ := s.mediaRepo.CountByLibraryFiltered(libraryID, f)
 
 	s.respondJSON(w, http.StatusOK, Response{
@@ -99,6 +102,9 @@ func (s *Server) handleGetMedia(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, http.StatusNotFound, "media not found")
 		return
 	}
+
+	// Enrich with edition info
+	_ = s.mediaRepo.PopulateEditionCounts([]*models.MediaItem{media})
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: media})
 }
@@ -210,4 +216,57 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: media})
+}
+
+// handleSetEditionParent links a media item as a child edition of a parent item.
+func (s *Server) handleSetEditionParent(w http.ResponseWriter, r *http.Request) {
+	childID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media ID")
+		return
+	}
+
+	var req struct {
+		ParentID    string `json:"parent_id"`
+		EditionType string `json:"edition_type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	parentID, err := uuid.Parse(req.ParentID)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid parent_id")
+		return
+	}
+
+	if childID == parentID {
+		s.respondError(w, http.StatusBadRequest, "cannot set item as its own parent")
+		return
+	}
+
+	userID := s.getUserID(r)
+	if err := s.editionRepo.SetParent(childID, parentID, req.EditionType, userID); err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to set edition parent: "+err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]string{"message": "edition parent set"}})
+}
+
+// handleRemoveEditionParent removes a media item from its edition group.
+func (s *Server) handleRemoveEditionParent(w http.ResponseWriter, r *http.Request) {
+	mediaID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media ID")
+		return
+	}
+
+	if err := s.editionRepo.RemoveFromGroup(mediaID); err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to remove from edition group: "+err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]string{"message": "removed from edition group"}})
 }
