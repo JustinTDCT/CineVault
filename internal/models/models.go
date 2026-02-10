@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 // ──────────────────── Enums ────────────────────
@@ -78,8 +79,11 @@ type Library struct {
 	AccessLevel       LibraryAccess `json:"access_level" db:"access_level"`
 	IncludeInHomepage bool          `json:"include_in_homepage" db:"include_in_homepage"`
 	IncludeInSearch   bool          `json:"include_in_search" db:"include_in_search"`
-	RetrieveMetadata  bool          `json:"retrieve_metadata" db:"retrieve_metadata"`
-	AdultContentType  *string       `json:"adult_content_type,omitempty" db:"adult_content_type"`
+	RetrieveMetadata    bool          `json:"retrieve_metadata" db:"retrieve_metadata"`
+	NFOImport           bool          `json:"nfo_import" db:"nfo_import"`
+	NFOExport           bool          `json:"nfo_export" db:"nfo_export"`
+	PreferLocalArtwork  bool          `json:"prefer_local_artwork" db:"prefer_local_artwork"`
+	AdultContentType    *string       `json:"adult_content_type,omitempty" db:"adult_content_type"`
 	LastScanAt        *time.Time    `json:"last_scan_at" db:"last_scan_at"`
 	CreatedAt         time.Time     `json:"created_at" db:"created_at"`
 	UpdatedAt         time.Time     `json:"updated_at" db:"updated_at"`
@@ -116,6 +120,7 @@ type MediaItem struct {
 	SortTitle        *string    `json:"sort_title,omitempty" db:"sort_title"`
 	OriginalTitle    *string    `json:"original_title,omitempty" db:"original_title"`
 	Description      *string    `json:"description,omitempty" db:"description"`
+	Tagline          *string    `json:"tagline,omitempty" db:"tagline"`
 	Year             *int       `json:"year,omitempty" db:"year"`
 	ReleaseDate      *time.Time `json:"release_date,omitempty" db:"release_date"`
 	DurationSeconds  *int       `json:"duration_seconds,omitempty" db:"duration_seconds"`
@@ -129,9 +134,13 @@ type MediaItem struct {
 	Framerate        *float64   `json:"framerate,omitempty" db:"framerate"`
 	AudioCodec       *string    `json:"audio_codec,omitempty" db:"audio_codec"`
 	AudioChannels    *int       `json:"audio_channels,omitempty" db:"audio_channels"`
+	OriginalLanguage *string    `json:"original_language,omitempty" db:"original_language"`
+	Country          *string    `json:"country,omitempty" db:"country"`
+	TrailerURL       *string    `json:"trailer_url,omitempty" db:"trailer_url"`
 	PosterPath       *string    `json:"poster_path,omitempty" db:"poster_path"`
 	ThumbnailPath    *string    `json:"thumbnail_path,omitempty" db:"thumbnail_path"`
 	BackdropPath     *string    `json:"backdrop_path,omitempty" db:"backdrop_path"`
+	LogoPath         *string    `json:"logo_path,omitempty" db:"logo_path"`
 	// TV fields
 	TVShowID      *uuid.UUID `json:"tv_show_id,omitempty" db:"tv_show_id"`
 	TVSeasonID    *uuid.UUID `json:"tv_season_id,omitempty" db:"tv_season_id"`
@@ -162,11 +171,23 @@ type MediaItem struct {
 	ContentRating    *string    `json:"content_rating,omitempty" db:"content_rating"`
 	ExternalIDs      *string    `json:"external_ids,omitempty" db:"external_ids"`
 	GeneratedPoster  bool       `json:"generated_poster" db:"generated_poster"`
-	MetadataLocked   bool       `json:"metadata_locked" db:"metadata_locked"`
-	DuplicateStatus  string     `json:"duplicate_status" db:"duplicate_status"`
+	MetadataLocked   bool            `json:"metadata_locked" db:"metadata_locked"`
+	LockedFields     pq.StringArray  `json:"locked_fields" db:"locked_fields"`
+	DuplicateStatus  string          `json:"duplicate_status" db:"duplicate_status"`
 	AddedAt          time.Time  `json:"added_at" db:"added_at"`
 	UpdatedAt        time.Time  `json:"updated_at" db:"updated_at"`
 	LastScannedAt    *time.Time `json:"last_scanned_at,omitempty" db:"last_scanned_at"`
+}
+
+// IsFieldLocked returns true if the given field name is in the locked_fields array.
+// A special value "*" means all fields are locked.
+func (m *MediaItem) IsFieldLocked(field string) bool {
+	for _, f := range m.LockedFields {
+		if f == "*" || f == field {
+			return true
+		}
+	}
+	return false
 }
 
 // ──────────────────── TV ────────────────────
@@ -178,12 +199,18 @@ type TVShow struct {
 	SortTitle     *string    `json:"sort_title,omitempty" db:"sort_title"`
 	OriginalTitle *string    `json:"original_title,omitempty" db:"original_title"`
 	Description   *string    `json:"description,omitempty" db:"description"`
+	Tagline       *string    `json:"tagline,omitempty" db:"tagline"`
 	Year          *int       `json:"year,omitempty" db:"year"`
 	FirstAirDate  *time.Time `json:"first_air_date,omitempty" db:"first_air_date"`
 	LastAirDate   *time.Time `json:"last_air_date,omitempty" db:"last_air_date"`
 	Status        *string    `json:"status,omitempty" db:"status"`
+	Network       *string    `json:"network,omitempty" db:"network"`
+	Rating        *float64   `json:"rating,omitempty" db:"rating"`
+	ContentRating *string    `json:"content_rating,omitempty" db:"content_rating"`
 	PosterPath    *string    `json:"poster_path,omitempty" db:"poster_path"`
 	BackdropPath  *string    `json:"backdrop_path,omitempty" db:"backdrop_path"`
+	BannerPath    *string    `json:"banner_path,omitempty" db:"banner_path"`
+	ExternalIDs   *string    `json:"external_ids,omitempty" db:"external_ids"`
 	SortPosition  int        `json:"sort_position" db:"sort_position"`
 	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at" db:"updated_at"`
@@ -201,6 +228,7 @@ type TVSeason struct {
 	AirDate      *time.Time `json:"air_date,omitempty" db:"air_date"`
 	EpisodeCount int        `json:"episode_count" db:"episode_count"`
 	PosterPath   *string    `json:"poster_path,omitempty" db:"poster_path"`
+	ExternalIDs  *string    `json:"external_ids,omitempty" db:"external_ids"`
 	SortPosition int        `json:"sort_position" db:"sort_position"`
 	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
@@ -352,12 +380,15 @@ type SisterGroup struct {
 // ──────────────────── Movie Series ────────────────────
 
 type MovieSeries struct {
-	ID         uuid.UUID  `json:"id" db:"id"`
-	LibraryID  uuid.UUID  `json:"library_id" db:"library_id"`
-	Name       string     `json:"name" db:"name"`
-	PosterPath *string    `json:"poster_path,omitempty" db:"poster_path"`
-	CreatedAt  time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at" db:"updated_at"`
+	ID           uuid.UUID  `json:"id" db:"id"`
+	LibraryID    uuid.UUID  `json:"library_id" db:"library_id"`
+	Name         string     `json:"name" db:"name"`
+	Description  *string    `json:"description,omitempty" db:"description"`
+	PosterPath   *string    `json:"poster_path,omitempty" db:"poster_path"`
+	BackdropPath *string    `json:"backdrop_path,omitempty" db:"backdrop_path"`
+	ExternalIDs  *string    `json:"external_ids,omitempty" db:"external_ids"`
+	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
 	// Aggregated
 	ItemCount int               `json:"item_count,omitempty" db:"-"`
 	Items     []MovieSeriesItem `json:"items,omitempty" db:"-"`
@@ -616,17 +647,24 @@ type JobRecord struct {
 // ──────────────────── Metadata Match ────────────────────
 
 type MetadataMatch struct {
-	Source        string   `json:"source"`
-	ExternalID    string   `json:"external_id"`
-	Title         string   `json:"title"`
-	Year          *int     `json:"year,omitempty"`
-	Description   *string  `json:"description,omitempty"`
-	PosterURL     *string  `json:"poster_url,omitempty"`
-	Rating        *float64 `json:"rating,omitempty"`
-	Genres        []string `json:"genres,omitempty"`
-	IMDBId        string   `json:"imdb_id,omitempty"`
-	ContentRating *string  `json:"content_rating,omitempty"`
-	Confidence    float64  `json:"confidence"`
+	Source           string   `json:"source"`
+	ExternalID       string   `json:"external_id"`
+	Title            string   `json:"title"`
+	Year             *int     `json:"year,omitempty"`
+	Description      *string  `json:"description,omitempty"`
+	Tagline          *string  `json:"tagline,omitempty"`
+	PosterURL        *string  `json:"poster_url,omitempty"`
+	BackdropURL      *string  `json:"backdrop_url,omitempty"`
+	Rating           *float64 `json:"rating,omitempty"`
+	Genres           []string `json:"genres,omitempty"`
+	IMDBId           string   `json:"imdb_id,omitempty"`
+	ContentRating    *string  `json:"content_rating,omitempty"`
+	OriginalLanguage *string  `json:"original_language,omitempty"`
+	Country          *string  `json:"country,omitempty"`
+	TrailerURL       *string  `json:"trailer_url,omitempty"`
+	CollectionID     *int     `json:"collection_id,omitempty"`
+	CollectionName   *string  `json:"collection_name,omitempty"`
+	Confidence       float64  `json:"confidence"`
 }
 
 // ──────────────────── Duplicate Pair ────────────────────

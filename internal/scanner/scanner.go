@@ -32,6 +32,7 @@ type Scanner struct {
 	performerRepo *repository.PerformerRepository
 	settingsRepo  *repository.SettingsRepository
 	sisterRepo    *repository.SisterRepository
+	seriesRepo    *repository.SeriesRepository
 	scrapers      []metadata.Scraper
 	posterDir     string
 	// matchedShows tracks TV show IDs already matched this scan to avoid duplicate lookups
@@ -80,6 +81,7 @@ func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepos
 	audiobookRepo *repository.AudiobookRepository, galleryRepo *repository.GalleryRepository,
 	tagRepo *repository.TagRepository, performerRepo *repository.PerformerRepository,
 	settingsRepo *repository.SettingsRepository, sisterRepo *repository.SisterRepository,
+	seriesRepo *repository.SeriesRepository,
 	scrapers []metadata.Scraper, posterDir string,
 ) *Scanner {
 	return &Scanner{
@@ -94,6 +96,7 @@ func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepos
 		performerRepo:      performerRepo,
 		settingsRepo:       settingsRepo,
 		sisterRepo:         sisterRepo,
+		seriesRepo:         seriesRepo,
 		scrapers:           scrapers,
 		posterDir:          posterDir,
 		matchedShows:       make(map[uuid.UUID]bool),
@@ -184,11 +187,41 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 			// Parse filename based on media type to pre-fill metadata
 			parsed := s.parseFilename(info.Name(), library.MediaType)
 
-			// Check for NFO sidecar with IMDB ID (Plex-style direct matching)
-			nfoIMDB := ReadNFOIMDBID(path)
-			if nfoIMDB != "" {
-				parsed.IMDBID = nfoIMDB
-				log.Printf("NFO sidecar: found %s for %s", nfoIMDB, info.Name())
+			// ── NFO sidecar support (Kodi/Jellyfin-compatible) ──
+			var nfoData *metadata.NFOData
+			if library.NFOImport {
+				// Try full XML NFO parsing first
+				nfoPath := metadata.FindNFOFile(path, library.MediaType)
+				if nfoPath != "" {
+					switch library.MediaType {
+					case models.MediaTypeMovies, models.MediaTypeAdultMovies:
+						nfoData, _ = metadata.ReadMovieNFO(nfoPath)
+					case models.MediaTypeTVShows:
+						nfoData, _ = metadata.ReadEpisodeNFO(nfoPath)
+					}
+					if nfoData != nil {
+						log.Printf("NFO import: parsed %s for %s", nfoPath, info.Name())
+						// Apply NFO data to parsed filename for matching
+						if nfoData.GetIMDBID() != "" {
+							parsed.IMDBID = nfoData.GetIMDBID()
+						}
+						if nfoData.GetTMDBID() != "" {
+							parsed.TMDBID = nfoData.GetTMDBID()
+						}
+						if nfoData.GetTVDBID() != "" {
+							parsed.TVDBID = nfoData.GetTVDBID()
+						}
+					}
+				}
+			}
+
+			// Fallback: legacy NFO IMDB ID extraction (always active)
+			if parsed.IMDBID == "" {
+				nfoIMDB := ReadNFOIMDBID(path)
+				if nfoIMDB != "" {
+					parsed.IMDBID = nfoIMDB
+					log.Printf("NFO sidecar: found %s for %s", nfoIMDB, info.Name())
+				}
 			}
 
 			// Create media item with parsed metadata
@@ -269,9 +302,49 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				_ = s.tvRepo.IncrementEpisodeCount(*item.TVSeasonID)
 			}
 
-			// Auto-populate metadata from external sources (if enabled)
-			if shouldRetrieveMetadata {
-				s.autoPopulateMetadata(library, item)
+			// ── Local artwork detection (Plex/Jellyfin-style) ──
+			if library.PreferLocalArtwork {
+				localArt := DetectLocalArtwork(path, library.MediaType)
+				if localArt.PosterPath != "" && item.PosterPath == nil {
+					item.PosterPath = &localArt.PosterPath
+					log.Printf("Local artwork: using poster %s for %s", localArt.PosterPath, info.Name())
+				}
+				if localArt.BackdropPath != "" && item.BackdropPath == nil {
+					item.BackdropPath = &localArt.BackdropPath
+				}
+				if localArt.LogoPath != "" {
+					item.LogoPath = &localArt.LogoPath
+				}
+			}
+
+			// ── Apply full NFO metadata if available and has full data ──
+			if nfoData != nil && nfoData.HasFullMetadata() && nfoData.LockData {
+				// NFO has complete data + lockdata=true: use as-is, skip external fetch
+				s.applyNFOData(item, nfoData)
+				item.MetadataLocked = true
+				log.Printf("NFO import: applied full metadata for %s (locked)", info.Name())
+				if err := s.mediaRepo.UpdateMetadata(item.ID, item.Title, item.Year,
+					item.Description, item.Rating, item.PosterPath, item.ContentRating); err != nil {
+					log.Printf("NFO import: metadata update failed for %s: %v", item.ID, err)
+				}
+				// Link genres from NFO
+				if s.tagRepo != nil && len(nfoData.Genres) > 0 {
+					s.linkGenreTags(item.ID, nfoData.Genres)
+				}
+			} else if shouldRetrieveMetadata {
+				// Auto-populate metadata from external sources (if enabled)
+				s.autoPopulateMetadata(library, item, parsed)
+			}
+
+			// ── Write NFO export if enabled ──
+			if library.NFOExport && item.Description != nil {
+				nfoExportPath := strings.TrimSuffix(path, filepath.Ext(path)) + ".nfo"
+				switch library.MediaType {
+				case models.MediaTypeMovies, models.MediaTypeAdultMovies:
+					if err := metadata.WriteMovieNFO(item, nil, nil, nil, nfoExportPath); err != nil {
+						log.Printf("NFO export: write failed for %s: %v", info.Name(), err)
+					}
+				}
 			}
 
 			// For items without metadata retrieval (or that didn't get a poster),
@@ -514,6 +587,11 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 	idsJSON := metadata.BuildExternalIDsFromMatch("tmdb", match.ExternalID, combined.Details.IMDBId, false)
 	if idsJSON != nil {
 		_ = s.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
+	}
+
+	// Auto-create movie collection from TMDB belongs_to_collection
+	if combined.Details.CollectionID != nil && combined.Details.CollectionName != nil {
+		s.autoCreateCollection(item, combined.Details)
 	}
 
 	// Contribute to cache server with cast/crew and ratings
@@ -816,16 +894,166 @@ func (s *Scanner) getCacheClient() *metadata.CacheClient {
 	return metadata.EnsureRegistered(s.settingsRepo)
 }
 
+// applyDirectMatch applies metadata from a direct TMDB lookup (by ID) to a media item.
+func (s *Scanner) applyDirectMatch(item *models.MediaItem, match *models.MetadataMatch) {
+	// Download poster if available
+	var posterPath *string
+	if match.PosterURL != nil && s.posterDir != "" {
+		filename := item.ID.String() + ".jpg"
+		_, err := metadata.DownloadPoster(*match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+		if err == nil {
+			webPath := "/previews/posters/" + filename
+			posterPath = &webPath
+		}
+	}
+
+	if err := s.mediaRepo.UpdateMetadata(item.ID, match.Title, match.Year,
+		match.Description, match.Rating, posterPath, match.ContentRating); err != nil {
+		log.Printf("Direct match: DB update failed for %s: %v", item.ID, err)
+	}
+	if posterPath != nil {
+		item.PosterPath = posterPath
+	}
+
+	// Enrich with genres, ratings, etc.
+	if match.Source == "tmdb" {
+		s.enrichWithDetails(item.ID, match.ExternalID, item.MediaType)
+	}
+
+	// Store external IDs
+	idsJSON := metadata.BuildExternalIDsFromMatch(match.Source, match.ExternalID, match.IMDBId, false)
+	if idsJSON != nil {
+		_ = s.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
+	}
+
+	log.Printf("Direct match: %q → %q (ID=%s)", item.Title, match.Title, match.ExternalID)
+}
+
+// applyDirectMatchWithCredits applies metadata + credits from a combined TMDB lookup.
+func (s *Scanner) applyDirectMatchWithCredits(item *models.MediaItem, combined *metadata.DetailsWithCredits) {
+	match := combined.Details
+	s.applyDirectMatch(item, match)
+
+	// Also populate cast/crew from the included credits
+	if s.performerRepo != nil && combined.Credits != nil {
+		s.enrichWithCredits(item.ID, combined.Credits)
+	}
+
+	// Auto-create movie collection from TMDB belongs_to_collection
+	if match.CollectionID != nil && match.CollectionName != nil {
+		s.autoCreateCollection(item, match)
+	}
+}
+
+// autoCreateCollection finds or creates a movie_series from TMDB collection data
+// and links the media item to it. This auto-populates the movie series tables.
+func (s *Scanner) autoCreateCollection(item *models.MediaItem, match *models.MetadataMatch) {
+	if s.seriesRepo == nil || match.CollectionID == nil || match.CollectionName == nil {
+		return
+	}
+
+	collectionIDStr := fmt.Sprintf("%d", *match.CollectionID)
+
+	// First check if a series with this TMDB collection ID already exists
+	series, err := s.seriesRepo.FindByExternalID(item.LibraryID, collectionIDStr)
+	if err != nil {
+		log.Printf("Auto-collection: lookup failed: %v", err)
+		return
+	}
+
+	if series == nil {
+		// Also check by name (user may have manually created it)
+		series, err = s.seriesRepo.FindByName(item.LibraryID, *match.CollectionName)
+		if err != nil {
+			log.Printf("Auto-collection: name lookup failed: %v", err)
+			return
+		}
+	}
+
+	if series == nil {
+		// Create a new movie series
+		externalIDs := fmt.Sprintf(`{"tmdb_collection_id":"%s"}`, collectionIDStr)
+		series = &models.MovieSeries{
+			ID:          uuid.New(),
+			LibraryID:   item.LibraryID,
+			Name:        *match.CollectionName,
+			ExternalIDs: &externalIDs,
+		}
+		if err := s.seriesRepo.Create(series); err != nil {
+			log.Printf("Auto-collection: create failed for %q: %v", *match.CollectionName, err)
+			return
+		}
+		log.Printf("Auto-collection: created %q (TMDB collection %s)", *match.CollectionName, collectionIDStr)
+	}
+
+	// Check if item is already in this (or any) series
+	if s.seriesRepo.IsItemInSeries(item.ID) {
+		return
+	}
+
+	// Link the item to the series
+	seriesItem := &models.MovieSeriesItem{
+		ID:          uuid.New(),
+		SeriesID:    series.ID,
+		MediaItemID: item.ID,
+		SortOrder:   0, // will be sorted by year later
+	}
+	if item.Year != nil {
+		seriesItem.SortOrder = *item.Year
+	}
+	if err := s.seriesRepo.AddItem(seriesItem); err != nil {
+		log.Printf("Auto-collection: link item failed: %v", err)
+		return
+	}
+	log.Printf("Auto-collection: linked %q to %q", item.Title, series.Name)
+}
+
+// applyNFOData populates a MediaItem with data from a parsed NFO file.
+func (s *Scanner) applyNFOData(item *models.MediaItem, nfo *metadata.NFOData) {
+	if nfo.Title != "" {
+		item.Title = nfo.Title
+	}
+	if nfo.Plot != "" {
+		item.Description = &nfo.Plot
+	}
+	if nfo.Tagline != "" {
+		item.Tagline = &nfo.Tagline
+	}
+	if nfo.Year > 0 {
+		item.Year = &nfo.Year
+	}
+	if nfo.MPAA != "" {
+		item.ContentRating = &nfo.MPAA
+	}
+	if nfo.Country != "" {
+		item.Country = &nfo.Country
+	}
+	if nfo.TrailerURL != "" {
+		item.TrailerURL = &nfo.TrailerURL
+	}
+	if nfo.OriginalTitle != "" {
+		item.OriginalTitle = &nfo.OriginalTitle
+	}
+	if nfo.SortTitle != "" {
+		item.SortTitle = &nfo.SortTitle
+	}
+	// Apply rating from NFO
+	if r := nfo.GetDefaultRating(); r != nil {
+		item.Rating = r
+	}
+}
+
 // autoPopulateMetadata searches external sources and applies the best match.
 // When the cache server is enabled, it is tried first; direct TMDB is the fallback.
-func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.MediaItem) {
+// If parsed contains inline provider IDs (TMDB, IMDB), does a direct lookup instead.
+func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.MediaItem, parsed ...ParsedFilename) {
 	if len(s.scrapers) == 0 || !metadata.ShouldAutoMatch(item.MediaType) {
 		return
 	}
 
-	// Skip items where the user has manually edited metadata
-	if item.MetadataLocked {
-		log.Printf("Auto-match: skipping %s (metadata locked by user edit)", item.ID)
+	// Skip items where all fields are locked
+	if item.MetadataLocked || item.IsFieldLocked("*") {
+		log.Printf("Auto-match: skipping %s (metadata locked)", item.ID)
 		return
 	}
 
@@ -840,6 +1068,34 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 	searchQuery := metadata.CleanTitleForSearch(item.Title)
 	if searchQuery == "" {
 		return
+	}
+
+	// ── Direct TMDB lookup if we have an ID from NFO or inline filename ──
+	// This bypasses fuzzy search entirely for guaranteed accuracy
+	var pf ParsedFilename
+	if len(parsed) > 0 {
+		pf = parsed[0]
+	}
+	if pf.TMDBID != "" {
+		log.Printf("Auto-match: direct TMDB lookup for ID %s (%q)", pf.TMDBID, item.Title)
+		for _, sc := range s.scrapers {
+			if t, ok := sc.(*metadata.TMDBScraper); ok {
+				if item.MediaType == models.MediaTypeTVShows {
+					details, err := t.GetTVDetails(pf.TMDBID)
+					if err == nil && details != nil {
+						s.applyDirectMatch(item, details)
+						return
+					}
+				} else {
+					details, err := t.GetDetailsWithCredits(pf.TMDBID)
+					if err == nil && details != nil {
+						s.applyDirectMatchWithCredits(item, details)
+						return
+					}
+				}
+				break
+			}
+		}
 	}
 
 	// ── Try cache server first ──
@@ -1106,6 +1362,9 @@ func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, med
 			s.enrichWithCredits(itemID, credits)
 		}
 	}
+
+	// Fetch extended artwork from fanart.tv (logos, banners, clearart)
+	s.enrichWithFanart(itemID, tmdbExternalID, mediaType)
 }
 
 // enrichWithCredits creates or finds performers from TMDB credits and links them to a media item.
@@ -1212,6 +1471,56 @@ func (s *Scanner) findOrCreatePerformer(name string, perfType models.PerformerTy
 		return nil, err
 	}
 	return p, nil
+}
+
+// enrichWithFanart fetches extended artwork from fanart.tv and applies logos, banners, etc.
+func (s *Scanner) enrichWithFanart(itemID uuid.UUID, tmdbExternalID string, mediaType models.MediaType) {
+	if s.settingsRepo == nil {
+		return
+	}
+	fanartKey, _ := s.settingsRepo.Get("fanart_api_key")
+	if fanartKey == "" {
+		return
+	}
+
+	client := metadata.NewFanartTVClient(fanartKey)
+	var art *metadata.FanartArtwork
+	var err error
+
+	if mediaType == models.MediaTypeTVShows {
+		art, err = client.GetTVArtwork(tmdbExternalID)
+	} else {
+		art, err = client.GetMovieArtwork(tmdbExternalID)
+	}
+
+	if err != nil {
+		log.Printf("fanart.tv: fetch failed for %s: %v", tmdbExternalID, err)
+		return
+	}
+	if art == nil {
+		return
+	}
+
+	// Download and save logo
+	if art.LogoURL != "" && s.posterDir != "" {
+		filename := "logo_" + itemID.String() + ".png"
+		_, dlErr := metadata.DownloadPoster(art.LogoURL, filepath.Join(s.posterDir, "posters"), filename)
+		if dlErr == nil {
+			webPath := "/previews/posters/" + filename
+			s.mediaRepo.DB().Exec(`UPDATE media_items SET logo_path = $1 WHERE id = $2`, webPath, itemID)
+			log.Printf("fanart.tv: saved logo for %s", itemID)
+		}
+	}
+
+	// Download backdrop if we don't have one yet
+	if art.BackdropURL != "" && s.posterDir != "" {
+		filename := "backdrop_" + itemID.String() + ".jpg"
+		_, dlErr := metadata.DownloadPoster(art.BackdropURL, filepath.Join(s.posterDir, "posters"), filename)
+		if dlErr == nil {
+			webPath := "/previews/posters/" + filename
+			s.mediaRepo.DB().Exec(`UPDATE media_items SET backdrop_path = COALESCE(backdrop_path, $1) WHERE id = $2`, webPath, itemID)
+		}
+	}
 }
 
 // linkGenreTags creates genre tags (if they don't exist) and links them to the media item.

@@ -36,6 +36,8 @@ type ParsedFilename struct {
 	ExtraType   string // "trailer", "sample", "featurette", etc. Empty = not an extra
 	Source      string // "bluray", "dvd", "web", "hdtv", etc.
 	IMDBID      string // from NFO sidecar file (tt1234567)
+	TMDBID      string // from NFO or inline filename [tmdbid-12345]
+	TVDBID      string // from NFO or inline filename [tvdbid-12345]
 }
 
 // multiPartEntry tracks a media item that is part of a multi-part set.
@@ -166,6 +168,30 @@ var sampleFileRx = regexp.MustCompile(`(?i)[\s._-]sample[\s._-]|^sample[\s._-]|[
 // SampleFileSizeThreshold is the max file size (300MB) for a sample to be ignored
 const SampleFileSizeThreshold = 300 * 1024 * 1024
 
+// ──────────────────── Inline Provider ID Support (Jellyfin-style) ────────────────────
+// Supports [tmdbid-12345], [imdbid-tt1234567], [tvdbid-12345] in filenames
+
+var inlineTMDBIDPattern = regexp.MustCompile(`(?i)\[tmdbid[=-](\d+)\]`)
+var inlineIMDBIDPattern = regexp.MustCompile(`(?i)\[imdbid[=-](tt\d+)\]`)
+var inlineTVDBIDPattern = regexp.MustCompile(`(?i)\[tvdbid[=-](\d+)\]`)
+
+// extractInlineProviderIDs checks a filename for embedded provider IDs
+// in the Jellyfin [tmdbid-X] format and populates the ParsedFilename.
+func extractInlineProviderIDs(filename string, result *ParsedFilename) {
+	if m := inlineTMDBIDPattern.FindStringSubmatch(filename); len(m) >= 2 {
+		result.TMDBID = m[1]
+		log.Printf("Inline ID: found TMDB ID %s in %q", m[1], filename)
+	}
+	if m := inlineIMDBIDPattern.FindStringSubmatch(filename); len(m) >= 2 {
+		result.IMDBID = m[1]
+		log.Printf("Inline ID: found IMDB ID %s in %q", m[1], filename)
+	}
+	if m := inlineTVDBIDPattern.FindStringSubmatch(filename); len(m) >= 2 {
+		result.TVDBID = m[1]
+		log.Printf("Inline ID: found TVDB ID %s in %q", m[1], filename)
+	}
+}
+
 // ──────────────────── NFO Sidecar Support ────────────────────
 
 var nfoIMDBPattern = regexp.MustCompile(`(tt\d{7,})`)
@@ -188,7 +214,16 @@ func (s *Scanner) parseFilename(filename string, mediaType models.MediaType) Par
 	baseName := strings.TrimSuffix(filename, ext)
 	result.Container = strings.ToLower(strings.TrimPrefix(ext, "."))
 
-	// Step 0: Check for extras by filename suffix (before any other parsing)
+	// Step 0a: Extract inline provider IDs [tmdbid-X], [imdbid-X], [tvdbid-X]
+	// (Jellyfin-style — must extract before stripping brackets)
+	extractInlineProviderIDs(baseName, &result)
+	// Strip inline ID tags from the base name so they don't pollute the title
+	baseName = inlineTMDBIDPattern.ReplaceAllString(baseName, "")
+	baseName = inlineIMDBIDPattern.ReplaceAllString(baseName, "")
+	baseName = inlineTVDBIDPattern.ReplaceAllString(baseName, "")
+	baseName = strings.TrimSpace(baseName)
+
+	// Step 0b: Check for extras by filename suffix (before any other parsing)
 	result.ExtraType = detectExtraFromFilename(baseName)
 
 	// Step 1: For movies/adult movies, check for multi-part indicator and strip it

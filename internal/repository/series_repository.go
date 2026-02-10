@@ -172,6 +172,53 @@ func (r *SeriesRepository) RemoveItem(seriesID, itemID uuid.UUID) error {
 	return nil
 }
 
+// FindByExternalID finds a movie series by its TMDB collection ID stored in external_ids.
+func (r *SeriesRepository) FindByExternalID(libraryID uuid.UUID, tmdbCollectionID string) (*models.MovieSeries, error) {
+	s := &models.MovieSeries{}
+	query := `
+		SELECT id, library_id, name, description, poster_path, backdrop_path, external_ids, created_at, updated_at
+		FROM movie_series
+		WHERE library_id = $1 AND external_ids->>'tmdb_collection_id' = $2
+		LIMIT 1`
+	err := r.db.QueryRow(query, libraryID, tmdbCollectionID).Scan(
+		&s.ID, &s.LibraryID, &s.Name, &s.Description, &s.PosterPath, &s.BackdropPath,
+		&s.ExternalIDs, &s.CreatedAt, &s.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// FindByName finds a movie series by name within a library.
+func (r *SeriesRepository) FindByName(libraryID uuid.UUID, name string) (*models.MovieSeries, error) {
+	s := &models.MovieSeries{}
+	query := `
+		SELECT id, library_id, name, description, poster_path, backdrop_path, external_ids, created_at, updated_at
+		FROM movie_series WHERE library_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1`
+	err := r.db.QueryRow(query, libraryID, name).Scan(
+		&s.ID, &s.LibraryID, &s.Name, &s.Description, &s.PosterPath, &s.BackdropPath,
+		&s.ExternalIDs, &s.CreatedAt, &s.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// IsItemInSeries checks if a media item is already linked to any series.
+func (r *SeriesRepository) IsItemInSeries(mediaItemID uuid.UUID) bool {
+	var count int
+	r.db.QueryRow(`SELECT COUNT(*) FROM movie_series_items WHERE media_item_id = $1`, mediaItemID).Scan(&count)
+	return count > 0
+}
+
 // GetSeriesForMedia returns the series a media item belongs to (if any)
 func (r *SeriesRepository) GetSeriesForMedia(mediaItemID uuid.UUID) (*models.MovieSeries, *models.MovieSeriesItem, error) {
 	item := &models.MovieSeriesItem{}

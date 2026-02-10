@@ -34,16 +34,17 @@ func (r *MediaRepository) DB() *sql.DB {
 
 // mediaColumns is the standard SELECT list for media_items
 const mediaColumns = `id, library_id, media_type, file_path, file_name, file_size,
-	file_hash, title, sort_title, original_title, description, year, release_date,
+	file_hash, title, sort_title, original_title, description, tagline, year, release_date,
 	duration_seconds, rating, resolution, width, height, codec, container,
 	bitrate, framerate, audio_codec, audio_channels,
-	poster_path, thumbnail_path, backdrop_path,
+	original_language, country, trailer_url,
+	poster_path, thumbnail_path, backdrop_path, logo_path,
 	tv_show_id, tv_season_id, episode_number,
 	artist_id, album_id, track_number, disc_number,
 	author_id, book_id, chapter_number,
 	image_gallery_id, sister_group_id,
 	imdb_rating, rt_rating, audience_score,
-	edition_type, content_rating, sort_position, external_ids, generated_poster, metadata_locked, duplicate_status, added_at, updated_at`
+	edition_type, content_rating, sort_position, external_ids, generated_poster, metadata_locked, locked_fields, duplicate_status, added_at, updated_at`
 
 // prefixedMediaColumns returns mediaColumns with each column prefixed by the given alias (e.g. "m.").
 func prefixedMediaColumns(prefix string) string {
@@ -59,17 +60,18 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 	err := row.Scan(
 		&item.ID, &item.LibraryID, &item.MediaType, &item.FilePath, &item.FileName,
 		&item.FileSize, &item.FileHash, &item.Title, &item.SortTitle, &item.OriginalTitle,
-		&item.Description, &item.Year, &item.ReleaseDate,
+		&item.Description, &item.Tagline, &item.Year, &item.ReleaseDate,
 		&item.DurationSeconds, &item.Rating, &item.Resolution, &item.Width, &item.Height,
 		&item.Codec, &item.Container, &item.Bitrate, &item.Framerate,
 		&item.AudioCodec, &item.AudioChannels,
-		&item.PosterPath, &item.ThumbnailPath, &item.BackdropPath,
+		&item.OriginalLanguage, &item.Country, &item.TrailerURL,
+		&item.PosterPath, &item.ThumbnailPath, &item.BackdropPath, &item.LogoPath,
 		&item.TVShowID, &item.TVSeasonID, &item.EpisodeNumber,
 		&item.ArtistID, &item.AlbumID, &item.TrackNumber, &item.DiscNumber,
 		&item.AuthorID, &item.BookID, &item.ChapterNumber,
 		&item.ImageGalleryID, &item.SisterGroupID,
 		&item.IMDBRating, &item.RTRating, &item.AudienceScore,
-		&item.EditionType, &item.ContentRating, &item.SortPosition, &item.ExternalIDs, &item.GeneratedPoster, &item.MetadataLocked, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
+		&item.EditionType, &item.ContentRating, &item.SortPosition, &item.ExternalIDs, &item.GeneratedPoster, &item.MetadataLocked, &item.LockedFields, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
 }

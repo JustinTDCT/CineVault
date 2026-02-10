@@ -76,10 +76,17 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 	tagRepo := repository.NewTagRepository(database.DB)
 	settingsRepo := repository.NewSettingsRepository(database.DB)
 
+	// Initialize TVDB scraper if API key is configured
+	tvdbKey, _ := settingsRepo.Get("tvdb_api_key")
+	if tvdbKey != "" {
+		scrapers = append(scrapers, metadata.NewTVDBScraper(tvdbKey))
+	}
+
 	performerRepo := repository.NewPerformerRepository(database.DB)
 	sisterRepo := repository.NewSisterRepository(database.DB)
+	seriesRepo := repository.NewSeriesRepository(database.DB)
 	posterDir := cfg.Paths.Preview
-	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, cfg.FFmpeg.FFmpegPath, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo, tagRepo, performerRepo, settingsRepo, sisterRepo, scrapers, posterDir)
+	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, cfg.FFmpeg.FFmpegPath, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo, tagRepo, performerRepo, settingsRepo, sisterRepo, seriesRepo, scrapers, posterDir)
 	transcoder := stream.NewTranscoder(cfg.FFmpeg.FFmpegPath, cfg.Paths.Preview)
 
 	wsHub := NewWSHub()
@@ -222,6 +229,8 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /api/v1/media/search", s.authMiddleware(s.handleSearchMedia, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/media/{id}/identify", s.authMiddleware(s.handleIdentifyMedia, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/media/{id}/apply-meta", s.authMiddleware(s.handleApplyMetadata, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/media/{id}/locked-fields", s.authMiddleware(s.handleGetLockedFields, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/media/{id}/locked-fields", s.authMiddleware(s.handleUpdateLockedFields, models.RoleAdmin))
 
 	// Media - Performers
 	s.router.HandleFunc("GET /api/v1/media/{id}/cast", s.authMiddleware(s.handleGetMediaCast, models.RoleUser))

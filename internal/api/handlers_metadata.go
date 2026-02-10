@@ -487,6 +487,55 @@ func (s *Server) handleAutoMatch(w http.ResponseWriter, r *http.Request) {
 	s.respondError(w, http.StatusServiceUnavailable, "job queue not available")
 }
 
+// ──────────────────── Per-Field Metadata Locking ────────────────────
+
+func (s *Server) handleGetLockedFields(w http.ResponseWriter, r *http.Request) {
+	mediaID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media id")
+		return
+	}
+
+	media, err := s.mediaRepo.GetByID(mediaID)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "media not found")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{
+		"locked_fields":   media.LockedFields,
+		"metadata_locked": media.MetadataLocked,
+	}})
+}
+
+func (s *Server) handleUpdateLockedFields(w http.ResponseWriter, r *http.Request) {
+	mediaID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media id")
+		return
+	}
+
+	var req struct {
+		LockedFields []string `json:"locked_fields"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Determine if metadata_locked should be set (when "*" is in the list or any fields are locked)
+	isLocked := len(req.LockedFields) > 0
+
+	query := `UPDATE media_items SET locked_fields = $1, metadata_locked = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3`
+	_, err = s.db.DB.Exec(query, req.LockedFields, isLocked, mediaID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true})
+}
+
 // ──────────────────── Sort Order Handler ────────────────────
 
 func (s *Server) handleUpdateSortOrder(w http.ResponseWriter, r *http.Request) {
@@ -616,7 +665,7 @@ func (s *Server) handleGetSystemSettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// Mask sensitive keys for display
-	for _, sensitiveKey := range []string{"omdb_api_key"} {
+	for _, sensitiveKey := range []string{"omdb_api_key", "tvdb_api_key", "fanart_api_key"} {
 		if val, ok := settings[sensitiveKey]; ok && len(val) > 4 {
 			settings[sensitiveKey] = val[:4] + strings.Repeat("*", len(val)-4)
 		}
@@ -639,7 +688,7 @@ func (s *Server) handleUpdateSystemSettings(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Sensitive keys that get masked – skip update if the value is still masked
-	sensitiveKeys := map[string]bool{"omdb_api_key": true}
+	sensitiveKeys := map[string]bool{"omdb_api_key": true, "tvdb_api_key": true, "fanart_api_key": true}
 	// Internal keys that the frontend should never overwrite
 	internalKeys := map[string]bool{"cache_server_api_key": true, "cache_server_url": true}
 

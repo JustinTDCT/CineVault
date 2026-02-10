@@ -298,7 +298,7 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 		return nil, fmt.Errorf("TMDB API key not configured")
 	}
 
-	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&append_to_response=credits,release_dates",
+	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&append_to_response=credits,release_dates,videos",
 		externalID, s.apiKey)
 	resp, err := s.client.Get(reqURL)
 	if err != nil {
@@ -314,14 +314,34 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 		ID          int     `json:"id"`
 		Title       string  `json:"title"`
 		Overview    string  `json:"overview"`
+		Tagline     string  `json:"tagline"`
 		PosterPath  string  `json:"poster_path"`
+		BackdropPath string `json:"backdrop_path"`
 		ReleaseDate string  `json:"release_date"`
 		VoteAverage float64 `json:"vote_average"`
 		IMDBId      string  `json:"imdb_id"`
+		OriginalLanguage string `json:"original_language"`
+		ProductionCountries []struct {
+			ISO31661 string `json:"iso_3166_1"`
+			Name     string `json:"name"`
+		} `json:"production_countries"`
 		Genres      []struct {
 			ID   int    `json:"id"`
 			Name string `json:"name"`
 		} `json:"genres"`
+		BelongsToCollection *struct {
+			ID           int    `json:"id"`
+			Name         string `json:"name"`
+			PosterPath   string `json:"poster_path"`
+			BackdropPath string `json:"backdrop_path"`
+		} `json:"belongs_to_collection"`
+		Videos struct {
+			Results []struct {
+				Type string `json:"type"`
+				Site string `json:"site"`
+				Key  string `json:"key"`
+			} `json:"results"`
+		} `json:"videos"`
 		Credits      TMDBCredits `json:"credits"`
 		ReleaseDates struct {
 			Results []tmdbReleaseDateCountry `json:"results"`
@@ -343,6 +363,11 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 		p := "https://image.tmdb.org/t/p/w500" + r.PosterPath
 		posterURL = &p
 	}
+	var backdropURL *string
+	if r.BackdropPath != "" {
+		b := "https://image.tmdb.org/t/p/w1280" + r.BackdropPath
+		backdropURL = &b
+	}
 	rating := r.VoteAverage
 
 	var genres []string
@@ -352,19 +377,67 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 
 	contentRating := extractUSCertification(r.ReleaseDates.Results)
 
+	// Build tagline
+	var tagline *string
+	if r.Tagline != "" {
+		tagline = &r.Tagline
+	}
+
+	// Build country string from production countries
+	var country *string
+	if len(r.ProductionCountries) > 0 {
+		var countries []string
+		for _, c := range r.ProductionCountries {
+			countries = append(countries, c.Name)
+		}
+		c := strings.Join(countries, ", ")
+		country = &c
+	}
+
+	// Build original language
+	var origLang *string
+	if r.OriginalLanguage != "" {
+		origLang = &r.OriginalLanguage
+	}
+
+	// Find YouTube trailer
+	var trailerURL *string
+	for _, v := range r.Videos.Results {
+		if v.Type == "Trailer" && v.Site == "YouTube" && v.Key != "" {
+			t := "https://www.youtube.com/watch?v=" + v.Key
+			trailerURL = &t
+			break
+		}
+	}
+
+	// Collection data
+	var collectionID *int
+	var collectionName *string
+	if r.BelongsToCollection != nil {
+		collectionID = &r.BelongsToCollection.ID
+		collectionName = &r.BelongsToCollection.Name
+	}
+
 	return &DetailsWithCredits{
 		Details: &models.MetadataMatch{
-			Source:        "tmdb",
-			ExternalID:    fmt.Sprintf("%d", r.ID),
-			Title:         r.Title,
-			Year:          year,
-			Description:   &overview,
-			PosterURL:     posterURL,
-			Rating:        &rating,
-			Genres:        genres,
-			IMDBId:        r.IMDBId,
-			ContentRating: contentRating,
-			Confidence:    1.0,
+			Source:           "tmdb",
+			ExternalID:       fmt.Sprintf("%d", r.ID),
+			Title:            r.Title,
+			Year:             year,
+			Description:      &overview,
+			Tagline:          tagline,
+			PosterURL:        posterURL,
+			BackdropURL:      backdropURL,
+			Rating:           &rating,
+			Genres:           genres,
+			IMDBId:           r.IMDBId,
+			ContentRating:    contentRating,
+			OriginalLanguage: origLang,
+			Country:          country,
+			TrailerURL:       trailerURL,
+			CollectionID:     collectionID,
+			CollectionName:   collectionName,
+			Confidence:       1.0,
 		},
 		Credits: &r.Credits,
 	}, nil
@@ -1244,4 +1317,346 @@ func FetchOMDbRatings(imdbID, apiKey string) (*OMDbRatings, error) {
 	}
 
 	return result, nil
+}
+
+// ──────────────────── TVDB ────────────────────
+
+// TVDBScraper provides metadata from TheTVDB.com for TV shows.
+// Requires a user-provided API key stored in system_settings.
+type TVDBScraper struct {
+	apiKey string
+	client *http.Client
+	token  string // JWT auth token
+}
+
+func NewTVDBScraper(apiKey string) *TVDBScraper {
+	return &TVDBScraper{
+		apiKey: apiKey,
+		client: &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+func (s *TVDBScraper) Name() string { return "tvdb" }
+
+// authenticate gets a JWT token from TVDB API v4.
+func (s *TVDBScraper) authenticate() error {
+	if s.token != "" {
+		return nil // already authenticated
+	}
+
+	body := fmt.Sprintf(`{"apikey":"%s"}`, s.apiKey)
+	resp, err := s.client.Post("https://api4.thetvdb.com/v4/login", "application/json", strings.NewReader(body))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("TVDB auth failed with status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Status string `json:"status"`
+		Data   struct {
+			Token string `json:"token"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return err
+	}
+	s.token = result.Data.Token
+	return nil
+}
+
+// tvdbRequest makes an authenticated request to the TVDB API.
+func (s *TVDBScraper) tvdbRequest(endpoint string) (*http.Response, error) {
+	if err := s.authenticate(); err != nil {
+		return nil, fmt.Errorf("TVDB auth: %w", err)
+	}
+
+	reqURL := "https://api4.thetvdb.com/v4" + endpoint
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+s.token)
+	req.Header.Set("Accept", "application/json")
+
+	return s.client.Do(req)
+}
+
+func (s *TVDBScraper) Search(query string, mediaType models.MediaType, year *int) ([]*models.MetadataMatch, error) {
+	if s.apiKey == "" {
+		return nil, fmt.Errorf("TVDB API key not configured")
+	}
+
+	searchType := "series"
+	if mediaType == models.MediaTypeMovies || mediaType == models.MediaTypeAdultMovies {
+		searchType = "movie"
+	}
+
+	endpoint := fmt.Sprintf("/search?query=%s&type=%s", url.QueryEscape(query), searchType)
+	if year != nil {
+		endpoint += fmt.Sprintf("&year=%d", *year)
+	}
+
+	resp, err := s.tvdbRequest(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("TVDB search returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data []struct {
+			TVDBID      string `json:"tvdb_id"`
+			ObjectID    string `json:"objectID"`
+			Name        string `json:"name"`
+			Overview    string `json:"overview"`
+			ImageURL    string `json:"image_url"`
+			Year        string `json:"year"`
+			PrimaryType string `json:"primary_type"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	var matches []*models.MetadataMatch
+	for _, r := range result.Data {
+		var yr *int
+		if r.Year != "" {
+			y := 0
+			fmt.Sscanf(r.Year, "%d", &y)
+			if y > 0 {
+				yr = &y
+			}
+		}
+		overview := r.Overview
+		var posterURL *string
+		if r.ImageURL != "" {
+			posterURL = &r.ImageURL
+		}
+
+		// Use tvdb_id or objectID
+		externalID := r.TVDBID
+		if externalID == "" {
+			externalID = r.ObjectID
+		}
+
+		matches = append(matches, &models.MetadataMatch{
+			Source:      "tvdb",
+			ExternalID:  externalID,
+			Title:       r.Name,
+			Year:        yr,
+			Description: &overview,
+			PosterURL:   posterURL,
+			Confidence:  titleSimilarity(query, r.Name),
+		})
+	}
+	return matches, nil
+}
+
+func (s *TVDBScraper) GetDetails(externalID string) (*models.MetadataMatch, error) {
+	if s.apiKey == "" {
+		return nil, fmt.Errorf("TVDB API key not configured")
+	}
+
+	endpoint := fmt.Sprintf("/series/%s/extended", externalID)
+	resp, err := s.tvdbRequest(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("TVDB details returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data struct {
+			ID           int    `json:"id"`
+			Name         string `json:"name"`
+			Overview     string `json:"overview"`
+			Image        string `json:"image"`
+			Year         string `json:"year"`
+			FirstAired   string `json:"firstAired"`
+			OriginalNetwork struct {
+				Name string `json:"name"`
+			} `json:"originalNetwork"`
+			Genres []struct {
+				Name string `json:"name"`
+			} `json:"genres"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	r := result.Data
+	var yr *int
+	if r.Year != "" {
+		y := 0
+		fmt.Sscanf(r.Year, "%d", &y)
+		if y > 0 {
+			yr = &y
+		}
+	}
+	overview := r.Overview
+	var posterURL *string
+	if r.Image != "" {
+		posterURL = &r.Image
+	}
+	var genres []string
+	for _, g := range r.Genres {
+		genres = append(genres, g.Name)
+	}
+
+	return &models.MetadataMatch{
+		Source:      "tvdb",
+		ExternalID:  fmt.Sprintf("%d", r.ID),
+		Title:       r.Name,
+		Year:        yr,
+		Description: &overview,
+		PosterURL:   posterURL,
+		Genres:      genres,
+		Confidence:  1.0,
+	}, nil
+}
+
+// ──────────────────── fanart.tv ────────────────────
+
+// FanartTVClient fetches extended artwork from fanart.tv.
+type FanartTVClient struct {
+	apiKey string
+	client *http.Client
+}
+
+// FanartArtwork holds the different artwork types available from fanart.tv.
+type FanartArtwork struct {
+	LogoURL     string
+	ClearArtURL string
+	BannerURL   string
+	DiscURL     string
+	ThumbURL    string
+	BackdropURL string
+}
+
+func NewFanartTVClient(apiKey string) *FanartTVClient {
+	return &FanartTVClient{
+		apiKey: apiKey,
+		client: &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+// GetMovieArtwork fetches extended artwork for a movie by TMDB ID.
+func (c *FanartTVClient) GetMovieArtwork(tmdbID string) (*FanartArtwork, error) {
+	if c.apiKey == "" {
+		return nil, fmt.Errorf("fanart.tv API key not configured")
+	}
+
+	reqURL := fmt.Sprintf("https://webservice.fanart.tv/v3/movies/%s?api_key=%s", tmdbID, c.apiKey)
+	resp, err := c.client.Get(reqURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("fanart.tv returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		HDMovieLogos    []fanartImage `json:"hdmovielogo"`
+		MovieLogos      []fanartImage `json:"movielogo"`
+		HDClearArt      []fanartImage `json:"hdmovieclearart"`
+		MovieClearArt   []fanartImage `json:"movieclearart"`
+		MovieBanners    []fanartImage `json:"moviebanner"`
+		MovieDiscs      []fanartImage `json:"moviedisc"`
+		MovieThumbs     []fanartImage `json:"moviethumb"`
+		MovieBackgrounds []fanartImage `json:"moviebackground"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	art := &FanartArtwork{}
+	art.LogoURL = firstFanartURL(result.HDMovieLogos, result.MovieLogos)
+	art.ClearArtURL = firstFanartURL(result.HDClearArt, result.MovieClearArt)
+	art.BannerURL = firstFanartURL(result.MovieBanners)
+	art.DiscURL = firstFanartURL(result.MovieDiscs)
+	art.ThumbURL = firstFanartURL(result.MovieThumbs)
+	art.BackdropURL = firstFanartURL(result.MovieBackgrounds)
+
+	return art, nil
+}
+
+// GetTVArtwork fetches extended artwork for a TV show by TVDB ID.
+func (c *FanartTVClient) GetTVArtwork(tvdbID string) (*FanartArtwork, error) {
+	if c.apiKey == "" {
+		return nil, fmt.Errorf("fanart.tv API key not configured")
+	}
+
+	reqURL := fmt.Sprintf("https://webservice.fanart.tv/v3/tv/%s?api_key=%s", tvdbID, c.apiKey)
+	resp, err := c.client.Get(reqURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("fanart.tv returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		HDTVLogos       []fanartImage `json:"hdtvlogo"`
+		ClearLogos      []fanartImage `json:"clearlogo"`
+		HDClearArt      []fanartImage `json:"hdclearart"`
+		ClearArt        []fanartImage `json:"clearart"`
+		TVBanners       []fanartImage `json:"tvbanner"`
+		TVThumbs        []fanartImage `json:"tvthumb"`
+		ShowBackgrounds []fanartImage `json:"showbackground"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	art := &FanartArtwork{}
+	art.LogoURL = firstFanartURL(result.HDTVLogos, result.ClearLogos)
+	art.ClearArtURL = firstFanartURL(result.HDClearArt, result.ClearArt)
+	art.BannerURL = firstFanartURL(result.TVBanners)
+	art.ThumbURL = firstFanartURL(result.TVThumbs)
+	art.BackdropURL = firstFanartURL(result.ShowBackgrounds)
+
+	return art, nil
+}
+
+type fanartImage struct {
+	ID    string `json:"id"`
+	URL   string `json:"url"`
+	Likes string `json:"likes"`
+	Lang  string `json:"lang"`
+}
+
+// firstFanartURL returns the URL of the first image from multiple preference-ordered slices.
+// Prefers English-language images.
+func firstFanartURL(imageSets ...[]fanartImage) string {
+	// First pass: find an English image
+	for _, images := range imageSets {
+		for _, img := range images {
+			if (img.Lang == "en" || img.Lang == "") && img.URL != "" {
+				return img.URL
+			}
+		}
+	}
+	// Second pass: any language
+	for _, images := range imageSets {
+		if len(images) > 0 && images[0].URL != "" {
+			return images[0].URL
+		}
+	}
+	return ""
 }
