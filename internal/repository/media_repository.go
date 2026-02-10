@@ -382,7 +382,7 @@ func (r *MediaRepository) Delete(id uuid.UUID) error {
 func (r *MediaRepository) UpdateMetadata(id uuid.UUID, title string, year *int, description *string, rating *float64, posterPath *string, contentRating *string) error {
 	query := `UPDATE media_items SET title = $1, year = $2, description = $3, rating = $4,
 		poster_path = $5, content_rating = $6,
-		generated_poster = CASE WHEN $5 IS NOT NULL THEN false ELSE generated_poster END,
+		generated_poster = CASE WHEN ($5::text) IS NOT NULL THEN false ELSE generated_poster END,
 		updated_at = CURRENT_TIMESTAMP WHERE id = $7`
 	_, err := r.db.Exec(query, title, year, description, rating, posterPath, contentRating, id)
 	return err
