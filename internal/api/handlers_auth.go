@@ -39,7 +39,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data: map[string]interface{}{
-			"version":    "0.40.0",
+			"version":    "0.41.0",
 			"phase":      "3",
 			"ws_clients": s.wsHub.ClientCount(),
 		},
@@ -149,7 +149,7 @@ type SetPinRequest struct {
 	Pin string `json:"pin"`
 }
 
-// handleFastLoginUsers returns the list of active users for the fast login screen (public).
+// handleFastLoginUsers returns only master users for the fast login screen (public).
 func (s *Server) handleFastLoginUsers(w http.ResponseWriter, r *http.Request) {
 	// Check if fast login is enabled
 	enabled, _ := s.settingsRepo.Get("fast_login_enabled")
@@ -158,7 +158,7 @@ func (s *Server) handleFastLoginUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	users, err := s.userRepo.List()
+	users, err := s.userRepo.ListMasterUsers()
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, "failed to list users")
 		return
@@ -166,9 +166,6 @@ func (s *Server) handleFastLoginUsers(w http.ResponseWriter, r *http.Request) {
 
 	var result []FastLoginUsersResponse
 	for _, u := range users {
-		if !u.IsActive {
-			continue
-		}
 		result = append(result, FastLoginUsersResponse{
 			ID:               u.ID,
 			Username:         u.Username,

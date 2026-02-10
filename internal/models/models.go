@@ -51,22 +51,24 @@ const (
 // ──────────────────── User ────────────────────
 
 type User struct {
-	ID               uuid.UUID `json:"id" db:"id"`
-	Username         string    `json:"username" db:"username"`
-	Email            string    `json:"email" db:"email"`
-	PasswordHash     string    `json:"-" db:"password_hash"`
-	PinHash          *string   `json:"-" db:"pin_hash"`
-	DisplayName      *string   `json:"display_name,omitempty" db:"display_name"`
-	FirstName        *string   `json:"first_name,omitempty" db:"first_name"`
-	LastName         *string   `json:"last_name,omitempty" db:"last_name"`
-	Role             UserRole  `json:"role" db:"role"`
-	IsActive         bool      `json:"is_active" db:"is_active"`
-	MaxContentRating *string   `json:"max_content_rating,omitempty" db:"max_content_rating"`
-	IsKidsProfile    bool      `json:"is_kids_profile" db:"is_kids_profile"`
-	AvatarID         *string   `json:"avatar_id,omitempty" db:"avatar_id"`
-	HasPin           bool      `json:"has_pin" db:"-"`
-	CreatedAt        time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
+	ID               uuid.UUID  `json:"id" db:"id"`
+	Username         string     `json:"username" db:"username"`
+	Email            string     `json:"email" db:"email"`
+	PasswordHash     string     `json:"-" db:"password_hash"`
+	PinHash          *string    `json:"-" db:"pin_hash"`
+	DisplayName      *string    `json:"display_name,omitempty" db:"display_name"`
+	FirstName        *string    `json:"first_name,omitempty" db:"first_name"`
+	LastName         *string    `json:"last_name,omitempty" db:"last_name"`
+	Role             UserRole   `json:"role" db:"role"`
+	IsActive         bool       `json:"is_active" db:"is_active"`
+	MaxContentRating *string    `json:"max_content_rating,omitempty" db:"max_content_rating"`
+	IsKidsProfile    bool       `json:"is_kids_profile" db:"is_kids_profile"`
+	AvatarID         *string    `json:"avatar_id,omitempty" db:"avatar_id"`
+	ParentUserID     *uuid.UUID `json:"parent_user_id,omitempty" db:"parent_user_id"`
+	HasPin           bool       `json:"has_pin" db:"-"`
+	IsMaster         bool       `json:"is_master" db:"-"`
+	CreatedAt        time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 // ContentRatingLevel returns the numeric level for a content rating string.

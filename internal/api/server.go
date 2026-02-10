@@ -299,6 +299,13 @@ func (s *Server) setupRoutes() {
 	// Recommendations
 	s.router.HandleFunc("GET /api/v1/recommendations", s.authMiddleware(s.handleRecommendations, models.RoleUser))
 
+	// Household profiles
+	s.router.HandleFunc("GET /api/v1/household/profiles", s.authMiddleware(s.handleHouseholdProfiles, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/household/switch", s.authMiddleware(s.handleHouseholdSwitch, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/household/profiles", s.authMiddleware(s.handleCreateSubProfile, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/household/profiles/{id}", s.authMiddleware(s.handleUpdateSubProfile, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/household/profiles/{id}", s.authMiddleware(s.handleDeleteSubProfile, models.RoleUser))
+
 	// Performers
 	s.router.HandleFunc("GET /api/v1/performers", s.authMiddleware(s.handleListPerformers, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/performers", s.authMiddleware(s.handleCreatePerformer, models.RoleAdmin))

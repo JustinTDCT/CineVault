@@ -17,7 +17,7 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 
 // userColumns is the standard SELECT list for users.
 const userColumns = `id, username, email, password_hash, pin_hash, display_name, first_name, last_name,
-	role, is_active, max_content_rating, is_kids_profile, avatar_id, created_at, updated_at`
+	role, is_active, max_content_rating, is_kids_profile, avatar_id, parent_user_id, created_at, updated_at`
 
 func scanUser(row interface{ Scan(dest ...interface{}) error }) (*models.User, error) {
 	user := &models.User{}
@@ -25,10 +25,11 @@ func scanUser(row interface{ Scan(dest ...interface{}) error }) (*models.User, e
 		&user.ID, &user.Username, &user.Email, &user.PasswordHash,
 		&user.PinHash, &user.DisplayName, &user.FirstName, &user.LastName,
 		&user.Role, &user.IsActive, &user.MaxContentRating, &user.IsKidsProfile,
-		&user.AvatarID, &user.CreatedAt, &user.UpdatedAt,
+		&user.AvatarID, &user.ParentUserID, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err == nil {
 		user.HasPin = user.PinHash != nil && *user.PinHash != ""
+		user.IsMaster = user.ParentUserID == nil
 	}
 	return user, err
 }
@@ -36,13 +37,14 @@ func scanUser(row interface{ Scan(dest ...interface{}) error }) (*models.User, e
 func (r *UserRepository) Create(user *models.User) error {
 	query := `
 		INSERT INTO users (id, username, email, password_hash, pin_hash, display_name, first_name, last_name,
-		                    role, is_active, max_content_rating, is_kids_profile, avatar_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		                    role, is_active, max_content_rating, is_kids_profile, avatar_id, parent_user_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING created_at, updated_at`
 
 	return r.db.QueryRow(query, user.ID, user.Username, user.Email,
 		user.PasswordHash, user.PinHash, user.DisplayName, user.FirstName, user.LastName,
-		user.Role, user.IsActive, user.MaxContentRating, user.IsKidsProfile, user.AvatarID).
+		user.Role, user.IsActive, user.MaxContentRating, user.IsKidsProfile, user.AvatarID,
+		user.ParentUserID).
 		Scan(&user.CreatedAt, &user.UpdatedAt)
 }
 
@@ -90,6 +92,53 @@ func (r *UserRepository) List() ([]*models.User, error) {
 		users = append(users, user)
 	}
 	return users, rows.Err()
+}
+
+// ListMasterUsers returns only active master users (parent_user_id IS NULL) for fast login.
+func (r *UserRepository) ListMasterUsers() ([]*models.User, error) {
+	query := `SELECT ` + userColumns + ` FROM users WHERE parent_user_id IS NULL AND is_active = true ORDER BY created_at DESC`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := []*models.User{}
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+// ListHousehold returns the master user + all their sub-profiles.
+func (r *UserRepository) ListHousehold(masterID uuid.UUID) ([]*models.User, error) {
+	query := `SELECT ` + userColumns + ` FROM users WHERE (id = $1 OR parent_user_id = $1) AND is_active = true ORDER BY parent_user_id NULLS FIRST, created_at ASC`
+	rows, err := r.db.Query(query, masterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := []*models.User{}
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+// CountByParent returns the number of sub-profiles for a master user.
+func (r *UserRepository) CountByParent(masterID uuid.UUID) (int, error) {
+	var count int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM users WHERE parent_user_id = $1`, masterID).Scan(&count)
+	return count, err
 }
 
 func (r *UserRepository) Update(user *models.User) error {
@@ -149,6 +198,32 @@ func (r *UserRepository) UpdateProfileSettings(id uuid.UUID, maxContentRating *s
 		WHERE id = $4`
 
 	result, err := r.db.Exec(query, maxContentRating, isKidsProfile, avatarID, id)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
+}
+
+// UpdateSubProfile updates display_name, avatar, kids mode, and content rating for a sub-profile.
+func (r *UserRepository) UpdateSubProfile(id uuid.UUID, displayName *string, avatarID *string, isKidsProfile *bool, maxContentRating *string) error {
+	query := `
+		UPDATE users 
+		SET display_name = COALESCE($1, display_name),
+		    avatar_id = COALESCE($2, avatar_id),
+		    is_kids_profile = COALESCE($3, is_kids_profile),
+		    max_content_rating = $4,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = $5`
+
+	result, err := r.db.Exec(query, displayName, avatarID, isKidsProfile, maxContentRating, id)
 	if err != nil {
 		return err
 	}

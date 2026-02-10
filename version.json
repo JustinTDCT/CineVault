@@ -1,6 +1,6 @@
 {
-  "version": "0.40.0",
+  "version": "0.41.0",
   "phase": 3,
   "released": "2026-02-10",
-  "notes": "Multi-user profile enhancements: parental controls with content rating enforcement, kids mode with simplified UI, Netflix-style profile switching, profile avatars, personalized genre-affinity recommendations"
+  "notes": "Household profile system: master user / sub-profile architecture, Netflix-style Who's Watching picker, inline PIN switching, Manage Profiles UI, max 5 sub-profiles per household"
 }

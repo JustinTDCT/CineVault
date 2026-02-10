@@ -954,6 +954,137 @@
         }
         .profile-switch-close:hover { color: #00D9FF; }
 
+        /* ── Household Profile Picker (Who's Watching?) ── */
+        .household-picker-overlay {
+            position: fixed; inset: 0; z-index: 9600;
+            background: rgba(10,25,41,0.96); backdrop-filter: blur(14px);
+            display: none; align-items: center; justify-content: center;
+            flex-direction: column;
+        }
+        .household-picker-overlay.active { display: flex; }
+        .household-picker-title { font-size: 1.6rem; font-weight: 700; color: #e5e5e5; margin-bottom: 32px; }
+        .household-picker-grid {
+            display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; max-width: 800px;
+        }
+        .household-picker-card {
+            width: 140px; padding: 18px 12px 14px; border-radius: 14px;
+            background: linear-gradient(145deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+            border: 1px solid rgba(255,255,255,0.08);
+            cursor: pointer; text-align: center; transition: all 0.3s;
+        }
+        .household-picker-card:hover {
+            transform: translateY(-4px); border-color: rgba(0,217,255,0.3);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,217,255,0.15);
+        }
+        .household-picker-card.kids-profile { border-color: rgba(76,175,80,0.3); }
+        .household-picker-card.kids-profile:hover { border-color: rgba(76,175,80,0.5); box-shadow: 0 8px 30px rgba(76,175,80,0.2); }
+        .household-picker-avatar { width: 72px; height: 72px; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; }
+        .household-picker-name { font-size: 0.85rem; color: #c8d6e5; font-weight: 500; margin-top: 4px; }
+        .household-picker-badge {
+            font-size: 0.6rem; padding: 2px 6px; border-radius: 8px; font-weight: 600; margin-top: 4px; display: inline-block;
+        }
+        .household-picker-badge.kids { background: rgba(76,175,80,0.15); color: #4caf50; border: 1px solid rgba(76,175,80,0.3); }
+        .household-picker-badge.pin { background: rgba(0,217,255,0.1); color: #00D9FF; border: 1px solid rgba(0,217,255,0.2); font-size: 0.7rem; }
+
+        /* Inline PIN entry inside household picker */
+        .hp-pin-overlay {
+            position: absolute; inset: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; background: rgba(10,25,41,0.96);
+        }
+        .hp-pin-title { font-size: 1.2rem; color: #e5e5e5; margin-bottom: 16px; font-weight: 600; }
+        .hp-pin-boxes { display: flex; gap: 8px; margin-bottom: 14px; }
+        .hp-pin-box {
+            width: 38px; height: 46px; border: 2px solid rgba(255,255,255,0.15);
+            border-radius: 8px; display: flex; align-items: center; justify-content: center;
+            font-size: 1.2rem; color: #e5e5e5; background: rgba(255,255,255,0.04);
+        }
+        .hp-pin-box.filled { border-color: rgba(0,217,255,0.5); }
+        .hp-pin-box.active { border-color: rgba(0,217,255,0.8); box-shadow: 0 0 8px rgba(0,217,255,0.2); }
+        .hp-pin-error { color: #ff6b6b; font-size: 0.8rem; min-height: 20px; }
+        .hp-pin-cancel { color: #5a6a7f; font-size: 0.8rem; cursor: pointer; margin-top: 8px; }
+        .hp-pin-cancel:hover { color: #00D9FF; }
+
+        /* ── Manage Profiles Modal ── */
+        .manage-profiles-overlay {
+            position: fixed; inset: 0; z-index: 9500;
+            background: rgba(10,25,41,0.92); backdrop-filter: blur(10px);
+            display: none; align-items: center; justify-content: center;
+        }
+        .manage-profiles-overlay.active { display: flex; }
+        .manage-profiles-card {
+            background: linear-gradient(145deg, #1a2a3a 0%, #0f1f2f 100%);
+            border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;
+            padding: 28px 32px; width: 500px; max-width: 95vw; max-height: 90vh;
+            overflow-y: auto; position: relative;
+        }
+        .manage-profiles-title { font-size: 1.3rem; font-weight: 700; color: #e5e5e5; margin-bottom: 20px; }
+        .manage-profiles-close {
+            position: absolute; top: 16px; right: 18px; font-size: 1.2rem; color: #5a6a7f;
+            cursor: pointer; transition: color 0.2s;
+        }
+        .manage-profiles-close:hover { color: #ff6b6b; }
+        .mp-profile-item {
+            display: flex; align-items: center; gap: 14px; padding: 12px;
+            border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);
+            background: rgba(255,255,255,0.03); margin-bottom: 10px; transition: all 0.2s;
+        }
+        .mp-profile-item:hover { border-color: rgba(0,217,255,0.2); }
+        .mp-profile-avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; }
+        .mp-profile-info { flex: 1; }
+        .mp-profile-name { color: #e5e5e5; font-weight: 600; font-size: 0.9rem; }
+        .mp-profile-meta { color: #5a6a7f; font-size: 0.75rem; margin-top: 2px; }
+        .mp-profile-actions { display: flex; gap: 6px; }
+        .mp-btn-edit, .mp-btn-delete {
+            padding: 5px 10px; border-radius: 6px; border: none; font-size: 0.75rem;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .mp-btn-edit { background: rgba(0,217,255,0.1); color: #00D9FF; }
+        .mp-btn-edit:hover { background: rgba(0,217,255,0.2); }
+        .mp-btn-delete { background: rgba(255,107,107,0.1); color: #ff6b6b; }
+        .mp-btn-delete:hover { background: rgba(255,107,107,0.2); }
+        .mp-add-btn {
+            display: block; width: 100%; padding: 12px; border-radius: 10px;
+            border: 2px dashed rgba(255,255,255,0.1); background: transparent;
+            color: #5a6a7f; font-size: 0.9rem; cursor: pointer; transition: all 0.2s;
+            margin-top: 10px;
+        }
+        .mp-add-btn:hover { border-color: rgba(0,217,255,0.3); color: #00D9FF; }
+        .mp-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .mp-form { margin-top: 16px; padding: 16px; border-radius: 10px; border: 1px solid rgba(0,217,255,0.15); background: rgba(0,217,255,0.03); }
+        .mp-form-title { font-size: 0.95rem; font-weight: 600; color: #e5e5e5; margin-bottom: 14px; }
+        .mp-form .form-group { margin-bottom: 12px; }
+        .mp-form .form-group label { display: block; font-size: 0.8rem; color: #8a9ab5; margin-bottom: 4px; }
+        .mp-form .form-group input, .mp-form .form-group select {
+            width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05); color: #e5e5e5; font-size: 0.85rem;
+        }
+        .mp-form-row { display: flex; gap: 10px; }
+        .mp-form-row .form-group { flex: 1; }
+        .mp-form-actions { display: flex; gap: 8px; margin-top: 14px; }
+        .mp-form-btn {
+            padding: 8px 18px; border-radius: 8px; border: none; font-size: 0.85rem;
+            cursor: pointer; font-weight: 600; transition: all 0.2s;
+        }
+        .mp-form-btn.save { background: rgba(0,217,255,0.15); color: #00D9FF; }
+        .mp-form-btn.save:hover { background: rgba(0,217,255,0.25); }
+        .mp-form-btn.cancel { background: rgba(255,255,255,0.06); color: #8a9ab5; }
+        .mp-form-btn.cancel:hover { background: rgba(255,255,255,0.1); }
+        .mp-avatar-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin-top: 6px; }
+        .mp-avatar-option {
+            width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-size: 1rem;
+            border: 2px solid transparent; transition: all 0.2s;
+        }
+        .mp-avatar-option:hover { border-color: rgba(0,217,255,0.4); }
+        .mp-avatar-option.selected { border-color: #00D9FF; box-shadow: 0 0 10px rgba(0,217,255,0.3); }
+        .mp-kids-toggle {
+            display: flex; align-items: center; gap: 10px;
+        }
+        .mp-kids-toggle input[type="checkbox"] {
+            width: 18px; height: 18px; accent-color: #4caf50;
+        }
+
         /* ── Avatar Grid ── */
         .avatar-grid {
             display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; margin: 12px 0;
@@ -1172,6 +1303,7 @@
                             <div class="user-dropdown-role" id="udRole"></div>
                         </div>
                         <div class="user-dropdown-item" onclick="openProfileSwitch()"><span class="ud-icon">&#128101;</span> Switch Profile</div>
+                        <div class="user-dropdown-item" id="udManageProfilesItem" onclick="openManageProfiles()" style="display:none;"><span class="ud-icon">&#128100;</span> Manage Profiles</div>
                         <div class="user-dropdown-item" onclick="navigate('profile')"><span class="ud-icon">&#9998;</span> Edit Profile</div>
                         <div class="user-dropdown-item" id="udSettingsItem" onclick="window.location.href='settings.html'" style="display:none;"><span class="ud-icon">&#9881;</span> Settings</div>
                         <div class="user-dropdown-sep"></div>
@@ -1267,6 +1399,24 @@
         <div class="profile-switch-title">Switch Profile</div>
         <div class="profile-switch-grid" id="profileSwitchGrid"></div>
         <div class="profile-switch-close" onclick="closeProfileSwitch()">Cancel</div>
+    </div>
+
+    <!-- Household "Who's Watching?" Picker (shown after master login) -->
+    <div class="household-picker-overlay" id="householdPickerOverlay">
+        <div class="household-picker-title">Who's Watching?</div>
+        <div class="household-picker-grid" id="householdPickerGrid"></div>
+        <input type="text" id="hpPinHidden" inputmode="numeric" style="position:absolute;opacity:0;pointer-events:none;">
+    </div>
+
+    <!-- Manage Profiles Modal -->
+    <div class="manage-profiles-overlay" id="manageProfilesOverlay">
+        <div class="manage-profiles-card">
+            <div class="manage-profiles-close" onclick="closeManageProfiles()">&times;</div>
+            <div class="manage-profiles-title">Manage Profiles</div>
+            <div id="mpProfileList"></div>
+            <button class="mp-add-btn" id="mpAddBtn" onclick="mpShowAddForm()">+ Add Profile</button>
+            <div id="mpFormArea"></div>
+        </div>
     </div>
 
     <!-- Video Player Overlay -->
@@ -1672,7 +1822,12 @@
                 }
             }
 
-            loadHomeView();
+            // If we haven't picked a profile yet this session (master user), show picker
+            if (!sessionStorage.getItem('profile_picked') && !currentUser.parent_user_id) {
+                showHouseholdPicker();
+            } else {
+                loadHomeView();
+            }
             loadSidebarCounts();
             connectWS();
         } else {
@@ -1915,10 +2070,11 @@
 
     // ──── User Avatar Dropdown ────
     function doLogout() {
-        localStorage.clear(); sessionStorage.removeItem('intro_played'); currentUser=null;
+        localStorage.clear(); sessionStorage.removeItem('intro_played'); sessionStorage.removeItem('profile_picked'); currentUser=null;
         if(ws) ws.close();
         document.getElementById('fastLoginOverlay').classList.remove('active');
         document.getElementById('loginModal').classList.remove('active');
+        closeHouseholdPicker();
         closeUserDropdown();
         checkAuth();
     }
@@ -1936,6 +2092,9 @@
             nameEl.textContent = (fn + ' ' + ln).trim() || currentUser.username;
             document.getElementById('udRole').textContent = currentUser.role;
             document.getElementById('udSettingsItem').style.display = currentUser.role === 'admin' ? '' : 'none';
+            // Show Manage Profiles for master users (no parent_user_id)
+            const isMaster = !currentUser.parent_user_id;
+            document.getElementById('udManageProfilesItem').style.display = isMaster ? '' : 'none';
         }
         dd.classList.add('open');
     });
@@ -4672,30 +4831,31 @@
         return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:radial-gradient(circle,${circle},${bg});display:flex;align-items:center;justify-content:center;font-size:${sz*0.45}px;font-weight:600;color:rgba(255,255,255,0.85);">${initial}</div>`;
     }
 
-    // ──────────────────── Profile Switching ────────────────────
+    // ──────────────────── Profile Switching (Household) ────────────────────
+
     async function openProfileSwitch() {
         closeUserDropdown();
         const overlay = document.getElementById('profileSwitchOverlay');
         const grid = document.getElementById('profileSwitchGrid');
         overlay.classList.add('active');
 
-        // Fetch all users (fast login users endpoint or admin list)
         try {
-            const res = await fetch(API + '/auth/fast-login/users');
-            const data = await res.json();
-            const users = (data.success && data.data) ? data.data : [];
+            const data = await api('GET', '/household/profiles');
+            const profiles = (data.success && data.data) ? data.data : [];
 
-            grid.innerHTML = users.map(u => {
-                const dn = u.display_name || u.username;
-                const avatarHtml = renderAvatarCircle(u.avatar_id, dn, 80);
-                const isActive = currentUser && currentUser.id === u.id;
-                const kidsBadge = u.is_kids_profile ? '<div class="profile-switch-badge kids">Kids</div>' : '';
-                return `<div class="profile-switch-user ${u.is_kids_profile ? 'kids-profile' : ''} ${isActive ? 'active' : ''}"
-                    onclick="switchToProfile('${u.id}', ${u.has_pin})"
+            grid.innerHTML = profiles.map(p => {
+                const dn = p.display_name || p.username;
+                const avatarHtml = renderAvatarCircle(p.avatar_id, dn, 80);
+                const isActive = currentUser && currentUser.id === p.id;
+                let badges = '';
+                if (p.is_kids_profile) badges += '<div class="profile-switch-badge kids">Kids</div>';
+                if (p.has_pin) badges += '<div class="profile-switch-badge" style="background:rgba(0,217,255,0.1);color:#00D9FF;border:1px solid rgba(0,217,255,0.2);">&#128274;</div>';
+                return `<div class="profile-switch-user ${p.is_kids_profile ? 'kids-profile' : ''} ${isActive ? 'active' : ''}"
+                    onclick="switchToProfile('${p.id}', ${p.has_pin})"
                     style="${isActive ? 'border-color:rgba(0,217,255,0.5);box-shadow:0 0 20px rgba(0,217,255,0.2);' : ''}">
                     <div class="profile-switch-avatar">${avatarHtml}</div>
                     <div class="profile-switch-name">${dn}</div>
-                    ${kidsBadge}
+                    ${badges}
                 </div>`;
             }).join('');
         } catch {
@@ -4707,20 +4867,358 @@
         document.getElementById('profileSwitchOverlay').classList.remove('active');
     }
 
-    async function switchToProfile(userId, hasPin) {
-        closeProfileSwitch();
-        if (currentUser && currentUser.id === userId) return; // Already this user
+    async function switchToProfile(profileId, hasPin) {
+        if (currentUser && currentUser.id === profileId) {
+            closeProfileSwitch();
+            closeHouseholdPicker();
+            return;
+        }
 
         if (hasPin) {
-            // Show fast login PIN entry for this user
-            doLogout();
-            setTimeout(async () => {
-                await showFastLogin();
-                fastLoginSelectUser(userId);
-            }, 200);
+            // Show inline PIN entry
+            showInlinePinEntry(profileId);
+            return;
+        }
+
+        // No PIN — switch immediately
+        try {
+            const data = await api('POST', '/household/switch', { profile_id: profileId });
+            if (data.success) {
+                localStorage.setItem('token', data.data.token);
+                localStorage.setItem('user', JSON.stringify(data.data.user));
+                currentUser = data.data.user;
+                sessionStorage.setItem('profile_picked', '1');
+                closeProfileSwitch();
+                closeHouseholdPicker();
+                document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
+                updateTopBarAvatar();
+                loadHomeView();
+                loadSidebarCounts();
+            } else {
+                toast(data.error || 'Switch failed', 'error');
+            }
+        } catch {
+            toast('Connection error', 'error');
+        }
+    }
+
+    // Inline PIN entry for profile switch (used in both overlays)
+    let inlinePinTarget = null;
+    function showInlinePinEntry(profileId) {
+        inlinePinTarget = profileId;
+        // Determine which overlay is active
+        const hpOverlay = document.getElementById('householdPickerOverlay');
+        const psOverlay = document.getElementById('profileSwitchOverlay');
+        const isHousehold = hpOverlay.classList.contains('active');
+        const container = isHousehold ? hpOverlay : psOverlay;
+
+        let pinDiv = container.querySelector('.hp-pin-overlay');
+        if (!pinDiv) {
+            pinDiv = document.createElement('div');
+            pinDiv.className = 'hp-pin-overlay';
+            container.appendChild(pinDiv);
+        }
+
+        const pLen = pinLength || 4;
+        let boxesHtml = '';
+        for (let i = 0; i < pLen; i++) boxesHtml += `<div class="hp-pin-box${i===0?' active':''}" id="hpBox${i}"></div>`;
+
+        pinDiv.innerHTML = `
+            <div class="hp-pin-title">Enter PIN</div>
+            <div class="hp-pin-boxes">${boxesHtml}</div>
+            <div class="hp-pin-error" id="hpPinError"></div>
+            <div class="hp-pin-cancel" onclick="hideInlinePinEntry()">Cancel</div>
+        `;
+        pinDiv.style.display = 'flex';
+
+        const hi = document.getElementById('hpPinHidden');
+        hi.value = '';
+        hi.maxLength = pLen;
+        setTimeout(() => hi.focus(), 100);
+    }
+
+    function hideInlinePinEntry() {
+        inlinePinTarget = null;
+        document.querySelectorAll('.hp-pin-overlay').forEach(el => el.style.display = 'none');
+    }
+
+    document.getElementById('hpPinHidden').addEventListener('input', async function() {
+        const pLen = pinLength || 4;
+        const val = this.value.replace(/\D/g, '').substring(0, pLen);
+        this.value = val;
+        for (let i = 0; i < pLen; i++) {
+            const box = document.getElementById('hpBox' + i);
+            if (!box) continue;
+            box.textContent = i < val.length ? '\u25CF' : '';
+            box.className = 'hp-pin-box' + (i < val.length ? ' filled' : '') + (i === val.length ? ' active' : '');
+        }
+        if (val.length === pLen && inlinePinTarget) {
+            const errEl = document.getElementById('hpPinError');
+            try {
+                const data = await api('POST', '/household/switch', { profile_id: inlinePinTarget, pin: val });
+                if (data.success) {
+                    localStorage.setItem('token', data.data.token);
+                    localStorage.setItem('user', JSON.stringify(data.data.user));
+                    currentUser = data.data.user;
+                    sessionStorage.setItem('profile_picked', '1');
+                    hideInlinePinEntry();
+                    closeProfileSwitch();
+                    closeHouseholdPicker();
+                    document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
+                    updateTopBarAvatar();
+                    loadHomeView();
+                    loadSidebarCounts();
+                } else {
+                    if (errEl) errEl.textContent = data.error || 'Invalid PIN';
+                    this.value = '';
+                    for (let i = 0; i < pLen; i++) {
+                        const box = document.getElementById('hpBox' + i);
+                        if (box) { box.textContent = ''; box.className = 'hp-pin-box' + (i===0?' active':''); }
+                    }
+                }
+            } catch {
+                if (errEl) errEl.textContent = 'Connection error';
+                this.value = '';
+            }
+        }
+    });
+
+    document.getElementById('hpPinHidden').addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') hideInlinePinEntry();
+    });
+
+    // ──────────────────── Household "Who's Watching?" Picker ────────────────────
+
+    async function showHouseholdPicker() {
+        try {
+            const data = await api('GET', '/household/profiles');
+            const profiles = (data.success && data.data) ? data.data : [];
+
+            // If only one profile (master with no sub-profiles), skip picker
+            if (profiles.length <= 1) {
+                sessionStorage.setItem('profile_picked', '1');
+                loadHomeView();
+                return;
+            }
+
+            const overlay = document.getElementById('householdPickerOverlay');
+            const grid = document.getElementById('householdPickerGrid');
+            overlay.classList.add('active');
+
+            grid.innerHTML = profiles.map(p => {
+                const dn = p.display_name || p.username;
+                const avatarHtml = renderAvatarCircle(p.avatar_id, dn, 72);
+                let badges = '';
+                if (p.is_kids_profile) badges += '<div class="household-picker-badge kids">Kids</div>';
+                if (p.has_pin) badges += '<div class="household-picker-badge pin">&#128274;</div>';
+                return `<div class="household-picker-card ${p.is_kids_profile ? 'kids-profile' : ''}"
+                    onclick="switchToProfile('${p.id}', ${p.has_pin})">
+                    <div class="household-picker-avatar">${avatarHtml}</div>
+                    <div class="household-picker-name">${dn}</div>
+                    ${badges}
+                </div>`;
+            }).join('');
+        } catch {
+            // On error, skip picker and go to home
+            sessionStorage.setItem('profile_picked', '1');
+            loadHomeView();
+        }
+    }
+
+    function closeHouseholdPicker() {
+        document.getElementById('householdPickerOverlay').classList.remove('active');
+    }
+
+    // ──────────────────── Manage Profiles ────────────────────
+
+    let mpProfiles = [];
+    let mpEditingId = null;
+
+    async function openManageProfiles() {
+        closeUserDropdown();
+        const overlay = document.getElementById('manageProfilesOverlay');
+        overlay.classList.add('active');
+        await mpLoadProfiles();
+    }
+
+    function closeManageProfiles() {
+        document.getElementById('manageProfilesOverlay').classList.remove('active');
+        document.getElementById('mpFormArea').innerHTML = '';
+        mpEditingId = null;
+    }
+
+    async function mpLoadProfiles() {
+        try {
+            const data = await api('GET', '/household/profiles');
+            mpProfiles = (data.success && data.data) ? data.data : [];
+        } catch { mpProfiles = []; }
+
+        const list = document.getElementById('mpProfileList');
+        const subProfiles = mpProfiles.filter(p => !p.is_master);
+        const addBtn = document.getElementById('mpAddBtn');
+
+        list.innerHTML = subProfiles.map(p => {
+            const dn = p.display_name || p.username;
+            const avatarHtml = renderAvatarCircle(p.avatar_id, dn, 44);
+            let meta = [];
+            if (p.is_kids_profile) meta.push('Kids');
+            if (p.max_content_rating) meta.push('Max: ' + p.max_content_rating);
+            if (p.has_pin) meta.push('PIN set');
+            return `<div class="mp-profile-item">
+                <div class="mp-profile-avatar">${avatarHtml}</div>
+                <div class="mp-profile-info">
+                    <div class="mp-profile-name">${dn}</div>
+                    <div class="mp-profile-meta">${meta.join(' · ') || 'No restrictions'}</div>
+                </div>
+                <div class="mp-profile-actions">
+                    <button class="mp-btn-edit" onclick="mpShowEditForm('${p.id}')">Edit</button>
+                    <button class="mp-btn-delete" onclick="mpDeleteProfile('${p.id}', '${dn}')">Delete</button>
+                </div>
+            </div>`;
+        }).join('');
+
+        if (subProfiles.length === 0) {
+            list.innerHTML = '<div style="color:#5a6a7f;text-align:center;padding:16px;">No sub-profiles yet</div>';
+        }
+
+        addBtn.disabled = subProfiles.length >= 5;
+        addBtn.textContent = subProfiles.length >= 5 ? 'Maximum 5 profiles reached' : '+ Add Profile';
+    }
+
+    function mpRenderForm(title, profile) {
+        const isEdit = !!profile;
+        const selAvatar = (profile && profile.avatar_id) || '';
+        const selKids = profile ? profile.is_kids_profile : false;
+        const selRating = (profile && profile.max_content_rating) || '';
+        const selName = (profile && profile.display_name) || '';
+
+        const avatarOptions = AVATAR_PRESETS.map(a => {
+            const selected = a.id === selAvatar ? ' selected' : '';
+            return `<div class="mp-avatar-option${selected}" 
+                style="background:linear-gradient(135deg,${a.bg[0]},${a.bg[1]})"
+                onclick="mpSelectAvatar(this, '${a.id}')" data-avatar="${a.id}">
+                ${a.emoji}
+            </div>`;
+        }).join('');
+
+        return `<div class="mp-form">
+            <div class="mp-form-title">${title}</div>
+            <div class="form-group">
+                <label>Display Name</label>
+                <input type="text" id="mpFormName" value="${selName}" placeholder="e.g. Kids, Guest">
+            </div>
+            <div class="form-group">
+                <label>Avatar</label>
+                <div class="mp-avatar-grid">${avatarOptions}</div>
+                <input type="hidden" id="mpFormAvatar" value="${selAvatar}">
+            </div>
+            <div class="mp-form-row">
+                <div class="form-group">
+                    <label>Max Content Rating</label>
+                    <select id="mpFormRating">
+                        <option value="" ${selRating===''?'selected':''}>Unrestricted</option>
+                        <option value="G" ${selRating==='G'?'selected':''}>G</option>
+                        <option value="PG" ${selRating==='PG'?'selected':''}>PG</option>
+                        <option value="PG-13" ${selRating==='PG-13'?'selected':''}>PG-13</option>
+                        <option value="R" ${selRating==='R'?'selected':''}>R</option>
+                        <option value="NC-17" ${selRating==='NC-17'?'selected':''}>NC-17</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>PIN (optional)</label>
+                    <input type="text" id="mpFormPin" inputmode="numeric" maxlength="10" placeholder="${isEdit ? 'Leave blank to keep' : '4-digit PIN'}">
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="mp-kids-toggle">
+                    <input type="checkbox" id="mpFormKids" ${selKids?'checked':''}>
+                    <label for="mpFormKids" style="margin:0;color:#e5e5e5;font-size:0.85rem;">Kids Profile</label>
+                </div>
+            </div>
+            <div class="mp-form-actions">
+                <button class="mp-form-btn save" onclick="mpSaveForm()">${isEdit ? 'Save Changes' : 'Create Profile'}</button>
+                <button class="mp-form-btn cancel" onclick="mpCancelForm()">Cancel</button>
+            </div>
+        </div>`;
+    }
+
+    function mpSelectAvatar(el, avatarId) {
+        el.closest('.mp-avatar-grid').querySelectorAll('.mp-avatar-option').forEach(o => o.classList.remove('selected'));
+        el.classList.add('selected');
+        document.getElementById('mpFormAvatar').value = avatarId;
+    }
+
+    function mpShowAddForm() {
+        mpEditingId = null;
+        document.getElementById('mpFormArea').innerHTML = mpRenderForm('Add Profile', null);
+    }
+
+    function mpShowEditForm(profileId) {
+        const p = mpProfiles.find(x => x.id === profileId);
+        if (!p) return;
+        mpEditingId = profileId;
+        document.getElementById('mpFormArea').innerHTML = mpRenderForm('Edit Profile', p);
+    }
+
+    function mpCancelForm() {
+        mpEditingId = null;
+        document.getElementById('mpFormArea').innerHTML = '';
+    }
+
+    async function mpSaveForm() {
+        const name = document.getElementById('mpFormName').value.trim();
+        const avatar = document.getElementById('mpFormAvatar').value || null;
+        const rating = document.getElementById('mpFormRating').value || null;
+        const pin = document.getElementById('mpFormPin').value.trim();
+        const kids = document.getElementById('mpFormKids').checked;
+
+        if (!name) { toast('Display name is required', 'error'); return; }
+
+        if (mpEditingId) {
+            // Update existing
+            const body = {
+                display_name: name,
+                avatar_id: avatar,
+                max_content_rating: rating,
+                is_kids_profile: kids,
+            };
+            if (pin !== '') body.pin = pin;
+            const data = await api('PUT', '/household/profiles/' + mpEditingId, body);
+            if (data.success) {
+                toast('Profile updated');
+                mpCancelForm();
+                await mpLoadProfiles();
+            } else {
+                toast(data.error || 'Update failed', 'error');
+            }
         } else {
-            // No PIN — show standard login
-            doLogout();
+            // Create new
+            const body = {
+                display_name: name,
+                avatar_id: avatar,
+                max_content_rating: rating,
+                is_kids_profile: kids,
+            };
+            if (pin !== '') body.pin = pin;
+            const data = await api('POST', '/household/profiles', body);
+            if (data.success) {
+                toast('Profile created');
+                mpCancelForm();
+                await mpLoadProfiles();
+            } else {
+                toast(data.error || 'Create failed', 'error');
+            }
+        }
+    }
+
+    async function mpDeleteProfile(profileId, name) {
+        if (!confirm('Delete profile "' + name + '"? This cannot be undone.')) return;
+        const data = await api('DELETE', '/household/profiles/' + profileId);
+        if (data.success) {
+            toast('Profile deleted');
+            await mpLoadProfiles();
+        } else {
+            toast(data.error || 'Delete failed', 'error');
         }
     }
 
