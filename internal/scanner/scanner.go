@@ -851,6 +851,11 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		log.Printf("Auto-match: DB update failed for %s: %v", item.ID, err)
 	}
 
+	// Sync in-memory poster so screenshot fallback doesn't overwrite the TMDB poster
+	if posterPath != nil {
+		item.PosterPath = posterPath
+	}
+
 	// Get TMDB details for genres, IMDB ID, OMDb ratings, and cast
 	if match.Source == "tmdb" {
 		s.enrichWithDetails(item.ID, match.ExternalID, item.MediaType)
@@ -889,6 +894,11 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 	if err := s.mediaRepo.UpdateMetadata(item.ID, match.Title, match.Year,
 		match.Description, match.Rating, posterPath, match.ContentRating); err != nil {
 		log.Printf("Auto-match: DB update failed for %s: %v", item.ID, err)
+	}
+
+	// Sync in-memory poster so screenshot fallback doesn't overwrite the TMDB poster
+	if posterPath != nil {
+		item.PosterPath = posterPath
 	}
 
 	// Link genre tags from cache
