@@ -38,6 +38,19 @@ func yearFromFilename(filename string) *int {
 	return nil
 }
 
+// getCacheClient returns a CacheClient if the cache server is enabled.
+// Returns nil if disabled or registration fails.
+func (s *Server) getCacheClient() *metadata.CacheClient {
+	if s.settingsRepo == nil {
+		return nil
+	}
+	enabled, _ := s.settingsRepo.Get("cache_server_enabled")
+	if enabled == "false" {
+		return nil
+	}
+	return metadata.EnsureRegistered(s.settingsRepo)
+}
+
 // ──────────────────── Metadata Handlers ────────────────────
 
 func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
@@ -59,25 +72,40 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 		query = media.Title
 	}
 
-	scrapers := metadata.ScrapersForMediaType(s.scrapers, media.MediaType)
-	if len(scrapers) == 0 {
-		scrapers = s.scrapers // fallback to all if no type-specific match
-	}
-
 	// Extract year from the filename (not the DB) to avoid using a previously bad match
 	fileYear := yearFromFilename(media.FileName)
 	if fileYear == nil {
-		// Try full file path if filename didn't have it
 		fileYear = yearFromFilename(media.FilePath)
 	}
 
 	var allMatches []*models.MetadataMatch
-	for _, scraper := range scrapers {
-		matches, err := scraper.Search(query, media.MediaType, fileYear)
-		if err != nil {
-			continue
+
+	// ── Try cache server first if enabled ──
+	usedCache := false
+	cacheClient := s.getCacheClient()
+	if cacheClient != nil {
+		result := cacheClient.Lookup(query, fileYear, media.MediaType)
+		if result != nil && result.Match != nil {
+			allMatches = append(allMatches, result.Match)
+			usedCache = true
+			log.Printf("Identify: cache hit for %q → %q (confidence=%.2f)", query, result.Match.Title, result.Confidence)
 		}
-		allMatches = append(allMatches, matches...)
+	}
+
+	// ── Fall back to direct scrapers if cache is not enabled or returned no results ──
+	if !usedCache {
+		scrapers := metadata.ScrapersForMediaType(s.scrapers, media.MediaType)
+		if len(scrapers) == 0 {
+			scrapers = s.scrapers
+		}
+
+		for _, scraper := range scrapers {
+			matches, err := scraper.Search(query, media.MediaType, fileYear)
+			if err != nil {
+				continue
+			}
+			allMatches = append(allMatches, matches...)
+		}
 	}
 
 	// Apply year-aware scoring: boost matches with matching year, penalize mismatches
@@ -179,57 +207,91 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 		s.linkGenreTags(mediaID, req.Genres)
 	}
 
-	// If source is TMDB and we have an external ID, fetch details for IMDB ID and OMDb ratings
+	// ── Supplementary data (IMDB ID, ratings, credits) via cache or direct APIs ──
 	imdbID := req.IMDBId
-	if imdbID == "" && req.Source == "tmdb" && req.ExternalID != "" {
-		// Fetch TMDB details to get IMDB ID
-		for _, sc := range s.scrapers {
-			if t, ok := sc.(*metadata.TMDBScraper); ok {
-				details, detailErr := t.GetDetails(req.ExternalID)
-				if detailErr == nil && details.IMDBId != "" {
-					imdbID = details.IMDBId
-					// Also link genres from details if not already provided
-					if len(req.Genres) == 0 && len(details.Genres) > 0 {
-						s.linkGenreTags(mediaID, details.Genres)
-					}
-				}
-				break
-			}
-		}
-	}
+	var cacheResult *metadata.CacheLookupResult
 
-	// Fetch OMDb ratings if we have an IMDB ID
-	if imdbID != "" {
-		omdbKey, keyErr := s.settingsRepo.Get("omdb_api_key")
-		if keyErr == nil && omdbKey != "" {
-			ratings, omdbErr := metadata.FetchOMDbRatings(imdbID, omdbKey)
-			if omdbErr != nil {
-				log.Printf("Apply metadata: OMDb fetch failed for %s: %v", imdbID, omdbErr)
-			} else {
-				if dbErr := s.mediaRepo.UpdateRatings(mediaID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); dbErr != nil {
-					log.Printf("Apply metadata: ratings update failed for %s: %v", mediaID, dbErr)
+	// Try cache server first for supplementary data
+	cacheClient := s.getCacheClient()
+	if cacheClient != nil && req.ExternalID != "" {
+		cacheResult = cacheClient.Lookup(req.Title, req.Year, media.MediaType)
+		if cacheResult != nil && cacheResult.Match != nil {
+			// Use IMDB ID from cache if not provided
+			if imdbID == "" && cacheResult.Match.IMDBId != "" {
+				imdbID = cacheResult.Match.IMDBId
+			}
+			// Apply ratings from cache
+			if cacheResult.Ratings != nil {
+				if dbErr := s.mediaRepo.UpdateRatings(mediaID, cacheResult.Ratings.IMDBRating, cacheResult.Ratings.RTScore, cacheResult.Ratings.AudienceScore); dbErr != nil {
+					log.Printf("Apply metadata: cache ratings update failed for %s: %v", mediaID, dbErr)
 				}
 			}
-		}
-	}
-
-	// Fetch and populate cast/crew from TMDB credits
-	if req.Source == "tmdb" && req.ExternalID != "" {
-		for _, sc := range s.scrapers {
-			if t, ok := sc.(*metadata.TMDBScraper); ok {
-				var credits *metadata.TMDBCredits
-				var credErr error
-				if media.MediaType == models.MediaTypeTVShows {
-					credits, credErr = t.GetTVCredits(req.ExternalID)
-				} else {
-					credits, credErr = t.GetMovieCredits(req.ExternalID)
-				}
-				if credErr != nil {
-					log.Printf("Apply metadata: TMDB credits failed for %s: %v", req.ExternalID, credErr)
-				} else if credits != nil {
+			// Apply cast/crew from cache
+			if cacheResult.CastCrewJSON != nil && *cacheResult.CastCrewJSON != "" {
+				credits := metadata.ParseCacheCredits(*cacheResult.CastCrewJSON)
+				if credits != nil {
 					s.enrichWithCredits(mediaID, credits)
 				}
-				break
+			}
+			// Apply genres from cache if not already provided
+			if len(req.Genres) == 0 && len(cacheResult.Genres) > 0 {
+				s.linkGenreTags(mediaID, cacheResult.Genres)
+			}
+			log.Printf("Apply metadata: used cache for supplementary data on %q", req.Title)
+		}
+	}
+
+	// Fall back to direct APIs if cache didn't provide what we need
+	if cacheResult == nil || cacheResult.Match == nil {
+		// Fetch IMDB ID from TMDB details if not available
+		if imdbID == "" && req.Source == "tmdb" && req.ExternalID != "" {
+			for _, sc := range s.scrapers {
+				if t, ok := sc.(*metadata.TMDBScraper); ok {
+					details, detailErr := t.GetDetails(req.ExternalID)
+					if detailErr == nil && details.IMDBId != "" {
+						imdbID = details.IMDBId
+						if len(req.Genres) == 0 && len(details.Genres) > 0 {
+							s.linkGenreTags(mediaID, details.Genres)
+						}
+					}
+					break
+				}
+			}
+		}
+
+		// Fetch OMDb ratings
+		if imdbID != "" {
+			omdbKey, keyErr := s.settingsRepo.Get("omdb_api_key")
+			if keyErr == nil && omdbKey != "" {
+				ratings, omdbErr := metadata.FetchOMDbRatings(imdbID, omdbKey)
+				if omdbErr != nil {
+					log.Printf("Apply metadata: OMDb fetch failed for %s: %v", imdbID, omdbErr)
+				} else {
+					if dbErr := s.mediaRepo.UpdateRatings(mediaID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); dbErr != nil {
+						log.Printf("Apply metadata: ratings update failed for %s: %v", mediaID, dbErr)
+					}
+				}
+			}
+		}
+
+		// Fetch cast/crew from TMDB credits
+		if req.Source == "tmdb" && req.ExternalID != "" {
+			for _, sc := range s.scrapers {
+				if t, ok := sc.(*metadata.TMDBScraper); ok {
+					var credits *metadata.TMDBCredits
+					var credErr error
+					if media.MediaType == models.MediaTypeTVShows {
+						credits, credErr = t.GetTVCredits(req.ExternalID)
+					} else {
+						credits, credErr = t.GetMovieCredits(req.ExternalID)
+					}
+					if credErr != nil {
+						log.Printf("Apply metadata: TMDB credits failed for %s: %v", req.ExternalID, credErr)
+					} else if credits != nil {
+						s.enrichWithCredits(mediaID, credits)
+					}
+					break
+				}
 			}
 		}
 	}

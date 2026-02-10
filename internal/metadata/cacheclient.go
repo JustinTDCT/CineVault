@@ -299,6 +299,43 @@ func pickPreferredURL(urlsJSON *string, preferredSource string, fallback *string
 	return fallback
 }
 
+// ParseCacheCredits converts the cache server's simplified cast_crew JSON
+// into TMDBCredits format for use with enrichWithCredits.
+func ParseCacheCredits(castCrewJSON string) *TMDBCredits {
+	type cachePerson struct {
+		Name      string `json:"name"`
+		Character string `json:"character,omitempty"`
+		Job       string `json:"job,omitempty"`
+	}
+	type cacheCredits struct {
+		Cast []cachePerson `json:"cast"`
+		Crew []cachePerson `json:"crew"`
+	}
+
+	var cc cacheCredits
+	if err := json.Unmarshal([]byte(castCrewJSON), &cc); err != nil {
+		log.Printf("[cache-client] failed to parse cache cast_crew: %v", err)
+		return nil
+	}
+
+	credits := &TMDBCredits{}
+	for i, c := range cc.Cast {
+		credits.Cast = append(credits.Cast, TMDBCastMember{
+			Name:      c.Name,
+			Character: c.Character,
+			Order:     i,
+		})
+	}
+	for _, c := range cc.Crew {
+		credits.Crew = append(credits.Crew, TMDBCrewMember{
+			Name: c.Name,
+			Job:  c.Job,
+		})
+	}
+
+	return credits
+}
+
 // ── Contribute ──
 
 // ContributeExtras holds optional extra data to include in a contribution.

@@ -982,41 +982,9 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 	}
 }
 
-// parseCacheCredits converts the cache server's simplified cast_crew JSON
-// into TMDBCredits format for use with enrichWithCredits.
+// parseCacheCredits delegates to metadata.ParseCacheCredits.
 func parseCacheCredits(castCrewJSON string) *metadata.TMDBCredits {
-	type cachePerson struct {
-		Name      string `json:"name"`
-		Character string `json:"character,omitempty"`
-		Job       string `json:"job,omitempty"`
-	}
-	type cacheCredits struct {
-		Cast []cachePerson `json:"cast"`
-		Crew []cachePerson `json:"crew"`
-	}
-
-	var cc cacheCredits
-	if err := json.Unmarshal([]byte(castCrewJSON), &cc); err != nil {
-		log.Printf("Auto-match: failed to parse cache cast_crew: %v", err)
-		return nil
-	}
-
-	credits := &metadata.TMDBCredits{}
-	for i, c := range cc.Cast {
-		credits.Cast = append(credits.Cast, metadata.TMDBCastMember{
-			Name:      c.Name,
-			Character: c.Character,
-			Order:     i,
-		})
-	}
-	for _, c := range cc.Crew {
-		credits.Crew = append(credits.Crew, metadata.TMDBCrewMember{
-			Name: c.Name,
-			Job:  c.Job,
-		})
-	}
-
-	return credits
+	return metadata.ParseCacheCredits(castCrewJSON)
 }
 
 // enrichNonTMDBDetails fetches full details from MusicBrainz or OpenLibrary
