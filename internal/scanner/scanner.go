@@ -18,6 +18,7 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/JustinTDCT/CineVault/internal/repository"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 type Scanner struct {
@@ -419,10 +420,10 @@ func (s *Scanner) reEnrichExistingItems(library *models.Library, onProgress Prog
 		return
 	}
 
-	// Filter items upfront
+	// Filter items upfront (skip fully locked items)
 	var enrichItems []*models.MediaItem
 	for _, item := range items {
-		if item.MetadataLocked {
+		if item.MetadataLocked || item.IsFieldLocked("*") {
 			continue
 		}
 		if item.MediaType == models.MediaTypeTVShows && item.TVShowID != nil && library.SeasonGrouping {
@@ -485,7 +486,7 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 			log.Printf("Re-enrich: %q → %q (source=cache/%s)", item.Title, result.Match.Title, result.Source)
 
 			// Download poster if cache provides one and current poster is a generated screenshot
-			if item.GeneratedPoster && result.Match.PosterURL != nil && s.posterDir != "" {
+			if item.GeneratedPoster && result.Match.PosterURL != nil && s.posterDir != "" && !item.IsFieldLocked("poster_path") {
 				filename := item.ID.String() + ".jpg"
 				posterDir := filepath.Join(s.posterDir, "posters")
 				// Remove generated screenshot so dedup doesn't save TMDB poster as _alt
@@ -500,17 +501,17 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 			}
 
 			// Link genre tags from cache
-			if s.tagRepo != nil && len(result.Genres) > 0 {
+			if s.tagRepo != nil && len(result.Genres) > 0 && !item.IsFieldLocked("genres") {
 				s.linkGenreTags(item.ID, result.Genres)
 			}
 
 			// Apply OMDb ratings from cache
 			if result.Ratings != nil {
-				_ = s.mediaRepo.UpdateRatings(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore)
+				_ = s.mediaRepo.UpdateRatingsWithLocks(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore, item.LockedFields)
 			}
 
 			// Use cast/crew from cache if available, otherwise fall back to TMDB
-			if s.performerRepo != nil {
+			if s.performerRepo != nil && !item.IsFieldLocked("cast") {
 				if result.CastCrewJSON != nil && *result.CastCrewJSON != "" {
 					credits := parseCacheCredits(*result.CastCrewJSON)
 					if credits != nil {
@@ -529,10 +530,11 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 				_ = s.mediaRepo.UpdateExternalIDs(item.ID, *result.ExternalIDsJSON)
 			}
 
-			// Apply extended metadata from cache
-			if result.Match.Tagline != nil || result.Match.OriginalLanguage != nil || result.Match.Country != nil || result.Match.TrailerURL != nil || result.LogoURL != nil {
-				_ = s.mediaRepo.UpdateExtendedMetadata(item.ID,
-					result.Match.Tagline, result.Match.OriginalLanguage, result.Match.Country, result.Match.TrailerURL, result.LogoURL)
+			// Apply extended metadata from cache (respecting per-field locks)
+			tagline, origLang, country, trailerURL, logoURL := filterLockedExtended(item.LockedFields,
+				result.Match.Tagline, result.Match.OriginalLanguage, result.Match.Country, result.Match.TrailerURL, result.LogoURL)
+			if tagline != nil || origLang != nil || country != nil || trailerURL != nil || logoURL != nil {
+				_ = s.mediaRepo.UpdateExtendedMetadata(item.ID, tagline, origLang, country, trailerURL, logoURL)
 			}
 
 			// Auto-create collection from cache
@@ -557,25 +559,25 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 		return
 	}
 
-	// Link genre tags
-	if s.tagRepo != nil && len(combined.Details.Genres) > 0 {
+	// Link genre tags (respecting per-field lock)
+	if s.tagRepo != nil && len(combined.Details.Genres) > 0 && !item.IsFieldLocked("genres") {
 		s.linkGenreTags(item.ID, combined.Details.Genres)
 	}
 
-	// Fetch OMDb ratings
+	// Fetch OMDb ratings (respecting per-field locks)
 	if omdbKey != "" && combined.Details.IMDBId != "" {
 		ratings, err := metadata.FetchOMDbRatings(combined.Details.IMDBId, omdbKey)
 		if err != nil {
 			log.Printf("Re-enrich: OMDb fetch failed for %s: %v", combined.Details.IMDBId, err)
 		} else {
-			if err := s.mediaRepo.UpdateRatings(item.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); err != nil {
+			if err := s.mediaRepo.UpdateRatingsWithLocks(item.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore, item.LockedFields); err != nil {
 				log.Printf("Re-enrich: ratings update failed for %s: %v", item.ID, err)
 			}
 		}
 	}
 
-	// Replace generated screenshot poster with TMDB poster
-	if item.GeneratedPoster && combined.Details.PosterURL != nil && s.posterDir != "" {
+	// Replace generated screenshot poster with TMDB poster (respecting poster lock)
+	if item.GeneratedPoster && combined.Details.PosterURL != nil && s.posterDir != "" && !item.IsFieldLocked("poster_path") {
 		filename := item.ID.String() + ".jpg"
 		pDir := filepath.Join(s.posterDir, "posters")
 		_ = os.Remove(filepath.Join(pDir, filename))
@@ -589,8 +591,8 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 		}
 	}
 
-	// Populate cast/crew from the credits already fetched
-	if s.performerRepo != nil && combined.Credits != nil {
+	// Populate cast/crew from the credits already fetched (respecting cast lock)
+	if s.performerRepo != nil && combined.Credits != nil && !item.IsFieldLocked("cast") {
 		s.enrichWithCredits(item.ID, combined.Credits)
 	}
 
@@ -600,11 +602,12 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 		_ = s.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
 	}
 
-	// Apply extended metadata from TMDB details
+	// Apply extended metadata from TMDB details (respecting per-field locks)
 	d := combined.Details
-	if d.Tagline != nil || d.OriginalLanguage != nil || d.Country != nil || d.TrailerURL != nil {
-		_ = s.mediaRepo.UpdateExtendedMetadata(item.ID,
-			d.Tagline, d.OriginalLanguage, d.Country, d.TrailerURL, nil)
+	eTagline, eLang, eCountry, eTrailer, eLogo := filterLockedExtended(item.LockedFields,
+		d.Tagline, d.OriginalLanguage, d.Country, d.TrailerURL, nil)
+	if eTagline != nil || eLang != nil || eCountry != nil || eTrailer != nil || eLogo != nil {
+		_ = s.mediaRepo.UpdateExtendedMetadata(item.ID, eTagline, eLang, eCountry, eTrailer, eLogo)
 	}
 
 	// Auto-create movie collection from TMDB belongs_to_collection
@@ -922,9 +925,9 @@ func (s *Scanner) getCacheClient() *metadata.CacheClient {
 
 // applyDirectMatch applies metadata from a direct TMDB lookup (by ID) to a media item.
 func (s *Scanner) applyDirectMatch(item *models.MediaItem, match *models.MetadataMatch) {
-	// Download poster if available
+	// Download poster if available (respecting poster lock)
 	var posterPath *string
-	if match.PosterURL != nil && s.posterDir != "" {
+	if match.PosterURL != nil && s.posterDir != "" && !item.IsFieldLocked("poster_path") {
 		filename := item.ID.String() + ".jpg"
 		_, err := metadata.DownloadPoster(*match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
 		if err == nil {
@@ -933,23 +936,24 @@ func (s *Scanner) applyDirectMatch(item *models.MediaItem, match *models.Metadat
 		}
 	}
 
-	if err := s.mediaRepo.UpdateMetadata(item.ID, match.Title, match.Year,
-		match.Description, match.Rating, posterPath, match.ContentRating); err != nil {
+	if err := s.mediaRepo.UpdateMetadataWithLocks(item.ID, match.Title, match.Year,
+		match.Description, match.Rating, posterPath, match.ContentRating, item.LockedFields); err != nil {
 		log.Printf("Direct match: DB update failed for %s: %v", item.ID, err)
 	}
 	if posterPath != nil {
 		item.PosterPath = posterPath
 	}
 
-	// Apply extended metadata (tagline, language, country, trailer)
-	if match.Tagline != nil || match.OriginalLanguage != nil || match.Country != nil || match.TrailerURL != nil {
-		_ = s.mediaRepo.UpdateExtendedMetadata(item.ID,
-			match.Tagline, match.OriginalLanguage, match.Country, match.TrailerURL, nil)
+	// Apply extended metadata (respecting per-field locks)
+	eTagline, eLang, eCountry, eTrailer, eLogo := filterLockedExtended(item.LockedFields,
+		match.Tagline, match.OriginalLanguage, match.Country, match.TrailerURL, nil)
+	if eTagline != nil || eLang != nil || eCountry != nil || eTrailer != nil || eLogo != nil {
+		_ = s.mediaRepo.UpdateExtendedMetadata(item.ID, eTagline, eLang, eCountry, eTrailer, eLogo)
 	}
 
 	// Enrich with genres, ratings, etc.
 	if match.Source == "tmdb" {
-		s.enrichWithDetails(item.ID, match.ExternalID, item.MediaType)
+		s.enrichWithDetails(item.ID, match.ExternalID, item.MediaType, item.LockedFields)
 	}
 
 	// Store external IDs
@@ -966,8 +970,8 @@ func (s *Scanner) applyDirectMatchWithCredits(item *models.MediaItem, combined *
 	match := combined.Details
 	s.applyDirectMatch(item, match)
 
-	// Also populate cast/crew from the included credits
-	if s.performerRepo != nil && combined.Credits != nil {
+	// Also populate cast/crew from the included credits (respecting cast lock)
+	if s.performerRepo != nil && combined.Credits != nil && !item.IsFieldLocked("cast") {
 		s.enrichWithCredits(item.ID, combined.Credits)
 	}
 
@@ -1152,9 +1156,9 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 	log.Printf("Auto-match: %q → %q (source=%s, confidence=%.2f)",
 		item.Title, match.Title, match.Source, match.Confidence)
 
-	// Download poster if available
+	// Download poster if available (respecting poster lock)
 	var posterPath *string
-	if match.PosterURL != nil && s.posterDir != "" {
+	if match.PosterURL != nil && s.posterDir != "" && !item.IsFieldLocked("poster_path") {
 		filename := item.ID.String() + ".jpg"
 		saved, err := metadata.DownloadPoster(*match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
 		if err != nil {
@@ -1167,9 +1171,9 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		}
 	}
 
-	// Update the media item with matched metadata
-	if err := s.mediaRepo.UpdateMetadata(item.ID, match.Title, match.Year,
-		match.Description, match.Rating, posterPath, match.ContentRating); err != nil {
+	// Update the media item with matched metadata (respecting per-field locks)
+	if err := s.mediaRepo.UpdateMetadataWithLocks(item.ID, match.Title, match.Year,
+		match.Description, match.Rating, posterPath, match.ContentRating, item.LockedFields); err != nil {
 		log.Printf("Auto-match: DB update failed for %s: %v", item.ID, err)
 	}
 
@@ -1180,12 +1184,12 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 
 	// Get TMDB details for genres, IMDB ID, OMDb ratings, and cast
 	if match.Source == "tmdb" {
-		s.enrichWithDetails(item.ID, match.ExternalID, item.MediaType)
+		s.enrichWithDetails(item.ID, match.ExternalID, item.MediaType, item.LockedFields)
 	}
 
 	// For MusicBrainz/OpenLibrary, enrich with full details
 	if match.Source == "musicbrainz" || match.Source == "openlibrary" {
-		s.enrichNonTMDBDetails(item.ID, match)
+		s.enrichNonTMDBDetails(item.ID, match, item.LockedFields)
 	}
 
 	// Store external IDs from direct match
@@ -1205,9 +1209,9 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.CacheLookupResult) {
 	match := result.Match
 
-	// Download poster if available
+	// Download poster if available (respecting poster lock)
 	var posterPath *string
-	if match.PosterURL != nil && s.posterDir != "" {
+	if match.PosterURL != nil && s.posterDir != "" && !item.IsFieldLocked("poster_path") {
 		filename := item.ID.String() + ".jpg"
 		_, err := metadata.DownloadPoster(*match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
 		if err != nil {
@@ -1218,9 +1222,9 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 		}
 	}
 
-	// Update metadata
-	if err := s.mediaRepo.UpdateMetadata(item.ID, match.Title, match.Year,
-		match.Description, match.Rating, posterPath, match.ContentRating); err != nil {
+	// Update metadata (respecting per-field locks)
+	if err := s.mediaRepo.UpdateMetadataWithLocks(item.ID, match.Title, match.Year,
+		match.Description, match.Rating, posterPath, match.ContentRating, item.LockedFields); err != nil {
 		log.Printf("Auto-match: DB update failed for %s: %v", item.ID, err)
 	}
 
@@ -1229,20 +1233,20 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 		item.PosterPath = posterPath
 	}
 
-	// Link genre tags from cache
-	if s.tagRepo != nil && len(result.Genres) > 0 {
+	// Link genre tags from cache (respecting genres lock)
+	if s.tagRepo != nil && len(result.Genres) > 0 && !item.IsFieldLocked("genres") {
 		s.linkGenreTags(item.ID, result.Genres)
 	}
 
-	// Apply OMDb ratings from cache
+	// Apply OMDb ratings from cache (respecting per-field locks)
 	if result.Ratings != nil {
-		if err := s.mediaRepo.UpdateRatings(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore); err != nil {
+		if err := s.mediaRepo.UpdateRatingsWithLocks(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore, item.LockedFields); err != nil {
 			log.Printf("Auto-match: ratings update failed for %s: %v", item.ID, err)
 		}
 	}
 
-	// Use cast/crew from cache if available, otherwise fall back to TMDB credits API
-	if s.performerRepo != nil {
+	// Use cast/crew from cache if available (respecting cast lock)
+	if s.performerRepo != nil && !item.IsFieldLocked("cast") {
 		if result.CastCrewJSON != nil && *result.CastCrewJSON != "" {
 			credits := parseCacheCredits(*result.CastCrewJSON)
 			if credits != nil {
@@ -1278,10 +1282,11 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 		_ = s.mediaRepo.UpdateExternalIDs(item.ID, *result.ExternalIDsJSON)
 	}
 
-	// Apply extended metadata from cache (tagline, language, country, trailer, logo)
-	if match.Tagline != nil || match.OriginalLanguage != nil || match.Country != nil || match.TrailerURL != nil || result.LogoURL != nil {
-		_ = s.mediaRepo.UpdateExtendedMetadata(item.ID,
-			match.Tagline, match.OriginalLanguage, match.Country, match.TrailerURL, result.LogoURL)
+	// Apply extended metadata from cache (respecting per-field locks)
+	eTagline, eLang, eCountry, eTrailer, eLogo := filterLockedExtended(item.LockedFields,
+		match.Tagline, match.OriginalLanguage, match.Country, match.TrailerURL, result.LogoURL)
+	if eTagline != nil || eLang != nil || eCountry != nil || eTrailer != nil || eLogo != nil {
+		_ = s.mediaRepo.UpdateExtendedMetadata(item.ID, eTagline, eLang, eCountry, eTrailer, eLogo)
 	}
 
 	// Auto-create movie collection from cache data
@@ -1295,9 +1300,49 @@ func parseCacheCredits(castCrewJSON string) *metadata.TMDBCredits {
 	return metadata.ParseCacheCredits(castCrewJSON)
 }
 
+// filterLockedExtended nils out extended metadata values for fields that are locked on the item.
+func filterLockedExtended(lf pq.StringArray, tagline, origLang, country, trailerURL, logoPath *string) (*string, *string, *string, *string, *string) {
+	if len(lf) == 0 {
+		return tagline, origLang, country, trailerURL, logoPath
+	}
+	check := func(field string) bool {
+		for _, f := range lf {
+			if f == "*" || f == field {
+				return true
+			}
+		}
+		return false
+	}
+	if check("tagline") {
+		tagline = nil
+	}
+	if check("original_language") {
+		origLang = nil
+	}
+	if check("country") {
+		country = nil
+	}
+	if check("trailer_url") {
+		trailerURL = nil
+	}
+	if check("logo_path") {
+		logoPath = nil
+	}
+	return tagline, origLang, country, trailerURL, logoPath
+}
+
 // enrichNonTMDBDetails fetches full details from MusicBrainz or OpenLibrary
 // and applies genres to the media item.
-func (s *Scanner) enrichNonTMDBDetails(itemID uuid.UUID, match *models.MetadataMatch) {
+func (s *Scanner) enrichNonTMDBDetails(itemID uuid.UUID, match *models.MetadataMatch, lockedFields pq.StringArray) {
+	isLocked := func(field string) bool {
+		for _, f := range lockedFields {
+			if f == "*" || f == field {
+				return true
+			}
+		}
+		return false
+	}
+
 	var scraper metadata.Scraper
 	for _, sc := range s.scrapers {
 		if sc.Name() == match.Source {
@@ -1315,19 +1360,19 @@ func (s *Scanner) enrichNonTMDBDetails(itemID uuid.UUID, match *models.MetadataM
 		return
 	}
 
-	// Apply genres from detailed metadata
-	if s.tagRepo != nil && len(details.Genres) > 0 {
+	// Apply genres from detailed metadata (respecting genres lock)
+	if s.tagRepo != nil && len(details.Genres) > 0 && !isLocked("genres") {
 		s.linkGenreTags(itemID, details.Genres)
 	}
 
-	// Update description if we got a better one from details
+	// Update description if we got a better one from details (respecting per-field locks)
 	if details.Description != nil && *details.Description != "" {
-		_ = s.mediaRepo.UpdateMetadata(itemID, details.Title, details.Year,
-			details.Description, details.Rating, nil, details.ContentRating)
+		_ = s.mediaRepo.UpdateMetadataWithLocks(itemID, details.Title, details.Year,
+			details.Description, details.Rating, nil, details.ContentRating, lockedFields)
 	}
 
-	// Update poster if details have one and we don't yet
-	if details.PosterURL != nil && s.posterDir != "" {
+	// Update poster if details have one and we don't yet (respecting poster lock)
+	if details.PosterURL != nil && s.posterDir != "" && !isLocked("poster_path") {
 		filename := itemID.String() + ".jpg"
 		_, dlErr := metadata.DownloadPoster(*details.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
 		if dlErr == nil {
@@ -1338,7 +1383,17 @@ func (s *Scanner) enrichNonTMDBDetails(itemID uuid.UUID, match *models.MetadataM
 }
 
 // enrichWithDetails fetches TMDB details, creates genre tags, fetches OMDb ratings, and populates cast.
-func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, mediaType models.MediaType) {
+// lockedFields is passed through to respect per-field metadata locks.
+func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, mediaType models.MediaType, lockedFields pq.StringArray) {
+	isLocked := func(field string) bool {
+		for _, f := range lockedFields {
+			if f == "*" || f == field {
+				return true
+			}
+		}
+		return false
+	}
+	_ = isLocked // ensure used
 	// Find the TMDB scraper
 	var tmdbScraper *metadata.TMDBScraper
 	for _, sc := range s.scrapers {
@@ -1364,23 +1419,24 @@ func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, med
 		return
 	}
 
-	// Update content rating if available (from TMDB release_dates)
-	if details.ContentRating != nil {
+	// Update content rating if available (respecting content_rating lock)
+	if details.ContentRating != nil && !isLocked("content_rating") {
 		_ = s.mediaRepo.UpdateContentRating(itemID, *details.ContentRating)
 	}
 
-	// Apply extended metadata from TMDB details
-	if details.Tagline != nil || details.OriginalLanguage != nil || details.Country != nil || details.TrailerURL != nil {
-		_ = s.mediaRepo.UpdateExtendedMetadata(itemID,
-			details.Tagline, details.OriginalLanguage, details.Country, details.TrailerURL, nil)
+	// Apply extended metadata from TMDB details (respecting per-field locks)
+	eTagline, eLang, eCountry, eTrailer, eLogo := filterLockedExtended(lockedFields,
+		details.Tagline, details.OriginalLanguage, details.Country, details.TrailerURL, nil)
+	if eTagline != nil || eLang != nil || eCountry != nil || eTrailer != nil || eLogo != nil {
+		_ = s.mediaRepo.UpdateExtendedMetadata(itemID, eTagline, eLang, eCountry, eTrailer, eLogo)
 	}
 
-	// Create/link genre tags
-	if s.tagRepo != nil && len(details.Genres) > 0 {
+	// Create/link genre tags (respecting genres lock)
+	if s.tagRepo != nil && len(details.Genres) > 0 && !isLocked("genres") {
 		s.linkGenreTags(itemID, details.Genres)
 	}
 
-	// Fetch OMDb ratings if key is configured
+	// Fetch OMDb ratings if key is configured (respecting per-field locks)
 	if s.settingsRepo != nil && details.IMDBId != "" {
 		omdbKey, err := s.settingsRepo.Get("omdb_api_key")
 		if err != nil {
@@ -1390,15 +1446,15 @@ func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, med
 			if err != nil {
 				log.Printf("Auto-match: OMDb fetch failed for %s: %v", details.IMDBId, err)
 			} else {
-				if err := s.mediaRepo.UpdateRatings(itemID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); err != nil {
+				if err := s.mediaRepo.UpdateRatingsWithLocks(itemID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore, lockedFields); err != nil {
 					log.Printf("Auto-match: ratings update failed for %s: %v", itemID, err)
 				}
 			}
 		}
 	}
 
-	// Fetch and populate cast/crew from TMDB credits
-	if s.performerRepo != nil {
+	// Fetch and populate cast/crew from TMDB credits (respecting cast lock)
+	if s.performerRepo != nil && !isLocked("cast") {
 		var credits *metadata.TMDBCredits
 		if mediaType == models.MediaTypeTVShows {
 			credits, err = tmdbScraper.GetTVCredits(tmdbExternalID)
@@ -1413,7 +1469,7 @@ func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, med
 	}
 
 	// Fetch extended artwork from fanart.tv (logos, banners, clearart)
-	s.enrichWithFanart(itemID, tmdbExternalID, mediaType)
+	s.enrichWithFanart(itemID, tmdbExternalID, mediaType, lockedFields)
 }
 
 // enrichWithCredits creates or finds performers from TMDB credits and links them to a media item.
@@ -1523,13 +1579,23 @@ func (s *Scanner) findOrCreatePerformer(name string, perfType models.PerformerTy
 }
 
 // enrichWithFanart fetches extended artwork from fanart.tv and applies logos, banners, etc.
-func (s *Scanner) enrichWithFanart(itemID uuid.UUID, tmdbExternalID string, mediaType models.MediaType) {
+// lockedFields is checked to skip updates to locked artwork fields.
+func (s *Scanner) enrichWithFanart(itemID uuid.UUID, tmdbExternalID string, mediaType models.MediaType, lockedFields pq.StringArray) {
 	if s.settingsRepo == nil {
 		return
 	}
 	fanartKey, _ := s.settingsRepo.Get("fanart_api_key")
 	if fanartKey == "" {
 		return
+	}
+
+	isLocked := func(field string) bool {
+		for _, f := range lockedFields {
+			if f == "*" || f == field {
+				return true
+			}
+		}
+		return false
 	}
 
 	client := metadata.NewFanartTVClient(fanartKey)
@@ -1550,8 +1616,8 @@ func (s *Scanner) enrichWithFanart(itemID uuid.UUID, tmdbExternalID string, medi
 		return
 	}
 
-	// Download and save logo
-	if art.LogoURL != "" && s.posterDir != "" {
+	// Download and save logo (respecting logo_path lock)
+	if art.LogoURL != "" && s.posterDir != "" && !isLocked("logo_path") {
 		filename := "logo_" + itemID.String() + ".png"
 		_, dlErr := metadata.DownloadPoster(art.LogoURL, filepath.Join(s.posterDir, "posters"), filename)
 		if dlErr == nil {
@@ -1561,8 +1627,8 @@ func (s *Scanner) enrichWithFanart(itemID uuid.UUID, tmdbExternalID string, medi
 		}
 	}
 
-	// Download backdrop if we don't have one yet
-	if art.BackdropURL != "" && s.posterDir != "" {
+	// Download backdrop if we don't have one yet (respecting backdrop_path lock)
+	if art.BackdropURL != "" && s.posterDir != "" && !isLocked("backdrop_path") {
 		filename := "backdrop_" + itemID.String() + ".jpg"
 		_, dlErr := metadata.DownloadPoster(art.BackdropURL, filepath.Join(s.posterDir, "posters"), filename)
 		if dlErr == nil {
@@ -1696,14 +1762,16 @@ func (s *Scanner) enrichTVShowDetails(showID uuid.UUID, tmdbExternalID string) {
 		return
 	}
 
-	// Link genre tags to all episodes
+	// Link genre tags to all episodes (respecting per-episode locks)
 	if s.tagRepo != nil && len(details.Genres) > 0 {
 		for _, ep := range episodes {
-			s.linkGenreTags(ep.ID, details.Genres)
+			if !ep.IsFieldLocked("genres") {
+				s.linkGenreTags(ep.ID, details.Genres)
+			}
 		}
 	}
 
-	// Fetch OMDb ratings and apply to all episodes
+	// Fetch OMDb ratings and apply to all episodes (respecting per-episode locks)
 	if s.settingsRepo != nil && details.IMDBId != "" {
 		omdbKey, err := s.settingsRepo.Get("omdb_api_key")
 		if err != nil {
@@ -1714,7 +1782,7 @@ func (s *Scanner) enrichTVShowDetails(showID uuid.UUID, tmdbExternalID string) {
 				log.Printf("Auto-match: OMDb fetch failed for TV %s: %v", details.IMDBId, err)
 			} else {
 				for _, ep := range episodes {
-					if err := s.mediaRepo.UpdateRatings(ep.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); err != nil {
+					if err := s.mediaRepo.UpdateRatingsWithLocks(ep.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore, ep.LockedFields); err != nil {
 						log.Printf("Auto-match: ratings update failed for episode %s: %v", ep.ID, err)
 					}
 				}
@@ -1806,6 +1874,11 @@ func (s *Scanner) fetchEpisodeMetadata(showID uuid.UUID, tmdbShowID string) {
 				continue
 			}
 
+			// Skip fully locked episodes
+			if ep.MetadataLocked || ep.IsFieldLocked("*") {
+				continue
+			}
+
 			tmdbEp, ok := tmdbMap[*ep.EpisodeNumber]
 			if !ok {
 				continue
@@ -1827,9 +1900,9 @@ func (s *Scanner) fetchEpisodeMetadata(showID uuid.UUID, tmdbShowID string) {
 				rating = &tmdbEp.VoteAverage
 			}
 
-			// Download episode still image
+			// Download episode still image (respecting poster lock)
 			var posterPath *string
-			if tmdbEp.StillPath != "" && s.posterDir != "" {
+			if tmdbEp.StillPath != "" && s.posterDir != "" && !ep.IsFieldLocked("poster_path") {
 				stillURL := "https://image.tmdb.org/t/p/w500" + tmdbEp.StillPath
 				filename := "ep_" + ep.ID.String() + ".jpg"
 				saved, dlErr := metadata.DownloadPoster(stillURL, filepath.Join(s.posterDir, "posters"), filename)
@@ -1842,7 +1915,7 @@ func (s *Scanner) fetchEpisodeMetadata(showID uuid.UUID, tmdbShowID string) {
 				}
 			}
 
-			if err := s.mediaRepo.UpdateMetadata(ep.ID, epTitle, nil, desc, rating, posterPath, nil); err != nil {
+			if err := s.mediaRepo.UpdateMetadataWithLocks(ep.ID, epTitle, nil, desc, rating, posterPath, nil, ep.LockedFields); err != nil {
 				log.Printf("Auto-match: episode metadata update failed for %s: %v", ep.ID, err)
 			} else {
 				log.Printf("Auto-match episode: S%02dE%02d → %q", season.SeasonNumber, *ep.EpisodeNumber, epTitle)

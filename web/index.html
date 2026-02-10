@@ -778,6 +778,33 @@
             background: rgba(52,199,89,0.15); color: #51cf66;
             border: 1px solid rgba(52,199,89,0.3);
         }
+        .field-locks-toggle {
+            display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+            color: #8a9bae; font-size: 0.8rem; margin-top: 8px; transition: color 0.2s;
+        }
+        .field-locks-toggle:hover { color: #00D9FF; }
+        .field-locks-toggle .arrow { transition: transform 0.2s; display: inline-block; }
+        .field-locks-toggle.open .arrow { transform: rotate(90deg); }
+        .field-locks-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px;
+            margin-top: 10px; padding: 12px 14px;
+            background: rgba(0,0,0,0.2); border-radius: 10px;
+            border: 1px solid rgba(0,217,255,0.08);
+        }
+        .field-lock-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 5px 0; font-size: 0.82rem; color: #c8d6e5;
+        }
+        .field-lock-item label { cursor: pointer; flex: 1; }
+        .field-lock-cb { display: none; }
+        .field-lock-icon {
+            width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; border-radius: 6px; transition: all 0.2s; font-size: 0.9rem;
+        }
+        .field-lock-icon.unlocked { color: #51cf66; opacity: 0.5; }
+        .field-lock-icon.unlocked:hover { opacity: 1; background: rgba(52,199,89,0.15); }
+        .field-lock-icon.locked { color: #ffa94d; opacity: 1; }
+        .field-lock-icon.locked:hover { background: rgba(255,159,64,0.15); }
 
         /* Toggle switch / slider */
         .toggle-switch { position: relative; display: inline-block; width: 48px; height: 26px; vertical-align: middle; }
@@ -1234,6 +1261,17 @@
                 <button class="btn-secondary" style="font-size:0.82rem; padding:8px 14px;" onclick="openSeriesModal()">&#127910; Add to Series</button>
             </div>
             <div id="editLockStatus" style="margin-top:8px;"></div>
+            <div style="margin-top:4px;">
+                <span class="field-locks-toggle" id="fieldLocksToggle" onclick="toggleFieldLocks()">
+                    <span class="arrow">&#9656;</span> Per-Field Locks
+                </span>
+                <div id="fieldLocksPanel" style="display:none;">
+                    <div class="field-locks-grid" id="fieldLocksGrid"></div>
+                    <div style="font-size:0.72rem; color:#6b7b8d; margin-top:6px; padding:0 4px;">
+                        Locked fields are protected from automatic updates during scans and auto-match.
+                    </div>
+                </div>
+            </div>
             <div class="edit-modal-actions">
                 <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
                 <button class="btn-danger" id="editResetBtn" style="display:none;" onclick="resetMediaMeta()">&#8635; Reset Lock</button>
@@ -3459,14 +3497,23 @@
         } else {
             seriesGroup.style.display = 'none';
         }
-        // Lock status
+        // Lock status & per-field locks
+        const lockedFields = m.locked_fields || [];
+        renderFieldLocks(lockedFields);
+        // Collapse the field locks panel by default
+        document.getElementById('fieldLocksPanel').style.display = 'none';
+        document.getElementById('fieldLocksToggle').classList.remove('open');
+
         const lockDiv = document.getElementById('editLockStatus');
         const resetBtn = document.getElementById('editResetBtn');
-        if (m.metadata_locked) {
-            lockDiv.innerHTML = '<span class="lock-badge locked">&#128274; Metadata locked — auto-match will not overwrite your edits</span>';
+        if (m.metadata_locked || lockedFields.includes('*')) {
+            lockDiv.innerHTML = '<span class="lock-badge locked">&#128274; All fields locked — auto-match will not overwrite your edits</span>';
+            resetBtn.style.display = 'inline-flex';
+        } else if (lockedFields.length > 0) {
+            lockDiv.innerHTML = '<span class="lock-badge locked">&#128274; ' + lockedFields.length + ' field' + (lockedFields.length > 1 ? 's' : '') + ' locked</span>';
             resetBtn.style.display = 'inline-flex';
         } else {
-            lockDiv.innerHTML = '<span class="lock-badge unlocked">&#128275; Metadata unlocked — auto-match may update fields</span>';
+            lockDiv.innerHTML = '<span class="lock-badge unlocked">&#128275; No fields locked — auto-match may update all fields</span>';
             resetBtn.style.display = 'none';
         }
         document.getElementById('editMediaOverlay').classList.add('active');
@@ -3524,14 +3571,99 @@
 
     async function resetMediaMeta() {
         const id = document.getElementById('editMediaId').value;
-        if (!confirm('Reset metadata lock? The next auto-match or scan will be able to overwrite your edits.')) return;
+        if (!confirm('Reset all metadata locks? The next auto-match or scan will be able to overwrite your edits.')) return;
+        // Clear per-field locks as well
+        await api('PUT', '/media/' + id + '/locked-fields', { locked_fields: [] });
         const d = await api('POST', '/media/' + id + '/reset');
         if (d.success) {
-            toast('Metadata lock removed');
+            toast('All metadata locks removed');
             closeEditModal();
             loadMediaDetail(id);
         } else {
             toast(d.error || 'Reset failed', 'error');
+        }
+    }
+
+    // ──── Per-Field Locks ────
+    const LOCKABLE_FIELDS = [
+        { key: 'title', label: 'Title' },
+        { key: 'description', label: 'Description' },
+        { key: 'year', label: 'Year' },
+        { key: 'rating', label: 'Rating' },
+        { key: 'poster_path', label: 'Poster' },
+        { key: 'content_rating', label: 'Content Rating' },
+        { key: 'tagline', label: 'Tagline' },
+        { key: 'original_language', label: 'Language' },
+        { key: 'country', label: 'Country' },
+        { key: 'trailer_url', label: 'Trailer' },
+        { key: 'logo_path', label: 'Logo' },
+        { key: 'backdrop_path', label: 'Backdrop' },
+        { key: 'imdb_rating', label: 'IMDb Rating' },
+        { key: 'rt_rating', label: 'RT Score' },
+        { key: 'audience_score', label: 'Audience Score' },
+        { key: 'genres', label: 'Genres' },
+        { key: 'cast', label: 'Cast & Crew' },
+    ];
+    let _currentLockedFields = [];
+
+    function toggleFieldLocks() {
+        const panel = document.getElementById('fieldLocksPanel');
+        const toggle = document.getElementById('fieldLocksToggle');
+        const isOpen = panel.style.display !== 'none';
+        panel.style.display = isOpen ? 'none' : '';
+        toggle.classList.toggle('open', !isOpen);
+    }
+
+    function renderFieldLocks(lockedFields) {
+        _currentLockedFields = lockedFields || [];
+        const grid = document.getElementById('fieldLocksGrid');
+        const hasWildcard = _currentLockedFields.includes('*');
+        grid.innerHTML = LOCKABLE_FIELDS.map(f => {
+            const isLocked = hasWildcard || _currentLockedFields.includes(f.key);
+            return `<div class="field-lock-item">
+                <label onclick="toggleFieldLock('${f.key}')">${f.label}</label>
+                <span class="field-lock-icon ${isLocked ? 'locked' : 'unlocked'}" onclick="toggleFieldLock('${f.key}')"
+                    title="${isLocked ? 'Locked — click to unlock' : 'Unlocked — click to lock'}">
+                    ${isLocked ? '&#128274;' : '&#128275;'}
+                </span>
+            </div>`;
+        }).join('');
+    }
+
+    async function toggleFieldLock(fieldKey) {
+        const id = document.getElementById('editMediaId').value;
+        // Remove wildcard if present (switching to per-field mode)
+        let fields = _currentLockedFields.filter(f => f !== '*');
+        const idx = fields.indexOf(fieldKey);
+        if (idx >= 0) {
+            fields.splice(idx, 1);
+        } else {
+            fields.push(fieldKey);
+        }
+        // Save to API
+        const d = await api('PUT', '/media/' + id + '/locked-fields', { locked_fields: fields });
+        if (d.success) {
+            _currentLockedFields = fields;
+            renderFieldLocks(fields);
+            // Update lock status display
+            updateLockStatusDisplay(fields);
+        } else {
+            toast(d.error || 'Failed to update field lock', 'error');
+        }
+    }
+
+    function updateLockStatusDisplay(fields) {
+        const lockDiv = document.getElementById('editLockStatus');
+        const resetBtn = document.getElementById('editResetBtn');
+        if (fields.includes('*') || fields.length === LOCKABLE_FIELDS.length) {
+            lockDiv.innerHTML = '<span class="lock-badge locked">&#128274; All fields locked</span>';
+            resetBtn.style.display = 'inline-flex';
+        } else if (fields.length > 0) {
+            lockDiv.innerHTML = '<span class="lock-badge locked">&#128274; ' + fields.length + ' field' + (fields.length > 1 ? 's' : '') + ' locked</span>';
+            resetBtn.style.display = 'inline-flex';
+        } else {
+            lockDiv.innerHTML = '<span class="lock-badge unlocked">&#128275; No fields locked — auto-match may update all fields</span>';
+            resetBtn.style.display = 'none';
         }
     }
 

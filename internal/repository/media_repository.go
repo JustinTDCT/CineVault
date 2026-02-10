@@ -7,6 +7,7 @@ import (
 
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 // MediaFilter holds optional filter and sort parameters for media queries.
@@ -395,10 +396,40 @@ func (r *MediaRepository) UpdateMetadata(id uuid.UUID, title string, year *int, 
 	return err
 }
 
+// UpdateMetadataWithLocks updates metadata fields but respects per-field locks.
+// Locked fields retain their current database value.
+func (r *MediaRepository) UpdateMetadataWithLocks(id uuid.UUID, title string, year *int, description *string, rating *float64, posterPath *string, contentRating *string, lockedFields pq.StringArray) error {
+	query := `UPDATE media_items SET
+		title = CASE WHEN $8::text[] IS NOT NULL AND ('title' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN title ELSE $1 END,
+		year = CASE WHEN $8::text[] IS NOT NULL AND ('year' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN year ELSE $2 END,
+		description = CASE WHEN $8::text[] IS NOT NULL AND ('description' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN description ELSE $3 END,
+		rating = CASE WHEN $8::text[] IS NOT NULL AND ('rating' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN rating ELSE $4 END,
+		poster_path = CASE WHEN $8::text[] IS NOT NULL AND ('poster_path' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN poster_path ELSE $5 END,
+		content_rating = CASE WHEN $8::text[] IS NOT NULL AND ('content_rating' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN content_rating ELSE $6 END,
+		generated_poster = CASE
+			WHEN $8::text[] IS NOT NULL AND ('poster_path' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN generated_poster
+			WHEN ($5::text) IS NOT NULL THEN false
+			ELSE generated_poster END,
+		updated_at = CURRENT_TIMESTAMP WHERE id = $7`
+	_, err := r.db.Exec(query, title, year, description, rating, posterPath, contentRating, id, lockedFields)
+	return err
+}
+
 func (r *MediaRepository) UpdateRatings(id uuid.UUID, imdbRating *float64, rtRating *int, audienceScore *int) error {
 	query := `UPDATE media_items SET imdb_rating = $1, rt_rating = $2, audience_score = $3,
 		updated_at = CURRENT_TIMESTAMP WHERE id = $4`
 	_, err := r.db.Exec(query, imdbRating, rtRating, audienceScore, id)
+	return err
+}
+
+// UpdateRatingsWithLocks updates rating fields but respects per-field locks.
+func (r *MediaRepository) UpdateRatingsWithLocks(id uuid.UUID, imdbRating *float64, rtRating *int, audienceScore *int, lockedFields pq.StringArray) error {
+	query := `UPDATE media_items SET
+		imdb_rating = CASE WHEN $5::text[] IS NOT NULL AND ('imdb_rating' = ANY($5::text[]) OR '*' = ANY($5::text[])) THEN imdb_rating ELSE $1 END,
+		rt_rating = CASE WHEN $5::text[] IS NOT NULL AND ('rt_rating' = ANY($5::text[]) OR '*' = ANY($5::text[])) THEN rt_rating ELSE $2 END,
+		audience_score = CASE WHEN $5::text[] IS NOT NULL AND ('audience_score' = ANY($5::text[]) OR '*' = ANY($5::text[])) THEN audience_score ELSE $3 END,
+		updated_at = CURRENT_TIMESTAMP WHERE id = $4`
+	_, err := r.db.Exec(query, imdbRating, rtRating, audienceScore, id, lockedFields)
 	return err
 }
 

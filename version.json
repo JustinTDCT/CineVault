@@ -1,6 +1,6 @@
 {
-  "version": "0.36.1",
+  "version": "0.37.0",
   "phase": 3,
   "released": "2026-02-10",
-  "notes": "Cache server integration: extended metadata (tagline, language, country, trailer, logo, collection, TVDB ID) now flows through cache lookups and contributions"
+  "notes": "Per-field metadata locking: scanner and re-enrichment now respect individual locked fields; UI toggle for locking any metadata field"
 }
