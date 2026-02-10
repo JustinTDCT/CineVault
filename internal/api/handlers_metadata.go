@@ -148,7 +148,8 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 		if dlErr != nil {
 			log.Printf("Apply metadata: poster download failed for %s: %v", mediaID, dlErr)
 		} else {
-			webPath := "/previews/posters/" + filename
+			// Use actual saved filename (may include _alt suffix from dedup)
+			webPath := "/previews/posters/" + filepath.Base(saved)
 			posterPath = &webPath
 			log.Printf("Apply metadata: poster saved to %s", saved)
 		}

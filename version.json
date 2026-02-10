@@ -1,6 +1,6 @@
 {
-  "version": "0.31.0",
+  "version": "0.31.01",
   "phase": 3,
-  "released": "2026-02-09",
-  "notes": "First-run setup wizard — admin account creation on initial install"
+  "released": "2026-02-10",
+  "notes": "Fix identify apply using stale poster path instead of actual saved path"
 }
