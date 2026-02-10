@@ -116,11 +116,37 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 
 	// Reload with folders
 	created, _ := s.libRepo.GetByID(library.ID)
-	if created != nil {
-		s.respondJSON(w, http.StatusCreated, Response{Success: true, Data: created})
-	} else {
-		s.respondJSON(w, http.StatusCreated, Response{Success: true, Data: library})
+	if created == nil {
+		created = &library
 	}
+
+	// Auto-scan the newly created library
+	go func() {
+		if s.jobQueue != nil {
+			uniqueID := "scan:" + library.ID.String()
+			jobID, err := s.jobQueue.EnqueueUnique(jobs.TaskScanLibrary, jobs.ScanPayload{
+				LibraryID: library.ID.String(),
+			}, uniqueID, asynq.Timeout(6*time.Hour), asynq.Retention(1*time.Hour))
+			if err != nil {
+				log.Printf("Auto-scan: failed to enqueue for library %q, falling back to sync: %v", library.Name, err)
+			} else {
+				log.Printf("Auto-scan: job enqueued for new library %q: %s", library.Name, jobID)
+				return
+			}
+		}
+		// Synchronous fallback
+		log.Printf("Auto-scan: starting sync scan for new library %q", library.Name)
+		result, err := s.scanner.ScanLibrary(created)
+		if err != nil {
+			log.Printf("Auto-scan: sync scan failed for library %q: %v", library.Name, err)
+			return
+		}
+		_ = s.libRepo.UpdateLastScan(library.ID)
+		log.Printf("Auto-scan: complete for %q — %d found, %d added, %d skipped, %d errors",
+			library.Name, result.FilesFound, result.FilesAdded, result.FilesSkipped, len(result.Errors))
+	}()
+
+	s.respondJSON(w, http.StatusCreated, Response{Success: true, Data: created})
 }
 
 func (s *Server) handleGetLibrary(w http.ResponseWriter, r *http.Request) {
