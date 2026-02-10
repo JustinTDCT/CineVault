@@ -509,6 +509,12 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 				s.linkGenreTags(item.ID, result.Genres)
 			}
 
+			// Link mood tags and store keywords from cache
+			if len(result.Keywords) > 0 {
+				s.linkMoodTags(item.ID, result.Keywords)
+				s.storeKeywords(item.ID, result.Keywords)
+			}
+
 			// Apply OMDb ratings from cache
 			if result.Ratings != nil {
 				_ = s.mediaRepo.UpdateRatingsWithLocks(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore, item.LockedFields)
@@ -566,6 +572,12 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 	// Link genre tags (respecting per-field lock)
 	if s.tagRepo != nil && len(combined.Details.Genres) > 0 && !item.IsFieldLocked("genres") {
 		s.linkGenreTags(item.ID, combined.Details.Genres)
+	}
+
+	// Link mood tags and store keywords from TMDB
+	if len(combined.Details.Keywords) > 0 {
+		s.linkMoodTags(item.ID, combined.Details.Keywords)
+		s.storeKeywords(item.ID, combined.Details.Keywords)
 	}
 
 	// Fetch OMDb ratings (respecting per-field locks)
@@ -1263,6 +1275,12 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 		s.linkGenreTags(item.ID, result.Genres)
 	}
 
+	// Link mood tags and store keywords from cache
+	if len(result.Keywords) > 0 {
+		s.linkMoodTags(item.ID, result.Keywords)
+		s.storeKeywords(item.ID, result.Keywords)
+	}
+
 	// Apply OMDb ratings from cache (respecting per-field locks)
 	if result.Ratings != nil {
 		if err := s.mediaRepo.UpdateRatingsWithLocks(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore, item.LockedFields); err != nil {
@@ -1390,6 +1408,12 @@ func (s *Scanner) enrichNonTMDBDetails(itemID uuid.UUID, match *models.MetadataM
 		s.linkGenreTags(itemID, details.Genres)
 	}
 
+	// Link mood tags and store keywords from TMDB details
+	if len(details.Keywords) > 0 {
+		s.linkMoodTags(itemID, details.Keywords)
+		s.storeKeywords(itemID, details.Keywords)
+	}
+
 	// Update description if we got a better one from details (respecting per-field locks)
 	if details.Description != nil && *details.Description != "" {
 		_ = s.mediaRepo.UpdateMetadataWithLocks(itemID, details.Title, details.Year,
@@ -1467,6 +1491,12 @@ func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, med
 	// Create/link genre tags (respecting genres lock)
 	if s.tagRepo != nil && len(details.Genres) > 0 && !isLocked("genres") {
 		s.linkGenreTags(itemID, details.Genres)
+	}
+
+	// Link mood tags and store keywords
+	if len(details.Keywords) > 0 {
+		s.linkMoodTags(itemID, details.Keywords)
+		s.storeKeywords(itemID, details.Keywords)
 	}
 
 	// Fetch OMDb ratings if key is configured (respecting per-field locks)
@@ -1703,6 +1733,171 @@ func (s *Scanner) linkGenreTags(itemID uuid.UUID, genres []string) {
 			log.Printf("Auto-match: assign genre tag %q to %s failed: %v", genre, itemID, err)
 		}
 	}
+}
+
+// ──────────────────── Mood Tagging ────────────────────
+
+// tmdbKeywordToMood maps TMDB keywords (lowercase) to mood tag names.
+// These are the most common TMDB keywords mapped to user-friendly mood categories.
+var tmdbKeywordToMood = map[string]string{
+	// Feel-Good / Uplifting
+	"feel-good":          "Feel-Good",
+	"heartwarming":       "Feel-Good",
+	"uplifting":          "Feel-Good",
+	"inspirational":      "Feel-Good",
+	"friendship":         "Feel-Good",
+	"underdog":           "Feel-Good",
+	"coming of age":      "Feel-Good",
+	"road trip":          "Feel-Good",
+	"buddy":              "Feel-Good",
+	// Dark / Gritty
+	"dark":               "Dark",
+	"gritty":             "Dark",
+	"dystopia":           "Dark",
+	"neo-noir":           "Dark",
+	"nihilism":           "Dark",
+	"bleak":              "Dark",
+	"post-apocalyptic":   "Dark",
+	"apocalypse":         "Dark",
+	// Intense / Suspenseful
+	"suspense":           "Intense",
+	"tension":            "Intense",
+	"psychological":      "Intense",
+	"thriller":           "Intense",
+	"conspiracy":         "Intense",
+	"paranoia":           "Intense",
+	"chase":              "Intense",
+	"hostage":            "Intense",
+	"cat and mouse":      "Intense",
+	"survival":           "Intense",
+	// Romantic
+	"romance":            "Romantic",
+	"love":               "Romantic",
+	"love triangle":      "Romantic",
+	"forbidden love":     "Romantic",
+	"wedding":            "Romantic",
+	"first love":         "Romantic",
+	"soulmates":          "Romantic",
+	// Funny / Light-hearted
+	"comedy":             "Funny",
+	"slapstick":          "Funny",
+	"satire":             "Funny",
+	"parody":             "Funny",
+	"absurd":             "Funny",
+	"dark comedy":        "Funny",
+	"farce":              "Funny",
+	"quirky":             "Funny",
+	"witty":              "Funny",
+	// Emotional / Tearjerker
+	"tearjerker":         "Emotional",
+	"tragedy":            "Emotional",
+	"grief":              "Emotional",
+	"loss":               "Emotional",
+	"death":              "Emotional",
+	"dying":              "Emotional",
+	"terminal illness":   "Emotional",
+	"loss of loved one":  "Emotional",
+	// Mind-bending
+	"mind-bending":       "Mind-Bending",
+	"twist ending":       "Mind-Bending",
+	"time travel":        "Mind-Bending",
+	"time loop":          "Mind-Bending",
+	"alternate reality":  "Mind-Bending",
+	"dream":              "Mind-Bending",
+	"parallel universe":  "Mind-Bending",
+	"nonlinear timeline": "Mind-Bending",
+	"surreal":            "Mind-Bending",
+	"hallucination":      "Mind-Bending",
+	// Scary / Creepy
+	"horror":             "Scary",
+	"haunted house":      "Scary",
+	"ghost":              "Scary",
+	"demon":              "Scary",
+	"slasher":            "Scary",
+	"paranormal":         "Scary",
+	"zombie":             "Scary",
+	"vampire":            "Scary",
+	"werewolf":           "Scary",
+	"monster":            "Scary",
+	"serial killer":      "Scary",
+	"possession":         "Scary",
+	"supernatural":       "Scary",
+	"occult":             "Scary",
+	// Epic / Grand
+	"epic":               "Epic",
+	"war":                "Epic",
+	"battle":             "Epic",
+	"medieval":           "Epic",
+	"ancient":            "Epic",
+	"mythology":          "Epic",
+	"sword and sorcery":  "Epic",
+	"historical":         "Epic",
+	// Adrenaline / Action
+	"action":             "Adrenaline",
+	"explosion":          "Adrenaline",
+	"car chase":          "Adrenaline",
+	"martial arts":       "Adrenaline",
+	"heist":              "Adrenaline",
+	"revenge":            "Adrenaline",
+	"gunfight":           "Adrenaline",
+	"fight":              "Adrenaline",
+}
+
+// linkMoodTags maps TMDB keywords to mood categories and links them as mood tags.
+func (s *Scanner) linkMoodTags(itemID uuid.UUID, keywords []string) {
+	if s.tagRepo == nil || len(keywords) == 0 {
+		return
+	}
+
+	// Deduplicate moods from keywords
+	moodSet := make(map[string]bool)
+	for _, kw := range keywords {
+		if mood, ok := tmdbKeywordToMood[strings.ToLower(kw)]; ok {
+			moodSet[mood] = true
+		}
+	}
+
+	for mood := range moodSet {
+		// Find or create the mood tag
+		existing, _ := s.tagRepo.List("mood")
+		var tagID uuid.UUID
+		found := false
+		for _, t := range existing {
+			if strings.EqualFold(t.Name, mood) {
+				tagID = t.ID
+				found = true
+				break
+			}
+		}
+		if !found {
+			tagID = uuid.New()
+			tag := &models.Tag{
+				ID:       tagID,
+				Name:     mood,
+				Category: models.TagCategoryMood,
+			}
+			if err := s.tagRepo.Create(tag); err != nil {
+				log.Printf("Auto-match: create mood tag %q failed: %v", mood, err)
+				continue
+			}
+		}
+		if err := s.tagRepo.AssignToMedia(itemID, tagID); err != nil {
+			log.Printf("Auto-match: assign mood tag %q to %s failed: %v", mood, itemID, err)
+		}
+	}
+}
+
+// storeKeywords saves TMDB keywords as a JSON array on the media item.
+func (s *Scanner) storeKeywords(itemID uuid.UUID, keywords []string) {
+	if len(keywords) == 0 {
+		return
+	}
+	data, err := json.Marshal(keywords)
+	if err != nil {
+		return
+	}
+	kwStr := string(data)
+	_, _ = s.mediaRepo.DB().Exec(`UPDATE media_items SET keywords = $1 WHERE id = $2`, kwStr, itemID)
 }
 
 

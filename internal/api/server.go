@@ -273,6 +273,8 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /api/v1/collections", s.authMiddleware(s.handleListCollections, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/collections", s.authMiddleware(s.handleCreateCollection, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/collections/{id}", s.authMiddleware(s.handleGetCollection, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/collections/{id}", s.authMiddleware(s.handleUpdateCollection, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/collections/{id}/evaluate", s.authMiddleware(s.handleEvaluateSmartCollection, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/collections/{id}/items", s.authMiddleware(s.handleAddCollectionItem, models.RoleUser))
 	s.router.HandleFunc("DELETE /api/v1/collections/{id}/items/{itemId}", s.authMiddleware(s.handleRemoveCollectionItem, models.RoleUser))
 	s.router.HandleFunc("DELETE /api/v1/collections/{id}", s.authMiddleware(s.handleDeleteCollection, models.RoleUser))
@@ -298,6 +300,7 @@ func (s *Server) setupRoutes() {
 
 	// Recommendations
 	s.router.HandleFunc("GET /api/v1/recommendations", s.authMiddleware(s.handleRecommendations, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/recommendations/because-you-watched", s.authMiddleware(s.handleBecauseYouWatched, models.RoleUser))
 
 	// Household profiles
 	s.router.HandleFunc("GET /api/v1/household/profiles", s.authMiddleware(s.handleHouseholdProfiles, models.RoleUser))

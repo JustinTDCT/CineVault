@@ -78,6 +78,8 @@ type cacheEntry struct {
 	RTAudienceScore *int     `json:"rt_audience_score,omitempty"`
 	OMDbEnriched    bool     `json:"omdb_enriched"`
 	FanartEnriched  bool     `json:"fanart_enriched"`
+	// Keywords from TMDB
+	Keywords        *string  `json:"keywords,omitempty"`
 }
 
 type cacheLookupResponse struct {
@@ -112,6 +114,7 @@ type cacheContributeRequest struct {
 	IMDBRating       *float64 `json:"imdb_rating,omitempty"`
 	RTCriticScore    *int     `json:"rt_critic_score,omitempty"`
 	RTAudienceScore  *int     `json:"rt_audience_score,omitempty"`
+	Keywords         *string  `json:"keywords,omitempty"`
 }
 
 // ── Cache Lookup Result ──
@@ -145,6 +148,9 @@ type CacheLookupResult struct {
 	LogoURL    *string
 	BannerURL  *string
 	BackdropURL *string
+
+	// Keywords from TMDB (for mood tagging)
+	Keywords []string
 }
 
 // ── Lookup ──
@@ -265,6 +271,15 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 		if err := json.Unmarshal([]byte(*entry.Genres), &genres); err == nil {
 			match.Genres = genres
 			result.Genres = genres
+		}
+	}
+
+	// Parse keywords from JSON string
+	if entry.Keywords != nil && *entry.Keywords != "" {
+		var keywords []string
+		if err := json.Unmarshal([]byte(*entry.Keywords), &keywords); err == nil {
+			match.Keywords = keywords
+			result.Keywords = keywords
 		}
 	}
 
@@ -478,6 +493,7 @@ type ContributeExtras struct {
 	CollectionID     *int
 	CollectionName   *string
 	BackdropURL      *string
+	Keywords         *string
 }
 
 // Contribute pushes a locally-fetched metadata result back to the cache server
@@ -574,6 +590,16 @@ func (c *CacheClient) Contribute(match *models.MetadataMatch, extras ...Contribu
 		if ex.BackdropURL != nil {
 			req.BackdropURL = ex.BackdropURL
 		}
+		if ex.Keywords != nil {
+			req.Keywords = ex.Keywords
+		}
+	}
+
+	// Contribute keywords from match if extras didn't provide them
+	if req.Keywords == nil && len(match.Keywords) > 0 {
+		data, _ := json.Marshal(match.Keywords)
+		s := string(data)
+		req.Keywords = &s
 	}
 
 	bodyBytes, _ := json.Marshal(req)

@@ -298,7 +298,7 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 		return nil, fmt.Errorf("TMDB API key not configured")
 	}
 
-	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&append_to_response=credits,release_dates,videos",
+	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/movie/%s?api_key=%s&append_to_response=credits,release_dates,videos,keywords",
 		externalID, s.apiKey)
 	resp, err := s.client.Get(reqURL)
 	if err != nil {
@@ -346,6 +346,12 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 		ReleaseDates struct {
 			Results []tmdbReleaseDateCountry `json:"results"`
 		} `json:"release_dates"`
+		Keywords struct {
+			Keywords []struct {
+				ID   int    `json:"id"`
+				Name string `json:"name"`
+			} `json:"keywords"`
+		} `json:"keywords"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, err
@@ -418,6 +424,12 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 		collectionName = &r.BelongsToCollection.Name
 	}
 
+	// Extract keywords
+	var keywords []string
+	for _, kw := range r.Keywords.Keywords {
+		keywords = append(keywords, kw.Name)
+	}
+
 	return &DetailsWithCredits{
 		Details: &models.MetadataMatch{
 			Source:           "tmdb",
@@ -437,6 +449,7 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 			TrailerURL:       trailerURL,
 			CollectionID:     collectionID,
 			CollectionName:   collectionName,
+			Keywords:         keywords,
 			Confidence:       1.0,
 		},
 		Credits: &r.Credits,

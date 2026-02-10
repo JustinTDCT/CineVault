@@ -157,23 +157,19 @@ func (s *Server) handleAdminUpdateUserSettings(w http.ResponseWriter, r *http.Re
 
 // ──────────────────── Recommendations ────────────────────
 
-// handleRecommendations returns personalized media recommendations for the current user.
-func (s *Server) handleRecommendations(w http.ResponseWriter, r *http.Request) {
+// getRecommendationContext extracts common recommendation params for the current user.
+func (s *Server) getRecommendationContext(r *http.Request) (uuid.UUID, []string, []uuid.UUID, error) {
 	userID := s.getUserID(r)
 	role := models.UserRole(r.Header.Get("X-User-Role"))
 
-	// Get user for parental control settings
 	user, err := s.userRepo.GetByID(userID)
 	if err != nil {
-		s.respondError(w, http.StatusInternalServerError, "failed to get user")
-		return
+		return uuid.Nil, nil, nil, err
 	}
 
-	// Get accessible library IDs
 	libs, err := s.libRepo.ListForUser(userID, role)
 	if err != nil {
-		s.respondError(w, http.StatusInternalServerError, "failed to get libraries")
-		return
+		return uuid.Nil, nil, nil, err
 	}
 	var libIDs []uuid.UUID
 	for _, lib := range libs {
@@ -182,10 +178,20 @@ func (s *Server) handleRecommendations(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build allowed ratings for parental controls
 	var allowedRatings []string
 	if user.MaxContentRating != nil && *user.MaxContentRating != "" {
 		allowedRatings = models.AllowedContentRatings(*user.MaxContentRating)
+	}
+
+	return userID, allowedRatings, libIDs, nil
+}
+
+// handleRecommendations returns personalized media recommendations for the current user.
+func (s *Server) handleRecommendations(w http.ResponseWriter, r *http.Request) {
+	userID, allowedRatings, libIDs, err := s.getRecommendationContext(r)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to get user context")
+		return
 	}
 
 	items, err := s.watchRepo.Recommendations(userID, 20, allowedRatings, libIDs)
@@ -199,4 +205,25 @@ func (s *Server) handleRecommendations(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: items})
+}
+
+// handleBecauseYouWatched returns "Because you watched X" recommendation rows.
+func (s *Server) handleBecauseYouWatched(w http.ResponseWriter, r *http.Request) {
+	userID, allowedRatings, libIDs, err := s.getRecommendationContext(r)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to get user context")
+		return
+	}
+
+	rows, err := s.watchRepo.BecauseYouWatched(userID, 5, 8, allowedRatings, libIDs)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to get because-you-watched")
+		return
+	}
+
+	if rows == nil {
+		rows = []*models.BecauseYouWatchedRow{}
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: rows})
 }

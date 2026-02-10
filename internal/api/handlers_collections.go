@@ -50,6 +50,19 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 		coll.ItemSortMode = "custom"
 	}
 
+	// Validate smart collection rules
+	if coll.CollectionType == "smart" {
+		if coll.Rules == nil || *coll.Rules == "" {
+			s.respondError(w, http.StatusBadRequest, "smart collections require rules")
+			return
+		}
+		var rules models.SmartCollectionRules
+		if err := json.Unmarshal([]byte(*coll.Rules), &rules); err != nil {
+			s.respondError(w, http.StatusBadRequest, "invalid rules format")
+			return
+		}
+	}
+
 	if err := s.collectionRepo.Create(&coll); err != nil {
 		s.respondError(w, http.StatusInternalServerError, "failed to create collection")
 		return
@@ -133,4 +146,92 @@ func (s *Server) handleRemoveCollectionItem(w http.ResponseWriter, r *http.Reque
 	}
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]string{"message": "item removed"}})
+}
+
+// handleEvaluateSmartCollection evaluates a smart collection's rules and returns matching items.
+func (s *Server) handleEvaluateSmartCollection(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid collection ID")
+		return
+	}
+
+	coll, err := s.collectionRepo.GetByID(id)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "collection not found")
+		return
+	}
+
+	if coll.CollectionType != "smart" || coll.Rules == nil {
+		s.respondError(w, http.StatusBadRequest, "collection is not a smart collection")
+		return
+	}
+
+	items, err := s.collectionRepo.EvaluateSmartCollection(*coll.Rules, coll.LibraryID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to evaluate smart collection: "+err.Error())
+		return
+	}
+
+	if items == nil {
+		items = []*models.MediaItem{}
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: items})
+}
+
+// handleUpdateCollection updates a collection's metadata and/or rules.
+func (s *Server) handleUpdateCollection(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid collection ID")
+		return
+	}
+
+	existing, err := s.collectionRepo.GetByID(id)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "collection not found")
+		return
+	}
+
+	// Verify ownership
+	userID := s.getUserID(r)
+	if existing.UserID != userID {
+		s.respondError(w, http.StatusForbidden, "not your collection")
+		return
+	}
+
+	var update models.Collection
+	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Apply updates
+	if update.Name != "" {
+		existing.Name = update.Name
+	}
+	if update.Description != nil {
+		existing.Description = update.Description
+	}
+	if update.PosterPath != nil {
+		existing.PosterPath = update.PosterPath
+	}
+	if update.Visibility != "" {
+		existing.Visibility = update.Visibility
+	}
+	if update.ItemSortMode != "" {
+		existing.ItemSortMode = update.ItemSortMode
+	}
+	if update.Rules != nil {
+		existing.Rules = update.Rules
+	}
+
+	existing.ID = id
+	if err := s.collectionRepo.Update(existing); err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to update collection")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: existing})
 }

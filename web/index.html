@@ -5256,6 +5256,7 @@
             <div id="continueRow" class="continue-row"></div>
             <div class="section-header"><h2 class="section-title">Recommended For You</h2></div>
             <div id="recoRow" class="reco-row"><div class="spinner"></div></div>
+            <div id="bywRows"></div>
             <div class="section-header"><h2 class="section-title">Recently Added</h2></div>
             <div class="media-grid" id="recentGrid"></div>`;
 
@@ -5289,6 +5290,21 @@
                 recoRow.innerHTML = '<div style="color:#5a6a7f;padding:20px;">Watch more to get personalized recommendations</div>';
             }
         } catch { document.getElementById('recoRow').innerHTML = '<div style="color:#5a6a7f;padding:20px;">Recommendations unavailable</div>'; }
+
+        // Because You Watched
+        try {
+            const byw = await api('GET', '/recommendations/because-you-watched');
+            const bywContainer = document.getElementById('bywRows');
+            if (byw.success && byw.data && byw.data.length > 0) {
+                bywContainer.innerHTML = byw.data.map(row => {
+                    const srcTitle = row.source_item ? row.source_item.title : 'Unknown';
+                    const items = row.similar_items || [];
+                    return `
+                        <div class="section-header"><h2 class="section-title">Because You Watched <em>${srcTitle}</em></h2></div>
+                        <div class="reco-row">${items.map(item => renderMediaCard(item)).join('')}</div>`;
+                }).join('');
+            }
+        } catch { /* silent fail for BYW */ }
 
         // Recently Added
         try {

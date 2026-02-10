@@ -1,6 +1,6 @@
 {
-  "version": "0.41.0",
+  "version": "0.42.0",
   "phase": 3,
   "released": "2026-02-10",
-  "notes": "Household profile system: master user / sub-profile architecture, Netflix-style Who's Watching picker, inline PIN switching, Manage Profiles UI, max 5 sub-profiles per household"
+  "notes": "Enhanced recommendations: weighted genre/cast/director affinity, skip detection, Because You Watched rows, smart collections with rules engine, mood tagging from TMDB keywords"
 }

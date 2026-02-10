@@ -209,6 +209,8 @@ type MediaItem struct {
 	SourceType       *string         `json:"source_type,omitempty" db:"source_type"`
 	HDRFormat        *string         `json:"hdr_format,omitempty" db:"hdr_format"`
 	DynamicRange     string          `json:"dynamic_range" db:"dynamic_range"`
+	// Keywords from TMDB (JSON array of strings)
+	Keywords         *string         `json:"keywords,omitempty" db:"keywords"`
 	// Power-user annotation fields
 	CustomNotes      *string         `json:"custom_notes,omitempty" db:"custom_notes"`
 	CustomTags       *string         `json:"custom_tags,omitempty" db:"custom_tags"`
@@ -460,11 +462,25 @@ type Collection struct {
 	Visibility     string     `json:"visibility" db:"visibility"`
 	ItemSortMode   string     `json:"item_sort_mode" db:"item_sort_mode"`
 	SortPosition   int        `json:"sort_position" db:"sort_position"`
+	Rules          *string    `json:"rules,omitempty" db:"rules"`
 	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
 	// Aggregated
 	ItemCount int              `json:"item_count,omitempty" db:"-"`
 	Items     []CollectionItem `json:"items,omitempty" db:"-"`
+}
+
+// SmartCollectionRules defines the criteria for a smart collection.
+type SmartCollectionRules struct {
+	Genres        []string `json:"genres,omitempty"`
+	Moods         []string `json:"moods,omitempty"`
+	YearFrom      *int     `json:"year_from,omitempty"`
+	YearTo        *int     `json:"year_to,omitempty"`
+	MinRating     *float64 `json:"min_rating,omitempty"`
+	ContentRating []string `json:"content_rating,omitempty"`
+	MediaTypes    []string `json:"media_types,omitempty"`
+	Keywords      []string `json:"keywords,omitempty"`
+	MaxResults    int      `json:"max_results,omitempty"`
 }
 
 type CollectionItem struct {
@@ -494,6 +510,14 @@ type WatchHistory struct {
 	LastWatchedAt   time.Time  `json:"last_watched_at" db:"last_watched_at"`
 	// Joined
 	MediaItem *MediaItem `json:"media_item,omitempty" db:"-"`
+}
+
+// ──────────────────── Because You Watched ────────────────────
+
+// BecauseYouWatchedRow groups similar items under a source item the user watched.
+type BecauseYouWatchedRow struct {
+	SourceItem   *MediaItem   `json:"source_item"`
+	SimilarItems []*MediaItem `json:"similar_items"`
 }
 
 // ──────────────────── Duplicate Decisions ────────────────────
@@ -579,6 +603,7 @@ const (
 	TagCategoryGenre  TagCategory = "genre"
 	TagCategoryTag    TagCategory = "tag"
 	TagCategoryCustom TagCategory = "custom"
+	TagCategoryMood   TagCategory = "mood"
 )
 
 type Tag struct {
@@ -705,6 +730,7 @@ type MetadataMatch struct {
 	TrailerURL       *string  `json:"trailer_url,omitempty"`
 	CollectionID     *int     `json:"collection_id,omitempty"`
 	CollectionName   *string  `json:"collection_name,omitempty"`
+	Keywords         []string `json:"keywords,omitempty"`
 	Confidence       float64  `json:"confidence"`
 }
 
