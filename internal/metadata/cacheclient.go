@@ -53,6 +53,11 @@ type cacheEntry struct {
 	CastCrew        *string  `json:"cast_crew,omitempty"`
 	ContentRating   *string  `json:"content_rating,omitempty"`
 	Runtime         *int     `json:"runtime,omitempty"`
+	// Multi-source aggregated arrays
+	PosterURLs   *string `json:"poster_urls,omitempty"`
+	BackdropURLs *string `json:"backdrop_urls,omitempty"`
+	Descriptions *string `json:"descriptions,omitempty"`
+	// Ratings
 	IMDBRating      *float64 `json:"imdb_rating,omitempty"`
 	RTCriticScore   *int     `json:"rt_critic_score,omitempty"`
 	RTAudienceScore *int     `json:"rt_audience_score,omitempty"`
@@ -67,15 +72,20 @@ type cacheLookupResponse struct {
 }
 
 type cacheContributeRequest struct {
-	TMDBID        int     `json:"tmdb_id"`
-	IMDBID        *string `json:"imdb_id,omitempty"`
-	MediaType     string  `json:"media_type"`
-	Title         string  `json:"title"`
-	Year          *int    `json:"year,omitempty"`
-	Description   *string `json:"description,omitempty"`
-	PosterURL     *string `json:"poster_url,omitempty"`
-	Genres        *string `json:"genres,omitempty"`
-	ContentRating *string `json:"content_rating,omitempty"`
+	TMDBID          int      `json:"tmdb_id"`
+	IMDBID          *string  `json:"imdb_id,omitempty"`
+	MediaType       string   `json:"media_type"`
+	Title           string   `json:"title"`
+	Year            *int     `json:"year,omitempty"`
+	Description     *string  `json:"description,omitempty"`
+	PosterURL       *string  `json:"poster_url,omitempty"`
+	Genres          *string  `json:"genres,omitempty"`
+	ContentRating   *string  `json:"content_rating,omitempty"`
+	CastCrew        *string  `json:"cast_crew,omitempty"`
+	Runtime         *int     `json:"runtime,omitempty"`
+	IMDBRating      *float64 `json:"imdb_rating,omitempty"`
+	RTCriticScore   *int     `json:"rt_critic_score,omitempty"`
+	RTAudienceScore *int     `json:"rt_audience_score,omitempty"`
 }
 
 // ── Cache Lookup Result ──
@@ -95,6 +105,12 @@ type CacheLookupResult struct {
 
 	// Genre names parsed from the cache
 	Genres []string
+
+	// Cast/crew JSON from cache (avoids separate TMDB credits call)
+	CastCrewJSON *string
+
+	// Runtime in minutes from cache
+	Runtime *int
 }
 
 // ── Lookup ──
@@ -184,12 +200,13 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 		Year:       entry.Year,
 		Confidence: lookupResp.Confidence,
 	}
-	if entry.Description != nil {
-		match.Description = entry.Description
-	}
-	if entry.PosterURL != nil {
-		match.PosterURL = entry.PosterURL
-	}
+
+	// Use preferred description from multi-source array if available
+	match.Description = pickPreferred(entry.Descriptions, metadataSource, entry.Description)
+
+	// Use preferred poster from multi-source array if available
+	match.PosterURL = pickPreferredURL(entry.PosterURLs, metadataSource, entry.PosterURL)
+
 	if entry.IMDBID != nil {
 		match.IMDBId = *entry.IMDBID
 	}
@@ -208,8 +225,14 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 
 	result.Match = match
 
-	// Extract ratings if OMDb enriched
-	if entry.OMDbEnriched {
+	// Pass through cast/crew JSON so scanner can use it directly
+	result.CastCrewJSON = entry.CastCrew
+
+	// Pass through runtime
+	result.Runtime = entry.Runtime
+
+	// Extract ratings (now enriched inline by cache server, not just OMDb flag)
+	if entry.IMDBRating != nil || entry.RTCriticScore != nil || entry.RTAudienceScore != nil {
 		result.Ratings = &OMDbRatings{
 			IMDBRating:    entry.IMDBRating,
 			RTScore:       entry.RTCriticScore,
@@ -220,11 +243,77 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 	return result
 }
 
+// ── Multi-source helpers ──
+
+// sourceItem is used to parse the JSON arrays from the cache server.
+type sourceItem struct {
+	Source string `json:"source"`
+	URL    string `json:"url,omitempty"`
+	Text   string `json:"text,omitempty"`
+}
+
+// pickPreferred selects the best description from a multi-source array.
+// Prefers the entry matching preferredSource; falls back to scalar.
+func pickPreferred(descriptionsJSON *string, preferredSource string, fallback *string) *string {
+	if descriptionsJSON == nil || *descriptionsJSON == "" {
+		return fallback
+	}
+	var items []sourceItem
+	if err := json.Unmarshal([]byte(*descriptionsJSON), &items); err != nil {
+		return fallback
+	}
+	// Look for preferred source first
+	for _, item := range items {
+		if item.Source == preferredSource && item.Text != "" {
+			return &item.Text
+		}
+	}
+	// Fall back to first available
+	for _, item := range items {
+		if item.Text != "" {
+			return &item.Text
+		}
+	}
+	return fallback
+}
+
+// pickPreferredURL selects the best poster/backdrop URL from a multi-source array.
+func pickPreferredURL(urlsJSON *string, preferredSource string, fallback *string) *string {
+	if urlsJSON == nil || *urlsJSON == "" {
+		return fallback
+	}
+	var items []sourceItem
+	if err := json.Unmarshal([]byte(*urlsJSON), &items); err != nil {
+		return fallback
+	}
+	for _, item := range items {
+		if item.Source == preferredSource && item.URL != "" {
+			return &item.URL
+		}
+	}
+	for _, item := range items {
+		if item.URL != "" {
+			return &item.URL
+		}
+	}
+	return fallback
+}
+
 // ── Contribute ──
+
+// ContributeExtras holds optional extra data to include in a contribution.
+type ContributeExtras struct {
+	CastCrewJSON    *string
+	Runtime         *int
+	IMDBRating      *float64
+	RTCriticScore   *int
+	RTAudienceScore *int
+}
 
 // Contribute pushes a locally-fetched metadata result back to the cache server
 // so other instances can benefit. Supports TMDB, MusicBrainz, and OpenLibrary sources.
-func (c *CacheClient) Contribute(match *models.MetadataMatch) {
+// The optional extras parameter allows sending cast/crew, runtime, and ratings.
+func (c *CacheClient) Contribute(match *models.MetadataMatch, extras ...ContributeExtras) {
 	if match == nil || match.ExternalID == "" {
 		return
 	}
@@ -271,6 +360,16 @@ func (c *CacheClient) Contribute(match *models.MetadataMatch) {
 	}
 	if match.IMDBId != "" {
 		req.IMDBID = &match.IMDBId
+	}
+
+	// Apply extras if provided
+	if len(extras) > 0 {
+		ex := extras[0]
+		req.CastCrew = ex.CastCrewJSON
+		req.Runtime = ex.Runtime
+		req.IMDBRating = ex.IMDBRating
+		req.RTCriticScore = ex.RTCriticScore
+		req.RTAudienceScore = ex.RTAudienceScore
 	}
 
 	bodyBytes, _ := json.Marshal(req)

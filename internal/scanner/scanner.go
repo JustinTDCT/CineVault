@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -429,11 +430,18 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 				_ = s.mediaRepo.UpdateRatings(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore)
 			}
 
-			// Still need credits from TMDB
-			if s.performerRepo != nil && result.Match.ExternalID != "" && tmdbScraper != nil {
-				combined, err := tmdbScraper.GetDetailsWithCredits(result.Match.ExternalID)
-				if err == nil && combined.Credits != nil {
-					s.enrichWithCredits(item.ID, combined.Credits)
+			// Use cast/crew from cache if available, otherwise fall back to TMDB
+			if s.performerRepo != nil {
+				if result.CastCrewJSON != nil && *result.CastCrewJSON != "" {
+					credits := parseCacheCredits(*result.CastCrewJSON)
+					if credits != nil {
+						s.enrichWithCredits(item.ID, credits)
+					}
+				} else if result.Match.ExternalID != "" && tmdbScraper != nil {
+					combined, err := tmdbScraper.GetDetailsWithCredits(result.Match.ExternalID)
+					if err == nil && combined.Credits != nil {
+						s.enrichWithCredits(item.ID, combined.Credits)
+					}
 				}
 			}
 			return
@@ -491,9 +499,17 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 		s.enrichWithCredits(item.ID, combined.Credits)
 	}
 
-	// Contribute to cache server in background
+	// Contribute to cache server with cast/crew and ratings
 	if cacheClient != nil {
-		go cacheClient.Contribute(combined.Details)
+		extras := metadata.ContributeExtras{}
+		if combined.Credits != nil {
+			creditsJSON, err := json.Marshal(combined.Credits)
+			if err == nil {
+				s := string(creditsJSON)
+				extras.CastCrewJSON = &s
+			}
+		}
+		go cacheClient.Contribute(combined.Details, extras)
 	}
 }
 
@@ -933,30 +949,74 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 		}
 	}
 
-	// Still fetch cast/crew from TMDB if we have a TMDB ID (cast not stored in cache)
-	if s.performerRepo != nil && match.ExternalID != "" {
-		var tmdbScraper *metadata.TMDBScraper
-		for _, sc := range s.scrapers {
-			if t, ok := sc.(*metadata.TMDBScraper); ok {
-				tmdbScraper = t
-				break
-			}
-		}
-		if tmdbScraper != nil {
-			var credits *metadata.TMDBCredits
-			var err error
-			if item.MediaType == models.MediaTypeTVShows {
-				credits, err = tmdbScraper.GetTVCredits(match.ExternalID)
-			} else {
-				credits, err = tmdbScraper.GetMovieCredits(match.ExternalID)
-			}
-			if err != nil {
-				log.Printf("Auto-match: TMDB credits failed for %s: %v", match.ExternalID, err)
-			} else {
+	// Use cast/crew from cache if available, otherwise fall back to TMDB credits API
+	if s.performerRepo != nil {
+		if result.CastCrewJSON != nil && *result.CastCrewJSON != "" {
+			credits := parseCacheCredits(*result.CastCrewJSON)
+			if credits != nil {
 				s.enrichWithCredits(item.ID, credits)
+			}
+		} else if match.ExternalID != "" {
+			var tmdbScraper *metadata.TMDBScraper
+			for _, sc := range s.scrapers {
+				if t, ok := sc.(*metadata.TMDBScraper); ok {
+					tmdbScraper = t
+					break
+				}
+			}
+			if tmdbScraper != nil {
+				var credits *metadata.TMDBCredits
+				var err error
+				if item.MediaType == models.MediaTypeTVShows {
+					credits, err = tmdbScraper.GetTVCredits(match.ExternalID)
+				} else {
+					credits, err = tmdbScraper.GetMovieCredits(match.ExternalID)
+				}
+				if err != nil {
+					log.Printf("Auto-match: TMDB credits failed for %s: %v", match.ExternalID, err)
+				} else {
+					s.enrichWithCredits(item.ID, credits)
+				}
 			}
 		}
 	}
+}
+
+// parseCacheCredits converts the cache server's simplified cast_crew JSON
+// into TMDBCredits format for use with enrichWithCredits.
+func parseCacheCredits(castCrewJSON string) *metadata.TMDBCredits {
+	type cachePerson struct {
+		Name      string `json:"name"`
+		Character string `json:"character,omitempty"`
+		Job       string `json:"job,omitempty"`
+	}
+	type cacheCredits struct {
+		Cast []cachePerson `json:"cast"`
+		Crew []cachePerson `json:"crew"`
+	}
+
+	var cc cacheCredits
+	if err := json.Unmarshal([]byte(castCrewJSON), &cc); err != nil {
+		log.Printf("Auto-match: failed to parse cache cast_crew: %v", err)
+		return nil
+	}
+
+	credits := &metadata.TMDBCredits{}
+	for i, c := range cc.Cast {
+		credits.Cast = append(credits.Cast, metadata.TMDBCastMember{
+			Name:      c.Name,
+			Character: c.Character,
+			Order:     i,
+		})
+	}
+	for _, c := range cc.Crew {
+		credits.Crew = append(credits.Crew, metadata.TMDBCrewMember{
+			Name: c.Name,
+			Job:  c.Job,
+		})
+	}
+
+	return credits
 }
 
 // enrichNonTMDBDetails fetches full details from MusicBrainz or OpenLibrary
