@@ -316,19 +316,22 @@ After parsing and insertion, items are matched against external providers. See [
 The following tokens are recognized as junk and stripped during universal fallback parsing:
 
 ### Video Codecs
-`x264`, `x265`, `h264`, `h265`, `h.264`, `h.265`, `hevc`, `avc`, `divx`, `xvid`, `10bit`, `8bit`, `hi10p`, `av1`, `vp9`, `mpeg4`
+`x264`, `x265`, `h264`, `h265`, `h.264`, `h.265`, `hevc`, `avc`, `divx`, `divx5`, `xvid`, `10bit`, `8bit`, `hi10p`, `hi10`, `av1`, `vp9`, `mpeg4`
 
 ### Audio Codecs
-`aac`, `ac3`, `dts`, `dts-hd`, `truehd`, `atmos`, `flac`, `mp3`, `ogg`, `vorbis`, `opus`, `eac3`
+`aac`, `ac3`, `ac-3`, `dts`, `dts-hd`, `dtshd`, `dts-x`, `truehd`, `atmos`, `flac`, `mp3`, `ogg`, `vorbis`, `opus`, `eac3`, `dd5.1`, `dd2.0`, `5.1`, `7.1`, `2.0`, `5.1ch`, `7.1ch`
 
 ### Resolution
-`480p`, `480i`, `576p`, `576i`, `720p`, `720i`, `1080p`, `1080i`, `2160p`, `4k`, `uhd`, `ultrahd`
+`480p`, `480i`, `576p`, `576i`, `720p`, `720i`, `1080p`, `1080i`, `2160p`, `4k`, `uhd`, `ultrahd`, `hd`, `sd`
 
 ### Source
-`bluray`, `blu-ray`, `bdrip`, `brrip`, `bdremux`, `hdrip`, `hddvd`, `dvd`, `dvdrip`, `dvdscr`, `webrip`, `web-dl`, `webdl`, `hdtv`, `pdtv`, `dsr`, `dsrip`, `tvrip`, `cam`, `screener`, `telecine`, `telesync`, `retail`
+`bluray`, `blu-ray`, `bdrip`, `brrip`, `bdremux`, `bdrc`, `hdrip`, `hddvd`, `dvd`, `dvdrip`, `dvdscr`, `dvdscreener`, `webrip`, `web-dl`, `webdl`, `hdtv`, `pdtv`, `dsr`, `dsrip`, `tvrip`, `cam`, `screener`, `scr`, `telecine`, `telesync`, `retail`, `ppv`, `stv`
+
+### Container Tokens
+`mkv`, `mp4`, `avi` (when appearing as tokens in the filename, not as the file extension)
 
 ### Release / Misc
-`remux`, `proper`, `repack`, `rerip`, `internal`, `limited`, `custom`, `extended`, `unrated`, `remastered`, `multi`, `multisubs`, `dubbed`, `subbed`, `subs`, `ws`, `fs`, `fragment`, `xxx`, `nfo`, `read.nfo`, `cd1`–`cd4`
+`remux`, `proper`, `repack`, `rerip`, `internal`, `limited`, `custom`, `extended`, `unrated`, `remastered`, `special.edition`, `multi`, `multisubs`, `dubbed`, `subbed`, `subs`, `sub`, `ws`, `fs`, `fragment`, `xxx`, `nfo`, `read.nfo`, `readnfo`, `nfofix`, `1cd`–`4cd`, `cd1`–`cd4`
 
 ---
 
