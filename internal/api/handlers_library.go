@@ -25,18 +25,21 @@ func (s *Server) handleListLibraries(w http.ResponseWriter, r *http.Request) {
 }
 
 type createLibraryRequest struct {
-	Name              string   `json:"name"`
-	MediaType         string   `json:"media_type"`
-	Path              string   `json:"path"`
-	Folders           []string `json:"folders"`
-	IsEnabled         bool     `json:"is_enabled"`
-	SeasonGrouping    bool     `json:"season_grouping"`
-	AccessLevel       string   `json:"access_level"`
-	AllowedUsers      []string `json:"allowed_users"`
-	IncludeInHomepage *bool    `json:"include_in_homepage"`
-	IncludeInSearch   *bool    `json:"include_in_search"`
-	RetrieveMetadata  *bool    `json:"retrieve_metadata"`
-	AdultContentType  *string  `json:"adult_content_type"`
+	Name               string   `json:"name"`
+	MediaType          string   `json:"media_type"`
+	Path               string   `json:"path"`
+	Folders            []string `json:"folders"`
+	IsEnabled          bool     `json:"is_enabled"`
+	SeasonGrouping     bool     `json:"season_grouping"`
+	AccessLevel        string   `json:"access_level"`
+	AllowedUsers       []string `json:"allowed_users"`
+	IncludeInHomepage  *bool    `json:"include_in_homepage"`
+	IncludeInSearch    *bool    `json:"include_in_search"`
+	RetrieveMetadata   *bool    `json:"retrieve_metadata"`
+	NFOImport          *bool    `json:"nfo_import"`
+	NFOExport          *bool    `json:"nfo_export"`
+	PreferLocalArtwork *bool    `json:"prefer_local_artwork"`
+	AdultContentType   *string  `json:"adult_content_type"`
 }
 
 func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +67,18 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 	if req.RetrieveMetadata != nil {
 		retrieveMeta = *req.RetrieveMetadata
 	}
+	nfoImport := false
+	if req.NFOImport != nil {
+		nfoImport = *req.NFOImport
+	}
+	nfoExport := false
+	if req.NFOExport != nil {
+		nfoExport = *req.NFOExport
+	}
+	preferLocalArtwork := true // default on
+	if req.PreferLocalArtwork != nil {
+		preferLocalArtwork = *req.PreferLocalArtwork
+	}
 
 	// Determine primary path from folders or path field
 	primaryPath := req.Path
@@ -72,17 +87,20 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	library := models.Library{
-		ID:                uuid.New(),
-		Name:              req.Name,
-		MediaType:         models.MediaType(req.MediaType),
-		Path:              primaryPath,
-		IsEnabled:         req.IsEnabled,
-		SeasonGrouping:    req.SeasonGrouping,
-		AccessLevel:       accessLevel,
-		IncludeInHomepage: includeHomepage,
-		IncludeInSearch:   includeSearch,
-		RetrieveMetadata:  retrieveMeta,
-		AdultContentType:  req.AdultContentType,
+		ID:                 uuid.New(),
+		Name:               req.Name,
+		MediaType:          models.MediaType(req.MediaType),
+		Path:               primaryPath,
+		IsEnabled:          req.IsEnabled,
+		SeasonGrouping:     req.SeasonGrouping,
+		AccessLevel:        accessLevel,
+		IncludeInHomepage:  includeHomepage,
+		IncludeInSearch:    includeSearch,
+		RetrieveMetadata:   retrieveMeta,
+		NFOImport:          nfoImport,
+		NFOExport:          nfoExport,
+		PreferLocalArtwork: preferLocalArtwork,
+		AdultContentType:   req.AdultContentType,
 	}
 
 	if err := s.libRepo.Create(&library); err != nil {
@@ -176,18 +194,21 @@ func (s *Server) handleGetLibrary(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateLibraryRequest struct {
-	Name              string   `json:"name"`
-	Path              string   `json:"path"`
-	Folders           []string `json:"folders"`
-	IsEnabled         bool     `json:"is_enabled"`
-	ScanOnStartup     bool     `json:"scan_on_startup"`
-	SeasonGrouping    bool     `json:"season_grouping"`
-	AccessLevel       string   `json:"access_level"`
-	AllowedUsers      []string `json:"allowed_users"`
-	IncludeInHomepage *bool    `json:"include_in_homepage"`
-	IncludeInSearch   *bool    `json:"include_in_search"`
-	RetrieveMetadata  *bool    `json:"retrieve_metadata"`
-	AdultContentType  *string  `json:"adult_content_type"`
+	Name               string   `json:"name"`
+	Path               string   `json:"path"`
+	Folders            []string `json:"folders"`
+	IsEnabled          bool     `json:"is_enabled"`
+	ScanOnStartup      bool     `json:"scan_on_startup"`
+	SeasonGrouping     bool     `json:"season_grouping"`
+	AccessLevel        string   `json:"access_level"`
+	AllowedUsers       []string `json:"allowed_users"`
+	IncludeInHomepage  *bool    `json:"include_in_homepage"`
+	IncludeInSearch    *bool    `json:"include_in_search"`
+	RetrieveMetadata   *bool    `json:"retrieve_metadata"`
+	NFOImport          *bool    `json:"nfo_import"`
+	NFOExport          *bool    `json:"nfo_export"`
+	PreferLocalArtwork *bool    `json:"prefer_local_artwork"`
+	AdultContentType   *string  `json:"adult_content_type"`
 }
 
 func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
@@ -228,6 +249,18 @@ func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
 	if req.RetrieveMetadata != nil {
 		retrieveMeta = *req.RetrieveMetadata
 	}
+	nfoImport := existing.NFOImport
+	if req.NFOImport != nil {
+		nfoImport = *req.NFOImport
+	}
+	nfoExport := existing.NFOExport
+	if req.NFOExport != nil {
+		nfoExport = *req.NFOExport
+	}
+	preferLocalArtwork := existing.PreferLocalArtwork
+	if req.PreferLocalArtwork != nil {
+		preferLocalArtwork = *req.PreferLocalArtwork
+	}
 	adultContentType := existing.AdultContentType
 	if req.AdultContentType != nil {
 		adultContentType = req.AdultContentType
@@ -240,18 +273,21 @@ func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	library := models.Library{
-		ID:                id,
-		Name:              req.Name,
-		MediaType:         existing.MediaType,
-		Path:              primaryPath,
-		IsEnabled:         req.IsEnabled,
-		ScanOnStartup:     req.ScanOnStartup,
-		SeasonGrouping:    req.SeasonGrouping,
-		AccessLevel:       accessLevel,
-		IncludeInHomepage: includeHomepage,
-		IncludeInSearch:   includeSearch,
-		RetrieveMetadata:  retrieveMeta,
-		AdultContentType:  adultContentType,
+		ID:                 id,
+		Name:               req.Name,
+		MediaType:          existing.MediaType,
+		Path:               primaryPath,
+		IsEnabled:          req.IsEnabled,
+		ScanOnStartup:      req.ScanOnStartup,
+		SeasonGrouping:     req.SeasonGrouping,
+		AccessLevel:        accessLevel,
+		IncludeInHomepage:  includeHomepage,
+		IncludeInSearch:    includeSearch,
+		RetrieveMetadata:   retrieveMeta,
+		NFOImport:          nfoImport,
+		NFOExport:          nfoExport,
+		PreferLocalArtwork: preferLocalArtwork,
+		AdultContentType:   adultContentType,
 	}
 
 	if err := s.libRepo.Update(&library); err != nil {

@@ -1,6 +1,6 @@
 {
-  "version": "0.37.0",
+  "version": "0.37.1",
   "phase": 3,
   "released": "2026-02-10",
-  "notes": "Per-field metadata locking: scanner and re-enrichment now respect individual locked fields; UI toggle for locking any metadata field"
+  "notes": "Fix: wire nfo_import, nfo_export, prefer_local_artwork into library repository and API; add UI toggles to library create/edit forms"
 }

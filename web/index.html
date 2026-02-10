@@ -2057,6 +2057,36 @@
                         <label><input type="radio" name="retrieveMetadata" value="no" ${!lib.retrieve_metadata?'checked':''}><span>No</span></label>
                     </div>
                 </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">NFO Import</div>
+                        <div class="option-row-desc">Read Kodi/Jellyfin .nfo sidecar files for metadata &amp; provider IDs</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="nfoImport" value="yes" ${lib.nfo_import?'checked':''}><span>Yes</span></label>
+                        <label><input type="radio" name="nfoImport" value="no" ${!lib.nfo_import?'checked':''}><span>No</span></label>
+                    </div>
+                </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">NFO Export</div>
+                        <div class="option-row-desc">Write .nfo sidecar files after metadata is populated</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="nfoExport" value="yes" ${lib.nfo_export?'checked':''}><span>Yes</span></label>
+                        <label><input type="radio" name="nfoExport" value="no" ${!lib.nfo_export?'checked':''}><span>No</span></label>
+                    </div>
+                </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Prefer Local Artwork</div>
+                        <div class="option-row-desc">Use poster/backdrop/logo files found next to media before fetching remote</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="preferLocalArtwork" value="yes" ${lib.prefer_local_artwork!==false?'checked':''}><span>Yes</span></label>
+                        <label><input type="radio" name="preferLocalArtwork" value="no" ${lib.prefer_local_artwork===false?'checked':''}><span>No</span></label>
+                    </div>
+                </div>
             </div>
 
             <button class="btn-primary" onclick="saveEditLibrary()">Save Changes</button>
@@ -2095,6 +2125,9 @@
         const include_in_homepage = document.querySelector('input[name="includeHomepage"]:checked')?.value === 'yes';
         const include_in_search = document.querySelector('input[name="includeSearch"]:checked')?.value === 'yes';
         const retrieve_metadata = document.querySelector('input[name="retrieveMetadata"]:checked')?.value === 'yes';
+        const nfo_import = document.querySelector('input[name="nfoImport"]:checked')?.value === 'yes';
+        const nfo_export = document.querySelector('input[name="nfoExport"]:checked')?.value === 'yes';
+        const prefer_local_artwork = document.querySelector('input[name="preferLocalArtwork"]:checked')?.value === 'yes';
 
         let adult_content_type = null;
         if (media_type === 'adult_movies') {
@@ -2104,7 +2137,8 @@
         const d = await api('PUT', '/libraries/' + id, {
             name, path: folders[0], folders, is_enabled: true,
             season_grouping, access_level, allowed_users,
-            include_in_homepage, include_in_search, retrieve_metadata, adult_content_type
+            include_in_homepage, include_in_search, retrieve_metadata,
+            nfo_import, nfo_export, prefer_local_artwork, adult_content_type
         });
         if (d.success) { toast('Library updated!'); loadLibrariesView(); loadSidebarCounts(); }
         else toast('Failed: ' + d.error, 'error');
@@ -3069,6 +3103,36 @@
                         <label><input type="radio" name="retrieveMetadata" value="no"><span>No</span></label>
                     </div>
                 </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">NFO Import</div>
+                        <div class="option-row-desc">Read Kodi/Jellyfin .nfo sidecar files for metadata &amp; provider IDs</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="nfoImport" value="yes"><span>Yes</span></label>
+                        <label><input type="radio" name="nfoImport" value="no" checked><span>No</span></label>
+                    </div>
+                </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">NFO Export</div>
+                        <div class="option-row-desc">Write .nfo sidecar files after metadata is populated</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="nfoExport" value="yes"><span>Yes</span></label>
+                        <label><input type="radio" name="nfoExport" value="no" checked><span>No</span></label>
+                    </div>
+                </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Prefer Local Artwork</div>
+                        <div class="option-row-desc">Use poster/backdrop/logo files found next to media before fetching remote</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="preferLocalArtwork" value="yes" checked><span>Yes</span></label>
+                        <label><input type="radio" name="preferLocalArtwork" value="no"><span>No</span></label>
+                    </div>
+                </div>
             </div>
 
             <button class="btn-primary" onclick="createLibrary()">Create Library</button>
@@ -3198,6 +3262,9 @@
         const include_in_homepage = document.querySelector('input[name="includeHomepage"]:checked')?.value === 'yes';
         const include_in_search = document.querySelector('input[name="includeSearch"]:checked')?.value === 'yes';
         const retrieve_metadata = document.querySelector('input[name="retrieveMetadata"]:checked')?.value === 'yes';
+        const nfo_import = document.querySelector('input[name="nfoImport"]:checked')?.value === 'yes';
+        const nfo_export = document.querySelector('input[name="nfoExport"]:checked')?.value === 'yes';
+        const prefer_local_artwork = document.querySelector('input[name="preferLocalArtwork"]:checked')?.value === 'yes';
 
         let adult_content_type = null;
         if (media_type === 'adult_movies') {
@@ -3207,7 +3274,8 @@
         const d = await api('POST', '/libraries', {
             name, media_type, path: folders[0], folders, is_enabled: true,
             season_grouping, access_level, allowed_users,
-            include_in_homepage, include_in_search, retrieve_metadata, adult_content_type
+            include_in_homepage, include_in_search, retrieve_metadata,
+            nfo_import, nfo_export, prefer_local_artwork, adult_content_type
         });
         if (d.success) { toast('Library created!'); loadLibrariesView(); loadSidebarCounts(); }
         else toast('Failed: ' + d.error, 'error');
