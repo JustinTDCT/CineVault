@@ -54,7 +54,7 @@ The cache server is the primary metadata source. On a miss, it fetches from exte
 
 ### NFO Files (Local)
 - **Used for**: Any media type
-- **Provides**: Full Kodi-compatible metadata including title, tagline, plot, year, runtime, content rating, country, trailer URL, ratings, genres, studios, cast/crew, artwork references, and provider IDs (IMDB, TMDB, TVDB)
+- **Provides**: Full Kodi-compatible metadata including title, tagline, plot, year, runtime, content rating, country, trailer URL, ratings, genres, studios, cast/crew, artwork references, provider IDs (IMDB, TMDB, TVDB), source type, HDR format, dynamic range, and custom notes
 - **Access**: Read from sidecar `.nfo` files during scan. Can also be written/exported after metadata is resolved.
 
 ---
@@ -135,7 +135,7 @@ A single lookup returns all of the following (when available):
 
 ```
 For each new media file:
-  1. Parse filename → extract title, year, edition, season/episode
+  1. Parse filename → extract title, year, edition, resolution, source type, season/episode
   2. Check for inline provider IDs ([tmdbid=X], [imdbid=X], [tvdbid=X])
      → If found: direct TMDB lookup by ID, skip fuzzy matching
   3. Check for NFO sidecar
@@ -155,6 +155,8 @@ For each new media file:
      - Store external IDs (TMDB, IMDB, TVDB, etc.)
      - Auto-create movie collection from TMDB collection data
      - Fetch fanart.tv logos/banners
+     - Persist source type from filename (bluray, web-dl, hdtv, etc.)
+     - Detect HDR format and dynamic range from FFprobe color metadata
   8. Export NFO (if nfo_export enabled)
   9. Contribute result to cache server (background, helps other instances)
 ```
@@ -205,6 +207,8 @@ CineVault supports locking metadata at two levels:
 
 - **Full lock** (`metadata_locked = true` or `locked_fields = ["*"]`): All fields are locked. Auto-match and re-enrichment skip this item entirely.
 - **Per-field lock** (`locked_fields = ["title", "description", ...]`): Only specified fields are protected from automatic updates.
+
+Lockable fields: `title`, `description`, `year`, `rating`, `poster_path`, `content_rating`, `tagline`, `original_language`, `country`, `trailer_url`, `logo_path`, `backdrop_path`, `imdb_rating`, `rt_rating`, `audience_score`, `genres`, `cast`, `source_type`, `hdr_format`, `custom_notes`, `custom_tags`.
 
 When a user manually edits metadata, `metadata_locked` is set to `true` to prevent the next scan from overwriting their changes.
 
@@ -275,6 +279,11 @@ This works from both the cache server path and direct TMDB path.
 | `cast/crew` | TMDB/NFO | Linked as performers with roles |
 | `external_ids` | All | JSON object of provider IDs |
 | `locked_fields` | User/NFO | Array of field names protected from auto-update |
+| `source_type` | Filename parser | Media source (bluray, web-dl, hdtv, remux, etc.) |
+| `hdr_format` | FFprobe | HDR technology (Dolby Vision, HDR10, HLG, PQ) |
+| `dynamic_range` | FFprobe | SDR or HDR classification |
+| `custom_notes` | User/NFO | Freeform text annotation |
+| `custom_tags` | User | JSON array of user-defined tags |
 
 ---
 

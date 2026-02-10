@@ -163,7 +163,7 @@ Before any parsing, files are checked against extras detection rules. Matched fi
 
 ### Step 3: Filename Parsing
 
-The parser extracts: **Title**, **Year**, **Edition**, **Resolution**, **Source**, **Season/Episode** (for TV), **Artist/Album/Track** (for music).
+The parser extracts: **Title**, **Year**, **Edition**, **Resolution**, **Source** (persisted as `source_type`), **Season/Episode** (for TV), **Artist/Album/Track** (for music).
 
 #### Movies — Two-Tier Parsing
 
@@ -223,7 +223,7 @@ After filename parsing, the scanner checks for `.nfo` sidecar files. CineVault s
 3. **TV show-level**: `tvshow.nfo` in the show root directory
 
 **NFO types supported:**
-- **Movie NFOs** (`<movie>` root element) — title, tagline, plot, year, runtime, MPAA, country, trailer URL, ratings, genres, studios, cast, directors, writers, artwork references, and provider IDs (IMDB, TMDB, TVDB)
+- **Movie NFOs** (`<movie>` root element) — title, tagline, plot, year, runtime, MPAA, country, trailer URL, ratings, genres, studios, cast, directors, writers, artwork references, provider IDs (IMDB, TMDB, TVDB), source type, HDR format, dynamic range, custom notes
 - **TV Show NFOs** (`<tvshow>` root element) — title, plot, year, MPAA, genres, studios, cast, provider IDs
 - **Episode NFOs** (`<episodedetails>` root element) — title, plot, season/episode numbers, aired date, cast, provider IDs
 
@@ -269,8 +269,10 @@ For video and audio files, ffprobe extracts technical metadata:
 - Duration, resolution, width, height
 - Video codec, audio codec, bitrate
 - Container format (from file extension)
+- **HDR format detection**: Identifies Dolby Vision (via DOVI RPU side data), HDR10 (PQ transfer + BT.2020 primaries), HLG (arib-std-b67 transfer), or generic PQ
+- **Dynamic range classification**: HDR (any HDR format detected) or SDR (default)
 
-FFprobe values **override** any filename-parsed values for resolution and container.
+FFprobe values **override** any filename-parsed values for resolution and container. Source type from filename parsing (e.g., bluray, web-dl, hdtv) is persisted to the `source_type` field on the media item.
 
 ### Step 8: Hierarchy Creation
 
@@ -295,7 +297,7 @@ After parsing and insertion, items are matched against external providers. See [
 4. **Cache server** (if enabled) → returns fully-enriched data from all sources
 5. **Direct API fallback**: TMDB (movies/TV), MusicBrainz (music), OpenLibrary (audiobooks)
 
-**Confidence scoring**: 0.6 minimum threshold, +0.20 boost for year match, -0.40 penalty for year mismatch
+**Confidence scoring**: 0.6 minimum threshold, +0.20 boost for exact year match, -0.10 penalty for off-by-one year, -0.40 penalty for year mismatch by 2+ years
 
 **Enrichment applied after matching:**
 - Tagline, original language, country, trailer URL
@@ -372,10 +374,10 @@ The `edition-` prefix is stripped automatically. If no edition tag is found, the
 |---|---|
 | 1. Extension Validation | Filter files by library type |
 | 2. Extras Filtering | Skip trailers, samples, behind-the-scenes, etc. |
-| 3. Filename Parsing | Extract title, year, edition, resolution, season/episode |
+| 3. Filename Parsing | Extract title, year, edition, resolution, source type, season/episode |
 | 4. Inline Provider IDs | Extract `[tmdbid=X]`, `[imdbid=X]`, `[tvdbid=X]` from filename |
 | 5. NFO Sidecar Detection | Parse Kodi-compatible NFO for metadata and provider IDs |
 | 6. Local Artwork Detection | Find poster, backdrop, logo, banner alongside media files |
-| 7. FFprobe Analysis | Extract technical metadata (duration, codec, resolution) |
+| 7. FFprobe Analysis | Extract technical metadata (duration, codec, resolution, HDR format, dynamic range) |
 | 8. Hierarchy Creation | Build TV show/season/episode or artist/album/track structures |
 | 9. Metadata Matching | Match against cache server, TMDB, MusicBrainz, OpenLibrary |
