@@ -1,6 +1,6 @@
 {
-  "version": "0.36.0",
+  "version": "0.36.1",
   "phase": 3,
   "released": "2026-02-10",
-  "notes": "Best-of-breed metadata merge: extended fields, full NFO read/write, local artwork detection, per-field locking, inline provider IDs, auto-collections, TVDB scraper, fanart.tv integration"
+  "notes": "Cache server integration: extended metadata (tagline, language, country, trailer, logo, collection, TVDB ID) now flows through cache lookups and contributions"
 }

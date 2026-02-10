@@ -49,10 +49,21 @@ type cacheEntry struct {
 	ReleaseDate     *string  `json:"release_date,omitempty"`
 	Description     *string  `json:"description,omitempty"`
 	PosterURL       *string  `json:"poster_url,omitempty"`
+	BackdropURL     *string  `json:"backdrop_url,omitempty"`
 	Genres          *string  `json:"genres,omitempty"`
 	CastCrew        *string  `json:"cast_crew,omitempty"`
 	ContentRating   *string  `json:"content_rating,omitempty"`
 	Runtime         *int     `json:"runtime,omitempty"`
+	// Extended metadata
+	Tagline          *string `json:"tagline,omitempty"`
+	OriginalLanguage *string `json:"original_language,omitempty"`
+	Country          *string `json:"country,omitempty"`
+	TrailerURL       *string `json:"trailer_url,omitempty"`
+	LogoURL          *string `json:"logo_url,omitempty"`
+	BannerURL        *string `json:"banner_url,omitempty"`
+	TVDBID           *int    `json:"tvdb_id,omitempty"`
+	CollectionID     *int    `json:"collection_id,omitempty"`
+	CollectionName   *string `json:"collection_name,omitempty"`
 	// Source tracking
 	Source     string  `json:"source,omitempty"`
 	ExternalID *string `json:"external_id,omitempty"`
@@ -60,11 +71,13 @@ type cacheEntry struct {
 	PosterURLs   *string `json:"poster_urls,omitempty"`
 	BackdropURLs *string `json:"backdrop_urls,omitempty"`
 	Descriptions *string `json:"descriptions,omitempty"`
+	LogoURLs     *string `json:"logo_urls,omitempty"`
 	// Ratings
 	IMDBRating      *float64 `json:"imdb_rating,omitempty"`
 	RTCriticScore   *int     `json:"rt_critic_score,omitempty"`
 	RTAudienceScore *int     `json:"rt_audience_score,omitempty"`
 	OMDbEnriched    bool     `json:"omdb_enriched"`
+	FanartEnriched  bool     `json:"fanart_enriched"`
 }
 
 type cacheLookupResponse struct {
@@ -75,20 +88,30 @@ type cacheLookupResponse struct {
 }
 
 type cacheContributeRequest struct {
-	TMDBID          int      `json:"tmdb_id"`
-	IMDBID          *string  `json:"imdb_id,omitempty"`
-	MediaType       string   `json:"media_type"`
-	Title           string   `json:"title"`
-	Year            *int     `json:"year,omitempty"`
-	Description     *string  `json:"description,omitempty"`
-	PosterURL       *string  `json:"poster_url,omitempty"`
-	Genres          *string  `json:"genres,omitempty"`
-	ContentRating   *string  `json:"content_rating,omitempty"`
-	CastCrew        *string  `json:"cast_crew,omitempty"`
-	Runtime         *int     `json:"runtime,omitempty"`
-	IMDBRating      *float64 `json:"imdb_rating,omitempty"`
-	RTCriticScore   *int     `json:"rt_critic_score,omitempty"`
-	RTAudienceScore *int     `json:"rt_audience_score,omitempty"`
+	TMDBID           int      `json:"tmdb_id"`
+	IMDBID           *string  `json:"imdb_id,omitempty"`
+	MediaType        string   `json:"media_type"`
+	Title            string   `json:"title"`
+	Year             *int     `json:"year,omitempty"`
+	Description      *string  `json:"description,omitempty"`
+	PosterURL        *string  `json:"poster_url,omitempty"`
+	BackdropURL      *string  `json:"backdrop_url,omitempty"`
+	Genres           *string  `json:"genres,omitempty"`
+	ContentRating    *string  `json:"content_rating,omitempty"`
+	CastCrew         *string  `json:"cast_crew,omitempty"`
+	Runtime          *int     `json:"runtime,omitempty"`
+	Tagline          *string  `json:"tagline,omitempty"`
+	OriginalLanguage *string  `json:"original_language,omitempty"`
+	Country          *string  `json:"country,omitempty"`
+	TrailerURL       *string  `json:"trailer_url,omitempty"`
+	LogoURL          *string  `json:"logo_url,omitempty"`
+	BannerURL        *string  `json:"banner_url,omitempty"`
+	TVDBID           *int     `json:"tvdb_id,omitempty"`
+	CollectionID     *int     `json:"collection_id,omitempty"`
+	CollectionName   *string  `json:"collection_name,omitempty"`
+	IMDBRating       *float64 `json:"imdb_rating,omitempty"`
+	RTCriticScore    *int     `json:"rt_critic_score,omitempty"`
+	RTAudienceScore  *int     `json:"rt_audience_score,omitempty"`
 }
 
 // ── Cache Lookup Result ──
@@ -117,6 +140,11 @@ type CacheLookupResult struct {
 
 	// ExternalIDsJSON is a ready-to-store JSON string of all external source IDs
 	ExternalIDsJSON *string
+
+	// Extended metadata from cache
+	LogoURL    *string
+	BannerURL  *string
+	BackdropURL *string
 }
 
 // ── Lookup ──
@@ -213,12 +241,23 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 	// Use preferred poster from multi-source array if available
 	match.PosterURL = pickPreferredURL(entry.PosterURLs, metadataSource, entry.PosterURL)
 
+	// Use preferred backdrop
+	match.BackdropURL = pickPreferredURL(entry.BackdropURLs, metadataSource, entry.BackdropURL)
+
 	if entry.IMDBID != nil {
 		match.IMDBId = *entry.IMDBID
 	}
 	if entry.ContentRating != nil {
 		match.ContentRating = entry.ContentRating
 	}
+
+	// Extended metadata fields
+	match.Tagline = entry.Tagline
+	match.OriginalLanguage = entry.OriginalLanguage
+	match.Country = entry.Country
+	match.TrailerURL = entry.TrailerURL
+	match.CollectionID = entry.CollectionID
+	match.CollectionName = entry.CollectionName
 
 	// Parse genres from JSON string
 	if entry.Genres != nil && *entry.Genres != "" {
@@ -236,6 +275,11 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 
 	// Pass through runtime
 	result.Runtime = entry.Runtime
+
+	// Pass through artwork URLs from cache (logo, banner, backdrop)
+	result.LogoURL = entry.LogoURL
+	result.BannerURL = entry.BannerURL
+	result.BackdropURL = match.BackdropURL
 
 	// Extract ratings (now enriched inline by cache server, not just OMDb flag)
 	if entry.IMDBRating != nil || entry.RTCriticScore != nil || entry.RTAudienceScore != nil {
@@ -265,6 +309,9 @@ func buildExternalIDsJSON(entry *cacheEntry, cacheServer bool) *string {
 	}
 	if entry.IMDBID != nil && *entry.IMDBID != "" {
 		ids["imdb_id"] = *entry.IMDBID
+	}
+	if entry.TVDBID != nil && *entry.TVDBID != 0 {
+		ids["tvdb_id"] = fmt.Sprintf("%d", *entry.TVDBID)
 	}
 	// The external_id field holds the source-specific ID (PornDB scene ID, MusicBrainz UUID, etc.)
 	if entry.ExternalID != nil && *entry.ExternalID != "" {
@@ -417,11 +464,20 @@ func ParseCacheCredits(castCrewJSON string) *TMDBCredits {
 
 // ContributeExtras holds optional extra data to include in a contribution.
 type ContributeExtras struct {
-	CastCrewJSON    *string
-	Runtime         *int
-	IMDBRating      *float64
-	RTCriticScore   *int
-	RTAudienceScore *int
+	CastCrewJSON     *string
+	Runtime          *int
+	IMDBRating       *float64
+	RTCriticScore    *int
+	RTAudienceScore  *int
+	Tagline          *string
+	OriginalLanguage *string
+	Country          *string
+	TrailerURL       *string
+	LogoURL          *string
+	BannerURL        *string
+	CollectionID     *int
+	CollectionName   *string
+	BackdropURL      *string
 }
 
 // Contribute pushes a locally-fetched metadata result back to the cache server
@@ -463,14 +519,21 @@ func (c *CacheClient) Contribute(match *models.MetadataMatch, extras ...Contribu
 	}
 
 	req := cacheContributeRequest{
-		TMDBID:        tmdbID,
-		MediaType:     mediaType,
-		Title:         match.Title,
-		Year:          match.Year,
-		Description:   match.Description,
-		PosterURL:     match.PosterURL,
-		Genres:        genresJSON,
-		ContentRating: match.ContentRating,
+		TMDBID:           tmdbID,
+		MediaType:        mediaType,
+		Title:            match.Title,
+		Year:             match.Year,
+		Description:      match.Description,
+		PosterURL:        match.PosterURL,
+		BackdropURL:      match.BackdropURL,
+		Genres:           genresJSON,
+		ContentRating:    match.ContentRating,
+		Tagline:          match.Tagline,
+		OriginalLanguage: match.OriginalLanguage,
+		Country:          match.Country,
+		TrailerURL:       match.TrailerURL,
+		CollectionID:     match.CollectionID,
+		CollectionName:   match.CollectionName,
 	}
 	if match.IMDBId != "" {
 		req.IMDBID = &match.IMDBId
@@ -484,6 +547,33 @@ func (c *CacheClient) Contribute(match *models.MetadataMatch, extras ...Contribu
 		req.IMDBRating = ex.IMDBRating
 		req.RTCriticScore = ex.RTCriticScore
 		req.RTAudienceScore = ex.RTAudienceScore
+		if ex.Tagline != nil {
+			req.Tagline = ex.Tagline
+		}
+		if ex.OriginalLanguage != nil {
+			req.OriginalLanguage = ex.OriginalLanguage
+		}
+		if ex.Country != nil {
+			req.Country = ex.Country
+		}
+		if ex.TrailerURL != nil {
+			req.TrailerURL = ex.TrailerURL
+		}
+		if ex.LogoURL != nil {
+			req.LogoURL = ex.LogoURL
+		}
+		if ex.BannerURL != nil {
+			req.BannerURL = ex.BannerURL
+		}
+		if ex.CollectionID != nil {
+			req.CollectionID = ex.CollectionID
+		}
+		if ex.CollectionName != nil {
+			req.CollectionName = ex.CollectionName
+		}
+		if ex.BackdropURL != nil {
+			req.BackdropURL = ex.BackdropURL
+		}
 	}
 
 	bodyBytes, _ := json.Marshal(req)

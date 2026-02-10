@@ -513,6 +513,51 @@ func (r *MediaRepository) UpdateContentRating(id uuid.UUID, contentRating string
 	return err
 }
 
+// UpdateExtendedMetadata sets extended metadata fields (tagline, language, country, trailer, logo).
+// Only non-nil fields are updated; nil values are left unchanged.
+func (r *MediaRepository) UpdateExtendedMetadata(id uuid.UUID, tagline, originalLang, country, trailerURL, logoPath *string) error {
+	setClauses := []string{}
+	args := []interface{}{}
+	idx := 1
+
+	if tagline != nil {
+		setClauses = append(setClauses, fmt.Sprintf("tagline = $%d", idx))
+		args = append(args, *tagline)
+		idx++
+	}
+	if originalLang != nil {
+		setClauses = append(setClauses, fmt.Sprintf("original_language = $%d", idx))
+		args = append(args, *originalLang)
+		idx++
+	}
+	if country != nil {
+		setClauses = append(setClauses, fmt.Sprintf("country = $%d", idx))
+		args = append(args, *country)
+		idx++
+	}
+	if trailerURL != nil {
+		setClauses = append(setClauses, fmt.Sprintf("trailer_url = $%d", idx))
+		args = append(args, *trailerURL)
+		idx++
+	}
+	if logoPath != nil {
+		setClauses = append(setClauses, fmt.Sprintf("logo_path = $%d", idx))
+		args = append(args, *logoPath)
+		idx++
+	}
+
+	if len(setClauses) == 0 {
+		return nil
+	}
+
+	setClauses = append(setClauses, "updated_at = CURRENT_TIMESTAMP")
+	query := fmt.Sprintf("UPDATE media_items SET %s WHERE id = $%d",
+		strings.Join(setClauses, ", "), idx)
+	args = append(args, id)
+	_, err := r.db.Exec(query, args...)
+	return err
+}
+
 // UpdateDuplicateStatus sets the duplicate_status flag on a media item.
 func (r *MediaRepository) UpdateDuplicateStatus(id uuid.UUID, status string) error {
 	_, err := r.db.Exec(`UPDATE media_items SET duplicate_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, status, id)

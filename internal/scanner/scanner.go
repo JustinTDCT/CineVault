@@ -528,6 +528,17 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 			if result.ExternalIDsJSON != nil {
 				_ = s.mediaRepo.UpdateExternalIDs(item.ID, *result.ExternalIDsJSON)
 			}
+
+			// Apply extended metadata from cache
+			if result.Match.Tagline != nil || result.Match.OriginalLanguage != nil || result.Match.Country != nil || result.Match.TrailerURL != nil || result.LogoURL != nil {
+				_ = s.mediaRepo.UpdateExtendedMetadata(item.ID,
+					result.Match.Tagline, result.Match.OriginalLanguage, result.Match.Country, result.Match.TrailerURL, result.LogoURL)
+			}
+
+			// Auto-create collection from cache
+			if result.Match.CollectionID != nil && result.Match.CollectionName != nil {
+				s.autoCreateCollection(item, result.Match)
+			}
 			return
 		}
 	}
@@ -589,14 +600,29 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 		_ = s.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
 	}
 
+	// Apply extended metadata from TMDB details
+	d := combined.Details
+	if d.Tagline != nil || d.OriginalLanguage != nil || d.Country != nil || d.TrailerURL != nil {
+		_ = s.mediaRepo.UpdateExtendedMetadata(item.ID,
+			d.Tagline, d.OriginalLanguage, d.Country, d.TrailerURL, nil)
+	}
+
 	// Auto-create movie collection from TMDB belongs_to_collection
 	if combined.Details.CollectionID != nil && combined.Details.CollectionName != nil {
 		s.autoCreateCollection(item, combined.Details)
 	}
 
-	// Contribute to cache server with cast/crew and ratings
+	// Contribute to cache server with cast/crew, ratings, and extended metadata
 	if cacheClient != nil {
-		extras := metadata.ContributeExtras{}
+		extras := metadata.ContributeExtras{
+			Tagline:          d.Tagline,
+			OriginalLanguage: d.OriginalLanguage,
+			Country:          d.Country,
+			TrailerURL:       d.TrailerURL,
+			BackdropURL:      d.BackdropURL,
+			CollectionID:     d.CollectionID,
+			CollectionName:   d.CollectionName,
+		}
 		if combined.Credits != nil {
 			creditsJSON, err := json.Marshal(combined.Credits)
 			if err == nil {
@@ -913,6 +939,12 @@ func (s *Scanner) applyDirectMatch(item *models.MediaItem, match *models.Metadat
 	}
 	if posterPath != nil {
 		item.PosterPath = posterPath
+	}
+
+	// Apply extended metadata (tagline, language, country, trailer)
+	if match.Tagline != nil || match.OriginalLanguage != nil || match.Country != nil || match.TrailerURL != nil {
+		_ = s.mediaRepo.UpdateExtendedMetadata(item.ID,
+			match.Tagline, match.OriginalLanguage, match.Country, match.TrailerURL, nil)
 	}
 
 	// Enrich with genres, ratings, etc.
@@ -1245,6 +1277,17 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 	if result.ExternalIDsJSON != nil {
 		_ = s.mediaRepo.UpdateExternalIDs(item.ID, *result.ExternalIDsJSON)
 	}
+
+	// Apply extended metadata from cache (tagline, language, country, trailer, logo)
+	if match.Tagline != nil || match.OriginalLanguage != nil || match.Country != nil || match.TrailerURL != nil || result.LogoURL != nil {
+		_ = s.mediaRepo.UpdateExtendedMetadata(item.ID,
+			match.Tagline, match.OriginalLanguage, match.Country, match.TrailerURL, result.LogoURL)
+	}
+
+	// Auto-create movie collection from cache data
+	if match.CollectionID != nil && match.CollectionName != nil {
+		s.autoCreateCollection(item, match)
+	}
 }
 
 // parseCacheCredits delegates to metadata.ParseCacheCredits.
@@ -1324,6 +1367,12 @@ func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, med
 	// Update content rating if available (from TMDB release_dates)
 	if details.ContentRating != nil {
 		_ = s.mediaRepo.UpdateContentRating(itemID, *details.ContentRating)
+	}
+
+	// Apply extended metadata from TMDB details
+	if details.Tagline != nil || details.OriginalLanguage != nil || details.Country != nil || details.TrailerURL != nil {
+		_ = s.mediaRepo.UpdateExtendedMetadata(itemID,
+			details.Tagline, details.OriginalLanguage, details.Country, details.TrailerURL, nil)
 	}
 
 	// Create/link genre tags
