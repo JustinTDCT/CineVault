@@ -1,6 +1,6 @@
 {
-  "version": "0.31.01",
+  "version": "0.32.0",
   "phase": 3,
   "released": "2026-02-10",
-  "notes": "Fix identify apply using stale poster path instead of actual saved path"
+  "notes": "Generated poster tracking — rescan replaces video screenshots with TMDB posters"
 }

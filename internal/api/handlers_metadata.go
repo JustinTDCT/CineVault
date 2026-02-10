@@ -158,7 +158,7 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 	// Apply metadata to media item and lock to prevent auto-overwrite
 	if posterPath != nil {
 		query := `UPDATE media_items SET title = $1, year = $2, description = $3, rating = $4,
-			poster_path = $5, metadata_locked = true, updated_at = CURRENT_TIMESTAMP WHERE id = $6`
+			poster_path = $5, generated_poster = false, metadata_locked = true, updated_at = CURRENT_TIMESTAMP WHERE id = $6`
 		_, err = s.db.DB.Exec(query, req.Title, req.Year, req.Description, req.Rating, *posterPath, mediaID)
 		if err != nil {
 			s.respondError(w, http.StatusInternalServerError, err.Error())

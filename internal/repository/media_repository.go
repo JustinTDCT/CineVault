@@ -38,7 +38,7 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	author_id, book_id, chapter_number,
 	image_gallery_id, sister_group_id,
 	imdb_rating, rt_rating, audience_score,
-	edition_type, content_rating, sort_position, metadata_locked, duplicate_status, added_at, updated_at`
+	edition_type, content_rating, sort_position, generated_poster, metadata_locked, duplicate_status, added_at, updated_at`
 
 // prefixedMediaColumns returns mediaColumns with each column prefixed by the given alias (e.g. "m.").
 func prefixedMediaColumns(prefix string) string {
@@ -64,7 +64,7 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.AuthorID, &item.BookID, &item.ChapterNumber,
 		&item.ImageGalleryID, &item.SisterGroupID,
 		&item.IMDBRating, &item.RTRating, &item.AudienceScore,
-		&item.EditionType, &item.ContentRating, &item.SortPosition, &item.MetadataLocked, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
+		&item.EditionType, &item.ContentRating, &item.SortPosition, &item.GeneratedPoster, &item.MetadataLocked, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
 }
@@ -381,7 +381,9 @@ func (r *MediaRepository) Delete(id uuid.UUID) error {
 
 func (r *MediaRepository) UpdateMetadata(id uuid.UUID, title string, year *int, description *string, rating *float64, posterPath *string, contentRating *string) error {
 	query := `UPDATE media_items SET title = $1, year = $2, description = $3, rating = $4,
-		poster_path = $5, content_rating = $6, updated_at = CURRENT_TIMESTAMP WHERE id = $7`
+		poster_path = $5, content_rating = $6,
+		generated_poster = CASE WHEN $5 IS NOT NULL THEN false ELSE generated_poster END,
+		updated_at = CURRENT_TIMESTAMP WHERE id = $7`
 	_, err := r.db.Exec(query, title, year, description, rating, posterPath, contentRating, id)
 	return err
 }
@@ -482,7 +484,13 @@ func (r *MediaRepository) UpdatePhash(id uuid.UUID, phash string) error {
 
 // UpdatePosterPath sets the poster image path for a media item.
 func (r *MediaRepository) UpdatePosterPath(id uuid.UUID, posterPath string) error {
-	_, err := r.db.Exec(`UPDATE media_items SET poster_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, posterPath, id)
+	_, err := r.db.Exec(`UPDATE media_items SET poster_path = $1, generated_poster = false, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, posterPath, id)
+	return err
+}
+
+// SetGeneratedPoster marks a media item's poster as generated from a video screenshot.
+func (r *MediaRepository) SetGeneratedPoster(id uuid.UUID, generated bool) error {
+	_, err := r.db.Exec(`UPDATE media_items SET generated_poster = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, generated, id)
 	return err
 }
 
@@ -586,7 +594,8 @@ func (r *MediaRepository) ListDuplicateItems() ([]*models.MediaItem, error) {
 }
 
 // ListItemsNeedingEnrichment returns items in a library that have a title/description
-// (i.e. were TMDB-matched) but are missing OMDb ratings or have no linked performers.
+// (i.e. were TMDB-matched) but are missing OMDb ratings, have no linked performers,
+// or have a generated (screenshot) poster that should be replaced.
 func (r *MediaRepository) ListItemsNeedingEnrichment(libraryID uuid.UUID) ([]*models.MediaItem, error) {
 	query := `SELECT ` + mediaColumns + `
 		FROM media_items mi
@@ -597,6 +606,7 @@ func (r *MediaRepository) ListItemsNeedingEnrichment(libraryID uuid.UUID) ([]*mo
 		  AND (
 		    mi.imdb_rating IS NULL
 		    OR NOT EXISTS (SELECT 1 FROM media_performers mp WHERE mp.media_item_id = mi.id)
+		    OR mi.generated_poster = true
 		  )
 		  AND mi.media_type IN ('movies','tv_shows','music_videos','home_videos','other_videos','adult_movies')
 		ORDER BY mi.title`

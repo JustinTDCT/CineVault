@@ -404,10 +404,13 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 		if result != nil && result.Match != nil {
 			log.Printf("Re-enrich: %q → %q (source=cache/%s)", item.Title, result.Match.Title, result.Source)
 
-			// Download poster if cache provides one
-			if result.Match.PosterURL != nil && s.posterDir != "" {
+			// Download poster if cache provides one and current poster is a generated screenshot
+			if item.GeneratedPoster && result.Match.PosterURL != nil && s.posterDir != "" {
 				filename := item.ID.String() + ".jpg"
-				_, err := metadata.DownloadPoster(*result.Match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+				posterDir := filepath.Join(s.posterDir, "posters")
+				// Remove generated screenshot so dedup doesn't save TMDB poster as _alt
+				_ = os.Remove(filepath.Join(posterDir, filename))
+				_, err := metadata.DownloadPoster(*result.Match.PosterURL, posterDir, filename)
 				if err != nil {
 					log.Printf("Re-enrich: poster download failed for %s: %v", item.ID, err)
 				} else {
@@ -465,6 +468,21 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 			if err := s.mediaRepo.UpdateRatings(item.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); err != nil {
 				log.Printf("Re-enrich: ratings update failed for %s: %v", item.ID, err)
 			}
+		}
+	}
+
+	// Replace generated screenshot poster with TMDB poster
+	if item.GeneratedPoster && combined.Details.PosterURL != nil && s.posterDir != "" {
+		filename := item.ID.String() + ".jpg"
+		pDir := filepath.Join(s.posterDir, "posters")
+		_ = os.Remove(filepath.Join(pDir, filename))
+		_, dlErr := metadata.DownloadPoster(*combined.Details.PosterURL, pDir, filename)
+		if dlErr != nil {
+			log.Printf("Re-enrich: poster download failed for %s: %v", item.ID, dlErr)
+		} else {
+			webPath := "/previews/posters/" + filename
+			_ = s.mediaRepo.UpdatePosterPath(item.ID, webPath)
+			log.Printf("Re-enrich: replaced generated poster for %q", item.Title)
 		}
 	}
 
@@ -552,7 +570,9 @@ func (s *Scanner) generateScreenshotPoster(item *models.MediaItem) {
 		log.Printf("Screenshot: failed to update poster path for %s: %v", item.FileName, err)
 		return
 	}
+	_ = s.mediaRepo.SetGeneratedPoster(item.ID, true)
 	item.PosterPath = &webPath
+	item.GeneratedPoster = true
 	log.Printf("Screenshot: generated poster for %s at %ds", item.FileName, seekSec)
 }
 
