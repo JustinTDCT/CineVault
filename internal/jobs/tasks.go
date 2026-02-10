@@ -334,15 +334,16 @@ type MetadataScrapeHandler struct {
 	settingsRepo *repository.SettingsRepository
 	scrapers     []metadata.Scraper
 	cfg          *config.Config
+	scanner      *scanner.Scanner
 	notifier     EventNotifier
 }
 
 func NewMetadataScrapeHandler(mediaRepo *repository.MediaRepository, libRepo *repository.LibraryRepository,
 	settingsRepo *repository.SettingsRepository, scrapers []metadata.Scraper,
-	cfg *config.Config, notifier EventNotifier) *MetadataScrapeHandler {
+	cfg *config.Config, sc *scanner.Scanner, notifier EventNotifier) *MetadataScrapeHandler {
 	return &MetadataScrapeHandler{
 		mediaRepo: mediaRepo, libRepo: libRepo, settingsRepo: settingsRepo,
-		scrapers: scrapers, cfg: cfg, notifier: notifier,
+		scrapers: scrapers, cfg: cfg, scanner: sc, notifier: notifier,
 	}
 }
 
@@ -419,6 +420,10 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		if !metadata.ShouldAutoMatch(item.MediaType) {
 			continue
 		}
+		// Skip items with wildcard per-field lock
+		if item.IsFieldLocked("*") {
+			continue
+		}
 
 		// Clean the title and find best match
 		query := metadata.CleanTitleForSearch(item.Title)
@@ -437,9 +442,9 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			if result != nil && result.Match != nil {
 				best := result.Match
 
-				// Download poster
+				// Download poster (skip if locked)
 				var posterPath *string
-				if best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
+				if !item.IsFieldLocked("poster_path") && best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
 					filename := item.ID.String() + ".jpg"
 					_, dlErr := metadata.DownloadPoster(*best.PosterURL, filepath.Join(h.cfg.Paths.Preview, "posters"), filename)
 					if dlErr == nil {
@@ -448,17 +453,55 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 					}
 				}
 
-				// Apply metadata
-				if err := h.mediaRepo.UpdateMetadata(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath, best.ContentRating); err != nil {
+				// Apply metadata (lock-aware)
+				if err := h.mediaRepo.UpdateMetadataWithLocks(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath, best.ContentRating, item.LockedFields); err != nil {
 					log.Printf("Metadata: update failed for %s: %v", item.FileName, err)
 				} else {
-					// Apply cached ratings
+					// Apply cached ratings (lock-aware)
 					if result.Ratings != nil {
-						_ = h.mediaRepo.UpdateRatings(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore)
+						_ = h.mediaRepo.UpdateRatingsWithLocks(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore, item.LockedFields)
 					}
-					// Store external IDs from cache
-					if result.ExternalIDsJSON != nil {
+					// Store external IDs from cache (skip if locked)
+					if !item.IsFieldLocked("external_ids") && result.ExternalIDsJSON != nil {
 						_ = h.mediaRepo.UpdateExternalIDs(item.ID, *result.ExternalIDsJSON)
+					}
+					// Link genres (skip if locked)
+					if !item.IsFieldLocked("genres") && len(result.Genres) > 0 {
+						h.linkGenreTags(item.ID, result.Genres)
+					}
+					// Apply cast/crew from cache (skip if locked)
+					if !item.IsFieldLocked("cast") && result.CastCrewJSON != nil && *result.CastCrewJSON != "" {
+						credits := metadata.ParseCacheCredits(*result.CastCrewJSON)
+						if credits != nil {
+							h.enrichWithCredits(item.ID, credits)
+						}
+					}
+					// Apply extended metadata from cache
+					tagline := best.Tagline
+					origLang := best.OriginalLanguage
+					country := best.Country
+					trailerURL := best.TrailerURL
+					var logoPath *string
+					if result.LogoURL != nil && *result.LogoURL != "" {
+						logoPath = result.LogoURL
+					}
+					if item.IsFieldLocked("tagline") { tagline = nil }
+					if item.IsFieldLocked("original_language") { origLang = nil }
+					if item.IsFieldLocked("country") { country = nil }
+					if item.IsFieldLocked("trailer_url") { trailerURL = nil }
+					if item.IsFieldLocked("logo_path") { logoPath = nil }
+					if tagline != nil || origLang != nil || country != nil || trailerURL != nil || logoPath != nil {
+						_ = h.mediaRepo.UpdateExtendedMetadata(item.ID, tagline, origLang, country, trailerURL, logoPath)
+					}
+					// Apply backdrop from cache (skip if locked)
+					if !item.IsFieldLocked("backdrop_path") && result.BackdropURL != nil && *result.BackdropURL != "" && h.cfg.Paths.Preview != "" {
+						bdFilename := item.ID.String() + "_backdrop.jpg"
+						bdDir := filepath.Join(h.cfg.Paths.Preview, "backdrops")
+						os.MkdirAll(bdDir, 0755)
+						if _, err := metadata.DownloadPoster(*result.BackdropURL, bdDir, bdFilename); err == nil {
+							webPath := "/previews/backdrops/" + bdFilename
+							h.mediaRepo.DB().Exec(`UPDATE media_items SET backdrop_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, webPath, item.ID)
+						}
 					}
 					updated++
 				}
@@ -484,7 +527,6 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 						if details.IMDBId != "" {
 							best.IMDBId = details.IMDBId
 						}
-						// Merge genres from details
 						if len(details.Genres) > 0 && len(best.Genres) == 0 {
 							best.Genres = details.Genres
 						}
@@ -493,7 +535,6 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 				}
 			}
 		} else if best.Source == "musicbrainz" || best.Source == "openlibrary" {
-			// Fetch full details from non-TMDB sources
 			for _, sc := range h.scrapers {
 				if sc.Name() == best.Source {
 					if details, err := sc.GetDetails(best.ExternalID); err == nil {
@@ -512,9 +553,9 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			}
 		}
 
-		// Download poster if available
+		// Download poster (skip if locked)
 		var posterPath *string
-		if best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
+		if !item.IsFieldLocked("poster_path") && best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
 			filename := item.ID.String() + ".jpg"
 			_, dlErr := metadata.DownloadPoster(*best.PosterURL, filepath.Join(h.cfg.Paths.Preview, "posters"), filename)
 			if dlErr == nil {
@@ -523,24 +564,36 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			}
 		}
 
-		// Apply metadata
-		if err := h.mediaRepo.UpdateMetadata(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath, best.ContentRating); err != nil {
+		// Apply metadata (lock-aware)
+		if err := h.mediaRepo.UpdateMetadataWithLocks(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath, best.ContentRating, item.LockedFields); err != nil {
 			log.Printf("Metadata: update failed for %s: %v", item.FileName, err)
 			continue
 		}
 
-		// Fetch OMDb ratings if we have an IMDB ID (TMDB sources only)
+		// Link genres (skip if locked)
+		if !item.IsFieldLocked("genres") && len(best.Genres) > 0 {
+			h.linkGenreTags(item.ID, best.Genres)
+		}
+
+		// OMDb ratings (lock-aware)
 		if best.IMDBId != "" && omdbKey != "" {
 			ratings, omdbErr := metadata.FetchOMDbRatings(best.IMDBId, omdbKey)
 			if omdbErr == nil {
-				_ = h.mediaRepo.UpdateRatings(item.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore)
+				_ = h.mediaRepo.UpdateRatingsWithLocks(item.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore, item.LockedFields)
 			}
 		}
 
-		// Store external IDs from direct match
-		idsJSON := metadata.BuildExternalIDsFromMatch(best.Source, best.ExternalID, best.IMDBId, false)
-		if idsJSON != nil {
-			_ = h.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
+		// Store external IDs (skip if locked)
+		if !item.IsFieldLocked("external_ids") {
+			idsJSON := metadata.BuildExternalIDsFromMatch(best.Source, best.ExternalID, best.IMDBId, false)
+			if idsJSON != nil {
+				_ = h.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
+			}
+		}
+
+		// Extended enrichment via scanner (TMDB details, credits, fanart.tv)
+		if best.Source == "tmdb" && h.scanner != nil {
+			h.scanner.EnrichMatchedItem(item.ID, best.ExternalID, item.MediaType, item.LockedFields)
 		}
 
 		// Contribute to cache in background (all sources)
@@ -561,6 +614,74 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		})
 	}
 	return nil
+}
+
+// linkGenreTags creates genre tags and links them to a media item (MetadataScrapeHandler).
+func (h *MetadataScrapeHandler) linkGenreTags(mediaItemID uuid.UUID, genres []string) {
+	for _, genre := range genres {
+		var tagID uuid.UUID
+		row := h.mediaRepo.DB().QueryRow(
+			`SELECT id FROM tags WHERE category = 'genre' AND LOWER(name) = LOWER($1)`, genre)
+		if err := row.Scan(&tagID); err != nil {
+			tagID = uuid.New()
+			h.mediaRepo.DB().Exec(
+				`INSERT INTO tags (id, name, slug, category) VALUES ($1, $2, $3, 'genre') ON CONFLICT DO NOTHING`,
+				tagID, genre, strings.ToLower(strings.ReplaceAll(genre, " ", "-")))
+			_ = h.mediaRepo.DB().QueryRow(
+				`SELECT id FROM tags WHERE category = 'genre' AND LOWER(name) = LOWER($1)`, genre).Scan(&tagID)
+		}
+		h.mediaRepo.DB().Exec(
+			`INSERT INTO media_tags (media_item_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+			mediaItemID, tagID)
+	}
+}
+
+// enrichWithCredits creates performers from credits and links them to a media item (MetadataScrapeHandler).
+func (h *MetadataScrapeHandler) enrichWithCredits(mediaItemID uuid.UUID, credits *metadata.TMDBCredits) {
+	if credits == nil {
+		return
+	}
+	maxCast := 20
+	if len(credits.Cast) < maxCast {
+		maxCast = len(credits.Cast)
+	}
+	for _, c := range credits.Cast[:maxCast] {
+		perfID := h.findOrCreatePerformer(c.Name, "cast", c.ProfilePath)
+		h.mediaRepo.DB().Exec(
+			`INSERT INTO media_performers (media_item_id, performer_id, role, sort_order)
+			 VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+			mediaItemID, perfID, c.Character, c.Order)
+	}
+	for _, c := range credits.Crew {
+		if c.Job == "Director" || c.Job == "Producer" || c.Job == "Writer" || c.Job == "Screenplay" || c.Job == "Original Music Composer" {
+			perfID := h.findOrCreatePerformer(c.Name, "crew", c.ProfilePath)
+			h.mediaRepo.DB().Exec(
+				`INSERT INTO media_performers (media_item_id, performer_id, role, sort_order)
+				 VALUES ($1, $2, $3, 999) ON CONFLICT DO NOTHING`,
+				mediaItemID, perfID, c.Job)
+		}
+	}
+}
+
+func (h *MetadataScrapeHandler) findOrCreatePerformer(name, perfType, profilePath string) uuid.UUID {
+	var perfID uuid.UUID
+	err := h.mediaRepo.DB().QueryRow(
+		`SELECT id FROM performers WHERE LOWER(name) = LOWER($1)`, name).Scan(&perfID)
+	if err == nil {
+		return perfID
+	}
+	perfID = uuid.New()
+	var photoURL *string
+	if profilePath != "" {
+		full := "https://image.tmdb.org/t/p/w185" + profilePath
+		photoURL = &full
+	}
+	h.mediaRepo.DB().Exec(
+		`INSERT INTO performers (id, name, type, photo_url) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+		perfID, name, perfType, photoURL)
+	_ = h.mediaRepo.DB().QueryRow(
+		`SELECT id FROM performers WHERE LOWER(name) = LOWER($1)`, name).Scan(&perfID)
+	return perfID
 }
 
 // ──────── Metadata Refresh Handler ────────
@@ -659,8 +780,8 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 			}
 		}
 
-		// Skip locked items
-		if item.MetadataLocked {
+		// Skip fully locked items (global lock or wildcard per-field lock)
+		if item.MetadataLocked || item.IsFieldLocked("*") {
 			continue
 		}
 
@@ -669,18 +790,22 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 			continue
 		}
 
-		// ── Step 1: Clear existing metadata ──
+		// ── Step 1: Clear existing metadata (respects per-field locks) ──
 		fileTitle := metadata.TitleFromFilename(item.FileName)
 		if fileTitle == "" {
 			fileTitle = item.FileName
 		}
-		if err := h.mediaRepo.ClearItemMetadata(item.ID, fileTitle); err != nil {
+		if err := h.mediaRepo.ClearItemMetadataWithLocks(item.ID, fileTitle, item.LockedFields); err != nil {
 			log.Printf("Metadata refresh: clear failed for %s: %v", item.FileName, err)
 			continue
 		}
-		// Remove genre tags and performer links
-		_ = h.mediaRepo.RemoveAllMediaTags(item.ID)
-		_ = h.mediaRepo.RemoveAllMediaPerformers(item.ID)
+		// Remove genre tags and performer links only if those fields are not locked
+		if !item.IsFieldLocked("genres") {
+			_ = h.mediaRepo.RemoveAllMediaTags(item.ID)
+		}
+		if !item.IsFieldLocked("cast") {
+			_ = h.mediaRepo.RemoveAllMediaPerformers(item.ID)
+		}
 		cleared++
 
 		// Use filename-derived title and year for the search
@@ -698,12 +823,11 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 			if result != nil && result.Match != nil {
 				best := result.Match
 
-				// Download poster
+				// Download poster (skip if poster_path is locked)
 				var posterPath *string
-				if best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
+				if !item.IsFieldLocked("poster_path") && best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
 					filename := item.ID.String() + ".jpg"
 					posterDir := filepath.Join(h.cfg.Paths.Preview, "posters")
-					// Remove old poster file so dedup doesn't save new one as _alt
 					_ = removeExistingPosters(posterDir, filename)
 					_, dlErr := metadata.DownloadPoster(*best.PosterURL, posterDir, filename)
 					if dlErr == nil {
@@ -712,25 +836,53 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 					}
 				}
 
-				// Apply metadata
-				if err := h.mediaRepo.UpdateMetadata(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath, best.ContentRating); err != nil {
+				// Apply metadata (lock-aware)
+				if err := h.mediaRepo.UpdateMetadataWithLocks(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath, best.ContentRating, item.LockedFields); err != nil {
 					log.Printf("Metadata refresh: update failed for %s: %v", item.FileName, err)
 				} else {
 					if result.Ratings != nil {
-						_ = h.mediaRepo.UpdateRatings(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore)
+						_ = h.mediaRepo.UpdateRatingsWithLocks(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore, item.LockedFields)
 					}
-					if result.ExternalIDsJSON != nil {
+					if !item.IsFieldLocked("external_ids") && result.ExternalIDsJSON != nil {
 						_ = h.mediaRepo.UpdateExternalIDs(item.ID, *result.ExternalIDsJSON)
 					}
-					// Link genres from cache
-					if len(result.Genres) > 0 {
+					// Link genres from cache (skip if locked)
+					if !item.IsFieldLocked("genres") && len(result.Genres) > 0 {
 						h.linkGenreTags(item.ID, result.Genres)
 					}
-					// Apply cast/crew from cache
-					if result.CastCrewJSON != nil && *result.CastCrewJSON != "" {
+					// Apply cast/crew from cache (skip if locked)
+					if !item.IsFieldLocked("cast") && result.CastCrewJSON != nil && *result.CastCrewJSON != "" {
 						credits := metadata.ParseCacheCredits(*result.CastCrewJSON)
 						if credits != nil {
 							h.enrichWithCredits(item.ID, credits)
+						}
+					}
+					// Apply extended metadata from cache (tagline, language, country, trailer)
+					tagline := best.Tagline
+					origLang := best.OriginalLanguage
+					country := best.Country
+					trailerURL := best.TrailerURL
+					var logoPath *string
+					if result.LogoURL != nil && *result.LogoURL != "" {
+						logoPath = result.LogoURL
+					}
+					// Nil out locked extended fields
+					if item.IsFieldLocked("tagline") { tagline = nil }
+					if item.IsFieldLocked("original_language") { origLang = nil }
+					if item.IsFieldLocked("country") { country = nil }
+					if item.IsFieldLocked("trailer_url") { trailerURL = nil }
+					if item.IsFieldLocked("logo_path") { logoPath = nil }
+					if tagline != nil || origLang != nil || country != nil || trailerURL != nil || logoPath != nil {
+						_ = h.mediaRepo.UpdateExtendedMetadata(item.ID, tagline, origLang, country, trailerURL, logoPath)
+					}
+					// Apply backdrop from cache (skip if locked)
+					if !item.IsFieldLocked("backdrop_path") && result.BackdropURL != nil && *result.BackdropURL != "" && h.cfg.Paths.Preview != "" {
+						bdFilename := item.ID.String() + "_backdrop.jpg"
+						bdDir := filepath.Join(h.cfg.Paths.Preview, "backdrops")
+						os.MkdirAll(bdDir, 0755)
+						if _, err := metadata.DownloadPoster(*result.BackdropURL, bdDir, bdFilename); err == nil {
+							webPath := "/previews/backdrops/" + bdFilename
+							h.mediaRepo.DB().Exec(`UPDATE media_items SET backdrop_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, webPath, item.ID)
 						}
 					}
 					updated++
@@ -782,9 +934,9 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 				}
 			}
 
-			// Download poster
+			// Download poster (skip if locked)
 			var posterPath *string
-			if best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
+			if !item.IsFieldLocked("poster_path") && best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
 				filename := item.ID.String() + ".jpg"
 				posterDir := filepath.Join(h.cfg.Paths.Preview, "posters")
 				_ = removeExistingPosters(posterDir, filename)
@@ -795,27 +947,34 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 				}
 			}
 
-			// Apply metadata
-			if err := h.mediaRepo.UpdateMetadata(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath, best.ContentRating); err != nil {
+			// Apply metadata (lock-aware)
+			if err := h.mediaRepo.UpdateMetadataWithLocks(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath, best.ContentRating, item.LockedFields); err != nil {
 				log.Printf("Metadata refresh: update failed for %s: %v", item.FileName, err)
 			} else {
-				// Link genres
-				if len(best.Genres) > 0 {
+				// Link genres (skip if locked)
+				if !item.IsFieldLocked("genres") && len(best.Genres) > 0 {
 					h.linkGenreTags(item.ID, best.Genres)
 				}
 
-				// OMDb ratings
+				// OMDb ratings (lock-aware)
 				if best.IMDBId != "" && omdbKey != "" {
 					ratings, omdbErr := metadata.FetchOMDbRatings(best.IMDBId, omdbKey)
 					if omdbErr == nil {
-						_ = h.mediaRepo.UpdateRatings(item.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore)
+						_ = h.mediaRepo.UpdateRatingsWithLocks(item.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore, item.LockedFields)
 					}
 				}
 
-				// Store external IDs
-				idsJSON := metadata.BuildExternalIDsFromMatch(best.Source, best.ExternalID, best.IMDBId, false)
-				if idsJSON != nil {
-					_ = h.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
+				// Store external IDs (skip if locked)
+				if !item.IsFieldLocked("external_ids") {
+					idsJSON := metadata.BuildExternalIDsFromMatch(best.Source, best.ExternalID, best.IMDBId, false)
+					if idsJSON != nil {
+						_ = h.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
+					}
+				}
+
+				// Extended enrichment via scanner (TMDB details, credits, fanart.tv)
+				if best.Source == "tmdb" && h.scanner != nil {
+					h.scanner.EnrichMatchedItem(item.ID, best.ExternalID, item.MediaType, item.LockedFields)
 				}
 
 				// Contribute to cache
@@ -984,7 +1143,7 @@ func RegisterHandlers(q *Queue, sc *scanner.Scanner, libRepo *repository.Library
 	q.RegisterHandler(TaskFingerprint, NewFingerprintHandler(mediaRepo))
 	q.RegisterHandler(TaskPhashLibrary, NewPhashLibraryHandler(mediaRepo, fp, notifier))
 	q.RegisterHandler(TaskGeneratePreview, NewPreviewHandler())
-	q.RegisterHandler(TaskMetadataScrape, NewMetadataScrapeHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, notifier))
+	q.RegisterHandler(TaskMetadataScrape, NewMetadataScrapeHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))
 	q.RegisterHandler(TaskMetadataRefresh, NewMetadataRefreshHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))
 
 	// Ignore unused import

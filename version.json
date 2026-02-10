@@ -1,6 +1,6 @@
 {
-  "version": "0.37.1",
+  "version": "0.38.0",
   "phase": 3,
   "released": "2026-02-10",
-  "notes": "Fix: wire nfo_import, nfo_export, prefer_local_artwork into library repository and API; add UI toggles to library create/edit forms"
+  "notes": "Wire metadata refresh and auto-match to new per-field lock system; add lock-aware clear, extended metadata, credits, fanart.tv enrichment to both handlers"
 }

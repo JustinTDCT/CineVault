@@ -1382,6 +1382,14 @@ func (s *Scanner) enrichNonTMDBDetails(itemID uuid.UUID, match *models.MetadataM
 	}
 }
 
+// EnrichMatchedItem is the exported entry-point for extended metadata enrichment.
+// It fetches TMDB details (content rating, tagline, language, country, trailer),
+// TMDB credits, OMDb ratings, and fanart.tv artwork — all with per-field lock awareness.
+// Used by the metadata refresh handler after a base match is applied.
+func (s *Scanner) EnrichMatchedItem(itemID uuid.UUID, tmdbExternalID string, mediaType models.MediaType, lockedFields pq.StringArray) {
+	s.enrichWithDetails(itemID, tmdbExternalID, mediaType, lockedFields)
+}
+
 // enrichWithDetails fetches TMDB details, creates genre tags, fetches OMDb ratings, and populates cast.
 // lockedFields is passed through to respect per-field metadata locks.
 func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, mediaType models.MediaType, lockedFields pq.StringArray) {

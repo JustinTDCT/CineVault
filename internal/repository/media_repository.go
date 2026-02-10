@@ -822,6 +822,38 @@ func (r *MediaRepository) ClearItemMetadata(id uuid.UUID, fileTitle string) erro
 	return err
 }
 
+// ClearItemMetadataWithLocks resets enriched metadata fields but preserves any
+// per-field locked values. Extended metadata fields (tagline, language, etc.)
+// are also cleared unless locked.
+func (r *MediaRepository) ClearItemMetadataWithLocks(id uuid.UUID, fileTitle string, lockedFields pq.StringArray) error {
+	query := `UPDATE media_items SET
+		title = CASE WHEN $3::text[] IS NOT NULL AND ('title' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN title ELSE $1 END,
+		sort_title = CASE WHEN $3::text[] IS NOT NULL AND ('title' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN sort_title ELSE NULL END,
+		original_title = CASE WHEN $3::text[] IS NOT NULL AND ('title' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN original_title ELSE NULL END,
+		description = CASE WHEN $3::text[] IS NOT NULL AND ('description' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN description ELSE NULL END,
+		year = CASE WHEN $3::text[] IS NOT NULL AND ('year' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN year ELSE NULL END,
+		release_date = CASE WHEN $3::text[] IS NOT NULL AND ('year' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN release_date ELSE NULL END,
+		rating = CASE WHEN $3::text[] IS NOT NULL AND ('rating' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN rating ELSE NULL END,
+		poster_path = CASE WHEN $3::text[] IS NOT NULL AND ('poster_path' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN poster_path ELSE NULL END,
+		thumbnail_path = CASE WHEN $3::text[] IS NOT NULL AND ('poster_path' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN thumbnail_path ELSE NULL END,
+		backdrop_path = CASE WHEN $3::text[] IS NOT NULL AND ('backdrop_path' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN backdrop_path ELSE NULL END,
+		generated_poster = CASE WHEN $3::text[] IS NOT NULL AND ('poster_path' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN generated_poster ELSE false END,
+		imdb_rating = CASE WHEN $3::text[] IS NOT NULL AND ('imdb_rating' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN imdb_rating ELSE NULL END,
+		rt_rating = CASE WHEN $3::text[] IS NOT NULL AND ('rt_rating' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN rt_rating ELSE NULL END,
+		audience_score = CASE WHEN $3::text[] IS NOT NULL AND ('audience_score' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN audience_score ELSE NULL END,
+		content_rating = CASE WHEN $3::text[] IS NOT NULL AND ('content_rating' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN content_rating ELSE NULL END,
+		external_ids = CASE WHEN $3::text[] IS NOT NULL AND ('external_ids' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN external_ids ELSE NULL END,
+		tagline = CASE WHEN $3::text[] IS NOT NULL AND ('tagline' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN tagline ELSE NULL END,
+		original_language = CASE WHEN $3::text[] IS NOT NULL AND ('original_language' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN original_language ELSE NULL END,
+		country = CASE WHEN $3::text[] IS NOT NULL AND ('country' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN country ELSE NULL END,
+		trailer_url = CASE WHEN $3::text[] IS NOT NULL AND ('trailer_url' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN trailer_url ELSE NULL END,
+		logo_path = CASE WHEN $3::text[] IS NOT NULL AND ('logo_path' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN logo_path ELSE NULL END,
+		updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2`
+	_, err := r.db.Exec(query, fileTitle, id, lockedFields)
+	return err
+}
+
 // RemoveAllMediaTags removes all tag links for a media item.
 func (r *MediaRepository) RemoveAllMediaTags(id uuid.UUID) error {
 	_, err := r.db.Exec(`DELETE FROM media_tags WHERE media_item_id = $1`, id)
