@@ -207,11 +207,11 @@ Before any title cleaning, filenames are scanned for embedded provider IDs in br
 
 | Pattern | Example | Result |
 |---|---|---|
-| `[tmdbid=12345]` | `Movie [tmdbid=550].mkv` | TMDB ID 550 |
-| `[imdbid=tt1234567]` | `Movie [imdbid=tt0133093].mkv` | IMDB ID tt0133093 |
-| `[tvdbid=12345]` | `Show [tvdbid=73255].mkv` | TVDB ID 73255 |
+| `[tmdbid=12345]` or `[tmdbid-12345]` | `Movie [tmdbid=550].mkv` | TMDB ID 550 |
+| `[imdbid=tt1234567]` or `[imdbid-tt1234567]` | `Movie [imdbid=tt0133093].mkv` | IMDB ID tt0133093 |
+| `[tvdbid=12345]` or `[tvdbid-12345]` | `Show [tvdbid=73255].mkv` | TVDB ID 73255 |
 
-When a TMDB ID is found, the scanner performs a **direct TMDB lookup** by ID, bypassing both the cache server and fuzzy title matching entirely. The brackets are stripped from the title before further parsing.
+Both `=` and `-` separators are accepted. When a TMDB ID is found, the scanner performs a **direct TMDB lookup** by ID, bypassing both the cache server and fuzzy title matching entirely. The brackets are stripped from the title before further parsing.
 
 ### Step 5: NFO Sidecar Detection
 
@@ -243,10 +243,10 @@ When `prefer_local_artwork` is enabled on a library, the scanner checks for artw
 **Movie/episode artwork** (searched next to the media file):
 | Type | Names checked |
 |---|---|
-| Poster | `poster`, `cover`, `folder`, `<filename>-poster` |
-| Backdrop | `backdrop`, `fanart`, `background`, `<filename>-fanart` |
-| Logo | `logo`, `clearlogo` |
-| Banner | `banner` |
+| Poster | `poster`, `movie-poster`, `cover`, `folder`, `<filename>-poster` |
+| Backdrop | `backdrop`, `fanart`, `background`, `<filename>-fanart`, `<filename>-backdrop` |
+| Logo | `logo`, `clearlogo`, `<filename>-logo` |
+| Banner | `banner`, `<filename>-banner` |
 | Thumbnail | `<filename>-thumb` |
 
 **TV show artwork** (searched in the show root directory):

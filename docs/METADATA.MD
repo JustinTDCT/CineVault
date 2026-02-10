@@ -159,13 +159,36 @@ For each new media file:
   9. Contribute result to cache server (background, helps other instances)
 ```
 
-### During Re-Enrichment
+### During Re-Enrichment (Automatic — runs after scan)
 
-Library re-enrichment follows the same cache-first flow but focuses on filling gaps:
+Library re-enrichment runs automatically at the end of a scan for existing items. It focuses on **filling gaps** without clearing existing data:
 - Replaces generated screenshot posters with TMDB posters
 - Adds missing genres, ratings, cast/crew
 - Applies extended metadata (tagline, country, trailer, etc.)
 - Creates auto-collections from TMDB collection data
+- Skips items that are fully locked (`metadata_locked`, `locked_fields = ["*"]`)
+- All updates respect per-field locks
+
+### During Metadata Refresh (User-Triggered)
+
+Metadata refresh (`POST /libraries/{id}/refresh-metadata`) is a **destructive re-fetch**: it clears all existing metadata for unlocked items, then re-queries all sources from scratch.
+
+```
+For each item in the library:
+  1. Skip fully locked items (metadata_locked or locked_fields = ["*"])
+  2. Clear all metadata fields (respects per-field locks — locked values preserved)
+  3. Remove genre tags and performer links (unless those fields are locked)
+  4. Re-query cache server or direct scrapers
+  5. Apply metadata using lock-aware methods
+  6. Apply extended metadata, genres, credits, artwork from cache or TMDB enrichment
+  7. If no match found: generate screenshot poster as fallback
+```
+
+This is different from re-enrichment, which only fills gaps. Refresh is intended for cases where metadata needs to be corrected or updated from scratch.
+
+### During Auto-Match (User-Triggered)
+
+Auto-match (`POST /libraries/{id}/auto-match`) searches for metadata for unlocked items that may not have been matched yet. It uses the same cache-first flow as the initial scan but operates on existing items. All updates respect per-field locks.
 
 ### During Manual Match
 
@@ -208,7 +231,7 @@ Non-TMDB sources use their own ID keys:
 - `musicbrainz_id` — MusicBrainz release ID
 - `openlibrary_id` — OpenLibrary work key
 
-The `cache_server` flag indicates whether the metadata was sourced from the cache server or fetched directly.
+The `cache_server` flag indicates whether the metadata was sourced from the cache server or fetched directly. Note: `tvdb_id` is populated from cache server results or TMDB external IDs; it is not available from direct title matching alone.
 
 ---
 
@@ -266,8 +289,9 @@ This works from both the cache server path and direct TMDB path.
 
 ### Per-Library Settings
 
-| Setting | Description |
-|---|---|
-| `nfo_import` | Read Kodi-compatible NFO files during scan |
-| `nfo_export` | Write NFO files after metadata is resolved |
-| `prefer_local_artwork` | Use local artwork files over downloaded artwork |
+| Setting | Default | Description |
+|---|---|---|
+| `retrieve_metadata` | `true` | Enable automatic metadata retrieval from external sources on scan |
+| `nfo_import` | `false` | Read Kodi-compatible NFO files during scan |
+| `nfo_export` | `false` | Write NFO files after metadata is resolved |
+| `prefer_local_artwork` | `true` | Use local artwork files over downloaded artwork |
