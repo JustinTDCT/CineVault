@@ -591,6 +591,14 @@
         .edition-tab-default { background: rgba(168,85,247,0.25); color: #d4a5ff; padding: 2px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 600; }
         .edition-tab-play { background: none; border: 1px solid rgba(0,217,255,0.4); color: #00D9FF; padding: 3px 12px; border-radius: 6px; font-size: 0.78rem; cursor: pointer; transition: all 0.2s; }
         .edition-tab-play:hover { background: rgba(0,217,255,0.15); }
+        /* ── Metadata Tab ── */
+        .metadata-ids-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 8px; }
+        .metadata-ids-table th { text-align: left; color: #5a6a7f; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); font-weight: 600; }
+        .metadata-ids-table td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); color: #c5d0dc; }
+        .metadata-ids-table tr:hover td { background: rgba(0,217,255,0.04); }
+        .metadata-ids-service { color: #8a9bae; font-weight: 500; width: 140px; }
+        .metadata-ids-link { color: #00D9FF; text-decoration: none; font-family: monospace; font-size: 0.82rem; }
+        .metadata-ids-link:hover { text-decoration: underline; }
         /* ── Parent Movie Search ── */
         .parent-search-wrap { position: relative; }
         .parent-search-results {
@@ -2217,6 +2225,7 @@
                         <button class="detail-tab" onclick="showDetailTab(this,'cast','${m.id}')">Cast</button>
                         <button class="detail-tab" onclick="showDetailTab(this,'tags-tab','${m.id}')">Tags</button>
                         ${m.edition_count > 1 ? '<button class="detail-tab" onclick="showDetailTab(this,\'editions\',\''+m.id+'\')">Editions</button>' : ''}
+                        <button class="detail-tab" onclick="showDetailTab(this,'metadata','${m.id}')">Metadata</button>
                         <button class="detail-tab" onclick="showDetailTab(this,'file','${m.id}')">File</button>
                     </div>
                     <div class="detail-tab-content" id="detailTabContent">
@@ -2303,6 +2312,51 @@
                     </table>`;
             } else {
                 tc.innerHTML = '<p style="color:#5a6a7f;">No editions found</p>';
+            }
+        } else if (tab === 'metadata') {
+            tc.innerHTML = '<div class="spinner"></div>';
+            const data = await api('GET', '/media/' + mediaId);
+            if (data.success) {
+                const m = data.data;
+                let ids = null;
+                try { if (m.external_ids) ids = JSON.parse(m.external_ids); } catch(e) {}
+
+                let html = '<div style="margin-bottom:16px;">';
+                // Cache server badge
+                if (ids && ids.cache_server) {
+                    html += '<span class="tag" style="background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.3);margin-right:8px;">Cache Server</span>';
+                } else {
+                    html += '<span class="tag" style="background:rgba(100,116,139,0.15);color:#94a3b8;border:1px solid rgba(100,116,139,0.2);margin-right:8px;">Direct API</span>';
+                }
+                // Source badge
+                if (ids && ids.source) {
+                    const srcLabel = {tmdb:'TMDB',porndb:'ThePornDB',musicbrainz:'MusicBrainz',openlibrary:'OpenLibrary'}[ids.source] || ids.source;
+                    html += '<span class="tag tag-cyan">Source: ' + srcLabel + '</span>';
+                }
+                html += '</div>';
+
+                // External IDs table
+                const idRows = [];
+                if (ids) {
+                    if (ids.tmdb_id) idRows.push({name:'TMDB', id:ids.tmdb_id, url:'https://www.themoviedb.org/movie/'+ids.tmdb_id});
+                    if (ids.imdb_id) idRows.push({name:'IMDB', id:ids.imdb_id, url:'https://www.imdb.com/title/'+ids.imdb_id+'/'});
+                    if (ids.tpdb_id) idRows.push({name:'ThePornDB', id:ids.tpdb_id, url:'https://theporndb.net/movies/'+ids.tpdb_id});
+                    if (ids.musicbrainz_id) idRows.push({name:'MusicBrainz', id:ids.musicbrainz_id, url:'https://musicbrainz.org/release/'+ids.musicbrainz_id});
+                    if (ids.openlibrary_id) idRows.push({name:'OpenLibrary', id:ids.openlibrary_id, url:'https://openlibrary.org/works/'+ids.openlibrary_id});
+                }
+
+                if (idRows.length > 0) {
+                    html += '<table class="metadata-ids-table">';
+                    html += '<thead><tr><th>Service</th><th>External ID</th></tr></thead><tbody>';
+                    idRows.forEach(r => {
+                        html += '<tr><td class="metadata-ids-service">' + r.name + '</td>';
+                        html += '<td><a href="' + r.url + '" target="_blank" rel="noopener" class="metadata-ids-link">' + r.id + '</a></td></tr>';
+                    });
+                    html += '</tbody></table>';
+                } else {
+                    html += '<p style="color:#5a6a7f;margin-top:12px;">No external IDs stored. Run a metadata refresh or identify this item to populate.</p>';
+                }
+                tc.innerHTML = html;
             }
         } else if (tab === 'file') {
             tc.innerHTML = '<p style="color:#5a6a7f;">Loading file info...</p>';

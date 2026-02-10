@@ -53,6 +53,9 @@ type cacheEntry struct {
 	CastCrew        *string  `json:"cast_crew,omitempty"`
 	ContentRating   *string  `json:"content_rating,omitempty"`
 	Runtime         *int     `json:"runtime,omitempty"`
+	// Source tracking
+	Source     string  `json:"source,omitempty"`
+	ExternalID *string `json:"external_id,omitempty"`
 	// Multi-source aggregated arrays
 	PosterURLs   *string `json:"poster_urls,omitempty"`
 	BackdropURLs *string `json:"backdrop_urls,omitempty"`
@@ -111,6 +114,9 @@ type CacheLookupResult struct {
 
 	// Runtime in minutes from cache
 	Runtime *int
+
+	// ExternalIDsJSON is a ready-to-store JSON string of all external source IDs
+	ExternalIDsJSON *string
 }
 
 // ── Lookup ──
@@ -240,7 +246,78 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 		}
 	}
 
+	// Build external IDs JSON for storage
+	result.ExternalIDsJSON = buildExternalIDsJSON(entry, true)
+
 	return result
+}
+
+// ── External ID helpers ──
+
+// buildExternalIDsJSON constructs a JSON string of all external source IDs from a cache entry.
+func buildExternalIDsJSON(entry *cacheEntry, cacheServer bool) *string {
+	ids := map[string]interface{}{
+		"source":       entry.Source,
+		"cache_server": cacheServer,
+	}
+	if entry.TMDBID != 0 {
+		ids["tmdb_id"] = fmt.Sprintf("%d", entry.TMDBID)
+	}
+	if entry.IMDBID != nil && *entry.IMDBID != "" {
+		ids["imdb_id"] = *entry.IMDBID
+	}
+	// The external_id field holds the source-specific ID (PornDB scene ID, MusicBrainz UUID, etc.)
+	if entry.ExternalID != nil && *entry.ExternalID != "" {
+		// Map source to a named key
+		switch entry.Source {
+		case "porndb":
+			ids["tpdb_id"] = *entry.ExternalID
+		case "musicbrainz":
+			ids["musicbrainz_id"] = *entry.ExternalID
+		case "openlibrary":
+			ids["openlibrary_id"] = *entry.ExternalID
+		default:
+			if entry.TMDBID != 0 {
+				ids["tmdb_id"] = *entry.ExternalID
+			}
+		}
+	}
+	data, err := json.Marshal(ids)
+	if err != nil {
+		return nil
+	}
+	s := string(data)
+	return &s
+}
+
+// BuildExternalIDsFromMatch constructs a JSON string of external IDs from a MetadataMatch
+// (used when metadata is applied via direct scrapers, not the cache server).
+func BuildExternalIDsFromMatch(source, externalID, imdbID string, cacheServer bool) *string {
+	ids := map[string]interface{}{
+		"source":       source,
+		"cache_server": cacheServer,
+	}
+	if externalID != "" {
+		switch source {
+		case "tmdb":
+			ids["tmdb_id"] = externalID
+		case "porndb":
+			ids["tpdb_id"] = externalID
+		case "musicbrainz":
+			ids["musicbrainz_id"] = externalID
+		case "openlibrary":
+			ids["openlibrary_id"] = externalID
+		}
+	}
+	if imdbID != "" {
+		ids["imdb_id"] = imdbID
+	}
+	data, err := json.Marshal(ids)
+	if err != nil {
+		return nil
+	}
+	s := string(data)
+	return &s
 }
 
 // ── Multi-source helpers ──

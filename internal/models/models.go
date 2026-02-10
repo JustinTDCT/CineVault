@@ -160,6 +160,7 @@ type MediaItem struct {
 	AudienceScore    *int       `json:"audience_score,omitempty" db:"audience_score"`
 	EditionType      string     `json:"edition_type" db:"edition_type"`
 	ContentRating    *string    `json:"content_rating,omitempty" db:"content_rating"`
+	ExternalIDs      *string    `json:"external_ids,omitempty" db:"external_ids"`
 	GeneratedPoster  bool       `json:"generated_poster" db:"generated_poster"`
 	MetadataLocked   bool       `json:"metadata_locked" db:"metadata_locked"`
 	DuplicateStatus  string     `json:"duplicate_status" db:"duplicate_status"`

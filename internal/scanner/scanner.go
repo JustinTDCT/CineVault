@@ -444,6 +444,11 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 					}
 				}
 			}
+
+			// Store external IDs from cache
+			if result.ExternalIDsJSON != nil {
+				_ = s.mediaRepo.UpdateExternalIDs(item.ID, *result.ExternalIDsJSON)
+			}
 			return
 		}
 	}
@@ -497,6 +502,12 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 	// Populate cast/crew from the credits already fetched
 	if s.performerRepo != nil && combined.Credits != nil {
 		s.enrichWithCredits(item.ID, combined.Credits)
+	}
+
+	// Store external IDs from direct TMDB match
+	idsJSON := metadata.BuildExternalIDsFromMatch("tmdb", match.ExternalID, combined.Details.IMDBId, false)
+	if idsJSON != nil {
+		_ = s.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
 	}
 
 	// Contribute to cache server with cast/crew and ratings
@@ -902,6 +913,12 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		s.enrichNonTMDBDetails(item.ID, match)
 	}
 
+	// Store external IDs from direct match
+	idsJSON := metadata.BuildExternalIDsFromMatch(match.Source, match.ExternalID, match.IMDBId, false)
+	if idsJSON != nil {
+		_ = s.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
+	}
+
 	// Contribute to cache server in background (all sources)
 	if cacheClient != nil {
 		go cacheClient.Contribute(match)
@@ -979,6 +996,11 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 				}
 			}
 		}
+	}
+
+	// Store external IDs from cache
+	if result.ExternalIDsJSON != nil {
+		_ = s.mediaRepo.UpdateExternalIDs(item.ID, *result.ExternalIDsJSON)
 	}
 }
 

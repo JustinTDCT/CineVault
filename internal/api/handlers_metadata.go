@@ -296,6 +296,17 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Store external IDs
+	usedCache := cacheResult != nil && cacheResult.Match != nil
+	if usedCache && cacheResult.ExternalIDsJSON != nil {
+		_ = s.mediaRepo.UpdateExternalIDs(mediaID, *cacheResult.ExternalIDsJSON)
+	} else {
+		idsJSON := metadata.BuildExternalIDsFromMatch(req.Source, req.ExternalID, imdbID, false)
+		if idsJSON != nil {
+			_ = s.mediaRepo.UpdateExternalIDs(mediaID, *idsJSON)
+		}
+	}
+
 	s.respondJSON(w, http.StatusOK, Response{Success: true})
 }
 

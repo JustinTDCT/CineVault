@@ -454,6 +454,10 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 					if result.Ratings != nil {
 						_ = h.mediaRepo.UpdateRatings(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore)
 					}
+					// Store external IDs from cache
+					if result.ExternalIDsJSON != nil {
+						_ = h.mediaRepo.UpdateExternalIDs(item.ID, *result.ExternalIDsJSON)
+					}
 					updated++
 				}
 				// No delay needed for cache hits — it's our own server
@@ -529,6 +533,12 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			if omdbErr == nil {
 				_ = h.mediaRepo.UpdateRatings(item.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore)
 			}
+		}
+
+		// Store external IDs from direct match
+		idsJSON := metadata.BuildExternalIDsFromMatch(best.Source, best.ExternalID, best.IMDBId, false)
+		if idsJSON != nil {
+			_ = h.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
 		}
 
 		// Contribute to cache in background (all sources)

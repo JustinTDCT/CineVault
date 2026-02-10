@@ -38,7 +38,7 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	author_id, book_id, chapter_number,
 	image_gallery_id, sister_group_id,
 	imdb_rating, rt_rating, audience_score,
-	edition_type, content_rating, sort_position, generated_poster, metadata_locked, duplicate_status, added_at, updated_at`
+	edition_type, content_rating, sort_position, external_ids, generated_poster, metadata_locked, duplicate_status, added_at, updated_at`
 
 // prefixedMediaColumns returns mediaColumns with each column prefixed by the given alias (e.g. "m.").
 func prefixedMediaColumns(prefix string) string {
@@ -64,7 +64,7 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.AuthorID, &item.BookID, &item.ChapterNumber,
 		&item.ImageGalleryID, &item.SisterGroupID,
 		&item.IMDBRating, &item.RTRating, &item.AudienceScore,
-		&item.EditionType, &item.ContentRating, &item.SortPosition, &item.GeneratedPoster, &item.MetadataLocked, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
+		&item.EditionType, &item.ContentRating, &item.SortPosition, &item.ExternalIDs, &item.GeneratedPoster, &item.MetadataLocked, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
 }
@@ -491,6 +491,12 @@ func (r *MediaRepository) UpdatePosterPath(id uuid.UUID, posterPath string) erro
 // SetGeneratedPoster marks a media item's poster as generated from a video screenshot.
 func (r *MediaRepository) SetGeneratedPoster(id uuid.UUID, generated bool) error {
 	_, err := r.db.Exec(`UPDATE media_items SET generated_poster = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, generated, id)
+	return err
+}
+
+// UpdateExternalIDs stores the external source IDs JSON for a media item.
+func (r *MediaRepository) UpdateExternalIDs(id uuid.UUID, externalIDsJSON string) error {
+	_, err := r.db.Exec(`UPDATE media_items SET external_ids = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, externalIDsJSON, id)
 	return err
 }
 
