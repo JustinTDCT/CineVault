@@ -66,22 +66,14 @@ var imageExtensions = map[string]bool{
 	".webp": true, ".bmp": true, ".tiff": true, ".tif": true,
 }
 
-// TV episode regex patterns
+// TV episode regex patterns (used by parseTVInfo for path-based detection)
 var tvPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(.+?)[.\s_-]+S(\d{1,2})E(\d{1,3})`),           // Show.S01E02
 	regexp.MustCompile(`(?i)(.+?)[.\s_-]+(\d{1,2})x(\d{1,3})`),            // Show.1x02
 	regexp.MustCompile(`(?i)(.+?)[/\\]Season\s*(\d{1,2})[/\\].*E(\d{1,3})`), // Show/Season 1/E02
+	regexp.MustCompile(`(?i)(.+?)[.\s_-]+[Ss](?:eason)?\s*(\d{1,2})\s*[Ee](?:pisode)?\s*(\d{1,3})`), // Season 1 Episode 2
+	regexp.MustCompile(`(?i)(.+?)[.\s_-]+[Ee](?:pisode)?\s*(\d{1,3})`), // Episode 2 (no season)
 }
-
-// Year extraction patterns for filenames
-var yearPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`\((\d{4})\)`),          // Movie Title (2020)
-	regexp.MustCompile(`\[(\d{4})\]`),          // Movie Title [2020]
-	regexp.MustCompile(`[.\s_-](\d{4})[.\s_-]`), // Movie.Title.2020.1080p
-}
-
-// Edition extraction pattern: {edition-XXX} (Radarr/Sonarr convention)
-var editionPattern = regexp.MustCompile(`(?i)\{edition-([^}]+)\}`)
 
 func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepository,
 	tvRepo *repository.TVRepository, musicRepo *repository.MusicRepository,
@@ -159,6 +151,13 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 			if !s.isValidExtension(library.MediaType, ext) {
 				return nil
 			}
+
+			// Skip extras/samples/trailers (Jellyfin/Plex-style filtering)
+			if extraType := IsExtraFile(path, info.Size()); extraType != "" {
+				log.Printf("Skipping extra (%s): %s", extraType, info.Name())
+				return nil
+			}
+
 			result.FilesFound++
 			processed++
 
@@ -184,6 +183,13 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 
 			// Parse filename based on media type to pre-fill metadata
 			parsed := s.parseFilename(info.Name(), library.MediaType)
+
+			// Check for NFO sidecar with IMDB ID (Plex-style direct matching)
+			nfoIMDB := ReadNFOIMDBID(path)
+			if nfoIMDB != "" {
+				parsed.IMDBID = nfoIMDB
+				log.Printf("NFO sidecar: found %s for %s", nfoIMDB, info.Name())
+			}
 
 			// Create media item with parsed metadata
 			item := &models.MediaItem{
@@ -792,36 +798,6 @@ func (s *Scanner) cleanShowName(name string) string {
 	name = regexp.MustCompile(`\s*[\(\[]\d{4}[\)\]]\s*$`).ReplaceAllString(name, "")
 	name = strings.TrimSpace(name)
 	return name
-}
-
-func (s *Scanner) titleFromFilename(filename string) string {
-	ext := filepath.Ext(filename)
-	name := strings.TrimSuffix(filename, ext)
-	name = strings.ReplaceAll(name, ".", " ")
-	name = strings.ReplaceAll(name, "_", " ")
-
-	// Strip edition tags: {edition-Remastered} etc.
-	name = regexp.MustCompile(`\{[^}]*\}`).ReplaceAllString(name, "")
-	// Strip year in parens/brackets: "Title - (2020)" → "Title -"
-	name = regexp.MustCompile(`[\(\[\{]\d{4}[\)\]\}]`).ReplaceAllString(name, "")
-	// Strip anything in square brackets: "[Bluray-1080p x265]" etc.
-	name = regexp.MustCompile(`\[.*?\]`).ReplaceAllString(name, "")
-	// Strip resolution, codec, and release junk tokens
-	name = regexp.MustCompile(`(?i)\b(1080p|720p|480p|2160p|4k|uhd|bluray|blu-ray|brrip|bdrip|dvdrip|webrip|web-dl|webdl|hdtv|hdrip|x264|x265|h264|h265|hevc|aac|ac3|dts|atmos|remux|proper|repack|extended|unrated|directors cut|dc)\b`).ReplaceAllString(name, "")
-	// Strip trailing dash/whitespace separator: "Title -  " → "Title"
-	name = regexp.MustCompile(`\s*-\s*$`).ReplaceAllString(name, "")
-	// Collapse multiple spaces
-	name = regexp.MustCompile(`\s+`).ReplaceAllString(name, " ")
-	return strings.TrimSpace(name)
-}
-
-// extractEdition parses {edition-XXX} from a filename. Returns "Theatrical" if none found.
-func (s *Scanner) extractEdition(filename string) string {
-	matches := editionPattern.FindStringSubmatch(filename)
-	if len(matches) >= 2 {
-		return strings.TrimSpace(matches[1])
-	}
-	return "Theatrical"
 }
 
 // ──────────────────── Auto Metadata Population ────────────────────
@@ -1533,15 +1509,20 @@ func (s *Scanner) populateEpisodeMetadata(showID uuid.UUID, show *models.TVShow)
 	s.pendingEpisodeMeta[showID] = match.ExternalID
 }
 
-// extractYear tries to find a 4-digit year in a filename.
+// extractYear tries to find a 4-digit year in a filename using the improved patterns.
 func (s *Scanner) extractYear(filename string) *int {
-	for _, pattern := range yearPatterns {
-		matches := pattern.FindStringSubmatch(filename)
-		if len(matches) >= 2 {
-			year, err := strconv.Atoi(matches[1])
-			if err == nil && year >= 1900 && year <= 2100 {
-				return &year
-			}
+	// Try parens/brackets first: (2020) or [2020]
+	if m := yearInParensRx.FindStringSubmatch(filename); len(m) >= 2 {
+		year, err := strconv.Atoi(m[1])
+		if err == nil && year >= 1900 && year <= 2100 {
+			return &year
+		}
+	}
+	// Try delimited: .2020. -2020-
+	if m := yearRx.FindStringSubmatch(filename); len(m) >= 2 {
+		year, err := strconv.Atoi(m[1])
+		if err == nil && year >= 1900 && year <= 2100 {
+			return &year
 		}
 	}
 	return nil

@@ -959,10 +959,16 @@ func removeExistingPosters(dir, filename string) error {
 	pattern := filepath.Join(dir, base+"*"+ext)
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
+		log.Printf("removeExistingPosters: glob error for pattern %s: %v", pattern, err)
 		return err
 	}
+	log.Printf("removeExistingPosters: pattern=%s found %d files", pattern, len(matches))
 	for _, m := range matches {
-		_ = os.Remove(m)
+		if err := os.Remove(m); err != nil {
+			log.Printf("removeExistingPosters: failed to delete %s: %v", m, err)
+		} else {
+			log.Printf("removeExistingPosters: deleted %s", filepath.Base(m))
+		}
 	}
 	return nil
 }

@@ -1,6 +1,6 @@
 {
-  "version": "0.34.0",
+  "version": "0.35.0",
   "phase": 3,
   "released": "2026-02-10",
-  "notes": "Library metadata refresh — clears and re-queries all unlocked items, generates screenshot poster on no match"
+  "notes": "Hybrid file parser — Plex/Jellyfin-inspired token-based cleaning, multi-pattern TV detection, extras filtering, NFO sidecar support"
 }

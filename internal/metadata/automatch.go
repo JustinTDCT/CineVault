@@ -112,55 +112,84 @@ func ShouldAutoMatch(mediaType models.MediaType) bool {
 }
 
 // CleanTitleForSearch strips common junk from titles to improve search accuracy.
-// Removes resolution tags, codec info, release group names, and year in brackets.
+// Uses comprehensive token-based cleaning inspired by Plex/Jellyfin.
 func CleanTitleForSearch(title string) string {
-	junkPatterns := regexp.MustCompile(`(?i)\b(1080p|720p|480p|2160p|4k|uhd|bluray|blu-ray|brrip|bdrip|dvdrip|webrip|web-dl|webdl|hdtv|hdrip|x264|x265|h264|h265|hevc|aac|ac3|dts|atmos|remux|proper|repack|extended|unrated|directors cut|dc)\b`)
-	cleaned := junkPatterns.ReplaceAllString(title, "")
-	cleaned = regexp.MustCompile(`[\(\[\{]\d{4}[\)\]\}]`).ReplaceAllString(cleaned, "")
-	cleaned = regexp.MustCompile(`\[.*?\]`).ReplaceAllString(cleaned, "")
-	cleaned = regexp.MustCompile(`-\w+$`).ReplaceAllString(cleaned, "")
+	if title == "" {
+		return ""
+	}
+
+	cleaned := title
+
+	// Strip bracketed content: [anything] and {anything}
+	cleaned = regexp.MustCompile(`\{[^}]*\}`).ReplaceAllString(cleaned, " ")
+	cleaned = regexp.MustCompile(`\[[^\]]*\]`).ReplaceAllString(cleaned, " ")
+
+	// Strip year in parens/brackets (we send year separately)
+	cleaned = regexp.MustCompile(`[\(\[\{]\d{4}[\)\]\}]`).ReplaceAllString(cleaned, " ")
+
+	// Comprehensive junk token removal
+	junkRx := regexp.MustCompile(`(?i)\b(` +
+		// Video codecs
+		`x264|x265|h264|h265|h\.264|h\.265|hevc|avc|divx|xvid|10bit|8bit|hi10p|hi10|av1|vp9|mpeg4|` +
+		// Audio codecs
+		`aac|ac3|ac-3|dts|dts-hd|dtshd|dts-x|truehd|atmos|flac|mp3|ogg|vorbis|opus|eac3|` +
+		// Audio channels
+		`dd5\.1|dd2\.0|5\.1ch|7\.1ch|5\.1|7\.1|2\.0|` +
+		// Resolution
+		`480p|480i|576p|576i|720p|720i|1080p|1080i|2160p|4k|uhd|ultrahd|` +
+		// Source
+		`bluray|blu-ray|bdrip|brrip|bdrc|bdremux|hdrip|hddvd|hddvdrip|` +
+		`dvd|dvdrip|dvdscr|dvdscreener|` +
+		`webrip|web-dl|webdl|` +
+		`hdtv|pdtv|dsr|dsrip|stv|tvrip|` +
+		`cam|screener|scr|tc|telecine|telesync|ppv|retail|` +
+		// Release / misc
+		`remux|proper|repack|rerip|internal|limited|custom|` +
+		`extended|unrated|remastered|` +
+		`read\.nfo|readnfo|nfofix|nfo|` +
+		`multi|multisubs|dubbed|subbed|subs|sub|` +
+		`ws|fs|fragment|xxx|` +
+		`directors[\s.]cut|dc|se|special[\s.]edition` +
+		`)\b`)
+	cleaned = junkRx.ReplaceAllString(cleaned, " ")
+
+	// Strip trailing release group: "-GroupName" at end
+	cleaned = regexp.MustCompile(`\s*-\s*\w+\s*$`).ReplaceAllString(cleaned, "")
+	// Strip trailing dashes
+	cleaned = regexp.MustCompile(`\s*[-–]\s*$`).ReplaceAllString(cleaned, "")
+	// Collapse multiple spaces
 	cleaned = regexp.MustCompile(`\s+`).ReplaceAllString(cleaned, " ")
+
 	return strings.TrimSpace(cleaned)
 }
 
 // TitleFromFilename derives a clean display title from a media filename.
-// Strips the extension, replaces dots/underscores with spaces, removes
-// edition tags, year brackets, resolution/codec junk, and collapses whitespace.
+// Uses the same token-based approach as the scanner for consistency.
 func TitleFromFilename(filename string) string {
 	ext := filepath.Ext(filename)
-	name := strings.TrimSuffix(filename, ext)
-	name = strings.ReplaceAll(name, ".", " ")
-	name = strings.ReplaceAll(name, "_", " ")
-	// Strip edition tags: {edition-Remastered} etc.
-	name = regexp.MustCompile(`\{[^}]*\}`).ReplaceAllString(name, "")
-	// Strip year in parens/brackets: "Title - (2020)" → "Title -"
-	name = regexp.MustCompile(`[\(\[\{]\d{4}[\)\]\}]`).ReplaceAllString(name, "")
-	// Strip anything in square brackets: "[Bluray-1080p x265]" etc.
-	name = regexp.MustCompile(`\[.*?\]`).ReplaceAllString(name, "")
-	// Strip resolution, codec, and release junk tokens
-	name = regexp.MustCompile(`(?i)\b(1080p|720p|480p|2160p|4k|uhd|bluray|blu-ray|brrip|bdrip|dvdrip|webrip|web-dl|webdl|hdtv|hdrip|x264|x265|h264|h265|hevc|aac|ac3|dts|atmos|remux|proper|repack|extended|unrated|directors cut|dc)\b`).ReplaceAllString(name, "")
-	// Strip trailing dash/whitespace separator
-	name = regexp.MustCompile(`\s*-\s*$`).ReplaceAllString(name, "")
-	// Collapse multiple spaces
-	name = regexp.MustCompile(`\s+`).ReplaceAllString(name, " ")
-	return strings.TrimSpace(name)
+	baseName := strings.TrimSuffix(filename, ext)
+	return CleanTitleForSearch(baseName)
 }
 
 // YearFromFilename extracts a 4-digit year from a filename.
+// Uses improved patterns with delimiter requirements to avoid false positives.
 func YearFromFilename(filename string) *int {
-	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`\((\d{4})\)`),
-		regexp.MustCompile(`\[(\d{4})\]`),
-		regexp.MustCompile(`[.\s_-](\d{4})[.\s_-]`),
+	// Try parens/brackets first: (2020) or [2020]
+	parensRx := regexp.MustCompile(`[\(\[]([12]\d{3})[\)\]]`)
+	if m := parensRx.FindStringSubmatch(filename); len(m) >= 2 {
+		var y int
+		fmt.Sscanf(m[1], "%d", &y)
+		if y >= 1900 && y <= 2100 {
+			return &y
+		}
 	}
-	for _, p := range patterns {
-		matches := p.FindStringSubmatch(filename)
-		if len(matches) >= 2 {
-			var y int
-			fmt.Sscanf(matches[1], "%d", &y)
-			if y >= 1900 && y <= 2100 {
-				return &y
-			}
+	// Try delimited: .2020. -2020-
+	delimitedRx := regexp.MustCompile(`(?:[\.\-_,\s])([12]\d{3})(?:[\.\-_,+\s]|$)`)
+	if m := delimitedRx.FindStringSubmatch(filename); len(m) >= 2 {
+		var y int
+		fmt.Sscanf(m[1], "%d", &y)
+		if y >= 1900 && y <= 2100 {
+			return &y
 		}
 	}
 	return nil
