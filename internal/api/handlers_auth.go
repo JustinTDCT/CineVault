@@ -39,7 +39,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data: map[string]interface{}{
-			"version":    "0.3.0",
+			"version":    "0.31.0",
 			"phase":      "3",
 			"ws_clients": s.wsHub.ClientCount(),
 		},
@@ -411,6 +411,131 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	user.PasswordHash = ""
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: user})
+}
+
+// ──────────────────── First-Run Setup ────────────────────
+
+type SetupRequest struct {
+	Username  string `json:"username"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	Pin       string `json:"pin"`
+}
+
+// handleSetupCheck returns whether initial setup is needed (no users exist).
+func (s *Server) handleSetupCheck(w http.ResponseWriter, r *http.Request) {
+	count, err := s.userRepo.Count()
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to check setup status")
+		return
+	}
+	s.respondJSON(w, http.StatusOK, Response{
+		Success: true,
+		Data:    map[string]bool{"setup_required": count == 0},
+	})
+}
+
+// handleSetup creates the initial admin user on first run.
+func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
+	// Only allow setup if no users exist
+	count, err := s.userRepo.Count()
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to check setup status")
+		return
+	}
+	if count > 0 {
+		s.respondError(w, http.StatusForbidden, "setup already completed")
+		return
+	}
+
+	var req SetupRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate required fields
+	req.Username = strings.TrimSpace(req.Username)
+	req.FirstName = strings.TrimSpace(req.FirstName)
+	req.LastName = strings.TrimSpace(req.LastName)
+	req.Email = strings.TrimSpace(req.Email)
+	req.Pin = strings.TrimSpace(req.Pin)
+
+	if req.Username == "" || req.Email == "" || req.Password == "" {
+		s.respondError(w, http.StatusBadRequest, "username, email, and password are required")
+		return
+	}
+	if req.FirstName == "" || req.LastName == "" {
+		s.respondError(w, http.StatusBadRequest, "first name and last name are required")
+		return
+	}
+
+	// Hash password
+	hashedPassword, err := s.auth.HashPassword(req.Password)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to hash password")
+		return
+	}
+
+	// Hash PIN if provided
+	var pinHash *string
+	if req.Pin != "" {
+		for _, c := range req.Pin {
+			if !unicode.IsDigit(c) {
+				s.respondError(w, http.StatusBadRequest, "PIN must contain only digits")
+				return
+			}
+		}
+		pinLenStr, _ := s.settingsRepo.Get("fast_login_pin_length")
+		if pinLenStr == "" {
+			pinLenStr = "4"
+		}
+		requiredLen, _ := strconv.Atoi(pinLenStr)
+		if len(req.Pin) != requiredLen {
+			s.respondError(w, http.StatusBadRequest, fmt.Sprintf("PIN must be exactly %d digits", requiredLen))
+			return
+		}
+		h, err := s.auth.HashPassword(req.Pin)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, "failed to hash PIN")
+			return
+		}
+		pinHash = &h
+	}
+
+	displayName := req.FirstName
+	user := &models.User{
+		ID:           uuid.New(),
+		Username:     req.Username,
+		Email:        req.Email,
+		PasswordHash: hashedPassword,
+		PinHash:      pinHash,
+		DisplayName:  &displayName,
+		FirstName:    &req.FirstName,
+		LastName:     &req.LastName,
+		Role:         models.RoleAdmin,
+		IsActive:     true,
+	}
+
+	if err := s.userRepo.Create(user); err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to create admin user")
+		return
+	}
+
+	// Generate token so the user is logged in immediately
+	token, err := s.auth.GenerateToken(user)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to generate token")
+		return
+	}
+
+	user.PasswordHash = ""
+	s.respondJSON(w, http.StatusCreated, Response{
+		Success: true,
+		Data:    LoginResponse{Token: token, User: user},
+	})
 }
 
 // Ensure imports are used

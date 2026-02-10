@@ -1,6 +1,6 @@
 {
-  "version": "0.30.0",
+  "version": "0.31.0",
   "phase": 3,
   "released": "2026-02-09",
-  "notes": "Library sorting — added sort by resolution and length"
+  "notes": "First-run setup wizard — admin account creation on initial install"
 }

@@ -164,6 +164,8 @@ func (s *Server) setupRoutes() {
 	// Public
 	s.router.HandleFunc("GET /health", s.handleHealth)
 	s.router.HandleFunc("GET /api/v1/status", s.handleStatus)
+	s.router.HandleFunc("GET /api/v1/setup/check", s.handleSetupCheck)
+	s.router.HandleFunc("POST /api/v1/setup", s.handleSetup)
 	s.router.HandleFunc("POST /api/v1/auth/register", s.handleRegister)
 	s.router.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
 

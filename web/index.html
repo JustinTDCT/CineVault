@@ -878,6 +878,35 @@
             color: #5a6a7f; font-size: 0.78rem; margin-top: 4px;
         }
 
+        /* ── Setup Wizard ── */
+        .setup-overlay {
+            position: fixed; inset: 0; z-index: 10001;
+            background: linear-gradient(135deg, #0a1929 0%, #1a2332 50%, #0d1b2a 100%);
+            display: none; align-items: center; justify-content: center;
+        }
+        .setup-overlay.active { display: flex; }
+        .setup-card {
+            background: linear-gradient(135deg, rgba(26,35,50,0.95) 0%, rgba(13,27,42,0.98) 100%);
+            border: 1px solid rgba(0,217,255,0.3); border-radius: 24px;
+            padding: 48px 44px 40px; max-width: 520px; width: 92%;
+            box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,217,255,0.15);
+        }
+        .setup-logo {
+            text-align: center; margin-bottom: 8px; font-size: 2.2rem; font-weight: 700;
+            background: linear-gradient(135deg, #00D9FF 0%, #0099CC 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .setup-subtitle {
+            text-align: center; color: #8a9bae; font-size: 0.9rem; margin-bottom: 32px;
+        }
+        .setup-row {
+            display: flex; gap: 14px;
+        }
+        .setup-row .form-group { flex: 1; }
+        .setup-pin-note {
+            color: #5a6a7f; font-size: 0.78rem; margin-top: 4px;
+        }
+
         /* ── Series Modal & View ── */
         .series-modal-overlay {
             position: fixed; inset: 0; z-index: 3100;
@@ -1024,6 +1053,45 @@
                 </div>
             </div>
             <div class="main-content" id="mainContent"></div>
+        </div>
+    </div>
+
+    <!-- Setup Wizard (first run) -->
+    <div class="setup-overlay" id="setupOverlay">
+        <div class="setup-card">
+            <div class="setup-logo">CineVault Setup</div>
+            <div class="setup-subtitle">Create your admin account to get started</div>
+            <div id="setupMessage"></div>
+            <form id="setupForm">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="setupUsername" required autocomplete="username">
+                </div>
+                <div class="setup-row">
+                    <div class="form-group">
+                        <label>First Name</label>
+                        <input type="text" id="setupFirstName" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name</label>
+                        <input type="text" id="setupLastName" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="setupEmail" required autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="setupPassword" required autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>PIN (for fast login)</label>
+                    <input type="text" id="setupPin" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="4-digit PIN">
+                    <div class="setup-pin-note">Numeric only. Used for quick sign-in on shared devices.</div>
+                </div>
+                <button type="submit" class="btn-primary" style="width:100%;margin-top:16px;">Create Admin Account</button>
+            </form>
         </div>
     </div>
 
@@ -1440,6 +1508,16 @@
             loadSidebarCounts();
             connectWS();
         } else {
+            // Check if first-run setup is needed
+            try {
+                const setupRes = await fetch(API + '/setup/check');
+                const setupData = await setupRes.json();
+                if (setupData.success && setupData.data && setupData.data.setup_required) {
+                    document.getElementById('setupOverlay').classList.add('active');
+                    return;
+                }
+            } catch(e) { /* setup check failed, continue to login */ }
+
             try {
                 const res = await fetch(API + '/auth/fast-login/settings');
                 fastLoginConfig = await res.json();
@@ -1634,6 +1712,38 @@
             });
         });
     }
+
+    // ──── Setup Form ────
+    document.getElementById('setupForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const msgDiv = document.getElementById('setupMessage');
+        const body = {
+            username: document.getElementById('setupUsername').value.trim(),
+            first_name: document.getElementById('setupFirstName').value.trim(),
+            last_name: document.getElementById('setupLastName').value.trim(),
+            email: document.getElementById('setupEmail').value.trim(),
+            password: document.getElementById('setupPassword').value,
+            pin: document.getElementById('setupPin').value.trim()
+        };
+        try {
+            const res = await fetch(API + '/setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if (data.success) {
+                localStorage.setItem('token', data.data.token);
+                localStorage.setItem('user', JSON.stringify(data.data.user));
+                document.getElementById('setupOverlay').classList.remove('active');
+                checkAuth();
+            } else {
+                msgDiv.innerHTML = '<div class="message error">' + (data.error || 'Setup failed') + '</div>';
+            }
+        } catch {
+            msgDiv.innerHTML = '<div class="message error">Connection error</div>';
+        }
+    });
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();

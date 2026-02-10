@@ -182,6 +182,12 @@ func (r *UserRepository) UpdatePinHash(id uuid.UUID, pinHash *string) error {
 	return nil
 }
 
+func (r *UserRepository) Count() (int, error) {
+	var count int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&count)
+	return count, err
+}
+
 func (r *UserRepository) Delete(id uuid.UUID) error {
 	query := `DELETE FROM users WHERE id = $1`
 	result, err := r.db.Exec(query, id)
