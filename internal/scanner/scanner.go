@@ -238,12 +238,16 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				EditionType: parsed.Edition,
 			}
 
-			// Pre-fill resolution/container from filename (ffprobe will override if available)
+			// Pre-fill resolution/container/source from filename (ffprobe will override if available)
 			if parsed.Resolution != "" {
 				item.Resolution = &parsed.Resolution
 			}
 			if parsed.Container != "" {
 				item.Container = &parsed.Container
+			}
+			// Persist source type from filename parser (e.g. "bluray", "web", "hdtv")
+			if parsed.Source != "" {
+				item.SourceType = &parsed.Source
 			}
 			// Pre-fill music disc/track numbers
 			if parsed.DiscNumber != nil {
@@ -781,6 +785,14 @@ func (s *Scanner) applyProbeData(item *models.MediaItem, probe *ffmpeg.ProbeResu
 	if ext != "" {
 		item.Container = &ext
 	}
+	// HDR/Dolby Vision detection from ffprobe color metadata
+	hdrFmt := probe.GetHDRFormat()
+	if hdrFmt != "" {
+		item.HDRFormat = &hdrFmt
+		item.DynamicRange = "HDR"
+	} else {
+		item.DynamicRange = "SDR"
+	}
 }
 
 func (s *Scanner) handleTVHierarchy(library *models.Library, item *models.MediaItem, path string, basePath ...string) error {
@@ -1076,6 +1088,19 @@ func (s *Scanner) applyNFOData(item *models.MediaItem, nfo *metadata.NFOData) {
 	// Apply rating from NFO
 	if r := nfo.GetDefaultRating(); r != nil {
 		item.Rating = r
+	}
+	// Apply technical metadata from NFO
+	if nfo.Source != "" {
+		item.SourceType = &nfo.Source
+	}
+	if nfo.HDRFormat != "" {
+		item.HDRFormat = &nfo.HDRFormat
+	}
+	if nfo.DynamicRange != "" {
+		item.DynamicRange = nfo.DynamicRange
+	}
+	if nfo.CustomNotes != "" {
+		item.CustomNotes = &nfo.CustomNotes
 	}
 }
 

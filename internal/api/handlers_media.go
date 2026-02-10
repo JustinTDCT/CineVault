@@ -18,11 +18,13 @@ func parseMediaFilter(r *http.Request) *repository.MediaFilter {
 		Folder:        q.Get("folder"),
 		ContentRating: q.Get("content_rating"),
 		Edition:       q.Get("edition"),
+		Source:        q.Get("source"),
+		DynamicRange:  q.Get("dynamic_range"),
 		Sort:          q.Get("sort"),
 		Order:         q.Get("order"),
 	}
 	// Only return a filter if at least one field is set
-	if f.Genre == "" && f.Folder == "" && f.ContentRating == "" && f.Edition == "" && f.Sort == "" && f.Order == "" {
+	if f.Genre == "" && f.Folder == "" && f.ContentRating == "" && f.Edition == "" && f.Source == "" && f.DynamicRange == "" && f.Sort == "" && f.Order == "" {
 		return nil
 	}
 	return f
@@ -125,6 +127,8 @@ func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 		ReleaseDate   *string  `json:"release_date"`
 		Rating        *float64 `json:"rating"`
 		EditionType   *string  `json:"edition_type"`
+		CustomNotes   *string  `json:"custom_notes"`
+		CustomTags    *string  `json:"custom_tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondError(w, http.StatusBadRequest, "invalid request body")
@@ -138,6 +142,15 @@ func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 	if err := s.mediaRepo.UpdateMediaFields(id, req.Title, req.SortTitle, req.OriginalTitle, req.Description, req.Year, req.ReleaseDate, req.Rating, req.EditionType); err != nil {
 		s.respondError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	// Update custom notes if provided
+	if req.CustomNotes != nil {
+		_ = s.mediaRepo.UpdateCustomNotes(id, req.CustomNotes)
+	}
+	// Update custom tags if provided
+	if req.CustomTags != nil {
+		_ = s.mediaRepo.UpdateCustomTags(id, *req.CustomTags)
 	}
 
 	// Return updated item

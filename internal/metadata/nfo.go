@@ -49,6 +49,14 @@ type NFOData struct {
 	Thumbs  []NFOThumb
 	Fanarts []NFOThumb
 
+	// Technical metadata
+	Source       string // e.g. "bluray", "web", "hdtv"
+	HDRFormat    string // e.g. "HDR10", "Dolby Vision", "HLG"
+	DynamicRange string // "SDR" or "HDR"
+
+	// Power-user annotation
+	CustomNotes string
+
 	// Lock control
 	LockData bool
 
@@ -115,6 +123,10 @@ type xmlMovie struct {
 	Thumbs        []xmlThumb     `xml:"thumb"`
 	Fanart        *xmlFanart     `xml:"fanart"`
 	LockData      string         `xml:"lockdata"`
+	Source        string         `xml:"source"`
+	HDRFormat     string         `xml:"hdrformat"`
+	DynamicRange  string         `xml:"dynamicrange"`
+	CustomNotes   string         `xml:"customnotes"`
 	// Legacy single-ID fields
 	ID            string         `xml:"id"`
 	IMDBId        string         `xml:"imdbid"`
@@ -238,6 +250,10 @@ func ReadMovieNFO(path string) (*NFOData, error) {
 		Directors:     movie.Directors,
 		Writers:       movie.Credits,
 		LockData:      strings.EqualFold(strings.TrimSpace(movie.LockData), "true"),
+		Source:        movie.Source,
+		HDRFormat:     movie.HDRFormat,
+		DynamicRange:  movie.DynamicRange,
+		CustomNotes:   movie.CustomNotes,
 	}
 
 	if y, err := strconv.Atoi(movie.Year); err == nil {
@@ -470,6 +486,19 @@ func WriteMovieNFO(item *models.MediaItem, performers []models.CastMember, genre
 		} else {
 			movie.Actors = append(movie.Actors, a)
 		}
+	}
+
+	if item.SourceType != nil && *item.SourceType != "" {
+		movie.Source = *item.SourceType
+	}
+	if item.HDRFormat != nil && *item.HDRFormat != "" {
+		movie.HDRFormat = *item.HDRFormat
+	}
+	if item.DynamicRange != "" && item.DynamicRange != "SDR" {
+		movie.DynamicRange = item.DynamicRange
+	}
+	if item.CustomNotes != nil && *item.CustomNotes != "" {
+		movie.CustomNotes = *item.CustomNotes
 	}
 
 	if item.MetadataLocked {

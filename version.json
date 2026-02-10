@@ -1,6 +1,6 @@
 {
-  "version": "0.38.0",
+  "version": "0.39.0",
   "phase": 3,
   "released": "2026-02-10",
-  "notes": "Wire metadata refresh and auto-match to new per-field lock system; add lock-aware clear, extended metadata, credits, fanart.tv enrichment to both handlers"
+  "notes": "Add technical metadata persistence (source type, HDR/DV detection, dynamic range), custom notes and tags for power users, library filtering by source and dynamic range"
 }

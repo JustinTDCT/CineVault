@@ -16,6 +16,8 @@ type MediaFilter struct {
 	Folder        string // folder path prefix
 	ContentRating string // e.g. "PG-13"
 	Edition       string // e.g. "Director's Cut"
+	Source        string // e.g. "bluray", "web", "hdtv"
+	DynamicRange  string // "SDR" or "HDR"
 	Sort          string // "title" (default), "year", "resolution", "duration", "rt_rating", "rating", "audience_score"
 	Order         string // "asc" (default), "desc"
 }
@@ -45,7 +47,9 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	author_id, book_id, chapter_number,
 	image_gallery_id, sister_group_id,
 	imdb_rating, rt_rating, audience_score,
-	edition_type, content_rating, sort_position, external_ids, generated_poster, metadata_locked, locked_fields, duplicate_status, added_at, updated_at`
+	edition_type, content_rating, sort_position, external_ids, generated_poster,
+	source_type, hdr_format, dynamic_range, custom_notes, custom_tags,
+	metadata_locked, locked_fields, duplicate_status, added_at, updated_at`
 
 // prefixedMediaColumns returns mediaColumns with each column prefixed by the given alias (e.g. "m.").
 func prefixedMediaColumns(prefix string) string {
@@ -72,7 +76,9 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.AuthorID, &item.BookID, &item.ChapterNumber,
 		&item.ImageGalleryID, &item.SisterGroupID,
 		&item.IMDBRating, &item.RTRating, &item.AudienceScore,
-		&item.EditionType, &item.ContentRating, &item.SortPosition, &item.ExternalIDs, &item.GeneratedPoster, &item.MetadataLocked, &item.LockedFields, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
+		&item.EditionType, &item.ContentRating, &item.SortPosition, &item.ExternalIDs, &item.GeneratedPoster,
+		&item.SourceType, &item.HDRFormat, &item.DynamicRange, &item.CustomNotes, &item.CustomTags,
+		&item.MetadataLocked, &item.LockedFields, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
 }
@@ -88,7 +94,8 @@ func (r *MediaRepository) Create(item *models.MediaItem) error {
 			tv_show_id, tv_season_id, episode_number,
 			artist_id, album_id, track_number, disc_number,
 			author_id, book_id, chapter_number,
-			image_gallery_id, sister_group_id, edition_type, sort_position
+			image_gallery_id, sister_group_id, edition_type, sort_position,
+			source_type, hdr_format, dynamic_range
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
 			$8, $9, $10, $11, $12, $13,
@@ -98,7 +105,8 @@ func (r *MediaRepository) Create(item *models.MediaItem) error {
 			$28, $29, $30,
 			$31, $32, $33, $34,
 			$35, $36, $37,
-			$38, $39, $40, $41
+			$38, $39, $40, $41,
+			$42, $43, $44
 		)
 		RETURNING added_at, updated_at`
 
@@ -114,6 +122,7 @@ func (r *MediaRepository) Create(item *models.MediaItem) error {
 		item.ArtistID, item.AlbumID, item.TrackNumber, item.DiscNumber,
 		item.AuthorID, item.BookID, item.ChapterNumber,
 		item.ImageGalleryID, item.SisterGroupID, item.EditionType, item.SortPosition,
+		item.SourceType, item.HDRFormat, item.DynamicRange,
 	).Scan(&item.AddedAt, &item.UpdatedAt)
 }
 
@@ -164,6 +173,16 @@ func buildFilterClauses(f *MediaFilter, paramStart int) (string, string, string,
 		if f.Edition != "" {
 			wheres = append(wheres, fmt.Sprintf(`m.edition_type = $%d`, p))
 			args = append(args, f.Edition)
+			p++
+		}
+		if f.Source != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.source_type = $%d`, p))
+			args = append(args, f.Source)
+			p++
+		}
+		if f.DynamicRange != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.dynamic_range = $%d`, p))
+			args = append(args, f.DynamicRange)
 			p++
 		}
 	}
@@ -728,6 +747,8 @@ type FilterOptions struct {
 	Folders        []string `json:"folders"`
 	ContentRatings []string `json:"content_ratings"`
 	Editions       []string `json:"editions"`
+	Sources        []string `json:"sources"`
+	DynamicRanges  []string `json:"dynamic_ranges"`
 }
 
 // GetLibraryFilterOptions returns the distinct values available for filtering a library.
@@ -803,6 +824,40 @@ func (r *MediaRepository) GetLibraryFilterOptions(libraryID uuid.UUID) (*FilterO
 		opts.Editions = append(opts.Editions, ed)
 	}
 
+	// Source types
+	srcRows, err := r.db.Query(`
+		SELECT DISTINCT source_type FROM media_items
+		WHERE library_id = $1 AND source_type IS NOT NULL AND source_type != ''
+		ORDER BY source_type`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer srcRows.Close()
+	for srcRows.Next() {
+		var src string
+		if err := srcRows.Scan(&src); err != nil {
+			return nil, err
+		}
+		opts.Sources = append(opts.Sources, src)
+	}
+
+	// Dynamic ranges
+	drRows, err := r.db.Query(`
+		SELECT DISTINCT dynamic_range FROM media_items
+		WHERE library_id = $1 AND dynamic_range IS NOT NULL AND dynamic_range != ''
+		ORDER BY dynamic_range`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer drRows.Close()
+	for drRows.Next() {
+		var dr string
+		if err := drRows.Scan(&dr); err != nil {
+			return nil, err
+		}
+		opts.DynamicRanges = append(opts.DynamicRanges, dr)
+	}
+
 	return opts, nil
 }
 
@@ -848,6 +903,8 @@ func (r *MediaRepository) ClearItemMetadataWithLocks(id uuid.UUID, fileTitle str
 		country = CASE WHEN $3::text[] IS NOT NULL AND ('country' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN country ELSE NULL END,
 		trailer_url = CASE WHEN $3::text[] IS NOT NULL AND ('trailer_url' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN trailer_url ELSE NULL END,
 		logo_path = CASE WHEN $3::text[] IS NOT NULL AND ('logo_path' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN logo_path ELSE NULL END,
+		custom_notes = CASE WHEN $3::text[] IS NOT NULL AND ('custom_notes' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN custom_notes ELSE NULL END,
+		custom_tags = CASE WHEN $3::text[] IS NOT NULL AND ('custom_tags' = ANY($3::text[]) OR '*' = ANY($3::text[])) THEN custom_tags ELSE '{}' END,
 		updated_at = CURRENT_TIMESTAMP
 		WHERE id = $2`
 	_, err := r.db.Exec(query, fileTitle, id, lockedFields)
@@ -885,6 +942,52 @@ func (r *MediaRepository) ListAllByLibrary(libraryID uuid.UUID) ([]*models.Media
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// UpdateTechnicalMetadata sets source type, HDR format, and dynamic range for a media item.
+func (r *MediaRepository) UpdateTechnicalMetadata(id uuid.UUID, sourceType, hdrFormat, dynamicRange *string) error {
+	setClauses := []string{}
+	args := []interface{}{}
+	idx := 1
+
+	if sourceType != nil {
+		setClauses = append(setClauses, fmt.Sprintf("source_type = $%d", idx))
+		args = append(args, *sourceType)
+		idx++
+	}
+	if hdrFormat != nil {
+		setClauses = append(setClauses, fmt.Sprintf("hdr_format = $%d", idx))
+		args = append(args, *hdrFormat)
+		idx++
+	}
+	if dynamicRange != nil {
+		setClauses = append(setClauses, fmt.Sprintf("dynamic_range = $%d", idx))
+		args = append(args, *dynamicRange)
+		idx++
+	}
+
+	if len(setClauses) == 0 {
+		return nil
+	}
+
+	setClauses = append(setClauses, "updated_at = CURRENT_TIMESTAMP")
+	query := fmt.Sprintf("UPDATE media_items SET %s WHERE id = $%d",
+		strings.Join(setClauses, ", "), idx)
+	args = append(args, id)
+	_, err := r.db.Exec(query, args...)
+	return err
+}
+
+// UpdateCustomNotes sets the custom_notes text for a media item.
+func (r *MediaRepository) UpdateCustomNotes(id uuid.UUID, notes *string) error {
+	_, err := r.db.Exec(`UPDATE media_items SET custom_notes = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, notes, id)
+	return err
+}
+
+// UpdateCustomTags sets the custom_tags JSON for a media item.
+func (r *MediaRepository) UpdateCustomTags(id uuid.UUID, tagsJSON string) error {
+	_, err := r.db.Exec(`UPDATE media_items SET custom_tags = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, tagsJSON, id)
+	return err
 }
 
 // PopulateEditionCounts enriches a slice of MediaItems with edition group info.

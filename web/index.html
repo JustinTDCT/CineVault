@@ -398,6 +398,8 @@
         .tag-green { background: rgba(52,199,89,0.15); color: #51cf66; border: 1px solid rgba(52,199,89,0.3); }
         .tag-orange { background: rgba(255,159,64,0.15); color: #ffa94d; border: 1px solid rgba(255,159,64,0.3); }
         .tag-red { background: rgba(255,59,48,0.15); color: #ff6b6b; border: 1px solid rgba(255,59,48,0.3); }
+        .tag-gold { background: rgba(255,215,0,0.15); color: #ffd700; border: 1px solid rgba(255,215,0,0.3); }
+        .tag-blue { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
 
         /* ── Toast ── */
         .toast-container { position: fixed; bottom: 30px; right: 30px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
@@ -1255,6 +1257,14 @@
                     <div class="parent-search-results" id="parentSearchResults"></div>
                 </div>
                 <div id="parentCurrentInfo" style="display:none;"></div>
+            </div>
+            <div class="form-group">
+                <label>Custom Notes</label>
+                <textarea id="editCustomNotes" rows="2" placeholder="Personal notes (e.g. Hybrid remux, AI upscale, etc.)"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Custom Tags <span style="color:#6b7b8d;font-weight:400;font-size:0.78rem;">(comma-separated)</span></label>
+                <input type="text" id="editCustomTags" placeholder="e.g. reference, demo-disc, keeper">
             </div>
             <div id="editSeriesGroup" style="display:none; margin-top:8px;">
                 <div id="editSeriesInfo"></div>
@@ -2255,7 +2265,8 @@
         if (!data.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Media not found</div></div>'; return; }
         const m = data.data;
         const dur = m.duration_seconds ? formatDuration(m.duration_seconds) : '';
-        const meta = [m.year, dur, m.resolution, m.codec].filter(Boolean).join(' \u00b7 ');
+        const hdrTag = m.dynamic_range === 'HDR' ? (m.hdr_format || 'HDR') : '';
+        const meta = [m.year, dur, m.resolution, m.codec, m.source_type, hdrTag].filter(Boolean).join(' \u00b7 ');
 
         // Build ratings row
         let ratingsHTML = '';
@@ -2289,6 +2300,8 @@
                         <span class="tag tag-cyan">${MEDIA_LABELS[m.media_type]||m.media_type}</span>
                         ${m.edition_count > 1 ? '<span class="tag" style="background:rgba(168,85,247,0.3);color:#d4a5ff;">Multiple Editions</span>' : ''}
                         ${m.file_size ? '<span class="tag tag-purple">'+(m.file_size/1024/1024).toFixed(0)+' MB</span>' : ''}
+                        ${m.source_type ? '<span class="tag tag-blue">'+m.source_type.toUpperCase()+'</span>' : ''}
+                        ${m.dynamic_range === 'HDR' ? '<span class="tag tag-gold">'+(m.hdr_format || 'HDR')+'</span>' : ''}
                         ${m.audio_codec ? '<span class="tag tag-green">'+m.audio_codec+'</span>' : ''}
                         ${m.bitrate ? '<span class="tag tag-orange">'+(m.bitrate/1000).toFixed(0)+' kbps</span>' : ''}
                     </div>
@@ -2306,6 +2319,9 @@
                             <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Path</td><td style="word-break:break-all;">${m.file_path}</td></tr>
                             ${m.width ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Resolution</td><td>'+m.width+'x'+m.height+'</td></tr>' : ''}
                             ${m.codec ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Video Codec</td><td>'+m.codec+'</td></tr>' : ''}
+                            ${m.source_type ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Source</td><td>'+m.source_type+'</td></tr>' : ''}
+                            ${m.dynamic_range && m.dynamic_range !== 'SDR' ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Dynamic Range</td><td>'+m.dynamic_range+(m.hdr_format ? ' ('+m.hdr_format+')' : '')+'</td></tr>' : ''}
+                            ${m.custom_notes ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Notes</td><td>'+m.custom_notes+'</td></tr>' : ''}
                             <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Added</td><td>${new Date(m.added_at).toLocaleString()}</td></tr>
                         </table>
                     </div>
@@ -2370,16 +2386,18 @@
                     const codec = e.codec || '-';
                     const size = e.file_size ? (e.file_size/1024/1024).toFixed(0)+' MB' : '-';
                     const audio = e.audio_codec || '-';
+                    const src = e.source_type || '-';
+                    const dr = e.dynamic_range === 'HDR' ? (e.hdr_format || 'HDR') : (e.dynamic_range || 'SDR');
                     const defBadge = e.is_default ? ' <span class="edition-tab-default">Default</span>' : '';
                     return `<tr>
                         <td>${e.edition_type}${defBadge}</td>
-                        <td>${dur}</td><td>${res}</td><td>${codec}</td><td>${audio}</td><td>${size}</td>
+                        <td>${dur}</td><td>${res}</td><td>${codec}</td><td>${audio}</td><td>${src}</td><td>${dr}</td><td>${size}</td>
                         <td><button class="edition-tab-play" onclick="playMedia('${e.media_item_id}','${e.title.replace(/'/g,"\\'")}')">&#9654; Play</button></td>
                     </tr>`;
                 }).join('');
                 tc.innerHTML = `<h4 style="color:#e5e5e5;margin:0 0 14px;">Editions (${eds.length})</h4>
                     <table class="edition-tab-table">
-                        <thead><tr><th>Edition</th><th>Runtime</th><th>Resolution</th><th>Codec</th><th>Audio</th><th>Size</th><th></th></tr></thead>
+                        <thead><tr><th>Edition</th><th>Runtime</th><th>Resolution</th><th>Codec</th><th>Audio</th><th>Source</th><th>DR</th><th>Size</th><th></th></tr></thead>
                         <tbody>${rows}</tbody>
                     </table>`;
             } else {
@@ -2428,6 +2446,24 @@
                 } else {
                     html += '<p style="color:#5a6a7f;margin-top:12px;">No external IDs stored. Run a metadata refresh or identify this item to populate.</p>';
                 }
+
+                // Technical metadata section
+                const techRows = [];
+                if (m.source_type) techRows.push({k:'Source', v:m.source_type});
+                if (m.dynamic_range && m.dynamic_range !== 'SDR') techRows.push({k:'Dynamic Range', v:m.dynamic_range + (m.hdr_format ? ' ('+m.hdr_format+')' : '')});
+                if (m.custom_notes) techRows.push({k:'Custom Notes', v:m.custom_notes});
+                const ctRaw = m.custom_tags ? (typeof m.custom_tags === 'string' ? JSON.parse(m.custom_tags || '{}') : m.custom_tags) : {};
+                const ctArr = ctRaw.tags || [];
+                if (ctArr.length > 0) techRows.push({k:'Custom Tags', v:ctArr.map(t=>'<span class="tag tag-blue" style="margin:0 4px 0 0;">'+t+'</span>').join('')});
+                if (techRows.length > 0) {
+                    html += '<h4 style="color:#e5e5e5;margin:20px 0 10px;">Technical &amp; Custom Metadata</h4>';
+                    html += '<table style="width:100%;font-size:0.85rem;">';
+                    techRows.forEach(r => {
+                        html += '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;width:140px;">'+r.k+'</td><td>'+r.v+'</td></tr>';
+                    });
+                    html += '</table>';
+                }
+
                 tc.innerHTML = html;
             }
         } else if (tab === 'file') {
@@ -2440,6 +2476,10 @@
                     <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Path</td><td style="word-break:break-all;">${m.file_path}</td></tr>
                     ${m.width ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Resolution</td><td>'+m.width+'x'+m.height+'</td></tr>' : ''}
                     ${m.codec ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Video Codec</td><td>'+m.codec+'</td></tr>' : ''}
+                    ${m.audio_codec ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Audio Codec</td><td>'+m.audio_codec+'</td></tr>' : ''}
+                    ${m.source_type ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Source</td><td>'+m.source_type+'</td></tr>' : ''}
+                    ${m.dynamic_range && m.dynamic_range !== 'SDR' ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Dynamic Range</td><td>'+m.dynamic_range+(m.hdr_format ? ' ('+m.hdr_format+')' : '')+'</td></tr>' : ''}
+                    ${m.bitrate ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Bitrate</td><td>'+(m.bitrate/1000).toFixed(0)+' kbps</td></tr>' : ''}
                     ${m.file_hash ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">MD5 Hash</td><td style="font-family:monospace;font-size:0.78rem;">'+m.file_hash+'</td></tr>' : ''}
                     <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Added</td><td>${new Date(m.added_at).toLocaleString()}</td></tr>
                 </table>`;
@@ -2678,14 +2718,18 @@
         }).join('');
         const crOpts = (opts.content_ratings || []).map(c => `<option value="${c}">${c}</option>`).join('');
         const edOpts = (opts.editions || []).map(e => `<option value="${e}">${e}</option>`).join('');
+        const srcOpts = (opts.sources || []).map(s => `<option value="${s}">${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
+        const drOpts = (opts.dynamic_ranges || []).map(d => `<option value="${d}">${d}</option>`).join('');
 
-        const hasAnyFilter = genreOpts || folderOpts || crOpts || edOpts;
+        const hasAnyFilter = genreOpts || folderOpts || crOpts || edOpts || srcOpts || drOpts;
 
         return `<div class="filter-toolbar" id="filterToolbar">
             ${genreOpts ? `<select id="ftGenre" onchange="applyLibFilter()"><option value="">All Genres</option>${genreOpts}</select>` : ''}
             ${folderOpts ? `<select id="ftFolder" onchange="applyLibFilter()"><option value="">All Folders</option>${folderOpts}</select>` : ''}
             ${crOpts ? `<select id="ftRating" onchange="applyLibFilter()"><option value="">All Ratings</option>${crOpts}</select>` : ''}
             ${edOpts ? `<select id="ftEdition" onchange="applyLibFilter()"><option value="">All Editions</option>${edOpts}</select>` : ''}
+            ${srcOpts ? `<select id="ftSource" onchange="applyLibFilter()"><option value="">All Sources</option>${srcOpts}</select>` : ''}
+            ${drOpts ? `<select id="ftDynRange" onchange="applyLibFilter()"><option value="">All DR</option>${drOpts}</select>` : ''}
             <div class="ft-sep"></div>
             <span class="ft-label">Sort</span>
             <select id="ftSort" onchange="applyLibFilter()">
@@ -2715,12 +2759,16 @@
         const folder = document.getElementById('ftFolder');
         const rating = document.getElementById('ftRating');
         const edition = document.getElementById('ftEdition');
+        const source = document.getElementById('ftSource');
+        const dynRange = document.getElementById('ftDynRange');
         const sort = document.getElementById('ftSort');
         const order = document.getElementById('ftOrder');
         if (genre && genre.value) f.genre = genre.value;
         if (folder && folder.value) f.folder = folder.value;
         if (rating && rating.value) f.content_rating = rating.value;
         if (edition && edition.value) f.edition = edition.value;
+        if (source && source.value) f.source = source.value;
+        if (dynRange && dynRange.value) f.dynamic_range = dynRange.value;
         if (sort && sort.value) f.sort = sort.value;
         if (order && order.value !== 'asc') f.order = order.value;
         _gridState.filters = f;
@@ -2728,7 +2776,7 @@
     }
 
     function resetLibFilters() {
-        const ids = ['ftGenre','ftFolder','ftRating','ftEdition','ftSort','ftOrder'];
+        const ids = ['ftGenre','ftFolder','ftRating','ftEdition','ftSource','ftDynRange','ftSort','ftOrder'];
         ids.forEach(id => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
         _gridState.filters = {};
         reloadLibraryGrid();
@@ -3527,6 +3575,11 @@
         document.getElementById('editRating').value = m.rating != null ? m.rating : '';
         // Edition type (always shown)
         document.getElementById('editEditionType').value = m.edition_type || 'Theatrical';
+        // Custom notes and tags
+        document.getElementById('editCustomNotes').value = m.custom_notes || '';
+        const ctRaw = m.custom_tags ? (typeof m.custom_tags === 'string' ? JSON.parse(m.custom_tags || '{}') : m.custom_tags) : {};
+        const ctArr = ctRaw.tags || [];
+        document.getElementById('editCustomTags').value = ctArr.join(', ');
         // Parent Movie field (movies and adult_movies only)
         const parentGroup = document.getElementById('parentMovieGroup');
         const parentSearch = document.getElementById('parentMovieSearch');
@@ -3605,11 +3658,15 @@
         const rating = ratingVal !== '' ? parseFloat(ratingVal) : null;
 
         const editionType = document.getElementById('editEditionType').value;
+        const customNotes = document.getElementById('editCustomNotes').value.trim() || null;
+        const ctInput = document.getElementById('editCustomTags').value.trim();
+        const ctTags = ctInput ? ctInput.split(',').map(t => t.trim()).filter(Boolean) : [];
+        const customTags = JSON.stringify({ tags: ctTags });
 
         const d = await api('PUT', '/media/' + id, {
             title, sort_title: sortTitle, original_title: originalTitle,
             description, year, release_date: releaseDate, rating,
-            edition_type: editionType
+            edition_type: editionType, custom_notes: customNotes, custom_tags: customTags
         });
         if (d.success) {
             // Set edition parent if one was selected
@@ -3671,6 +3728,10 @@
         { key: 'audience_score', label: 'Audience Score' },
         { key: 'genres', label: 'Genres' },
         { key: 'cast', label: 'Cast & Crew' },
+        { key: 'source_type', label: 'Source Type' },
+        { key: 'hdr_format', label: 'HDR Format' },
+        { key: 'custom_notes', label: 'Custom Notes' },
+        { key: 'custom_tags', label: 'Custom Tags' },
     ];
     let _currentLockedFields = [];
 

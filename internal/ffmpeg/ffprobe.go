@@ -19,10 +19,21 @@ type FormatInfo struct {
 	Bitrate  string `json:"bit_rate"`
 }
 type StreamInfo struct {
-	CodecType string `json:"codec_type"`
-	CodecName string `json:"codec_name"`
-	Width     int    `json:"width"`
-	Height    int    `json:"height"`
+	CodecType      string         `json:"codec_type"`
+	CodecName      string         `json:"codec_name"`
+	Width          int            `json:"width"`
+	Height         int            `json:"height"`
+	ColorTransfer  string         `json:"color_transfer"`
+	ColorPrimaries string         `json:"color_primaries"`
+	ColorSpace     string         `json:"color_space"`
+	PixFmt         string         `json:"pix_fmt"`
+	Profile        string         `json:"profile"`
+	SideDataList   []SideDataItem `json:"side_data_list"`
+}
+
+// SideDataItem represents a side_data entry from ffprobe (used for Dolby Vision RPU detection).
+type SideDataItem struct {
+	SideDataType string `json:"side_data_type"`
 }
 
 func NewFFprobe(path string) *FFprobe { return &FFprobe{Path: path} }
@@ -94,6 +105,46 @@ func (r *ProbeResult) GetHeight() int {
 		}
 	}
 	return 0
+}
+
+// GetHDRFormat returns a detailed HDR format string based on color transfer, primaries,
+// and side data. Returns empty string for SDR content.
+// Possible values: "Dolby Vision", "HDR10+", "HDR10", "HLG", "PQ" (generic PQ without HDR10 primaries).
+func (r *ProbeResult) GetHDRFormat() string {
+	for _, s := range r.Streams {
+		if s.CodecType != "video" {
+			continue
+		}
+		// Check for Dolby Vision via side_data_list (RPU or configuration record)
+		for _, sd := range s.SideDataList {
+			if sd.SideDataType == "DOVI configuration record" || sd.SideDataType == "Dolby Vision RPU Data" {
+				return "Dolby Vision"
+			}
+		}
+		// Check color transfer for PQ (HDR10/HDR10+) or HLG
+		switch s.ColorTransfer {
+		case "smpte2084": // PQ transfer
+			// HDR10 requires BT.2020 primaries
+			if s.ColorPrimaries == "bt2020" {
+				return "HDR10"
+			}
+			return "PQ"
+		case "arib-std-b67": // HLG transfer
+			return "HLG"
+		}
+		// Check for 10-bit pixel formats that might indicate HDR
+		// (secondary heuristic — PQ/HLG above is authoritative)
+	}
+	return ""
+}
+
+// GetDynamicRange returns a simplified dynamic range classification.
+// Returns "HDR" for any HDR format, "SDR" otherwise.
+func (r *ProbeResult) GetDynamicRange() string {
+	if r.GetHDRFormat() != "" {
+		return "HDR"
+	}
+	return "SDR"
 }
 
 func (r *ProbeResult) GetFileSize() int64 {

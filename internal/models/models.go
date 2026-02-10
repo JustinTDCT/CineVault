@@ -171,6 +171,13 @@ type MediaItem struct {
 	ContentRating    *string    `json:"content_rating,omitempty" db:"content_rating"`
 	ExternalIDs      *string    `json:"external_ids,omitempty" db:"external_ids"`
 	GeneratedPoster  bool       `json:"generated_poster" db:"generated_poster"`
+	// Technical metadata (persisted from filename parser + ffprobe)
+	SourceType       *string         `json:"source_type,omitempty" db:"source_type"`
+	HDRFormat        *string         `json:"hdr_format,omitempty" db:"hdr_format"`
+	DynamicRange     string          `json:"dynamic_range" db:"dynamic_range"`
+	// Power-user annotation fields
+	CustomNotes      *string         `json:"custom_notes,omitempty" db:"custom_notes"`
+	CustomTags       *string         `json:"custom_tags,omitempty" db:"custom_tags"`
 	MetadataLocked   bool            `json:"metadata_locked" db:"metadata_locked"`
 	LockedFields     pq.StringArray  `json:"locked_fields" db:"locked_fields"`
 	DuplicateStatus  string          `json:"duplicate_status" db:"duplicate_status"`
