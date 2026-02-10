@@ -915,6 +915,95 @@
             color: #5a6a7f; font-size: 0.78rem; margin-top: 4px;
         }
 
+        /* ── Profile Switch Modal ── */
+        .profile-switch-overlay {
+            position: fixed; inset: 0; z-index: 9500;
+            background: rgba(10,25,41,0.92); backdrop-filter: blur(10px);
+            display: none; align-items: center; justify-content: center;
+            flex-direction: column;
+        }
+        .profile-switch-overlay.active { display: flex; }
+        .profile-switch-title { font-size: 1.5rem; font-weight: 700; color: #e5e5e5; margin-bottom: 30px; }
+        .profile-switch-grid {
+            display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; max-width: 800px;
+        }
+        .profile-switch-user {
+            width: 160px; padding: 20px 14px 16px; border-radius: 14px;
+            background: linear-gradient(145deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+            border: 1px solid rgba(255,255,255,0.08);
+            cursor: pointer; text-align: center; transition: all 0.3s;
+        }
+        .profile-switch-user:hover {
+            transform: translateY(-4px); border-color: rgba(0,217,255,0.3);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,217,255,0.15);
+        }
+        .profile-switch-user.kids-profile { border-color: rgba(76,175,80,0.3); }
+        .profile-switch-user.kids-profile:hover { border-color: rgba(76,175,80,0.5); box-shadow: 0 8px 30px rgba(76,175,80,0.2); }
+        .profile-switch-avatar {
+            width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 2rem; position: relative;
+        }
+        .profile-switch-name { font-size: 0.9rem; color: #c8d6e5; font-weight: 500; }
+        .profile-switch-badge {
+            font-size: 0.65rem; padding: 2px 8px; border-radius: 8px; font-weight: 600; margin-top: 6px; display: inline-block;
+        }
+        .profile-switch-badge.kids { background: rgba(76,175,80,0.15); color: #4caf50; border: 1px solid rgba(76,175,80,0.3); }
+        .profile-switch-close {
+            margin-top: 30px; color: #5a6a7f; font-size: 0.85rem; cursor: pointer; transition: color 0.2s;
+        }
+        .profile-switch-close:hover { color: #00D9FF; }
+
+        /* ── Avatar Grid ── */
+        .avatar-grid {
+            display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; margin: 12px 0;
+        }
+        .avatar-option {
+            width: 50px; height: 50px; border-radius: 50%; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
+            border: 3px solid transparent; transition: all 0.2s;
+        }
+        .avatar-option:hover { transform: scale(1.1); border-color: rgba(0,217,255,0.4); }
+        .avatar-option.selected { border-color: #00D9FF; box-shadow: 0 0 12px rgba(0,217,255,0.4); }
+
+        /* ── Recommendations Row ── */
+        .reco-row {
+            display: flex; gap: 16px; overflow-x: auto; padding-bottom: 10px; scroll-behavior: smooth;
+        }
+        .reco-row::-webkit-scrollbar { height: 4px; }
+        .reco-row::-webkit-scrollbar-thumb { background: rgba(0,217,255,0.3); border-radius: 4px; }
+        .reco-row .media-card { min-width: 160px; flex-shrink: 0; }
+
+        /* ── Kids Mode Banner ── */
+        .kids-banner {
+            background: linear-gradient(135deg, rgba(76,175,80,0.15) 0%, rgba(76,175,80,0.08) 100%);
+            border: 1px solid rgba(76,175,80,0.25); border-radius: 14px;
+            padding: 14px 24px; margin-bottom: 20px; display: flex; align-items: center; gap: 14px;
+        }
+        .kids-banner-icon { font-size: 1.8rem; }
+        .kids-banner-text { color: #81c784; font-weight: 600; font-size: 0.95rem; }
+        .kids-banner-sub { color: #66bb6a; font-size: 0.78rem; margin-top: 2px; }
+
+        /* ── Parental Controls Card ── */
+        .rating-select {
+            width: 100%; padding: 10px 14px;
+            background: rgba(26,35,50,0.6); border: 1px solid rgba(0,217,255,0.2);
+            border-radius: 10px; color: #e5e5e5; font-size: 0.85rem;
+        }
+        .rating-select:focus { outline: none; border-color: #00D9FF; }
+        .rating-select option { background: #1a2332; color: #e5e5e5; }
+
+        .kids-toggle-container {
+            display: flex; align-items: center; gap: 12px; margin: 12px 0;
+        }
+
+        /* ── Content Rating Badge (user dropdown) ── */
+        .ud-rating-badge {
+            font-size: 0.65rem; padding: 2px 6px; border-radius: 6px; font-weight: 600;
+            background: rgba(255,152,0,0.15); color: #ff9800; border: 1px solid rgba(255,152,0,0.3);
+            margin-left: 6px;
+        }
+
         /* ── Setup Wizard ── */
         .setup-overlay {
             position: fixed; inset: 0; z-index: 10001;
@@ -1082,6 +1171,7 @@
                             <div class="user-dropdown-name" id="udName"></div>
                             <div class="user-dropdown-role" id="udRole"></div>
                         </div>
+                        <div class="user-dropdown-item" onclick="openProfileSwitch()"><span class="ud-icon">&#128101;</span> Switch Profile</div>
                         <div class="user-dropdown-item" onclick="navigate('profile')"><span class="ud-icon">&#9998;</span> Edit Profile</div>
                         <div class="user-dropdown-item" id="udSettingsItem" onclick="window.location.href='settings.html'" style="display:none;"><span class="ud-icon">&#9881;</span> Settings</div>
                         <div class="user-dropdown-sep"></div>
@@ -1170,6 +1260,13 @@
         </div>
 
         <div class="fast-login-fallback" onclick="fastLoginShowStandard()">Use username &amp; password</div>
+    </div>
+
+    <!-- Profile Switch Overlay (post-login) -->
+    <div class="profile-switch-overlay" id="profileSwitchOverlay">
+        <div class="profile-switch-title">Switch Profile</div>
+        <div class="profile-switch-grid" id="profileSwitchGrid"></div>
+        <div class="profile-switch-close" onclick="closeProfileSwitch()">Cancel</div>
     </div>
 
     <!-- Video Player Overlay -->
@@ -4538,6 +4635,366 @@
             case 'Escape': closePlayer(); break;
         }
     });
+
+    // ──────────────────── Profile Avatars ────────────────────
+    const AVATAR_PRESETS = [
+        { id: 'av-lion',    emoji: '🦁', bg: ['#c0392b','#e74c3c'] },
+        { id: 'av-fox',     emoji: '🦊', bg: ['#d35400','#e67e22'] },
+        { id: 'av-panda',   emoji: '🐼', bg: ['#2c3e50','#34495e'] },
+        { id: 'av-unicorn', emoji: '🦄', bg: ['#8e44ad','#9b59b6'] },
+        { id: 'av-owl',     emoji: '🦉', bg: ['#795548','#8d6e63'] },
+        { id: 'av-rocket',  emoji: '🚀', bg: ['#1565c0','#1e88e5'] },
+        { id: 'av-star',    emoji: '⭐', bg: ['#f9a825','#fdd835'] },
+        { id: 'av-alien',   emoji: '👽', bg: ['#2e7d32','#43a047'] },
+        { id: 'av-robot',   emoji: '🤖', bg: ['#546e7a','#78909c'] },
+        { id: 'av-ghost',   emoji: '👻', bg: ['#5c6bc0','#7986cb'] },
+        { id: 'av-ninja',   emoji: '🥷', bg: ['#1a1a2e','#16213e'] },
+        { id: 'av-dragon',  emoji: '🐉', bg: ['#b71c1c','#c62828'] },
+        { id: 'av-cat',     emoji: '🐱', bg: ['#ff6f00','#ff8f00'] },
+        { id: 'av-dog',     emoji: '🐶', bg: ['#6d4c41','#8d6e63'] },
+        { id: 'av-bear',    emoji: '🐻', bg: ['#4e342e','#6d4c41'] },
+        { id: 'av-penguin', emoji: '🐧', bg: ['#263238','#37474f'] },
+    ];
+
+    function getAvatarById(avatarId) {
+        return AVATAR_PRESETS.find(a => a.id === avatarId);
+    }
+
+    function renderAvatarCircle(avatarId, name, size) {
+        const sz = size || 40;
+        const av = getAvatarById(avatarId);
+        if (av) {
+            return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:linear-gradient(135deg,${av.bg[0]},${av.bg[1]});display:flex;align-items:center;justify-content:center;font-size:${sz*0.5}px;">${av.emoji}</div>`;
+        }
+        // Fallback: gradient with initial
+        const [bg, circle] = userColor(name || '?');
+        const initial = (name || '?')[0].toUpperCase();
+        return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:radial-gradient(circle,${circle},${bg});display:flex;align-items:center;justify-content:center;font-size:${sz*0.45}px;font-weight:600;color:rgba(255,255,255,0.85);">${initial}</div>`;
+    }
+
+    // ──────────────────── Profile Switching ────────────────────
+    async function openProfileSwitch() {
+        closeUserDropdown();
+        const overlay = document.getElementById('profileSwitchOverlay');
+        const grid = document.getElementById('profileSwitchGrid');
+        overlay.classList.add('active');
+
+        // Fetch all users (fast login users endpoint or admin list)
+        try {
+            const res = await fetch(API + '/auth/fast-login/users');
+            const data = await res.json();
+            const users = (data.success && data.data) ? data.data : [];
+
+            grid.innerHTML = users.map(u => {
+                const dn = u.display_name || u.username;
+                const avatarHtml = renderAvatarCircle(u.avatar_id, dn, 80);
+                const isActive = currentUser && currentUser.id === u.id;
+                const kidsBadge = u.is_kids_profile ? '<div class="profile-switch-badge kids">Kids</div>' : '';
+                return `<div class="profile-switch-user ${u.is_kids_profile ? 'kids-profile' : ''} ${isActive ? 'active' : ''}"
+                    onclick="switchToProfile('${u.id}', ${u.has_pin})"
+                    style="${isActive ? 'border-color:rgba(0,217,255,0.5);box-shadow:0 0 20px rgba(0,217,255,0.2);' : ''}">
+                    <div class="profile-switch-avatar">${avatarHtml}</div>
+                    <div class="profile-switch-name">${dn}</div>
+                    ${kidsBadge}
+                </div>`;
+            }).join('');
+        } catch {
+            grid.innerHTML = '<div style="color:#5a6a7f;">Could not load profiles</div>';
+        }
+    }
+
+    function closeProfileSwitch() {
+        document.getElementById('profileSwitchOverlay').classList.remove('active');
+    }
+
+    async function switchToProfile(userId, hasPin) {
+        closeProfileSwitch();
+        if (currentUser && currentUser.id === userId) return; // Already this user
+
+        if (hasPin) {
+            // Show fast login PIN entry for this user
+            doLogout();
+            setTimeout(async () => {
+                await showFastLogin();
+                fastLoginSelectUser(userId);
+            }, 200);
+        } else {
+            // No PIN — show standard login
+            doLogout();
+        }
+    }
+
+    // ──────────────────── Kids Mode Helpers ────────────────────
+    function isKidsMode() {
+        return currentUser && currentUser.is_kids_profile === true;
+    }
+
+    function getUserMaxRating() {
+        return (currentUser && currentUser.max_content_rating) || null;
+    }
+
+    // ──────────────────── Updated Home View with Recommendations ────────────────────
+    // Override loadHomeView to add recommendations and kids banner
+    const _origLoadHomeView = loadHomeView;
+    loadHomeView = async function() {
+        const mc = document.getElementById('mainContent');
+        const kidsMode = isKidsMode();
+
+        let kidsBannerHtml = '';
+        if (kidsMode) {
+            kidsBannerHtml = `
+                <div class="kids-banner">
+                    <div class="kids-banner-icon">🧒</div>
+                    <div>
+                        <div class="kids-banner-text">Kids Mode Active</div>
+                        <div class="kids-banner-sub">Content is filtered to ${getUserMaxRating() || 'PG'}-rated and below</div>
+                    </div>
+                </div>`;
+        }
+
+        mc.innerHTML = `
+            ${kidsBannerHtml}
+            <div class="section-header"><h2 class="section-title">Continue Watching</h2></div>
+            <div id="continueRow" class="continue-row"></div>
+            <div class="section-header"><h2 class="section-title">Recommended For You</h2></div>
+            <div id="recoRow" class="reco-row"><div class="spinner"></div></div>
+            <div class="section-header"><h2 class="section-title">Recently Added</h2></div>
+            <div class="media-grid" id="recentGrid"></div>`;
+
+        // Continue Watching
+        try {
+            const cw = await api('GET', '/watch/continue');
+            const row = document.getElementById('continueRow');
+            if (cw.success && cw.data && cw.data.length > 0) {
+                row.innerHTML = cw.data.map(wh => {
+                    const item = wh.media_item || {};
+                    const pct = wh.duration_seconds ? Math.round(wh.progress_seconds/wh.duration_seconds*100) : 0;
+                    return `<div class="media-card" onclick="playMedia('${item.id}','${item.title||''}')">
+                        <div class="media-poster">
+                            ${item.poster_path ? '<img src="'+posterSrc(item.poster_path, item.updated_at)+'">' : mediaIcon(item.media_type||'movies')}
+                            <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+                            <div class="play-overlay"><div class="play-button">&#9654;</div></div>
+                        </div>
+                        <div class="media-info"><div class="media-title">${item.title||'Unknown'}</div><div class="media-meta">${Math.floor(wh.progress_seconds/60)}/${wh.duration_seconds?Math.floor(wh.duration_seconds/60):'?'} min</div></div>
+                    </div>`;
+                }).join('');
+            } else row.innerHTML = '<div style="color:#5a6a7f;padding:20px;">No items in progress</div>';
+        } catch { document.getElementById('continueRow').innerHTML = ''; }
+
+        // Recommendations
+        try {
+            const reco = await api('GET', '/recommendations');
+            const recoRow = document.getElementById('recoRow');
+            if (reco.success && reco.data && reco.data.length > 0) {
+                recoRow.innerHTML = reco.data.map(item => renderMediaCard(item)).join('');
+            } else {
+                recoRow.innerHTML = '<div style="color:#5a6a7f;padding:20px;">Watch more to get personalized recommendations</div>';
+            }
+        } catch { document.getElementById('recoRow').innerHTML = '<div style="color:#5a6a7f;padding:20px;">Recommendations unavailable</div>'; }
+
+        // Recently Added
+        try {
+            const libs = await api('GET', '/libraries');
+            const grid = document.getElementById('recentGrid');
+            if (libs.success && libs.data) {
+                const homepageLibs = libs.data.filter(lib => lib.include_in_homepage !== false);
+                let allItems = [];
+                for (const lib of homepageLibs.slice(0,5)) {
+                    const m = await api('GET', '/libraries/'+lib.id+'/media');
+                    if (m.success && m.data && m.data.items) allItems = allItems.concat(m.data.items);
+                }
+                allItems.sort((a,b) => new Date(b.added_at) - new Date(a.added_at));
+                grid.innerHTML = allItems.length > 0
+                    ? allItems.slice(0,12).map(renderMediaCard).join('')
+                    : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">&#128253;</div><div class="empty-state-title">No media yet</div><p>Add libraries and scan them to populate your media</p><button class="btn-primary" style="margin-top:18px;" onclick="navigate('libraries')">Manage Libraries</button></div>`;
+            }
+        } catch {}
+    };
+
+    // ──────────────────── Updated Profile View ────────────────────
+    const _origLoadProfileView = loadProfileView;
+    loadProfileView = async function() {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Edit Profile</h2></div><div class="settings-grid" id="profileGrid"><div class="spinner"></div></div>`;
+
+        const profileData = await api('GET', '/profile');
+        if (!profileData.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Failed to load profile</div></div>'; return; }
+        const u = profileData.data;
+
+        // Get profile settings
+        const settingsData = await api('GET', '/profile/settings');
+        const settings = settingsData.success ? settingsData.data : {};
+
+        // Get PIN length setting for validation
+        let profPinLength = 4;
+        try {
+            const flSettings = await api('GET', '/auth/fast-login/settings');
+            if (flSettings.success && flSettings.data) profPinLength = parseInt(flSettings.data.fast_login_pin_length) || 4;
+        } catch(e) {}
+
+        const currentRating = settings.max_content_rating || '';
+        const isKids = settings.is_kids_profile || false;
+        const currentAvatar = settings.avatar_id || '';
+
+        // Build avatar grid HTML
+        const avatarGridHtml = AVATAR_PRESETS.map(av => {
+            const sel = (currentAvatar === av.id) ? 'selected' : '';
+            return `<div class="avatar-option ${sel}" data-avatar="${av.id}" onclick="selectAvatar('${av.id}')"
+                style="background:linear-gradient(135deg,${av.bg[0]},${av.bg[1]});">${av.emoji}</div>`;
+        }).join('');
+
+        document.getElementById('profileGrid').innerHTML = `
+            <div class="settings-card">
+                <h3>Personal Information</h3>
+                <div class="form-group"><label>Username</label><input type="text" value="${u.username || ''}" disabled style="opacity:0.6;cursor:not-allowed;"></div>
+                <div class="edit-field-row">
+                    <div class="form-group"><label>First Name</label><input type="text" id="profFirstName" value="${u.first_name || ''}" placeholder="Enter first name"></div>
+                    <div class="form-group"><label>Last Name</label><input type="text" id="profLastName" value="${u.last_name || ''}" placeholder="Enter last name"></div>
+                </div>
+                <div class="form-group"><label>Email</label><input type="email" id="profEmail" value="${u.email || ''}" placeholder="Enter email"></div>
+                <button class="btn-primary" onclick="saveProfile()">Save Changes</button>
+            </div>
+            <div class="settings-card">
+                <h3>Profile Avatar</h3>
+                <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:12px;">Choose an avatar for your profile</p>
+                <div class="avatar-grid" id="avatarGrid">${avatarGridHtml}</div>
+                <input type="hidden" id="profAvatar" value="${currentAvatar}">
+                <button class="btn-primary" onclick="saveProfileSettings()" style="margin-top:8px;">Save Avatar</button>
+            </div>
+            <div class="settings-card">
+                <h3>Parental Controls</h3>
+                <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:12px;">Set a maximum content rating for this profile. Content above this rating will be hidden.</p>
+                <div class="form-group">
+                    <label>Maximum Content Rating</label>
+                    <select class="rating-select" id="profMaxRating">
+                        <option value="" ${!currentRating ? 'selected' : ''}>No Restriction</option>
+                        <option value="G" ${currentRating === 'G' ? 'selected' : ''}>G — General Audiences</option>
+                        <option value="PG" ${currentRating === 'PG' ? 'selected' : ''}>PG — Parental Guidance</option>
+                        <option value="PG-13" ${currentRating === 'PG-13' ? 'selected' : ''}>PG-13 — Parents Strongly Cautioned</option>
+                        <option value="R" ${currentRating === 'R' ? 'selected' : ''}>R — Restricted</option>
+                        <option value="NC-17" ${currentRating === 'NC-17' ? 'selected' : ''}>NC-17 — Adults Only</option>
+                    </select>
+                </div>
+                <div class="kids-toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="profKidsMode" ${isKids ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <div>
+                        <div style="color:#e5e5e5;font-size:0.85rem;font-weight:600;">Kids Profile</div>
+                        <div style="color:#5a6a7f;font-size:0.78rem;">Enables simplified UI and auto-sets rating to PG when turned on</div>
+                    </div>
+                </div>
+                <button class="btn-primary" onclick="saveProfileSettings()" style="margin-top:8px;">Save Parental Settings</button>
+            </div>
+            <div class="settings-card">
+                <h3>Security</h3>
+                <div class="form-group">
+                    <label>New Password</label>
+                    <input type="password" id="profPassword" placeholder="Leave blank to keep current">
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" id="profPasswordConfirm" placeholder="Confirm new password">
+                </div>
+                <button class="btn-primary" onclick="saveProfilePassword()" style="margin-bottom:20px;">Change Password</button>
+                <div style="border-top:1px solid rgba(0,217,255,0.1);padding-top:16px;margin-top:4px;">
+                    <h3 style="margin-bottom:12px;">Login PIN</h3>
+                    <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:12px;">Set a ${profPinLength}-digit PIN for quick login. ${u.has_pin ? '<span style="color:#51cf66;">PIN is set.</span>' : '<span style="color:#5a6a7f;">No PIN set.</span>'}</p>
+                    <div class="form-group">
+                        <label>New PIN (${profPinLength} digits)</label>
+                        <input type="password" id="profPin" placeholder="Enter ${profPinLength}-digit PIN" maxlength="${profPinLength}" pattern="[0-9]*" inputmode="numeric">
+                    </div>
+                    <button class="btn-primary" onclick="saveProfilePin(${profPinLength})">Set PIN</button>
+                </div>
+            </div>`;
+    };
+
+    function selectAvatar(avatarId) {
+        document.getElementById('profAvatar').value = avatarId;
+        document.querySelectorAll('.avatar-option').forEach(el => {
+            el.classList.toggle('selected', el.dataset.avatar === avatarId);
+        });
+    }
+
+    async function saveProfileSettings() {
+        const maxRating = document.getElementById('profMaxRating').value;
+        const isKids = document.getElementById('profKidsMode').checked;
+        const avatarId = document.getElementById('profAvatar').value;
+
+        const body = {
+            max_content_rating: maxRating || '',
+            is_kids_profile: isKids,
+            avatar_id: avatarId || null
+        };
+
+        const d = await api('PUT', '/profile/settings', body);
+        if (d.success) {
+            toast('Profile settings updated!');
+            // Update local user data and token
+            if (d.data.user) {
+                currentUser = { ...currentUser, ...d.data.user };
+                localStorage.setItem('user', JSON.stringify(currentUser));
+            }
+            if (d.data.token) {
+                localStorage.setItem('token', d.data.token);
+            }
+            // Update avatar in top bar
+            updateTopBarAvatar();
+        } else toast(d.error || 'Failed to update settings', 'error');
+    }
+
+    // ──────────────────── Top Bar Avatar Update ────────────────────
+    function updateTopBarAvatar() {
+        const avatarEl = document.getElementById('userAvatar');
+        if (!currentUser) return;
+        const av = currentUser.avatar_id ? getAvatarById(currentUser.avatar_id) : null;
+        if (av) {
+            avatarEl.innerHTML = av.emoji;
+            avatarEl.style.background = `linear-gradient(135deg, ${av.bg[0]}, ${av.bg[1]})`;
+            avatarEl.style.fontSize = '1.2rem';
+        } else {
+            avatarEl.textContent = currentUser.username[0].toUpperCase();
+            avatarEl.style.background = 'linear-gradient(135deg, #00D9FF 0%, #0099CC 100%)';
+            avatarEl.style.fontSize = '0.95rem';
+        }
+    }
+
+    // Patch checkAuth to update avatar after login
+    const _origCheckAuth = checkAuth;
+    checkAuth = async function() {
+        await _origCheckAuth();
+        if (currentUser) updateTopBarAvatar();
+    };
+
+    // Update fast login to use avatars
+    const _origFastLoginShowUsers = fastLoginShowUsers;
+    fastLoginShowUsers = function() {
+        const grid = document.getElementById('fastLoginGrid');
+        const pinEntry = document.getElementById('pinEntryContainer');
+        const back = document.getElementById('fastLoginBack');
+        const title = document.getElementById('fastLoginTitle');
+        const fallback = document.querySelector('.fast-login-fallback');
+        grid.style.display = 'flex';
+        pinEntry.classList.remove('active');
+        back.style.display = 'none';
+        title.textContent = 'Who\'s Watching?';
+        if (fallback) fallback.style.display = '';
+        selectedFastUser = null;
+
+        grid.innerHTML = fastLoginUsers.map(u => {
+            const dn = u.display_name || u.username;
+            const avatarHtml = renderAvatarCircle(u.avatar_id, dn, 100);
+            let badges = '';
+            if (u.has_pin) badges += '<span class="fast-login-badge pin-set">&#128274;</span>';
+            if (u.role === 'admin') badges += '<span class="fast-login-badge admin">&#128081;</span>';
+            if (u.is_kids_profile) badges += '<span class="fast-login-badge" style="background:rgba(76,175,80,0.15);color:#4caf50;border:1px solid rgba(76,175,80,0.3);">Kids</span>';
+            return `<div class="fast-login-user ${u.is_kids_profile ? 'kids-profile' : ''}" onclick="fastLoginSelectUser('${u.id}')">
+                <div class="fast-login-avatar" style="background:none;">${avatarHtml}
+                <div class="fast-login-badges" style="position:absolute;bottom:-4px;left:0;right:0;display:flex;justify-content:center;gap:4px;">${badges}</div></div>
+                <div class="fast-login-user-name">${dn}</div></div>`;
+        }).join('');
+    };
 
     // ──── Init ────
     checkAuth();

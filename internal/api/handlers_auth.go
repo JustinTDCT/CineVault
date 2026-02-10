@@ -39,7 +39,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data: map[string]interface{}{
-			"version":    "0.31.0",
+			"version":    "0.40.0",
 			"phase":      "3",
 			"ws_clients": s.wsHub.ClientCount(),
 		},
@@ -130,11 +130,14 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 // ──────────────────── Fast Login ────────────────────
 
 type FastLoginUsersResponse struct {
-	ID          uuid.UUID      `json:"id"`
-	Username    string         `json:"username"`
-	DisplayName *string        `json:"display_name,omitempty"`
-	Role        models.UserRole `json:"role"`
-	HasPin      bool           `json:"has_pin"`
+	ID               uuid.UUID       `json:"id"`
+	Username         string          `json:"username"`
+	DisplayName      *string         `json:"display_name,omitempty"`
+	Role             models.UserRole `json:"role"`
+	HasPin           bool            `json:"has_pin"`
+	IsKidsProfile    bool            `json:"is_kids_profile"`
+	AvatarID         *string         `json:"avatar_id,omitempty"`
+	MaxContentRating *string         `json:"max_content_rating,omitempty"`
 }
 
 type PinLoginRequest struct {
@@ -167,11 +170,14 @@ func (s *Server) handleFastLoginUsers(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		result = append(result, FastLoginUsersResponse{
-			ID:          u.ID,
-			Username:    u.Username,
-			DisplayName: u.DisplayName,
-			Role:        u.Role,
-			HasPin:      u.HasPin,
+			ID:               u.ID,
+			Username:         u.Username,
+			DisplayName:      u.DisplayName,
+			Role:             u.Role,
+			HasPin:           u.HasPin,
+			IsKidsProfile:    u.IsKidsProfile,
+			AvatarID:         u.AvatarID,
+			MaxContentRating: u.MaxContentRating,
 		})
 	}
 

@@ -51,19 +51,51 @@ const (
 // ──────────────────── User ────────────────────
 
 type User struct {
-	ID           uuid.UUID `json:"id" db:"id"`
-	Username     string    `json:"username" db:"username"`
-	Email        string    `json:"email" db:"email"`
-	PasswordHash string    `json:"-" db:"password_hash"`
-	PinHash      *string   `json:"-" db:"pin_hash"`
-	DisplayName  *string   `json:"display_name,omitempty" db:"display_name"`
-	FirstName    *string   `json:"first_name,omitempty" db:"first_name"`
-	LastName     *string   `json:"last_name,omitempty" db:"last_name"`
-	Role         UserRole  `json:"role" db:"role"`
-	IsActive     bool      `json:"is_active" db:"is_active"`
-	HasPin       bool      `json:"has_pin" db:"-"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
+	ID               uuid.UUID `json:"id" db:"id"`
+	Username         string    `json:"username" db:"username"`
+	Email            string    `json:"email" db:"email"`
+	PasswordHash     string    `json:"-" db:"password_hash"`
+	PinHash          *string   `json:"-" db:"pin_hash"`
+	DisplayName      *string   `json:"display_name,omitempty" db:"display_name"`
+	FirstName        *string   `json:"first_name,omitempty" db:"first_name"`
+	LastName         *string   `json:"last_name,omitempty" db:"last_name"`
+	Role             UserRole  `json:"role" db:"role"`
+	IsActive         bool      `json:"is_active" db:"is_active"`
+	MaxContentRating *string   `json:"max_content_rating,omitempty" db:"max_content_rating"`
+	IsKidsProfile    bool      `json:"is_kids_profile" db:"is_kids_profile"`
+	AvatarID         *string   `json:"avatar_id,omitempty" db:"avatar_id"`
+	HasPin           bool      `json:"has_pin" db:"-"`
+	CreatedAt        time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// ContentRatingLevel returns the numeric level for a content rating string.
+// Higher values are more restrictive. Returns 999 for unknown/nil (unrestricted).
+func ContentRatingLevel(rating string) int {
+	levels := map[string]int{
+		"G": 1, "PG": 2, "PG-13": 3, "R": 4, "NC-17": 5,
+		"TV-Y": 1, "TV-Y7": 2, "TV-G": 2, "TV-PG": 3, "TV-14": 4, "TV-MA": 5,
+	}
+	if v, ok := levels[rating]; ok {
+		return v
+	}
+	return 999
+}
+
+// AllowedContentRatings returns all ratings at or below the given max rating.
+func AllowedContentRatings(maxRating string) []string {
+	if maxRating == "" {
+		return nil // nil means unrestricted
+	}
+	maxLevel := ContentRatingLevel(maxRating)
+	all := []string{"G", "PG", "PG-13", "R", "NC-17", "TV-Y", "TV-Y7", "TV-G", "TV-PG", "TV-14", "TV-MA"}
+	var allowed []string
+	for _, r := range all {
+		if ContentRatingLevel(r) <= maxLevel {
+			allowed = append(allowed, r)
+		}
+	}
+	return allowed
 }
 
 // ──────────────────── Library ────────────────────

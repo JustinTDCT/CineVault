@@ -291,6 +291,14 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("POST /api/v1/watch/{mediaId}/progress", s.authMiddleware(s.handleUpdateProgress, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/watch/continue", s.authMiddleware(s.handleContinueWatching, models.RoleUser))
 
+	// Profile settings (parental controls, kids mode, avatar)
+	s.router.HandleFunc("GET /api/v1/profile/settings", s.authMiddleware(s.handleGetProfileSettings, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/profile/settings", s.authMiddleware(s.handleUpdateProfileSettings, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/users/{id}/settings", s.authMiddleware(s.handleAdminUpdateUserSettings, models.RoleAdmin))
+
+	// Recommendations
+	s.router.HandleFunc("GET /api/v1/recommendations", s.authMiddleware(s.handleRecommendations, models.RoleUser))
+
 	// Performers
 	s.router.HandleFunc("GET /api/v1/performers", s.authMiddleware(s.handleListPerformers, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/performers", s.authMiddleware(s.handleCreatePerformer, models.RoleAdmin))
