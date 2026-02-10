@@ -201,17 +201,69 @@ Multi-episode files are supported: `S01E01-E03` → episode=1, episodeEnd=3
 
 The show name is extracted from the portion of the filename **before** the episode indicator, then cleaned of dots, underscores, and trailing junk.
 
-### Step 4: NFO Sidecar Detection
+### Step 4: Inline Provider ID Extraction
 
-After filename parsing, the scanner checks for `.nfo` sidecar files containing IMDB IDs:
+Before any title cleaning, filenames are scanned for embedded provider IDs in bracket notation:
 
+| Pattern | Example | Result |
+|---|---|---|
+| `[tmdbid=12345]` | `Movie [tmdbid=550].mkv` | TMDB ID 550 |
+| `[imdbid=tt1234567]` | `Movie [imdbid=tt0133093].mkv` | IMDB ID tt0133093 |
+| `[tvdbid=12345]` | `Show [tvdbid=73255].mkv` | TVDB ID 73255 |
+
+When a TMDB ID is found, the scanner performs a **direct TMDB lookup** by ID, bypassing both the cache server and fuzzy title matching entirely. The brackets are stripped from the title before further parsing.
+
+### Step 5: NFO Sidecar Detection
+
+After filename parsing, the scanner checks for `.nfo` sidecar files. CineVault supports full **Kodi-compatible NFO parsing**, not just IMDB ID extraction.
+
+**File discovery:**
 1. **Sidecar match**: looks for `MovieName.nfo` next to `MovieName.mkv`
 2. **Directory match**: if only one video file exists in the folder, any `.nfo` file in the folder is checked
-3. **IMDB extraction**: scans the NFO content for `tt` followed by 7+ digits (e.g., `tt0133093`)
+3. **TV show-level**: `tvshow.nfo` in the show root directory
 
-When an IMDB ID is found, it can be used for **direct metadata lookup**, bypassing fuzzy title matching entirely.
+**NFO types supported:**
+- **Movie NFOs** (`<movie>` root element) — title, tagline, plot, year, runtime, MPAA, country, trailer URL, ratings, genres, studios, cast, directors, writers, artwork references, and provider IDs (IMDB, TMDB, TVDB)
+- **TV Show NFOs** (`<tvshow>` root element) — title, plot, year, MPAA, genres, studios, cast, provider IDs
+- **Episode NFOs** (`<episodedetails>` root element) — title, plot, season/episode numbers, aired date, cast, provider IDs
 
-### Step 5: FFprobe Analysis
+**What NFO data can do:**
+- If the NFO contains a provider ID (IMDB, TMDB, or TVDB), it triggers a **direct lookup** bypassing fuzzy search
+- If the NFO has full metadata (title + plot + year) and `<lockdata>true</lockdata>`, metadata is applied directly without external API calls
+- NFO export is also supported: when enabled on a library, CineVault writes Kodi-compatible NFO files after metadata is fetched
+
+**Library settings control NFO behavior:**
+- `nfo_import` — read NFO files during scan
+- `nfo_export` — write NFO files after metadata is resolved
+
+### Step 6: Local Artwork Detection
+
+When `prefer_local_artwork` is enabled on a library, the scanner checks for artwork files alongside the media using Plex/Jellyfin/Kodi naming conventions.
+
+**Movie/episode artwork** (searched next to the media file):
+| Type | Names checked |
+|---|---|
+| Poster | `poster`, `cover`, `folder`, `<filename>-poster` |
+| Backdrop | `backdrop`, `fanart`, `background`, `<filename>-fanart` |
+| Logo | `logo`, `clearlogo` |
+| Banner | `banner` |
+| Thumbnail | `<filename>-thumb` |
+
+**TV show artwork** (searched in the show root directory):
+| Type | Names checked |
+|---|---|
+| Poster | `poster`, `show`, `folder`, `cover` |
+| Backdrop | `backdrop`, `fanart`, `background` |
+| Logo | `logo`, `clearlogo` |
+| Banner | `banner` |
+
+**Season artwork**: `season01-poster.jpg`, `season01.jpg`, etc.
+
+Supported image extensions: `.jpg`, `.jpeg`, `.png`, `.webp`
+
+Local artwork takes priority over downloaded artwork when the library setting is enabled.
+
+### Step 7: FFprobe Analysis
 
 For video and audio files, ffprobe extracts technical metadata:
 - Duration, resolution, width, height
@@ -220,7 +272,7 @@ For video and audio files, ffprobe extracts technical metadata:
 
 FFprobe values **override** any filename-parsed values for resolution and container.
 
-### Step 6: Hierarchy Creation
+### Step 8: Hierarchy Creation
 
 **TV Shows** (when season grouping is enabled):
 - Show name → `tv_shows` table
@@ -232,14 +284,28 @@ FFprobe values **override** any filename-parsed values for resolution and contai
 - Album → `albums` table (found or created by title under artist)
 - Track → linked to `media_items`
 
-### Step 7: Metadata Matching
+### Step 9: Metadata Matching
 
-After parsing and insertion, items are matched against external providers:
+After parsing and insertion, items are matched against external providers. See [METADATA.MD](METADATA.MD) for the full metadata gathering architecture.
 
-1. **Cache server** checked first (if enabled)
-2. **Direct API**: TMDB (movies/TV), MusicBrainz (music), OpenLibrary (audiobooks)
-3. **Confidence scoring**: 0.6 minimum threshold, +0.20 boost for year match, -0.40 penalty for year mismatch
-4. **Enrichment**: genres, IMDB ID, OMDb ratings, cast/crew, poster download
+**Matching priority order:**
+1. **Inline provider ID** (TMDB/IMDB/TVDB from filename) → direct lookup, highest accuracy
+2. **NFO provider ID** (from sidecar file) → direct lookup
+3. **NFO full metadata** (title + plot + year + lockdata) → applied directly, no API call
+4. **Cache server** (if enabled) → returns fully-enriched data from all sources
+5. **Direct API fallback**: TMDB (movies/TV), MusicBrainz (music), OpenLibrary (audiobooks)
+
+**Confidence scoring**: 0.6 minimum threshold, +0.20 boost for year match, -0.40 penalty for year mismatch
+
+**Enrichment applied after matching:**
+- Tagline, original language, country, trailer URL
+- Genres, content rating
+- IMDB/OMDb ratings (IMDB, Rotten Tomatoes critic + audience)
+- Cast/crew (top 20 cast + key crew)
+- Poster and backdrop download
+- Logo and banner from fanart.tv
+- Auto-collection creation from TMDB `belongs_to_collection`
+- External IDs stored (TMDB, IMDB, TVDB, MusicBrainz, OpenLibrary, PornDB)
 
 ---
 
@@ -300,16 +366,16 @@ The `edition-` prefix is stripped automatically. If no edition tag is found, the
 
 ---
 
-## Comparison With Previous Parser
+## Pipeline Summary
 
-| Feature | Old Parser | New Parser |
-|---|---|---|
-| Movie parsing | Single strict regex only | Strict first, universal fallback |
-| TV episode patterns | 1 pattern (`Name - SxxExx`) | 5+ patterns (S01E01, 1x02, date, verbose, episode-only) |
-| Filename cleaning | ~30 junk tokens, single regex | 100+ tokens, token-bitmap approach with year breakpoint |
-| Year extraction | No false-positive protection | Delimiter-aware, avoids matching episode numbers |
-| Extras detection | None (ingested as media) | 15 directory rules + 11 suffix rules + sample size check |
-| NFO sidecar | Not supported | Reads IMDB ID from .nfo files for direct matching |
-| Source detection | Not tracked | Identifies bluray, dvd, web, hdtv, etc. |
-| Multi-episode | Not supported | S01E01-E03 range detection |
-| Delimiter handling | Only `.` and `_` normalized | All common delimiters handled |
+| Step | Description |
+|---|---|
+| 1. Extension Validation | Filter files by library type |
+| 2. Extras Filtering | Skip trailers, samples, behind-the-scenes, etc. |
+| 3. Filename Parsing | Extract title, year, edition, resolution, season/episode |
+| 4. Inline Provider IDs | Extract `[tmdbid=X]`, `[imdbid=X]`, `[tvdbid=X]` from filename |
+| 5. NFO Sidecar Detection | Parse Kodi-compatible NFO for metadata and provider IDs |
+| 6. Local Artwork Detection | Find poster, backdrop, logo, banner alongside media files |
+| 7. FFprobe Analysis | Extract technical metadata (duration, codec, resolution) |
+| 8. Hierarchy Creation | Build TV show/season/episode or artist/album/track structures |
+| 9. Metadata Matching | Match against cache server, TMDB, MusicBrainz, OpenLibrary |
