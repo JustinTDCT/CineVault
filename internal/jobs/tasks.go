@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -561,6 +563,410 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	return nil
 }
 
+// ──────── Metadata Refresh Handler ────────
+// Unlike MetadataScrape (which only fills missing metadata), Refresh clears
+// all existing metadata for unlocked items, re-queries sources, and generates
+// a screenshot poster when no external match is found.
+
+type MetadataRefreshHandler struct {
+	mediaRepo    *repository.MediaRepository
+	libRepo      *repository.LibraryRepository
+	settingsRepo *repository.SettingsRepository
+	scrapers     []metadata.Scraper
+	cfg          *config.Config
+	scanner      *scanner.Scanner
+	notifier     EventNotifier
+}
+
+func NewMetadataRefreshHandler(mediaRepo *repository.MediaRepository, libRepo *repository.LibraryRepository,
+	settingsRepo *repository.SettingsRepository, scrapers []metadata.Scraper,
+	cfg *config.Config, sc *scanner.Scanner, notifier EventNotifier) *MetadataRefreshHandler {
+	return &MetadataRefreshHandler{
+		mediaRepo: mediaRepo, libRepo: libRepo, settingsRepo: settingsRepo,
+		scrapers: scrapers, cfg: cfg, scanner: sc, notifier: notifier,
+	}
+}
+
+func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
+	var payload struct {
+		LibraryID string `json:"library_id"`
+	}
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return fmt.Errorf("unmarshal: %w", err)
+	}
+
+	libID, _ := uuid.Parse(payload.LibraryID)
+	library, err := h.libRepo.GetByID(libID)
+	if err != nil {
+		return fmt.Errorf("get library: %w", err)
+	}
+
+	taskID := "metadata-refresh:" + payload.LibraryID
+	taskDesc := "Metadata refresh: " + library.Name
+
+	// Get ALL items in the library (we check lock status per-item)
+	items, err := h.mediaRepo.ListAllByLibrary(libID)
+	if err != nil {
+		return fmt.Errorf("list library items: %w", err)
+	}
+	if len(items) == 0 {
+		log.Printf("Metadata refresh: no items in library %s", library.Name)
+		return nil
+	}
+
+	log.Printf("Metadata refresh: processing %d items in %q", len(items), library.Name)
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskMetadataRefresh,
+			"status": "running", "progress": 0, "description": taskDesc,
+		})
+	}
+
+	// Fetch OMDb API key once
+	omdbKey, _ := h.settingsRepo.Get("omdb_api_key")
+
+	// Check cache server
+	var cacheClient *metadata.CacheClient
+	cacheEnabled, _ := h.settingsRepo.Get("cache_server_enabled")
+	if cacheEnabled != "false" {
+		cacheClient = metadata.EnsureRegistered(h.settingsRepo)
+	}
+
+	updated := 0
+	cleared := 0
+	generated := 0
+	var lastBroadcast time.Time
+
+	for i, item := range items {
+		select {
+		case <-ctx.Done():
+			log.Printf("Metadata refresh: cancelled after %d/%d items", i, len(items))
+			return ctx.Err()
+		default:
+		}
+
+		// Broadcast progress
+		if h.notifier != nil {
+			now := time.Now()
+			if now.Sub(lastBroadcast) >= 500*time.Millisecond || i == len(items)-1 {
+				lastBroadcast = now
+				pct := int(float64(i+1) / float64(len(items)) * 100)
+				desc := fmt.Sprintf("Metadata refresh: %s · %s (%d/%d)", library.Name, item.Title, i+1, len(items))
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskMetadataRefresh,
+					"status": "running", "progress": pct, "description": desc,
+				})
+			}
+		}
+
+		// Skip locked items
+		if item.MetadataLocked {
+			continue
+		}
+
+		// Skip types that don't support auto-match
+		if !metadata.ShouldAutoMatch(item.MediaType) {
+			continue
+		}
+
+		// ── Step 1: Clear existing metadata ──
+		fileTitle := metadata.TitleFromFilename(item.FileName)
+		if fileTitle == "" {
+			fileTitle = item.FileName
+		}
+		if err := h.mediaRepo.ClearItemMetadata(item.ID, fileTitle); err != nil {
+			log.Printf("Metadata refresh: clear failed for %s: %v", item.FileName, err)
+			continue
+		}
+		// Remove genre tags and performer links
+		_ = h.mediaRepo.RemoveAllMediaTags(item.ID)
+		_ = h.mediaRepo.RemoveAllMediaPerformers(item.ID)
+		cleared++
+
+		// Use filename-derived title and year for the search
+		query := metadata.CleanTitleForSearch(fileTitle)
+		if query == "" {
+			query = fileTitle
+		}
+		yearHint := metadata.YearFromFilename(item.FileName)
+
+		// ── Step 2: Re-query (cache first) ──
+		matched := false
+
+		if cacheClient != nil {
+			result := cacheClient.Lookup(query, yearHint, item.MediaType)
+			if result != nil && result.Match != nil {
+				best := result.Match
+
+				// Download poster
+				var posterPath *string
+				if best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
+					filename := item.ID.String() + ".jpg"
+					posterDir := filepath.Join(h.cfg.Paths.Preview, "posters")
+					// Remove old poster file so dedup doesn't save new one as _alt
+					_ = removeExistingPosters(posterDir, filename)
+					_, dlErr := metadata.DownloadPoster(*best.PosterURL, posterDir, filename)
+					if dlErr == nil {
+						webPath := "/previews/posters/" + filename
+						posterPath = &webPath
+					}
+				}
+
+				// Apply metadata
+				if err := h.mediaRepo.UpdateMetadata(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath, best.ContentRating); err != nil {
+					log.Printf("Metadata refresh: update failed for %s: %v", item.FileName, err)
+				} else {
+					if result.Ratings != nil {
+						_ = h.mediaRepo.UpdateRatings(item.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore)
+					}
+					if result.ExternalIDsJSON != nil {
+						_ = h.mediaRepo.UpdateExternalIDs(item.ID, *result.ExternalIDsJSON)
+					}
+					// Link genres from cache
+					if len(result.Genres) > 0 {
+						h.linkGenreTags(item.ID, result.Genres)
+					}
+					// Apply cast/crew from cache
+					if result.CastCrewJSON != nil && *result.CastCrewJSON != "" {
+						credits := metadata.ParseCacheCredits(*result.CastCrewJSON)
+						if credits != nil {
+							h.enrichWithCredits(item.ID, credits)
+						}
+					}
+					updated++
+					matched = true
+				}
+				if matched {
+					continue
+				}
+			}
+		}
+
+		// ── Cache miss: fall through to direct scraper ──
+		best := metadata.FindBestMatch(h.scrapers, query, item.MediaType, yearHint)
+		if best != nil {
+			// Enrich with source-specific details
+			if best.Source == "tmdb" {
+				for _, sc := range h.scrapers {
+					if tmdb, ok := sc.(*metadata.TMDBScraper); ok {
+						if details, err := tmdb.GetDetails(best.ExternalID); err == nil {
+							if details.ContentRating != nil {
+								best.ContentRating = details.ContentRating
+							}
+							if details.IMDBId != "" {
+								best.IMDBId = details.IMDBId
+							}
+							if len(details.Genres) > 0 && len(best.Genres) == 0 {
+								best.Genres = details.Genres
+							}
+						}
+						break
+					}
+				}
+			} else if best.Source == "musicbrainz" || best.Source == "openlibrary" {
+				for _, sc := range h.scrapers {
+					if sc.Name() == best.Source {
+						if details, err := sc.GetDetails(best.ExternalID); err == nil {
+							if details.Description != nil && best.Description == nil {
+								best.Description = details.Description
+							}
+							if len(details.Genres) > 0 && len(best.Genres) == 0 {
+								best.Genres = details.Genres
+							}
+							if details.PosterURL != nil && best.PosterURL == nil {
+								best.PosterURL = details.PosterURL
+							}
+						}
+						break
+					}
+				}
+			}
+
+			// Download poster
+			var posterPath *string
+			if best.PosterURL != nil && *best.PosterURL != "" && h.cfg.Paths.Preview != "" {
+				filename := item.ID.String() + ".jpg"
+				posterDir := filepath.Join(h.cfg.Paths.Preview, "posters")
+				_ = removeExistingPosters(posterDir, filename)
+				_, dlErr := metadata.DownloadPoster(*best.PosterURL, posterDir, filename)
+				if dlErr == nil {
+					webPath := "/previews/posters/" + filename
+					posterPath = &webPath
+				}
+			}
+
+			// Apply metadata
+			if err := h.mediaRepo.UpdateMetadata(item.ID, best.Title, best.Year, best.Description, best.Rating, posterPath, best.ContentRating); err != nil {
+				log.Printf("Metadata refresh: update failed for %s: %v", item.FileName, err)
+			} else {
+				// Link genres
+				if len(best.Genres) > 0 {
+					h.linkGenreTags(item.ID, best.Genres)
+				}
+
+				// OMDb ratings
+				if best.IMDBId != "" && omdbKey != "" {
+					ratings, omdbErr := metadata.FetchOMDbRatings(best.IMDBId, omdbKey)
+					if omdbErr == nil {
+						_ = h.mediaRepo.UpdateRatings(item.ID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore)
+					}
+				}
+
+				// Store external IDs
+				idsJSON := metadata.BuildExternalIDsFromMatch(best.Source, best.ExternalID, best.IMDBId, false)
+				if idsJSON != nil {
+					_ = h.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
+				}
+
+				// Contribute to cache
+				if cacheClient != nil {
+					go cacheClient.Contribute(best)
+				}
+
+				updated++
+				matched = true
+			}
+
+			// Rate-limit API calls
+			time.Sleep(300 * time.Millisecond)
+		}
+
+		// ── Step 3: No match — generate screenshot poster ──
+		if !matched && h.scanner != nil && h.scanner.IsProbeableType(item.MediaType) {
+			// Re-read the item to get current state (metadata was cleared)
+			freshItem, err := h.mediaRepo.GetByID(item.ID)
+			if err == nil && freshItem.PosterPath == nil {
+				h.scanner.GenerateScreenshotPoster(freshItem)
+				generated++
+			}
+		}
+	}
+
+	log.Printf("Metadata refresh: cleared %d, matched %d, generated posters %d in %q",
+		cleared, updated, generated, library.Name)
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskMetadataRefresh,
+			"status": "complete", "progress": 100, "description": taskDesc,
+		})
+	}
+	return nil
+}
+
+// linkGenreTags creates genre tags and links them to a media item.
+func (h *MetadataRefreshHandler) linkGenreTags(mediaItemID uuid.UUID, genres []string) {
+	for _, genre := range genres {
+		// Look for existing tag
+		var tagID uuid.UUID
+		row := h.mediaRepo.DB().QueryRow(
+			`SELECT id FROM tags WHERE category = 'genre' AND LOWER(name) = LOWER($1)`, genre)
+		if err := row.Scan(&tagID); err != nil {
+			// Create it
+			tagID = uuid.New()
+			h.mediaRepo.DB().Exec(
+				`INSERT INTO tags (id, name, slug, category) VALUES ($1, $2, $3, 'genre') ON CONFLICT DO NOTHING`,
+				tagID, genre, strings.ToLower(strings.ReplaceAll(genre, " ", "-")))
+			// Re-read in case of race
+			_ = h.mediaRepo.DB().QueryRow(
+				`SELECT id FROM tags WHERE category = 'genre' AND LOWER(name) = LOWER($1)`, genre).Scan(&tagID)
+		}
+		h.mediaRepo.DB().Exec(
+			`INSERT INTO media_tags (id, media_item_id, tag_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+			uuid.New(), mediaItemID, tagID)
+	}
+}
+
+// enrichWithCredits creates performers from credits and links them to a media item.
+func (h *MetadataRefreshHandler) enrichWithCredits(mediaItemID uuid.UUID, credits *metadata.TMDBCredits) {
+	if credits == nil {
+		return
+	}
+	maxCast := 20
+	if len(credits.Cast) < maxCast {
+		maxCast = len(credits.Cast)
+	}
+	for i := 0; i < maxCast; i++ {
+		member := credits.Cast[i]
+		if member.Name == "" {
+			continue
+		}
+		perfID := h.findOrCreatePerformer(member.Name, "actor", member.ProfilePath)
+		if perfID != uuid.Nil {
+			h.mediaRepo.DB().Exec(
+				`INSERT INTO media_performers (id, media_item_id, performer_id, role, character_name, sort_order)
+				 VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
+				uuid.New(), mediaItemID, perfID, "actor", member.Character, member.Order)
+		}
+	}
+	importedCrew := 0
+	for _, member := range credits.Crew {
+		if member.Name == "" {
+			continue
+		}
+		var role string
+		var perfType string
+		switch member.Job {
+		case "Director":
+			role, perfType = "director", "director"
+		case "Producer", "Executive Producer":
+			role, perfType = strings.ToLower(member.Job), "producer"
+		case "Screenplay", "Writer", "Story":
+			role, perfType = strings.ToLower(member.Job), "other"
+		default:
+			continue
+		}
+		perfID := h.findOrCreatePerformer(member.Name, perfType, member.ProfilePath)
+		if perfID != uuid.Nil {
+			h.mediaRepo.DB().Exec(
+				`INSERT INTO media_performers (id, media_item_id, performer_id, role, character_name, sort_order)
+				 VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
+				uuid.New(), mediaItemID, perfID, role, "", 100+importedCrew)
+			importedCrew++
+		}
+	}
+}
+
+func (h *MetadataRefreshHandler) findOrCreatePerformer(name, perfType, profilePath string) uuid.UUID {
+	var perfID uuid.UUID
+	err := h.mediaRepo.DB().QueryRow(
+		`SELECT id FROM performers WHERE LOWER(name) = LOWER($1)`, name).Scan(&perfID)
+	if err == nil {
+		return perfID
+	}
+	perfID = uuid.New()
+	var photoPath *string
+	if profilePath != "" && h.cfg.Paths.Preview != "" {
+		photoURL := "https://image.tmdb.org/t/p/w185" + profilePath
+		filename := "performer_" + perfID.String() + ".jpg"
+		if _, dlErr := metadata.DownloadPoster(photoURL, filepath.Join(h.cfg.Paths.Preview, "posters"), filename); dlErr == nil {
+			wp := "/previews/posters/" + filename
+			photoPath = &wp
+		}
+	}
+	_, err = h.mediaRepo.DB().Exec(
+		`INSERT INTO performers (id, name, performer_type, photo_path) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+		perfID, name, perfType, photoPath)
+	if err != nil {
+		return uuid.Nil
+	}
+	return perfID
+}
+
+// removeExistingPosters deletes old poster files for an item so fresh downloads aren't saved as _alt.
+func removeExistingPosters(dir, filename string) error {
+	ext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
+	pattern := filepath.Join(dir, base+"*"+ext)
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return err
+	}
+	for _, m := range matches {
+		_ = os.Remove(m)
+	}
+	return nil
+}
+
 // ──────── Register all handlers ────────
 
 func RegisterHandlers(q *Queue, sc *scanner.Scanner, libRepo *repository.LibraryRepository,
@@ -573,6 +979,7 @@ func RegisterHandlers(q *Queue, sc *scanner.Scanner, libRepo *repository.Library
 	q.RegisterHandler(TaskPhashLibrary, NewPhashLibraryHandler(mediaRepo, fp, notifier))
 	q.RegisterHandler(TaskGeneratePreview, NewPreviewHandler())
 	q.RegisterHandler(TaskMetadataScrape, NewMetadataScrapeHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, notifier))
+	q.RegisterHandler(TaskMetadataRefresh, NewMetadataRefreshHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))
 
 	// Ignore unused import
 	_ = models.JobPending

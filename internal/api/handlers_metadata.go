@@ -439,6 +439,30 @@ func (s *Server) findOrCreatePerformer(name string, perfType models.PerformerTyp
 	return p, nil
 }
 
+func (s *Server) handleRefreshMetadata(w http.ResponseWriter, r *http.Request) {
+	libID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid library id")
+		return
+	}
+
+	// Enqueue as async job (deduplicated by library ID)
+	if s.jobQueue != nil {
+		uniqueID := "metadata-refresh:" + libID.String()
+		jobID, err := s.jobQueue.EnqueueUnique("metadata:refresh", map[string]string{
+			"library_id": libID.String(),
+		}, uniqueID, asynq.Timeout(6*time.Hour), asynq.Retention(1*time.Hour))
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.respondJSON(w, http.StatusAccepted, Response{Success: true, Data: map[string]string{"job_id": jobID}})
+		return
+	}
+
+	s.respondError(w, http.StatusServiceUnavailable, "job queue not available")
+}
+
 func (s *Server) handleAutoMatch(w http.ResponseWriter, r *http.Request) {
 	libID, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

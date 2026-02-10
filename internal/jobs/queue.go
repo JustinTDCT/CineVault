@@ -14,7 +14,8 @@ const (
 	TaskFingerprint    = "fingerprint:media"
 	TaskPhashLibrary   = "phash:library"
 	TaskGeneratePreview = "preview:generate"
-	TaskMetadataScrape = "metadata:scrape"
+	TaskMetadataScrape   = "metadata:scrape"
+	TaskMetadataRefresh  = "metadata:refresh"
 )
 
 type Queue struct {

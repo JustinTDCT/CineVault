@@ -547,9 +547,15 @@ func (s *Scanner) countEligibleFiles(mediaType models.MediaType, scanPaths []str
 	return count
 }
 
-// generateScreenshotPoster extracts a frame from a video file at ~50% (halfway mark)
+// GenerateScreenshotPoster extracts a frame from a video file at ~50% (halfway mark)
 // into the duration and saves it as the poster image for libraries that don't
 // pull external metadata or when no poster was found from scrapers.
+// Exported so background job handlers can use it for metadata refresh fallback.
+func (s *Scanner) GenerateScreenshotPoster(item *models.MediaItem) {
+	s.generateScreenshotPoster(item)
+}
+
+// generateScreenshotPoster is the internal implementation.
 func (s *Scanner) generateScreenshotPoster(item *models.MediaItem) {
 	if s.ffmpegPath == "" || s.posterDir == "" {
 		return
@@ -619,8 +625,13 @@ func (s *Scanner) isValidExtension(mediaType models.MediaType, ext string) bool 
 	}
 }
 
-func (s *Scanner) isProbeableType(mediaType models.MediaType) bool {
+// IsProbeableType returns true if the media type supports video/audio probing.
+func (s *Scanner) IsProbeableType(mediaType models.MediaType) bool {
 	return mediaType != models.MediaTypeImages
+}
+
+func (s *Scanner) isProbeableType(mediaType models.MediaType) bool {
+	return s.IsProbeableType(mediaType)
 }
 
 func (s *Scanner) applyProbeData(item *models.MediaItem, probe *ffmpeg.ProbeResult) {

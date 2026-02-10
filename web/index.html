@@ -1902,8 +1902,8 @@
         closeLibCtxMenu();
         const lib = allLibraries.find(l => l.id === libId);
         if (lib && !lib.retrieve_metadata) { toast('Metadata retrieval is disabled for this library', 'error'); return; }
-        toast('Metadata refresh started — unlocked items will be updated...');
-        api('POST', '/libraries/' + libId + '/auto-match').then(data => {
+        toast('Metadata refresh started — clearing & re-matching unlocked items...');
+        api('POST', '/libraries/' + libId + '/refresh-metadata').then(data => {
             if (data.success) toast('Metadata refresh queued');
             else toast('Failed: ' + (data.error || 'Unknown'), 'error');
         }).catch(e => toast('Error: ' + e.message, 'error'));

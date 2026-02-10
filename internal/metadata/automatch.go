@@ -123,6 +123,49 @@ func CleanTitleForSearch(title string) string {
 	return strings.TrimSpace(cleaned)
 }
 
+// TitleFromFilename derives a clean display title from a media filename.
+// Strips the extension, replaces dots/underscores with spaces, removes
+// edition tags, year brackets, resolution/codec junk, and collapses whitespace.
+func TitleFromFilename(filename string) string {
+	ext := filepath.Ext(filename)
+	name := strings.TrimSuffix(filename, ext)
+	name = strings.ReplaceAll(name, ".", " ")
+	name = strings.ReplaceAll(name, "_", " ")
+	// Strip edition tags: {edition-Remastered} etc.
+	name = regexp.MustCompile(`\{[^}]*\}`).ReplaceAllString(name, "")
+	// Strip year in parens/brackets: "Title - (2020)" → "Title -"
+	name = regexp.MustCompile(`[\(\[\{]\d{4}[\)\]\}]`).ReplaceAllString(name, "")
+	// Strip anything in square brackets: "[Bluray-1080p x265]" etc.
+	name = regexp.MustCompile(`\[.*?\]`).ReplaceAllString(name, "")
+	// Strip resolution, codec, and release junk tokens
+	name = regexp.MustCompile(`(?i)\b(1080p|720p|480p|2160p|4k|uhd|bluray|blu-ray|brrip|bdrip|dvdrip|webrip|web-dl|webdl|hdtv|hdrip|x264|x265|h264|h265|hevc|aac|ac3|dts|atmos|remux|proper|repack|extended|unrated|directors cut|dc)\b`).ReplaceAllString(name, "")
+	// Strip trailing dash/whitespace separator
+	name = regexp.MustCompile(`\s*-\s*$`).ReplaceAllString(name, "")
+	// Collapse multiple spaces
+	name = regexp.MustCompile(`\s+`).ReplaceAllString(name, " ")
+	return strings.TrimSpace(name)
+}
+
+// YearFromFilename extracts a 4-digit year from a filename.
+func YearFromFilename(filename string) *int {
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`\((\d{4})\)`),
+		regexp.MustCompile(`\[(\d{4})\]`),
+		regexp.MustCompile(`[.\s_-](\d{4})[.\s_-]`),
+	}
+	for _, p := range patterns {
+		matches := p.FindStringSubmatch(filename)
+		if len(matches) >= 2 {
+			var y int
+			fmt.Sscanf(matches[1], "%d", &y)
+			if y >= 1900 && y <= 2100 {
+				return &y
+			}
+		}
+	}
+	return nil
+}
+
 // DownloadPoster fetches an image from a URL and saves it to destPath.
 // Returns the saved file path on success.
 // If a poster already exists for this item, compares content hashes:

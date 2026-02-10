@@ -27,6 +27,11 @@ func NewMediaRepository(db *sql.DB) *MediaRepository {
 	return &MediaRepository{db: db}
 }
 
+// DB returns the underlying database connection for direct queries.
+func (r *MediaRepository) DB() *sql.DB {
+	return r.db
+}
+
 // mediaColumns is the standard SELECT list for media_items
 const mediaColumns = `id, library_id, media_type, file_path, file_name, file_size,
 	file_hash, title, sort_title, original_title, description, year, release_date,
@@ -721,6 +726,55 @@ func (r *MediaRepository) GetLibraryFilterOptions(libraryID uuid.UUID) (*FilterO
 	}
 
 	return opts, nil
+}
+
+// ClearItemMetadata resets all enriched metadata fields for a single item back to a
+// clean state. Technical metadata (resolution, codec, duration, etc.) is preserved.
+// The title is reset to the provided fileTitle (derived from the filename).
+func (r *MediaRepository) ClearItemMetadata(id uuid.UUID, fileTitle string) error {
+	query := `UPDATE media_items SET
+		title = $1, sort_title = NULL, original_title = NULL, description = NULL,
+		year = NULL, release_date = NULL, rating = NULL,
+		poster_path = NULL, thumbnail_path = NULL, backdrop_path = NULL,
+		generated_poster = false, imdb_rating = NULL, rt_rating = NULL, audience_score = NULL,
+		content_rating = NULL, external_ids = NULL,
+		updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2`
+	_, err := r.db.Exec(query, fileTitle, id)
+	return err
+}
+
+// RemoveAllMediaTags removes all tag links for a media item.
+func (r *MediaRepository) RemoveAllMediaTags(id uuid.UUID) error {
+	_, err := r.db.Exec(`DELETE FROM media_tags WHERE media_item_id = $1`, id)
+	return err
+}
+
+// RemoveAllMediaPerformers removes all performer links for a media item.
+func (r *MediaRepository) RemoveAllMediaPerformers(id uuid.UUID) error {
+	_, err := r.db.Exec(`DELETE FROM media_performers WHERE media_item_id = $1`, id)
+	return err
+}
+
+// ListAllByLibrary returns all media items in a library regardless of lock status.
+func (r *MediaRepository) ListAllByLibrary(libraryID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + `
+		FROM media_items WHERE library_id = $1
+		ORDER BY COALESCE(sort_title, title)`
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 // PopulateEditionCounts enriches a slice of MediaItems with edition group info.

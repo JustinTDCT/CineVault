@@ -1,6 +1,6 @@
 {
-  "version": "0.33.0",
+  "version": "0.34.0",
   "phase": 3,
   "released": "2026-02-10",
-  "notes": "Full cache aggregation — use all metadata from cache server, skip redundant TMDB credits calls"
+  "notes": "Library metadata refresh — clears and re-queries all unlocked items, generates screenshot poster on no match"
 }
