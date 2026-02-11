@@ -2413,30 +2413,25 @@
     async function jumpToLetter(el) {
         const targetOffset = parseInt(el.dataset.offset);
         const letter = el.dataset.letter;
-        // Load batches until we have enough items to reach this letter (with safety limit)
-        let safety = 0;
-        while (_gridState.offset <= targetOffset && !_gridState.done && safety < 50) {
-            const prevOffset = _gridState.offset;
-            await loadMoreMedia();
-            // If offset didn't advance, break to avoid infinite loop
-            if (_gridState.offset === prevOffset) break;
-            safety++;
-        }
-        // Find the first card starting with this letter and scroll to it
         const grid = document.getElementById('libGrid');
-        if (!grid) return;
-        const cards = grid.querySelectorAll('.media-card');
-        for (const card of cards) {
-            const title = card.querySelector('.media-title');
-            if (title) {
-                const sortTitle = card.dataset.sortTitle || title.textContent;
-                const cardLetter = sortableTitleLetter(sortTitle);
-                if (cardLetter === letter) {
-                    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    break;
-                }
-            }
-        }
+        if (!grid || !_gridState.libraryId) return;
+
+        // Plex/Jellyfin approach: jump directly to the target offset server-side.
+        // Clear the grid, reset state to the target offset, load one batch from there.
+        if (_gridState.observer) _gridState.observer.disconnect();
+        grid.innerHTML = '';
+        _gridState.offset = targetOffset;
+        _gridState.done = false;
+        _gridState.loading = false;
+        await loadMoreMedia();
+
+        // Scroll grid to top so the first loaded card is visible
+        const container = document.getElementById('mainContent');
+        if (container) container.scrollTop = 0;
+
+        // Re-attach infinite scroll for continued browsing from this point
+        setupScrollObserver();
+
         document.querySelectorAll('.alpha-jump-letter').forEach(l => l.classList.remove('active'));
         el.classList.add('active');
     }
