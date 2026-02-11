@@ -1,6 +1,6 @@
 {
-  "version": "0.51.02",
+  "version": "0.51.03",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Fix Parent Movie search results not displaying (missing active CSS rule)."
+  "notes": "Style Remove and Play buttons to match UI theme."
 }
