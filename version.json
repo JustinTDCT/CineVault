@@ -1,6 +1,6 @@
 {
-  "version": "0.47.0",
+  "version": "0.48.0",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Server analytics dashboard: stream sessions tracking, transcode history, system metrics (CPU/RAM/GPU/disk), daily stats rollup, notification channels (Discord/Slack/generic), configurable alert rules, who-watched-what activity feed, library health reports, Chart.js visualizations."
+  "notes": "UI feature wiring: add/remove collection items, poster/backdrop editing, cast display in edit modal, year/rating library filters, mood tags on media detail, 30-day trends chart, transcoder settings, user admin management, NFO import/export toggles."
 }

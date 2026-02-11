@@ -271,6 +271,16 @@
                 </div>
                 <div id="parentCurrentInfo" style="display:none;"></div>
             </div>
+            <div class="edit-field-row">
+                <div class="form-group">
+                    <label>Poster URL</label>
+                    <input type="text" id="editPosterPath" placeholder="URL or local path to poster image">
+                </div>
+                <div class="form-group">
+                    <label>Backdrop URL</label>
+                    <input type="text" id="editBackdropPath" placeholder="URL or local path to backdrop image">
+                </div>
+            </div>
             <div class="form-group">
                 <label>Custom Notes</label>
                 <textarea id="editCustomNotes" rows="2" placeholder="Personal notes (e.g. Hybrid remux, AI upscale, etc.)"></textarea>
@@ -278,6 +288,12 @@
             <div class="form-group">
                 <label>Custom Tags <span style="color:#6b7b8d;font-weight:400;font-size:0.78rem;">(comma-separated)</span></label>
                 <input type="text" id="editCustomTags" placeholder="e.g. reference, demo-disc, keeper">
+            </div>
+            <div id="editCastSection" style="margin-top:8px;">
+                <span class="field-locks-toggle" id="editCastToggle" onclick="toggleEditCast()">
+                    <span class="arrow">&#9656;</span> Cast &amp; Crew
+                </span>
+                <div id="editCastPanel" style="display:none;"></div>
             </div>
             <div id="editSeriesGroup" style="display:none; margin-top:8px;">
                 <div id="editSeriesInfo"></div>
@@ -1411,6 +1427,7 @@
                         <button class="btn-secondary" onclick="playDirect('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#128190; Direct Play</button>
                         <button class="btn-secondary" onclick="openEditModal('${m.id}')">&#9998; Edit</button>
                         <button class="btn-secondary" onclick="identifyMedia('${m.id}')">&#128270; Identify</button>
+                        <button class="btn-secondary" onclick="showAddToCollectionPicker('${m.id}')">&#128218; + Collection</button>
                     </div>
                     <div style="margin-bottom:10px;">
                         ${m.metadata_locked ? '<span class="lock-badge locked">&#128274; Metadata Locked</span>' : ''}
@@ -1457,9 +1474,15 @@
         if (!container) return;
         if (tagData.success && tagData.data && tagData.data.length > 0) {
             const genreTags = tagData.data.filter(t => t.category === 'genre');
+            const moodTags = tagData.data.filter(t => t.category === 'mood');
+            let html = '';
             if (genreTags.length > 0) {
-                container.innerHTML = genreTags.map(t => `<span class="genre-tag">${t.name}</span>`).join('');
+                html += genreTags.map(t => `<span class="genre-tag">${t.name}</span>`).join('');
             }
+            if (moodTags.length > 0) {
+                html += moodTags.map(t => `<span class="genre-tag mood-tag">${t.name}</span>`).join('');
+            }
+            container.innerHTML = html;
         }
     }
 
@@ -1726,6 +1749,9 @@
         if (f.resolution) params.push('resolution=' + encodeURIComponent(f.resolution));
         if (f.audio_codec) params.push('audio_codec=' + encodeURIComponent(f.audio_codec));
         if (f.bitrate_range) params.push('bitrate_range=' + encodeURIComponent(f.bitrate_range));
+        if (f.year_from) params.push('year_from=' + encodeURIComponent(f.year_from));
+        if (f.year_to) params.push('year_to=' + encodeURIComponent(f.year_to));
+        if (f.min_rating) params.push('min_rating=' + encodeURIComponent(f.min_rating));
         if (f.sort) params.push('sort=' + encodeURIComponent(f.sort));
         if (f.order) params.push('order=' + encodeURIComponent(f.order));
         return params.length > 0 ? '&' + params.join('&') : '';
@@ -1973,6 +1999,12 @@
                 <option value="ultra">30+ Mbps</option>
             </select>
             <div class="ft-sep"></div>
+            <span class="ft-label">Year</span>
+            <input type="number" id="ftYearFrom" placeholder="From" min="1900" max="2099" style="width:72px;" onchange="applyLibFilter()">
+            <input type="number" id="ftYearTo" placeholder="To" min="1900" max="2099" style="width:72px;" onchange="applyLibFilter()">
+            <span class="ft-label">Min Rating</span>
+            <input type="number" id="ftMinRating" placeholder="0" min="0" max="10" step="0.5" style="width:64px;" onchange="applyLibFilter()">
+            <div class="ft-sep"></div>
             <span class="ft-label">Sort</span>
             <select id="ftSort" onchange="applyLibFilter()">
                 <option value="">Title</option>
@@ -2009,6 +2041,9 @@
         const resolution = document.getElementById('ftResolution');
         const audioCodec = document.getElementById('ftAudioCodec');
         const bitrate = document.getElementById('ftBitrate');
+        const yearFrom = document.getElementById('ftYearFrom');
+        const yearTo = document.getElementById('ftYearTo');
+        const minRating = document.getElementById('ftMinRating');
         const sort = document.getElementById('ftSort');
         const order = document.getElementById('ftOrder');
         if (genre && genre.value) f.genre = genre.value;
@@ -2022,6 +2057,9 @@
         if (resolution && resolution.value) f.resolution = resolution.value;
         if (audioCodec && audioCodec.value) f.audio_codec = audioCodec.value;
         if (bitrate && bitrate.value) f.bitrate_range = bitrate.value;
+        if (yearFrom && yearFrom.value) f.year_from = yearFrom.value;
+        if (yearTo && yearTo.value) f.year_to = yearTo.value;
+        if (minRating && minRating.value) f.min_rating = minRating.value;
         if (sort && sort.value) f.sort = sort.value;
         if (order && order.value !== 'asc') f.order = order.value;
         _gridState.filters = f;
@@ -2029,8 +2067,10 @@
     }
 
     function resetLibFilters() {
-        const ids = ['ftGenre','ftFolder','ftRating','ftEdition','ftSource','ftDynRange','ftCodec','ftHDR','ftResolution','ftAudioCodec','ftBitrate','ftSort','ftOrder'];
-        ids.forEach(id => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
+        const selectIds = ['ftGenre','ftFolder','ftRating','ftEdition','ftSource','ftDynRange','ftCodec','ftHDR','ftResolution','ftAudioCodec','ftBitrate','ftSort','ftOrder'];
+        selectIds.forEach(id => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
+        const inputIds = ['ftYearFrom','ftYearTo','ftMinRating'];
+        inputIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
         _gridState.filters = {};
         reloadLibraryGrid();
     }
@@ -2841,6 +2881,52 @@
         else toast(r.error || 'Failed to create templates', 'error');
     }
 
+    // ──── Add to Collection Picker ────
+    async function showAddToCollectionPicker(mediaId) {
+        const collRes = await api('GET', '/collections');
+        if (!collRes.success || !collRes.data || collRes.data.length === 0) {
+            toast('No collections found. Create one first.', 'error');
+            return;
+        }
+        const manualColls = collRes.data.filter(c => c.collection_type === 'manual');
+        if (manualColls.length === 0) {
+            toast('No manual collections found. Smart collections auto-populate.', 'error');
+            return;
+        }
+        const options = manualColls.map(c => `<option value="${c.id}">${c.name} (${c.item_count || 0} items)</option>`).join('');
+        // Show inline picker below detail actions
+        const existing = document.getElementById('collPickerInline');
+        if (existing) existing.remove();
+        const picker = document.createElement('div');
+        picker.id = 'collPickerInline';
+        picker.style.cssText = 'display:flex;gap:10px;align-items:center;margin-top:10px;padding:12px;background:rgba(0,0,0,0.3);border:1px solid var(--accent-border);border-radius:10px;';
+        picker.innerHTML = `<select id="collPickerSelect" style="flex:1;">${options}</select>
+            <button class="btn-primary btn-small" onclick="addToCollection('${mediaId}')">Add</button>
+            <button class="btn-secondary btn-small" onclick="this.parentElement.remove()">Cancel</button>`;
+        const actions = document.querySelector('.detail-actions');
+        if (actions) actions.parentElement.insertBefore(picker, actions.nextSibling);
+    }
+
+    async function addToCollection(mediaId) {
+        const sel = document.getElementById('collPickerSelect');
+        if (!sel) return;
+        const collId = sel.value;
+        const d = await api('POST', '/collections/' + collId + '/items', { media_item_id: mediaId });
+        if (d.success) {
+            toast('Added to collection!');
+            const picker = document.getElementById('collPickerInline');
+            if (picker) picker.remove();
+        } else {
+            toast(d.error || 'Failed to add', 'error');
+        }
+    }
+
+    async function removeFromCollection(collId, itemId) {
+        const d = await api('DELETE', '/collections/' + collId + '/items/' + itemId);
+        if (d.success) { toast('Removed from collection'); loadCollectionDetailView(collId); }
+        else toast(d.error || 'Failed to remove', 'error');
+    }
+
     function formatRuntime(seconds) {
         if (!seconds) return '0m';
         const h = Math.floor(seconds / 3600);
@@ -2962,6 +3048,7 @@
                         <div class="media-poster" style="position:relative;">
                             ${ci.poster_path ? '<img src="' + posterSrc(ci.poster_path, coll.updated_at) + '" alt="" loading="lazy">' : '&#127916;'}
                             ${res ? '<span class="quality-badge">' + res + '</span>' : ''}
+                            <button class="cw-remove" onclick="event.stopPropagation();removeFromCollection('${collId}','${ci.id}')" title="Remove from collection">&#10005;</button>
                             <div class="media-card-hover-info">
                                 <div class="hover-title">${ci.title || 'Untitled'}</div>
                                 <div class="hover-meta">${ci.rating ? '<span class="hover-rating-badge">&#11088; ' + ci.rating.toFixed(1) + '</span>' : ''}<span>${meta}</span></div>
@@ -2972,7 +3059,7 @@
                     </div>`;
                 }).join('') + '</div>';
             } else {
-                itemsHTML = '<div class="empty-state"><div class="empty-state-icon">&#128218;</div><div class="empty-state-title">Empty collection</div><p>Add items from media detail pages</p></div>';
+                itemsHTML = '<div class="empty-state"><div class="empty-state-icon">&#128218;</div><div class="empty-state-title">Empty collection</div><p>Add items from media detail pages using the + Collection button</p></div>';
             }
         }
 
@@ -3224,11 +3311,18 @@
         document.getElementById('editRating').value = m.rating != null ? m.rating : '';
         // Edition type (always shown)
         document.getElementById('editEditionType').value = m.edition_type || 'Theatrical';
+        // Poster and backdrop
+        document.getElementById('editPosterPath').value = m.poster_path || '';
+        document.getElementById('editBackdropPath').value = m.backdrop_path || '';
         // Custom notes and tags
         document.getElementById('editCustomNotes').value = m.custom_notes || '';
         const ctRaw = m.custom_tags ? (typeof m.custom_tags === 'string' ? JSON.parse(m.custom_tags || '{}') : m.custom_tags) : {};
         const ctArr = ctRaw.tags || [];
         document.getElementById('editCustomTags').value = ctArr.join(', ');
+        // Cast display
+        document.getElementById('editCastPanel').style.display = 'none';
+        document.getElementById('editCastToggle').classList.remove('open');
+        loadEditCast(m.id);
         // Parent Movie field (movies and adult_movies only)
         const parentGroup = document.getElementById('parentMovieGroup');
         const parentSearch = document.getElementById('parentMovieSearch');
@@ -3307,6 +3401,8 @@
         const rating = ratingVal !== '' ? parseFloat(ratingVal) : null;
 
         const editionType = document.getElementById('editEditionType').value;
+        const posterPath = document.getElementById('editPosterPath').value.trim() || null;
+        const backdropPath = document.getElementById('editBackdropPath').value.trim() || null;
         const customNotes = document.getElementById('editCustomNotes').value.trim() || null;
         const ctInput = document.getElementById('editCustomTags').value.trim();
         const ctTags = ctInput ? ctInput.split(',').map(t => t.trim()).filter(Boolean) : [];
@@ -3315,7 +3411,8 @@
         const d = await api('PUT', '/media/' + id, {
             title, sort_title: sortTitle, original_title: originalTitle,
             description, year, release_date: releaseDate, rating,
-            edition_type: editionType, custom_notes: customNotes, custom_tags: customTags
+            edition_type: editionType, poster_path: posterPath, backdrop_path: backdropPath,
+            custom_notes: customNotes, custom_tags: customTags
         });
         if (d.success) {
             // Set edition parent if one was selected
@@ -3442,6 +3539,38 @@
         } else {
             lockDiv.innerHTML = '<span class="lock-badge unlocked">&#128275; No fields locked — auto-match may update all fields</span>';
             resetBtn.style.display = 'none';
+        }
+    }
+
+    // ──── Edit Modal Cast Display ────
+    function toggleEditCast() {
+        const panel = document.getElementById('editCastPanel');
+        const toggle = document.getElementById('editCastToggle');
+        const isOpen = panel.style.display !== 'none';
+        panel.style.display = isOpen ? 'none' : '';
+        toggle.classList.toggle('open', !isOpen);
+    }
+
+    async function loadEditCast(mediaId) {
+        const panel = document.getElementById('editCastPanel');
+        const castRes = await api('GET', '/media/' + mediaId + '/cast');
+        if (castRes.success && castRes.data && castRes.data.length > 0) {
+            const castItems = castRes.data.map(c => {
+                const subtitle = c.role === 'actor' ? (c.character_name || 'Actor') : c.role;
+                return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <div style="width:32px;height:32px;border-radius:50%;background:rgba(0,217,255,0.15);display:flex;align-items:center;justify-content:center;font-size:0.7rem;flex-shrink:0;">
+                        ${c.photo_path ? '<img src="'+c.photo_path+'" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">' : '&#128100;'}
+                    </div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:0.82rem;color:#e5e5e5;">${c.name}</div>
+                        <div style="font-size:0.72rem;color:#5a6a7f;">${subtitle}</div>
+                    </div>
+                </div>`;
+            }).join('');
+            panel.innerHTML = `<div style="max-height:200px;overflow-y:auto;padding:8px 0;">${castItems}</div>
+                <p style="font-size:0.72rem;color:#6b7b8d;margin-top:6px;">Cast is populated via metadata matching. Use Identify to refresh.</p>`;
+        } else {
+            panel.innerHTML = '<p style="color:#5a6a7f;font-size:0.82rem;padding:8px 0;">No cast data. Use Identify to populate from metadata sources.</p>';
         }
     }
 
@@ -3846,6 +3975,7 @@
                 <button class="analytics-tab ${activeTab==='streams'?'active':''}" onclick="loadAnalyticsView('streams')">Streams</button>
                 <button class="analytics-tab ${activeTab==='transcodes'?'active':''}" onclick="loadAnalyticsView('transcodes')">Transcodes</button>
                 <button class="analytics-tab ${activeTab==='system'?'active':''}" onclick="loadAnalyticsView('system')">System</button>
+                <button class="analytics-tab ${activeTab==='trends'?'active':''}" onclick="loadAnalyticsView('trends')">Trends</button>
                 <button class="analytics-tab ${activeTab==='health'?'active':''}" onclick="loadAnalyticsView('health')">Library Health</button>
                 <button class="analytics-tab ${activeTab==='alerts'?'active':''}" onclick="loadAnalyticsView('alerts')">Alerts</button>
             </div>
@@ -3950,6 +4080,61 @@
             if (history.length > 1) {
                 const ctx = document.getElementById('systemChart').getContext('2d');
                 analyticsCharts.system = new Chart(ctx, { type:'line', data:{ labels:history.map(h=>new Date(h.recorded_at).toLocaleTimeString()), datasets:[{label:'CPU %',data:history.map(h=>h.cpu_percent),borderColor:'#00d9ff',tension:0.3,fill:false},{label:'Memory %',data:history.map(h=>h.memory_percent),borderColor:'#7c3aed',tension:0.3,fill:false}]}, options:{responsive:true,plugins:{legend:{labels:{color:'#8a9bae'}}},scales:{x:{ticks:{color:'#5a6a7f',maxTicksLimit:12}},y:{min:0,max:100,ticks:{color:'#5a6a7f'}}}} });
+            }
+        } else if (activeTab === 'trends') {
+            const data = await api('GET','/analytics/trends');
+            const trends = data.success ? (data.data||[]) : [];
+            ac.innerHTML = `<div class="settings-card full-width">
+                <h3>Daily Activity (30 days)</h3>
+                <div class="chart-container"><canvas id="trendsChart"></canvas></div>
+            </div>
+            <div class="analytics-grid" style="margin-top:16px;">
+                <div class="settings-card full-width"><h3>Daily Breakdown</h3>
+                    <div style="max-height:400px;overflow-y:auto;">
+                    <table class="activity-table">
+                        <thead><tr><th>Date</th><th>Plays</th><th>Users</th><th>Watch Time</th><th>Bandwidth</th><th>Transcodes</th><th>Direct</th><th>Failures</th><th>New Media</th></tr></thead>
+                        <tbody>${trends.length ? trends.slice().reverse().map(d=>{
+                            const mins = Math.round((d.total_watch_minutes||0));
+                            const hrs = mins >= 60 ? Math.floor(mins/60)+'h '+mins%60+'m' : mins+'m';
+                            return `<tr>
+                                <td>${d.date}</td>
+                                <td>${d.total_plays||0}</td>
+                                <td>${d.unique_users||0}</td>
+                                <td>${hrs}</td>
+                                <td>${formatBytes(d.total_bytes_served||0)}</td>
+                                <td>${d.transcodes||0}</td>
+                                <td>${d.direct_plays||0}</td>
+                                <td class="${(d.transcode_failures||0)>0?'stat-danger':''}">${d.transcode_failures||0}</td>
+                                <td>${d.new_media_added||0}</td>
+                            </tr>`;
+                        }).join('') : '<tr><td colspan="9" style="text-align:center;color:#5a6a7f;">No trend data yet. Stats roll up nightly.</td></tr>'}</tbody>
+                    </table></div>
+                </div>
+            </div>`;
+            // Trends line chart
+            if (trends.length > 1) {
+                const ctx = document.getElementById('trendsChart').getContext('2d');
+                analyticsCharts.trends = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: trends.map(d => d.date),
+                        datasets: [
+                            { label: 'Plays', data: trends.map(d => d.total_plays||0), borderColor: '#00d9ff', backgroundColor: 'rgba(0,217,255,0.1)', tension: 0.3, fill: true },
+                            { label: 'Unique Users', data: trends.map(d => d.unique_users||0), borderColor: '#7c3aed', tension: 0.3, fill: false },
+                            { label: 'Transcodes', data: trends.map(d => d.transcodes||0), borderColor: '#f59e0b', tension: 0.3, fill: false },
+                            { label: 'Failures', data: trends.map(d => d.transcode_failures||0), borderColor: '#ff6b6b', tension: 0.3, fill: false }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: { legend: { labels: { color: '#8a9bae' } } },
+                        scales: {
+                            x: { ticks: { color: '#5a6a7f', maxTicksLimit: 15 } },
+                            y: { beginAtZero: true, ticks: { color: '#5a6a7f' } }
+                        }
+                    }
+                });
             }
         } else if (activeTab === 'health') {
             const data = await api('GET','/analytics/library-health');
