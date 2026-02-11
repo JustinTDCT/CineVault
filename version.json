@@ -1,6 +1,6 @@
 {
-  "version": "0.53.00",
-  "phase": 4,
+  "version": "0.54.00",
+  "phase": 5,
   "released": "2026-02-11",
-  "notes": "Phase 1: Core playback — subtitle tracks (external + embedded), audio track catalog, chapter markers, WebVTT conversion, subtitle/audio/chapter extraction during scan, player UI selectors."
+  "notes": "Phase 3: Library scanning — fsnotify filesystem watcher, scheduled scans (1h/6h/12h/24h/weekly), extras detection (trailers, featurettes, BTS, deleted scenes), Watch Trailer button with YouTube embed, multi-episode file splitting (S01E01-E03)."
 }

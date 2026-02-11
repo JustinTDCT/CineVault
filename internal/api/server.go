@@ -346,6 +346,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("POST /api/v1/series/{id}/items", s.authMiddleware(s.handleAddSeriesItem, models.RoleAdmin))
 	s.router.HandleFunc("DELETE /api/v1/series/{id}/items/{itemId}", s.authMiddleware(s.handleRemoveSeriesItem, models.RoleAdmin))
 	s.router.HandleFunc("GET /api/v1/media/{id}/series", s.authMiddleware(s.handleGetMediaSeries, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/media/{id}/extras", s.authMiddleware(s.handleGetMediaExtras, models.RoleUser))
 
 	// Watch history
 	s.router.HandleFunc("POST /api/v1/watch/{mediaId}/progress", s.authMiddleware(s.handleUpdateProgress, models.RoleUser))

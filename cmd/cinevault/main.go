@@ -13,6 +13,9 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/fingerprint"
 	"github.com/JustinTDCT/CineVault/internal/jobs"
 	"github.com/JustinTDCT/CineVault/internal/notifications"
+	"github.com/JustinTDCT/CineVault/internal/scheduler"
+	"github.com/JustinTDCT/CineVault/internal/watcher"
+	"github.com/google/uuid"
 )
 
 const banner = `
@@ -85,6 +88,42 @@ func main() {
 	alertEval := notifications.NewAlertEvaluator(server.AnalyticsRepo(), server.NotificationRepo(), server.WebhookSender())
 	go alertEval.Start()
 	defer alertEval.Stop()
+
+	// Start filesystem watcher for real-time library updates
+	fsWatcher, err := watcher.New(server.LibRepo(), func(libraryID uuid.UUID, path string, isCreate bool) {
+		if isCreate {
+			lib, err := server.LibRepo().GetByID(libraryID)
+			if err != nil {
+				log.Printf("[watcher] library lookup error: %v", err)
+				return
+			}
+			if err := server.Scanner().ScanSingleFile(lib, path); err != nil {
+				log.Printf("[watcher] scan error for %s: %v", path, err)
+			}
+		} else {
+			if err := server.MediaRepo().MarkUnavailable(path); err != nil {
+				log.Printf("[watcher] mark unavailable error for %s: %v", path, err)
+			}
+		}
+	})
+	if err != nil {
+		log.Printf("Filesystem watcher failed to start: %v", err)
+	} else {
+		fsWatcher.Start()
+		defer fsWatcher.Stop()
+	}
+
+	// Start scheduled scan checker (every 60s)
+	scanScheduler := scheduler.New(server.LibRepo(), func(libraryID uuid.UUID) {
+		_, err := jobQueue.EnqueueUnique(jobs.TaskScanLibrary,
+			map[string]string{"library_id": libraryID.String()},
+			"scheduled-scan-"+libraryID.String())
+		if err != nil {
+			log.Printf("[scheduler] enqueue scan error: %v", err)
+		}
+	})
+	scanScheduler.Start()
+	defer scanScheduler.Stop()
 
 	addr := cfg.Server.Address()
 	log.Printf("Server starting on http://%s\n", addr)

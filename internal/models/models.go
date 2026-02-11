@@ -118,6 +118,9 @@ type Library struct {
 	NFOExport           bool          `json:"nfo_export" db:"nfo_export"`
 	PreferLocalArtwork  bool          `json:"prefer_local_artwork" db:"prefer_local_artwork"`
 	AdultContentType    *string       `json:"adult_content_type,omitempty" db:"adult_content_type"`
+	ScanInterval      string        `json:"scan_interval" db:"scan_interval"`
+	NextScanAt        *time.Time    `json:"next_scan_at,omitempty" db:"next_scan_at"`
+	WatchEnabled      bool          `json:"watch_enabled" db:"watch_enabled"`
 	LastScanAt        *time.Time    `json:"last_scan_at" db:"last_scan_at"`
 	CreatedAt         time.Time     `json:"created_at" db:"created_at"`
 	UpdatedAt         time.Time     `json:"updated_at" db:"updated_at"`
@@ -218,6 +221,9 @@ type MediaItem struct {
 	MetadataLocked   bool            `json:"metadata_locked" db:"metadata_locked"`
 	LockedFields     pq.StringArray  `json:"locked_fields" db:"locked_fields"`
 	DuplicateStatus  string          `json:"duplicate_status" db:"duplicate_status"`
+	// Extras support (trailers, featurettes, etc.)
+	ParentMediaID    *uuid.UUID      `json:"parent_media_id,omitempty" db:"parent_media_id"`
+	ExtraType        *string         `json:"extra_type,omitempty" db:"extra_type"`
 	AddedAt          time.Time  `json:"added_at" db:"added_at"`
 	UpdatedAt        time.Time  `json:"updated_at" db:"updated_at"`
 	LastScannedAt    *time.Time `json:"last_scanned_at,omitempty" db:"last_scanned_at"`

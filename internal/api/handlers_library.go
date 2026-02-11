@@ -40,6 +40,8 @@ type createLibraryRequest struct {
 	NFOExport          *bool    `json:"nfo_export"`
 	PreferLocalArtwork *bool    `json:"prefer_local_artwork"`
 	AdultContentType   *string  `json:"adult_content_type"`
+	ScanInterval       string   `json:"scan_interval"`
+	WatchEnabled       bool     `json:"watch_enabled"`
 }
 
 func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
@@ -86,6 +88,11 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 		primaryPath = req.Folders[0]
 	}
 
+	scanInterval := "disabled"
+	if req.ScanInterval != "" {
+		scanInterval = req.ScanInterval
+	}
+
 	library := models.Library{
 		ID:                 uuid.New(),
 		Name:               req.Name,
@@ -101,6 +108,14 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 		NFOExport:          nfoExport,
 		PreferLocalArtwork: preferLocalArtwork,
 		AdultContentType:   req.AdultContentType,
+		ScanInterval:       scanInterval,
+		WatchEnabled:       req.WatchEnabled,
+	}
+
+	// Calculate initial next_scan_at if interval is set
+	if scanInterval != "disabled" {
+		nextScan := calculateNextScan(scanInterval)
+		library.NextScanAt = nextScan
 	}
 
 	if err := s.libRepo.Create(&library); err != nil {
@@ -209,6 +224,8 @@ type updateLibraryRequest struct {
 	NFOExport          *bool    `json:"nfo_export"`
 	PreferLocalArtwork *bool    `json:"prefer_local_artwork"`
 	AdultContentType   *string  `json:"adult_content_type"`
+	ScanInterval       string   `json:"scan_interval"`
+	WatchEnabled       bool     `json:"watch_enabled"`
 }
 
 func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
@@ -272,6 +289,21 @@ func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
 		primaryPath = req.Folders[0]
 	}
 
+	scanInterval := req.ScanInterval
+	if scanInterval == "" {
+		scanInterval = existing.ScanInterval
+	}
+
+	// Calculate next_scan_at if interval changed
+	var nextScanAt *time.Time
+	if scanInterval != "disabled" {
+		if scanInterval != existing.ScanInterval {
+			nextScanAt = calculateNextScan(scanInterval)
+		} else {
+			nextScanAt = existing.NextScanAt
+		}
+	}
+
 	library := models.Library{
 		ID:                 id,
 		Name:               req.Name,
@@ -288,6 +320,9 @@ func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
 		NFOExport:          nfoExport,
 		PreferLocalArtwork: preferLocalArtwork,
 		AdultContentType:   adultContentType,
+		ScanInterval:       scanInterval,
+		NextScanAt:         nextScanAt,
+		WatchEnabled:       req.WatchEnabled,
 	}
 
 	if err := s.libRepo.Update(&library); err != nil {
@@ -434,4 +469,25 @@ func (s *Server) handleLibraryFilters(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: opts})
+}
+
+// calculateNextScan returns the next scan time based on interval string.
+func calculateNextScan(interval string) *time.Time {
+	now := time.Now()
+	var next time.Time
+	switch interval {
+	case "1h":
+		next = now.Add(1 * time.Hour)
+	case "6h":
+		next = now.Add(6 * time.Hour)
+	case "12h":
+		next = now.Add(12 * time.Hour)
+	case "24h":
+		next = now.Add(24 * time.Hour)
+	case "weekly":
+		next = now.Add(7 * 24 * time.Hour)
+	default:
+		return nil
+	}
+	return &next
 }

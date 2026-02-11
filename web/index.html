@@ -1564,6 +1564,30 @@
                         <label><input type="radio" name="preferLocalArtwork" value="no" ${lib.prefer_local_artwork===false?'checked':''}><span>No</span></label>
                     </div>
                 </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Scheduled Scan</div>
+                        <div class="option-row-desc">Automatically scan this library on a schedule</div>
+                    </div>
+                    <select id="editScanInterval" class="form-select" style="width:auto;">
+                        <option value="disabled" ${lib.scan_interval==='disabled'||!lib.scan_interval?'selected':''}>Disabled</option>
+                        <option value="1h" ${lib.scan_interval==='1h'?'selected':''}>Every Hour</option>
+                        <option value="6h" ${lib.scan_interval==='6h'?'selected':''}>Every 6 Hours</option>
+                        <option value="12h" ${lib.scan_interval==='12h'?'selected':''}>Every 12 Hours</option>
+                        <option value="24h" ${lib.scan_interval==='24h'?'selected':''}>Daily</option>
+                        <option value="weekly" ${lib.scan_interval==='weekly'?'selected':''}>Weekly</option>
+                    </select>
+                </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Filesystem Watcher</div>
+                        <div class="option-row-desc">Watch folders for new/deleted files in real-time</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="watchEnabled" value="yes" ${lib.watch_enabled?'checked':''}><span>Yes</span></label>
+                        <label><input type="radio" name="watchEnabled" value="no" ${!lib.watch_enabled?'checked':''}><span>No</span></label>
+                    </div>
+                </div>
             </div>
 
             <button class="btn-primary" onclick="saveEditLibrary()">Save Changes</button>
@@ -1605,6 +1629,8 @@
         const nfo_import = document.querySelector('input[name="nfoImport"]:checked')?.value === 'yes';
         const nfo_export = document.querySelector('input[name="nfoExport"]:checked')?.value === 'yes';
         const prefer_local_artwork = document.querySelector('input[name="preferLocalArtwork"]:checked')?.value === 'yes';
+        const scan_interval = document.getElementById('editScanInterval')?.value || 'disabled';
+        const watch_enabled = document.querySelector('input[name="watchEnabled"]:checked')?.value === 'yes';
 
         let adult_content_type = null;
         if (media_type === 'adult_movies') {
@@ -1615,7 +1641,8 @@
             name, path: folders[0], folders, is_enabled: true,
             season_grouping, access_level, allowed_users,
             include_in_homepage, include_in_search, retrieve_metadata,
-            nfo_import, nfo_export, prefer_local_artwork, adult_content_type
+            nfo_import, nfo_export, prefer_local_artwork, adult_content_type,
+            scan_interval, watch_enabled
         });
         if (d.success) { toast('Library updated!'); loadLibrariesView(); loadSidebarCounts(); }
         else toast('Failed: ' + d.error, 'error');
@@ -1971,6 +1998,7 @@
                     <div class="detail-actions">
                         <button class="btn-primary" onclick="playMedia('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#9654; Play</button>
                         <button class="btn-secondary" onclick="playDirect('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#128190; Direct Play</button>
+                        ${m.trailer_url ? '<button class="btn-secondary" onclick="watchTrailer(\''+m.trailer_url.replace(/'/g,"\\'")+'\',\''+m.title.replace(/'/g,"\\'")+'\')">&#127909; Trailer</button>' : ''}
                         <button class="btn-secondary" onclick="openEditModal('${m.id}')">&#9998; Edit</button>
                         <button class="btn-secondary" onclick="identifyMedia('${m.id}')">&#128270; Identify</button>
                         <button class="btn-secondary" onclick="showAddToCollectionPicker('${m.id}')">&#128218; + Collection</button>
@@ -1991,6 +2019,7 @@
                         <button class="detail-tab" onclick="showDetailTab(this,'tags-tab','${m.id}')">Tags</button>
                         ${m.edition_count > 1 ? '<button class="detail-tab" onclick="showDetailTab(this,\'editions\',\''+m.id+'\')">Editions</button>' : ''}
                         <button class="detail-tab" onclick="showDetailTab(this,'metadata','${m.id}')">Metadata</button>
+                        <button class="detail-tab" onclick="showDetailTab(this,'extras','${m.id}')">Extras</button>
                         <button class="detail-tab" onclick="showDetailTab(this,'segments','${m.id}')">Segments</button>
                         <button class="detail-tab" onclick="showDetailTab(this,'file','${m.id}')">File</button>
                     </div>
@@ -2157,6 +2186,36 @@
                 }
 
                 tc.innerHTML = html;
+            }
+        } else if (tab === 'extras') {
+            tc.innerHTML = '<div class="spinner"></div>';
+            const extrasRes = await api('GET', '/media/' + mediaId + '/extras');
+            if (extrasRes.success && extrasRes.data && extrasRes.data.length > 0) {
+                const extras = extrasRes.data;
+                const grouped = {};
+                extras.forEach(e => {
+                    const t = e.extra_type || 'other';
+                    if (!grouped[t]) grouped[t] = [];
+                    grouped[t].push(e);
+                });
+                let html = '';
+                const typeLabels = {trailer:'Trailers',featurette:'Featurettes','behind-the-scenes':'Behind the Scenes','deleted-scene':'Deleted Scenes',interview:'Interviews',short:'Shorts',other:'Other'};
+                for (const [type, items] of Object.entries(grouped)) {
+                    html += '<h4 style="color:#e5e5e5;margin:12px 0 8px;">' + (typeLabels[type] || type) + '</h4>';
+                    html += '<div class="extras-list">';
+                    items.forEach(e => {
+                        const dur = e.duration_seconds ? formatDuration(e.duration_seconds) : '';
+                        html += `<div class="extras-item" onclick="playMedia('${e.id}','${(e.title||'').replace(/'/g,"\\'")}')">
+                            <span class="extras-icon">&#9654;</span>
+                            <span class="extras-title">${e.title || e.file_name}</span>
+                            ${dur ? '<span class="extras-duration">'+dur+'</span>' : ''}
+                        </div>`;
+                    });
+                    html += '</div>';
+                }
+                tc.innerHTML = html;
+            } else {
+                tc.innerHTML = '<p style="color:#5a6a7f;">No extras found</p>';
             }
         } else if (tab === 'segments') {
             tc.innerHTML = '<div class="spinner"></div>';
@@ -3150,6 +3209,30 @@
                         <label><input type="radio" name="preferLocalArtwork" value="no"><span>No</span></label>
                     </div>
                 </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Scheduled Scan</div>
+                        <div class="option-row-desc">Automatically scan this library on a schedule</div>
+                    </div>
+                    <select id="editScanInterval" class="form-select" style="width:auto;">
+                        <option value="disabled" selected>Disabled</option>
+                        <option value="1h">Every Hour</option>
+                        <option value="6h">Every 6 Hours</option>
+                        <option value="12h">Every 12 Hours</option>
+                        <option value="24h">Daily</option>
+                        <option value="weekly">Weekly</option>
+                    </select>
+                </div>
+                <div class="option-row">
+                    <div class="option-row-info">
+                        <div class="option-row-label">Filesystem Watcher</div>
+                        <div class="option-row-desc">Watch folders for new/deleted files in real-time</div>
+                    </div>
+                    <div class="toggle-btns">
+                        <label><input type="radio" name="watchEnabled" value="yes"><span>Yes</span></label>
+                        <label><input type="radio" name="watchEnabled" value="no" checked><span>No</span></label>
+                    </div>
+                </div>
             </div>
 
             <button class="btn-primary" onclick="createLibrary()">Create Library</button>
@@ -3282,6 +3365,8 @@
         const nfo_import = document.querySelector('input[name="nfoImport"]:checked')?.value === 'yes';
         const nfo_export = document.querySelector('input[name="nfoExport"]:checked')?.value === 'yes';
         const prefer_local_artwork = document.querySelector('input[name="preferLocalArtwork"]:checked')?.value === 'yes';
+        const scan_interval = document.getElementById('editScanInterval')?.value || 'disabled';
+        const watch_enabled = document.querySelector('input[name="watchEnabled"]:checked')?.value === 'yes';
 
         let adult_content_type = null;
         if (media_type === 'adult_movies') {
@@ -3292,7 +3377,8 @@
             name, media_type, path: folders[0], folders, is_enabled: true,
             season_grouping, access_level, allowed_users,
             include_in_homepage, include_in_search, retrieve_metadata,
-            nfo_import, nfo_export, prefer_local_artwork, adult_content_type
+            nfo_import, nfo_export, prefer_local_artwork, adult_content_type,
+            scan_interval, watch_enabled
         });
         if (d.success) { toast('Library created!'); loadLibrariesView(); loadSidebarCounts(); }
         else toast('Failed: ' + d.error, 'error');
@@ -4936,6 +5022,36 @@
         playMediaDirect(mediaId, title);
     }
 
+    function watchTrailer(trailerUrl, title) {
+        const overlay = document.getElementById('playerOverlay');
+        const video = document.getElementById('videoPlayer');
+        document.getElementById('playerTitle').textContent = 'Trailer: ' + title;
+        overlay.classList.add('active');
+
+        // Check if YouTube URL
+        const ytMatch = trailerUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+        if (ytMatch) {
+            // YouTube embed
+            const container = video.parentElement;
+            video.style.display = 'none';
+            let iframe = document.getElementById('trailerIframe');
+            if (!iframe) {
+                iframe = document.createElement('iframe');
+                iframe.id = 'trailerIframe';
+                iframe.style.cssText = 'width:100%;height:100%;border:none;position:absolute;top:0;left:0;';
+                iframe.allow = 'autoplay; encrypted-media';
+                iframe.allowFullscreen = true;
+                container.appendChild(iframe);
+            }
+            iframe.style.display = 'block';
+            iframe.src = 'https://www.youtube-nocookie.com/embed/' + ytMatch[1] + '?autoplay=1&rel=0';
+        } else {
+            // Direct URL
+            video.src = trailerUrl;
+            video.play().catch(() => {});
+        }
+    }
+
     async function playMediaDirect(mediaId, title) {
         currentMediaId = mediaId;
         const overlay = document.getElementById('playerOverlay');
@@ -5186,7 +5302,12 @@
         overlay.classList.remove('active');
         video.pause();
         video.src = '';
+        video.style.display = '';
         destroyPlayers();
+
+        // Clean up trailer iframe
+        const iframe = document.getElementById('trailerIframe');
+        if (iframe) { iframe.src = ''; iframe.style.display = 'none'; }
 
         // Save watch progress
         if (currentMediaId && video.currentTime > 0) {

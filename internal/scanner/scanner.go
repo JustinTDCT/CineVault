@@ -162,9 +162,10 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				return nil
 			}
 
-			// Skip extras/samples/trailers (Jellyfin/Plex-style filtering)
-			if extraType := IsExtraFile(path, info.Size()); extraType != "" {
-				log.Printf("Skipping extra (%s): %s", extraType, info.Name())
+			// Detect extras/samples/trailers (trailers, featurettes, BTS, deleted scenes, etc.)
+			extraType := IsExtraFile(path, info.Size())
+			if extraType == "sample" {
+				log.Printf("Skipping sample file: %s", info.Name())
 				return nil
 			}
 
@@ -244,6 +245,11 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				EditionType: parsed.Edition,
 			}
 
+			// Tag extras (trailers, featurettes, behind-the-scenes, deleted-scenes, interviews)
+			if extraType != "" {
+				item.ExtraType = &extraType
+			}
+
 			// Pre-fill resolution/container/source from filename (ffprobe will override if available)
 			if parsed.Resolution != "" {
 				item.Resolution = &parsed.Resolution
@@ -300,6 +306,17 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				return nil
 			}
 
+			// ── Link extras to parent media item ──
+			if item.ExtraType != nil {
+				// Walk up directories to find a non-extras parent directory
+				parentDir := filepath.Dir(filepath.Dir(path))
+				parent, _ := s.mediaRepo.FindParentByDirectory(library.ID, parentDir)
+				if parent != nil {
+					item.ParentMediaID = &parent.ID
+					s.mediaRepo.UpdateParentMediaID(item.ID, parent.ID)
+				}
+			}
+
 			// ── Extract and store subtitle tracks, audio tracks, and chapters ──
 			if probeResult != nil && s.tracksRepo != nil {
 				s.extractAndStoreTracks(item.ID, path, probeResult)
@@ -318,6 +335,40 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 			// If TV with season grouping, increment season episode count
 			if library.SeasonGrouping && item.TVSeasonID != nil {
 				_ = s.tvRepo.IncrementEpisodeCount(*item.TVSeasonID)
+			}
+
+			// ── Multi-episode file detection ──
+			// If the file covers a range (S01E01-E03), create additional items for E02, E03
+			if library.MediaType == models.MediaTypeTVShows && parsed.EpisodeEnd > 0 && parsed.Episode > 0 && parsed.EpisodeEnd > parsed.Episode {
+				for epNum := parsed.Episode + 1; epNum <= parsed.EpisodeEnd; epNum++ {
+					extraEp := &models.MediaItem{
+						ID:          uuid.New(),
+						LibraryID:   library.ID,
+						MediaType:   library.MediaType,
+						FilePath:    path,
+						FileName:    info.Name(),
+						FileSize:    info.Size(),
+						Title:       parsed.Title,
+						Year:        parsed.Year,
+						TVShowID:    item.TVShowID,
+						TVSeasonID:  item.TVSeasonID,
+					}
+					epn := epNum
+					extraEp.EpisodeNumber = &epn
+					if item.DurationSeconds != nil {
+						// Estimate duration per episode by dividing total
+						totalEps := parsed.EpisodeEnd - parsed.Episode + 1
+						epDur := *item.DurationSeconds / totalEps
+						extraEp.DurationSeconds = &epDur
+					}
+					if err := s.mediaRepo.Create(extraEp); err != nil {
+						log.Printf("Multi-episode: failed to create ep %d item: %v", epNum, err)
+					} else {
+						if library.SeasonGrouping && extraEp.TVSeasonID != nil {
+							_ = s.tvRepo.IncrementEpisodeCount(*extraEp.TVSeasonID)
+						}
+					}
+				}
 			}
 
 			// ── Local artwork detection (Plex/Jellyfin-style) ──
@@ -349,8 +400,8 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				if s.tagRepo != nil && len(nfoData.Genres) > 0 {
 					s.linkGenreTags(item.ID, nfoData.Genres)
 				}
-			} else if shouldRetrieveMetadata {
-				// Auto-populate metadata from external sources (if enabled)
+			} else if shouldRetrieveMetadata && item.ExtraType == nil {
+				// Auto-populate metadata from external sources (if enabled, skip extras)
 				s.autoPopulateMetadata(library, item, parsed)
 			}
 
@@ -692,6 +743,79 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 		}
 		go cacheClient.Contribute(combined.Details, extras)
 	}
+}
+
+// ScanSingleFile scans a single file, used by the filesystem watcher for real-time updates.
+func (s *Scanner) ScanSingleFile(library *models.Library, filePath string) error {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return err
+	}
+
+	ext := strings.ToLower(filepath.Ext(filePath))
+	if !s.isValidExtension(library.MediaType, ext) {
+		return nil
+	}
+
+	// Check if already scanned
+	existing, _ := s.mediaRepo.GetByFilePath(filePath)
+	if existing != nil {
+		return nil
+	}
+
+	extraType := IsExtraFile(filePath, info.Size())
+	if extraType == "sample" {
+		return nil
+	}
+
+	parsed := s.parseFilename(info.Name(), library.MediaType)
+	item := &models.MediaItem{
+		ID:          uuid.New(),
+		LibraryID:   library.ID,
+		MediaType:   library.MediaType,
+		FilePath:    filePath,
+		FileName:    info.Name(),
+		FileSize:    info.Size(),
+		Title:       parsed.Title,
+		Year:        parsed.Year,
+		EditionType: parsed.Edition,
+	}
+
+	if extraType != "" {
+		item.ExtraType = &extraType
+	}
+	if parsed.Source != "" {
+		item.SourceType = &parsed.Source
+	}
+
+	// Probe if needed
+	if s.isProbeableType(library.MediaType) {
+		probe, probeErr := s.ffprobe.Probe(filePath)
+		if probeErr == nil {
+			s.applyProbeData(item, probe)
+		}
+	}
+
+	if err := s.mediaRepo.Create(item); err != nil {
+		return err
+	}
+
+	// Link extras to parent
+	if item.ExtraType != nil {
+		parentDir := filepath.Dir(filepath.Dir(filePath))
+		parent, _ := s.mediaRepo.FindParentByDirectory(library.ID, parentDir)
+		if parent != nil {
+			s.mediaRepo.UpdateParentMediaID(item.ID, parent.ID)
+		}
+	}
+
+	// Auto-populate metadata for non-extras
+	if library.RetrieveMetadata && item.ExtraType == nil {
+		s.autoPopulateMetadata(library, item, parsed)
+	}
+
+	log.Printf("[watcher] scanned new file: %s", info.Name())
+	return nil
 }
 
 // MediaRepo exposes the media repository for post-scan jobs (e.g. phash).

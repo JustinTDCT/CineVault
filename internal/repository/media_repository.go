@@ -61,7 +61,8 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	imdb_rating, rt_rating, audience_score,
 	edition_type, content_rating, sort_position, external_ids, generated_poster,
 	source_type, hdr_format, dynamic_range, custom_notes, custom_tags,
-	metadata_locked, locked_fields, duplicate_status, added_at, updated_at`
+	metadata_locked, locked_fields, duplicate_status, parent_media_id, extra_type,
+	added_at, updated_at`
 
 // prefixedMediaColumns returns mediaColumns with each column prefixed by the given alias (e.g. "m.").
 func prefixedMediaColumns(prefix string) string {
@@ -90,7 +91,8 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.IMDBRating, &item.RTRating, &item.AudienceScore,
 		&item.EditionType, &item.ContentRating, &item.SortPosition, &item.ExternalIDs, &item.GeneratedPoster,
 		&item.SourceType, &item.HDRFormat, &item.DynamicRange, &item.CustomNotes, &item.CustomTags,
-		&item.MetadataLocked, &item.LockedFields, &item.DuplicateStatus, &item.AddedAt, &item.UpdatedAt,
+		&item.MetadataLocked, &item.LockedFields, &item.DuplicateStatus,
+		&item.ParentMediaID, &item.ExtraType, &item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
 }
@@ -107,7 +109,8 @@ func (r *MediaRepository) Create(item *models.MediaItem) error {
 			artist_id, album_id, track_number, disc_number,
 			author_id, book_id, chapter_number,
 			image_gallery_id, sister_group_id, edition_type, sort_position,
-			source_type, hdr_format, dynamic_range
+			source_type, hdr_format, dynamic_range,
+			parent_media_id, extra_type
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
 			$8, $9, $10, $11, $12, $13,
@@ -118,7 +121,8 @@ func (r *MediaRepository) Create(item *models.MediaItem) error {
 			$31, $32, $33, $34,
 			$35, $36, $37,
 			$38, $39, $40, $41,
-			$42, $43, $44
+			$42, $43, $44,
+			$45, $46
 		)
 		RETURNING added_at, updated_at`
 
@@ -135,6 +139,7 @@ func (r *MediaRepository) Create(item *models.MediaItem) error {
 		item.AuthorID, item.BookID, item.ChapterNumber,
 		item.ImageGalleryID, item.SisterGroupID, item.EditionType, item.SortPosition,
 		item.SourceType, item.HDRFormat, item.DynamicRange,
+		item.ParentMediaID, item.ExtraType,
 	).Scan(&item.AddedAt, &item.UpdatedAt)
 }
 
@@ -150,6 +155,54 @@ func (r *MediaRepository) GetByID(id uuid.UUID) (*models.MediaItem, error) {
 func (r *MediaRepository) GetByFilePath(filePath string) (*models.MediaItem, error) {
 	query := `SELECT ` + mediaColumns + ` FROM media_items WHERE file_path = $1`
 	item, err := scanMediaItem(r.db.QueryRow(query, filePath))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return item, err
+}
+
+// GetExtras returns extras (trailers, featurettes, etc.) linked to a parent media item.
+func (r *MediaRepository) GetExtras(parentID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + ` FROM media_items WHERE parent_media_id = $1 ORDER BY extra_type, title`
+	rows, err := r.db.Query(query, parentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// MarkUnavailable sets a media item as unavailable (file deleted from disk).
+func (r *MediaRepository) MarkUnavailable(filePath string) error {
+	query := `DELETE FROM media_items WHERE file_path = $1`
+	_, err := r.db.Exec(query, filePath)
+	return err
+}
+
+// UpdateParentMediaID sets the parent_media_id for an extras item.
+func (r *MediaRepository) UpdateParentMediaID(id, parentID uuid.UUID) error {
+	query := `UPDATE media_items SET parent_media_id = $1 WHERE id = $2`
+	_, err := r.db.Exec(query, parentID, id)
+	return err
+}
+
+// FindParentByDirectory tries to find a non-extra media item in the same library that
+// could be the parent of an extra file (same directory minus the extras subfolder).
+func (r *MediaRepository) FindParentByDirectory(libraryID uuid.UUID, dirPath string) (*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + ` FROM media_items
+		WHERE library_id = $1 AND extra_type IS NULL
+		AND file_path LIKE $2 || '%'
+		ORDER BY added_at ASC LIMIT 1`
+	item, err := scanMediaItem(r.db.QueryRow(query, libraryID, dirPath))
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

@@ -128,6 +128,22 @@ func (s *Server) handleGetMedia(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: media})
 }
 
+func (s *Server) handleGetMediaExtras(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media ID")
+		return
+	}
+
+	extras, err := s.mediaRepo.GetExtras(id)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to fetch extras")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: extras})
+}
+
 func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
