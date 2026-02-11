@@ -397,7 +397,7 @@ body {
     position: absolute; top: 100%; right: 0; margin-top: var(--sp-2);
     background: linear-gradient(135deg, #1a2332 0%, #0d1b2a 100%);
     border: 1px solid var(--accent-border-strong); border-radius: var(--radius-xl);
-    width: 220px; box-shadow: var(--shadow-xl); z-index: 200;
+    width: 220px; box-shadow: var(--shadow-xl); z-index: 600;
     display: none; overflow: hidden;
 }
 .user-dropdown.open { display: block; animation: ctxFadeIn 0.15s ease; }
