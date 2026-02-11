@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/JustinTDCT/CineVault/internal/stream"
 	"github.com/google/uuid"
 )
@@ -146,13 +148,34 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		userID := s.getUserID(r).String()
-		sess, err := s.transcoder.StartTranscode(mediaID, userID, media.FilePath, quality)
+		userID := s.getUserID(r)
+		sess, err := s.transcoder.StartTranscode(mediaID, userID.String(), media.FilePath, quality)
 		if err != nil {
 			s.respondError(w, http.StatusInternalServerError, "transcode failed: "+err.Error())
 			return
 		}
 		session = sess
+
+		// Record a transcode stream session
+		if s.analyticsRepo != nil {
+			q := quality
+			pt := models.PlaybackTranscode
+			ssRec := &models.StreamSession{
+				UserID:       userID,
+				MediaItemID:  mid,
+				PlaybackType: pt,
+				Quality:      &q,
+				Codec:        media.Codec,
+				Resolution:   media.Resolution,
+				Container:    media.Container,
+			}
+			if ua := r.UserAgent(); ua != "" {
+				ssRec.ClientInfo = &ua
+			}
+			if err := s.analyticsRepo.CreateStreamSession(ssRec); err != nil {
+				log.Printf("Analytics: failed to create transcode stream session: %v", err)
+			}
+		}
 	}
 
 	if strings.HasSuffix(segmentFile, ".m3u8") {
@@ -215,6 +238,32 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Determine playback type and record stream session
+	userID := s.getUserID(r)
+	playbackType := models.PlaybackDirectPlay
+	if stream.NeedsRemux(media.FilePath) {
+		playbackType = models.PlaybackDirectStream
+	}
+
+	var sessionRecord *models.StreamSession
+	if s.analyticsRepo != nil {
+		sessionRecord = &models.StreamSession{
+			UserID:       userID,
+			MediaItemID:  mediaID,
+			PlaybackType: playbackType,
+			Codec:        media.Codec,
+			Resolution:   media.Resolution,
+			Container:    media.Container,
+		}
+		if ua := r.UserAgent(); ua != "" {
+			sessionRecord.ClientInfo = &ua
+		}
+		if err := s.analyticsRepo.CreateStreamSession(sessionRecord); err != nil {
+			log.Printf("Analytics: failed to create stream session: %v", err)
+		}
+	}
+	startTime := time.Now()
+
 	// Non-native formats: remux to MPEG-TS on-the-fly (Plex direct stream)
 	if stream.NeedsRemux(media.FilePath) {
 		audioCodec := ""
@@ -226,12 +275,22 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 				s.respondError(w, http.StatusInternalServerError, "remux failed: "+err.Error())
 			}
 		}
+		// End session
+		if s.analyticsRepo != nil && sessionRecord != nil {
+			dur := int(time.Since(startTime).Seconds())
+			_ = s.analyticsRepo.EndStreamSession(sessionRecord.ID, 0, dur)
+		}
 		return
 	}
 
 	// Native browser format (MP4/WebM) — serve directly with range support
 	if err := stream.ServeDirectFile(w, r, media.FilePath); err != nil {
 		s.respondError(w, http.StatusInternalServerError, err.Error())
+	}
+	// End session
+	if s.analyticsRepo != nil && sessionRecord != nil {
+		dur := int(time.Since(startTime).Seconds())
+		_ = s.analyticsRepo.EndStreamSession(sessionRecord.ID, 0, dur)
 	}
 }
 

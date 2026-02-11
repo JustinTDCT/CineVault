@@ -190,6 +190,18 @@ func (t *Transcoder) GenerateMasterPlaylist(mediaItemID, filePath string, availa
 	return sb.String()
 }
 
+// ActiveSessionCount returns the number of active transcode sessions.
+func (t *Transcoder) ActiveSessionCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.sessions)
+}
+
+// HWAccel returns the detected hardware accelerator name.
+func (t *Transcoder) HWAccel() string {
+	return t.DetectHWAccel()
+}
+
 func (t *Transcoder) CleanupExpired(maxAge time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

@@ -1868,6 +1868,127 @@ body {
     .skeleton-hero { min-height: 280px; }
 }
 
+/* ──────────────────── Analytics Dashboard ──────────────────── */
+
+.analytics-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 24px;
+    background: var(--surface);
+    border-radius: var(--radius-xl);
+    padding: 4px;
+    border: 1px solid var(--accent-border);
+    overflow-x: auto;
+}
+
+.analytics-tab {
+    padding: 10px 18px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-lg);
+    font-size: 0.85rem;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: all 0.2s;
+}
+
+.analytics-tab:hover {
+    background: rgba(0, 217, 255, 0.08);
+    color: var(--text-primary);
+}
+
+.analytics-tab.active {
+    background: rgba(0, 217, 255, 0.15);
+    color: var(--accent);
+}
+
+.analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+}
+
+.stat-card {
+    padding: 20px;
+    border-radius: var(--radius-xl);
+    background: var(--surface);
+    border: 1px solid var(--accent-border);
+}
+
+.stat-label {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.stat-value.stat-danger {
+    color: #ef4444;
+}
+
+.stat-bar {
+    margin-top: 12px;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+}
+
+.stat-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), #7c3aed);
+    transition: width 0.5s ease;
+}
+
+.chart-container {
+    position: relative;
+    width: 100%;
+    max-height: 300px;
+}
+
+.chart-container canvas {
+    max-height: 300px;
+}
+
+.activity-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.activity-table thead th {
+    text-align: left;
+    padding: 10px 12px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--accent-border);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.activity-table tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    color: var(--text-primary);
+}
+
+.activity-table tbody tr:hover {
+    background: rgba(0, 217, 255, 0.04);
+}
+
+.settings-card.full-width {
+    grid-column: 1 / -1;
+}
+
 /* Mobile phones */
 @media (max-width: 480px) {
     :root {

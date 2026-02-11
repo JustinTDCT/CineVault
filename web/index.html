@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <style>
         /* Page-specific overrides only — main styles in styles.css */
     </style>
@@ -912,6 +913,20 @@
                     if (dupBadge) { dupBadge.textContent = dupData.data.count; dupBadge.style.display = ''; }
                 }
             } catch {}
+            // Add admin nav section if admin and not already present
+            if (currentUser && currentUser.role === 'admin' && !document.getElementById('adminNavSection')) {
+                const sidebar = document.getElementById('sidebar');
+                const section = document.createElement('div');
+                section.className = 'nav-section';
+                section.id = 'adminNavSection';
+                section.innerHTML = '<div class="nav-label">Admin</div>' +
+                    '<div class="nav-item" data-view="analytics"><span class="nav-icon">&#128202;</span><span>Analytics</span></div>' +
+                    '<div class="nav-item" data-view="admin"><span class="nav-icon">&#9881;</span><span>Admin Panel</span></div>';
+                sidebar.appendChild(section);
+                section.querySelectorAll('.nav-item[data-view]').forEach(item => {
+                    item.addEventListener('click', () => navigate(item.dataset.view));
+                });
+            }
         } catch {}
     }
 
@@ -1199,6 +1214,7 @@
             case 'duplicates': loadDuplicatesView(); break;
             case 'settings': window.location.href = 'settings.html'; break;
             case 'admin': loadAdminView(); break;
+            case 'analytics': loadAnalyticsView(); break;
             case 'profile': loadProfileView(); break;
         }
     }
@@ -3812,6 +3828,222 @@
     }
 
     // ──── Settings (moved to settings.html) ────
+
+    // ──── Analytics Dashboard ────
+    let analyticsCharts = {};
+    async function loadAnalyticsView(tab) {
+        if(!currentUser||currentUser.role!=='admin'){document.getElementById('mainContent').innerHTML='<div class="empty-state"><div class="empty-state-title">Admin access required</div></div>';return;}
+        const mc = document.getElementById('mainContent');
+        const activeTab = tab || 'overview';
+        // Destroy existing charts
+        Object.values(analyticsCharts).forEach(c => { if(c && c.destroy) c.destroy(); });
+        analyticsCharts = {};
+
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Analytics</h2></div>
+            <div class="analytics-tabs">
+                <button class="analytics-tab ${activeTab==='overview'?'active':''}" onclick="loadAnalyticsView('overview')">Overview</button>
+                <button class="analytics-tab ${activeTab==='activity'?'active':''}" onclick="loadAnalyticsView('activity')">Activity</button>
+                <button class="analytics-tab ${activeTab==='streams'?'active':''}" onclick="loadAnalyticsView('streams')">Streams</button>
+                <button class="analytics-tab ${activeTab==='transcodes'?'active':''}" onclick="loadAnalyticsView('transcodes')">Transcodes</button>
+                <button class="analytics-tab ${activeTab==='system'?'active':''}" onclick="loadAnalyticsView('system')">System</button>
+                <button class="analytics-tab ${activeTab==='health'?'active':''}" onclick="loadAnalyticsView('health')">Library Health</button>
+                <button class="analytics-tab ${activeTab==='alerts'?'active':''}" onclick="loadAnalyticsView('alerts')">Alerts</button>
+            </div>
+            <div id="analyticsContent"><div class="spinner"></div></div>`;
+
+        const ac = document.getElementById('analyticsContent');
+
+        if (activeTab === 'overview') {
+            const [ov, bd, sys] = await Promise.all([
+                api('GET','/analytics/overview'),
+                api('GET','/analytics/streams/breakdown?days=30'),
+                api('GET','/analytics/system')
+            ]);
+            const o = ov.success ? ov.data : {};
+            const b = bd.success ? bd.data : {};
+            const sm = sys.success ? sys.data : {};
+            ac.innerHTML = `<div class="analytics-grid">
+                <div class="stat-card"><div class="stat-label">Active Streams</div><div class="stat-value">${o.active_streams||0}</div></div>
+                <div class="stat-card"><div class="stat-label">Plays Today</div><div class="stat-value">${o.total_plays_today||0}</div></div>
+                <div class="stat-card"><div class="stat-label">Plays This Week</div><div class="stat-value">${o.total_plays_week||0}</div></div>
+                <div class="stat-card"><div class="stat-label">Unique Users Today</div><div class="stat-value">${o.unique_users_today||0}</div></div>
+                <div class="stat-card"><div class="stat-label">Bandwidth Today</div><div class="stat-value">${formatBytes(o.bandwidth_today_bytes||0)}</div></div>
+                <div class="stat-card"><div class="stat-label">Library Size</div><div class="stat-value">${(o.library_size||0).toLocaleString()}</div></div>
+                <div class="stat-card"><div class="stat-label">Storage Used</div><div class="stat-value">${formatBytes(o.storage_used_bytes||0)}</div></div>
+                <div class="stat-card"><div class="stat-label">Transcodes Today</div><div class="stat-value">${o.transcodes_today||0}</div></div>
+                <div class="stat-card"><div class="stat-label">Direct Plays Today</div><div class="stat-value">${o.direct_plays_today||0}</div></div>
+                <div class="stat-card"><div class="stat-label">Failures Today</div><div class="stat-value ${(o.failures_today||0)>0?'stat-danger':''}">${o.failures_today||0}</div></div>
+                <div class="stat-card"><div class="stat-label">CPU</div><div class="stat-value">${(sm.cpu_percent||0).toFixed(1)}%</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${sm.cpu_percent||0}%"></div></div></div>
+                <div class="stat-card"><div class="stat-label">Memory</div><div class="stat-value">${(sm.memory_percent||0).toFixed(1)}%</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${sm.memory_percent||0}%"></div></div></div>
+            </div>
+            <div class="analytics-grid" style="margin-top:24px;">
+                <div class="settings-card" style="grid-column:1/-1;"><h3>Playback Type Breakdown (30 days)</h3>
+                    <div class="chart-container"><canvas id="breakdownChart"></canvas></div>
+                </div>
+            </div>`;
+            // Breakdown pie chart
+            if (b.total > 0) {
+                const ctx = document.getElementById('breakdownChart').getContext('2d');
+                analyticsCharts.breakdown = new Chart(ctx, { type:'doughnut', data:{ labels:['Direct Play','Direct Stream','Transcode'], datasets:[{data:[b.direct_plays||0, b.direct_streams||0, b.transcodes||0], backgroundColor:['#00d9ff','#7c3aed','#f59e0b']}]}, options:{responsive:true,plugins:{legend:{labels:{color:'#8a9bae'}}}} });
+            }
+        } else if (activeTab === 'activity') {
+            const data = await api('GET','/analytics/watch-activity?limit=100');
+            const items = data.success ? (data.data||[]) : [];
+            ac.innerHTML = `<div class="settings-card full-width"><h3>Who Watched What</h3>
+                <table class="activity-table"><thead><tr><th>User</th><th>Title</th><th>Type</th><th>When</th><th>Duration</th><th>Completed</th></tr></thead>
+                <tbody>${items.length?items.map(i=>`<tr><td>${i.username}</td><td>${i.media_title}</td><td><span class="tag tag-${i.playback_type==='transcode'?'orange':i.playback_type==='direct_stream'?'purple':'cyan'}">${i.playback_type.replace('_',' ')}</span></td><td>${new Date(i.watched_at).toLocaleString()}</td><td>${i.duration_minutes}m</td><td>${i.completed?'&#9989;':'&#9898;'}</td></tr>`).join(''):'<tr><td colspan="6" style="text-align:center;color:#5a6a7f;">No activity recorded yet</td></tr>'}</tbody></table></div>`;
+        } else if (activeTab === 'streams') {
+            const data = await api('GET','/analytics/streams');
+            const active = data.success ? (data.data?.active||[]) : [];
+            const recent = data.success ? (data.data?.recent||[]) : [];
+            ac.innerHTML = `<div class="settings-card full-width"><h3>Active Streams (${active.length})</h3>
+                ${active.length?active.map(s=>`<div class="job-item"><span class="status-dot green"></span><strong>${s.username}</strong> watching <strong>${s.media_title}</strong><span class="tag tag-${s.playback_type==='transcode'?'orange':'cyan'}">${(s.playback_type||'').replace('_',' ')}</span><span style="color:#5a6a7f;margin-left:auto;font-size:0.78rem;">Started ${new Date(s.started_at).toLocaleTimeString()}</span></div>`).join(''):'<p style="color:#5a6a7f;">No active streams</p>'}</div>
+                <div class="settings-card full-width" style="margin-top:16px;"><h3>Recent Sessions</h3>
+                <table class="activity-table"><thead><tr><th>User</th><th>Title</th><th>Type</th><th>Quality</th><th>Started</th><th>Duration</th></tr></thead>
+                <tbody>${recent.slice(0,30).map(s=>`<tr><td>${s.username}</td><td>${s.media_title}</td><td><span class="tag tag-${s.playback_type==='transcode'?'orange':'cyan'}">${(s.playback_type||'').replace('_',' ')}</span></td><td>${s.quality||s.resolution||'-'}</td><td>${new Date(s.started_at).toLocaleString()}</td><td>${s.duration_seconds?Math.round(s.duration_seconds/60)+'m':'-'}</td></tr>`).join('')}</tbody></table></div>`;
+        } else if (activeTab === 'transcodes') {
+            const data = await api('GET','/analytics/transcodes?days=30');
+            const stats = data.success ? (data.data?.stats||{}) : {};
+            const recent = data.success ? (data.data?.recent||[]) : [];
+            ac.innerHTML = `<div class="analytics-grid">
+                <div class="stat-card"><div class="stat-label">Total Transcodes</div><div class="stat-value">${stats.total_transcodes||0}</div></div>
+                <div class="stat-card"><div class="stat-label">Success Rate</div><div class="stat-value">${(stats.success_rate||0).toFixed(1)}%</div></div>
+                <div class="stat-card"><div class="stat-label">HW Accel Usage</div><div class="stat-value">${(stats.hw_accel_percent||0).toFixed(1)}%</div></div>
+                <div class="stat-card"><div class="stat-label">Avg Duration</div><div class="stat-value">${Math.round(stats.avg_duration_seconds||0)}s</div></div>
+            </div>
+            <div class="settings-card full-width" style="margin-top:16px;">
+                <h3>Codec Distribution</h3>
+                <div class="chart-container"><canvas id="codecChart"></canvas></div>
+            </div>
+            <div class="settings-card full-width" style="margin-top:16px;"><h3>Recent Transcodes</h3>
+                <table class="activity-table"><thead><tr><th>Title</th><th>Output</th><th>HW Accel</th><th>Duration</th><th>Status</th><th>When</th></tr></thead>
+                <tbody>${recent.map(t=>`<tr><td>${t.media_title||'-'}</td><td>${t.output_resolution||'-'} ${t.output_codec||''}</td><td>${t.hw_accel||'software'}</td><td>${t.duration_seconds}s</td><td><span class="tag tag-${t.success?'green':'red'}">${t.success?'OK':'Failed'}</span></td><td>${new Date(t.started_at).toLocaleString()}</td></tr>`).join('')}</tbody></table></div>`;
+            // Codec chart
+            if (stats.codec_distribution && stats.codec_distribution.length) {
+                const ctx = document.getElementById('codecChart').getContext('2d');
+                analyticsCharts.codec = new Chart(ctx, { type:'bar', data:{ labels:stats.codec_distribution.map(c=>c.name), datasets:[{label:'Count',data:stats.codec_distribution.map(c=>c.count),backgroundColor:'#00d9ff'}]}, options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#8a9bae'}},y:{ticks:{color:'#8a9bae'}}}} });
+            }
+        } else if (activeTab === 'system') {
+            const [cur, hist] = await Promise.all([
+                api('GET','/analytics/system'),
+                api('GET','/analytics/system/history?hours=24'),
+                api('GET','/analytics/storage')
+            ]);
+            const sm = cur.success ? cur.data : {};
+            const history = hist.success ? (hist.data||[]) : [];
+            const stor = await api('GET','/analytics/storage');
+            const storage = stor.success ? (stor.data||[]) : [];
+            ac.innerHTML = `<div class="analytics-grid">
+                <div class="stat-card"><div class="stat-label">CPU</div><div class="stat-value">${(sm.cpu_percent||0).toFixed(1)}%</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${sm.cpu_percent||0}%"></div></div></div>
+                <div class="stat-card"><div class="stat-label">Memory</div><div class="stat-value">${(sm.memory_percent||0).toFixed(1)}% (${sm.memory_used_mb||0} MB)</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${sm.memory_percent||0}%"></div></div></div>
+                <div class="stat-card"><div class="stat-label">GPU Encoder</div><div class="stat-value">${sm.gpu_encoder_percent!=null?(sm.gpu_encoder_percent).toFixed(1)+'%':'N/A'}</div>${sm.gpu_encoder_percent!=null?`<div class="stat-bar"><div class="stat-bar-fill" style="width:${sm.gpu_encoder_percent}%"></div></div>`:''}</div>
+                <div class="stat-card"><div class="stat-label">GPU Temp</div><div class="stat-value">${sm.gpu_temp_celsius!=null?sm.gpu_temp_celsius.toFixed(0)+'°C':'N/A'}</div></div>
+                <div class="stat-card"><div class="stat-label">Disk Total</div><div class="stat-value">${(sm.disk_total_gb||0).toFixed(1)} GB</div></div>
+                <div class="stat-card"><div class="stat-label">Disk Free</div><div class="stat-value ${(sm.disk_free_gb||0)<50?'stat-danger':''}">${(sm.disk_free_gb||0).toFixed(1)} GB</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${sm.disk_total_gb?((sm.disk_used_gb||0)/sm.disk_total_gb*100):0}%"></div></div></div>
+                <div class="stat-card"><div class="stat-label">Active Streams</div><div class="stat-value">${sm.active_streams||0}</div></div>
+                <div class="stat-card"><div class="stat-label">Active Transcodes</div><div class="stat-value">${sm.active_transcodes||0}</div></div>
+            </div>
+            <div class="settings-card full-width" style="margin-top:16px;"><h3>CPU & Memory (24h)</h3><div class="chart-container"><canvas id="systemChart"></canvas></div></div>
+            <div class="settings-card full-width" style="margin-top:16px;"><h3>Storage by Library</h3>
+                ${storage.map(s=>`<div class="job-item"><strong>${s.library_name}</strong><span style="color:#8a9bae;margin-left:auto;">${s.file_count} files</span><span class="tag tag-cyan" style="margin-left:12px;">${formatBytes(s.total_bytes)}</span></div>`).join('')||'<p style="color:#5a6a7f;">No libraries</p>'}</div>`;
+            // System history chart
+            if (history.length > 1) {
+                const ctx = document.getElementById('systemChart').getContext('2d');
+                analyticsCharts.system = new Chart(ctx, { type:'line', data:{ labels:history.map(h=>new Date(h.recorded_at).toLocaleTimeString()), datasets:[{label:'CPU %',data:history.map(h=>h.cpu_percent),borderColor:'#00d9ff',tension:0.3,fill:false},{label:'Memory %',data:history.map(h=>h.memory_percent),borderColor:'#7c3aed',tension:0.3,fill:false}]}, options:{responsive:true,plugins:{legend:{labels:{color:'#8a9bae'}}},scales:{x:{ticks:{color:'#5a6a7f',maxTicksLimit:12}},y:{min:0,max:100,ticks:{color:'#5a6a7f'}}}} });
+            }
+        } else if (activeTab === 'health') {
+            const data = await api('GET','/analytics/library-health');
+            const libs = data.success ? (data.data||[]) : [];
+            ac.innerHTML = libs.map(lib => `<div class="settings-card full-width" style="margin-bottom:16px;">
+                <h3>${lib.library_name}</h3>
+                <div class="analytics-grid" style="margin-top:12px;">
+                    <div class="stat-card"><div class="stat-label">Total Items</div><div class="stat-value">${lib.total_items}</div></div>
+                    <div class="stat-card"><div class="stat-label">Metadata Complete</div><div class="stat-value">${lib.metadata_percent.toFixed(1)}%</div><div class="stat-bar"><div class="stat-bar-fill" style="width:${lib.metadata_percent}%"></div></div></div>
+                    <div class="stat-card"><div class="stat-label">Missing Poster</div><div class="stat-value ${lib.missing_poster>0?'stat-danger':''}">${lib.missing_poster}</div></div>
+                    <div class="stat-card"><div class="stat-label">HDR Content</div><div class="stat-value">${lib.hdr_count}</div></div>
+                    <div class="stat-card"><div class="stat-label">Atmos Audio</div><div class="stat-value">${lib.atmos_count}</div></div>
+                </div>
+                <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:200px;"><h4 style="color:#8a9bae;margin-bottom:8px;">Codec Distribution</h4>
+                        ${(lib.codec_distribution||[]).map(c=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span>${c.name}</span><span class="tag tag-cyan">${c.count}</span></div>`).join('')||'<span style="color:#5a6a7f;">No data</span>'}</div>
+                    <div style="flex:1;min-width:200px;"><h4 style="color:#8a9bae;margin-bottom:8px;">Resolution Distribution</h4>
+                        ${(lib.resolution_distribution||[]).map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span>${r.name}</span><span class="tag tag-green">${r.count}</span></div>`).join('')||'<span style="color:#5a6a7f;">No data</span>'}</div>
+                </div>
+            </div>`).join('') || '<div class="empty-state"><div class="empty-state-title">No libraries</div></div>';
+        } else if (activeTab === 'alerts') {
+            const [chRes, arRes, logRes] = await Promise.all([
+                api('GET','/notifications/channels'),
+                api('GET','/notifications/alerts'),
+                api('GET','/notifications/log')
+            ]);
+            const channels = chRes.success ? (chRes.data||[]) : [];
+            const rules = arRes.success ? (arRes.data||[]) : [];
+            const logs = logRes.success ? (logRes.data||[]) : [];
+            ac.innerHTML = `<div class="settings-card full-width"><h3>Notification Channels</h3>
+                <div id="channelList">${channels.length?channels.map(ch=>`<div class="job-item"><span class="status-dot ${ch.is_enabled?'green':'red'}"></span><strong>${ch.name}</strong><span class="tag tag-cyan">${ch.channel_type}</span><span style="color:#5a6a7f;margin-left:auto;font-size:0.78rem;">${ch.webhook_url.substring(0,40)}...</span><button class="btn-secondary btn-small" style="margin-left:12px;" onclick="testNotifChannel('${ch.id}')">Test</button><button class="btn-danger btn-small" style="margin-left:6px;" onclick="deleteNotifChannel('${ch.id}')">Delete</button></div>`).join(''):'<p style="color:#5a6a7f;">No channels configured</p>'}</div>
+                <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;">
+                    <input type="text" id="chName" placeholder="Channel name" style="flex:1;min-width:120px;">
+                    <select id="chType"><option value="discord">Discord</option><option value="slack">Slack</option><option value="generic">Generic</option></select>
+                    <input type="text" id="chUrl" placeholder="Webhook URL" style="flex:2;min-width:200px;">
+                    <button class="btn-primary" onclick="createNotifChannel()">Add Channel</button>
+                </div>
+            </div>
+            <div class="settings-card full-width" style="margin-top:16px;"><h3>Alert Rules</h3>
+                <div id="ruleList">${rules.length?rules.map(r=>`<div class="job-item"><span class="status-dot ${r.is_enabled?'green':'red'}"></span><strong>${r.name}</strong><span class="tag tag-orange">${r.condition_type.replace(/_/g,' ')}</span><span style="color:#8a9bae;">Threshold: ${r.threshold}</span><span style="color:#5a6a7f;margin-left:auto;">${r.channel_name}</span><button class="btn-danger btn-small" style="margin-left:12px;" onclick="deleteAlertRule('${r.id}')">Delete</button></div>`).join(''):'<p style="color:#5a6a7f;">No alert rules configured</p>'}</div>
+                <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:end;">
+                    <input type="text" id="ruleName" placeholder="Rule name" style="flex:1;min-width:120px;">
+                    <select id="ruleCondition"><option value="disk_space_low">Disk Space Low (GB)</option><option value="transcode_failure">Transcode Failures (/hr)</option><option value="stream_error">Stream Errors (/hr)</option><option value="gpu_temp_high">GPU Temp High (°C)</option></select>
+                    <input type="number" id="ruleThreshold" placeholder="Threshold" style="width:100px;">
+                    <select id="ruleChannel">${channels.map(ch=>`<option value="${ch.id}">${ch.name}</option>`).join('')}</select>
+                    <button class="btn-primary" onclick="createAlertRule()">Add Rule</button>
+                </div>
+            </div>
+            <div class="settings-card full-width" style="margin-top:16px;"><h3>Alert Log</h3>
+                <table class="activity-table"><thead><tr><th>Rule</th><th>Channel</th><th>Message</th><th>Status</th><th>Sent</th></tr></thead>
+                <tbody>${logs.length?logs.map(l=>`<tr><td>${l.rule_name||'-'}</td><td>${l.channel_name||'-'}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;">${l.message}</td><td><span class="tag tag-${l.success?'green':'red'}">${l.success?'Sent':'Failed'}</span></td><td>${new Date(l.sent_at).toLocaleString()}</td></tr>`).join(''):'<tr><td colspan="5" style="text-align:center;color:#5a6a7f;">No alerts sent yet</td></tr>'}</tbody></table></div>`;
+        }
+    }
+
+    function formatBytes(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B','KB','MB','GB','TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    async function createNotifChannel() {
+        const name = document.getElementById('chName').value;
+        const type = document.getElementById('chType').value;
+        const url = document.getElementById('chUrl').value;
+        if (!name || !url) { toast('Name and URL required', 'error'); return; }
+        const d = await api('POST','/notifications/channels', { name, channel_type: type, webhook_url: url, is_enabled: true });
+        if (d.success) { toast('Channel created!'); loadAnalyticsView('alerts'); } else toast(d.error,'error');
+    }
+    async function deleteNotifChannel(id) {
+        if (!confirm('Delete this channel?')) return;
+        const d = await api('DELETE','/notifications/channels/' + id);
+        if (d.success) { toast('Channel deleted'); loadAnalyticsView('alerts'); } else toast(d.error,'error');
+    }
+    async function testNotifChannel(id) {
+        toast('Sending test...');
+        const d = await api('POST','/notifications/channels/' + id + '/test');
+        if (d.success) toast('Test sent!'); else toast('Test failed: ' + (d.error||''), 'error');
+    }
+    async function createAlertRule() {
+        const name = document.getElementById('ruleName').value;
+        const condition_type = document.getElementById('ruleCondition').value;
+        const threshold = parseFloat(document.getElementById('ruleThreshold').value);
+        const channel_id = document.getElementById('ruleChannel').value;
+        if (!name || !threshold || !channel_id) { toast('All fields required', 'error'); return; }
+        const d = await api('POST','/notifications/alerts', { name, condition_type, threshold, channel_id, is_enabled: true, cooldown_minutes: 60 });
+        if (d.success) { toast('Rule created!'); loadAnalyticsView('alerts'); } else toast(d.error,'error');
+    }
+    async function deleteAlertRule(id) {
+        if (!confirm('Delete this alert rule?')) return;
+        const d = await api('DELETE','/notifications/alerts/' + id);
+        if (d.success) { toast('Rule deleted'); loadAnalyticsView('alerts'); } else toast(d.error,'error');
+    }
 
     // ──── Admin ────
     async function loadAdminView() {

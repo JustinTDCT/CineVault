@@ -12,6 +12,7 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/jobs"
 	"github.com/JustinTDCT/CineVault/internal/metadata"
 	"github.com/JustinTDCT/CineVault/internal/models"
+	"github.com/JustinTDCT/CineVault/internal/notifications"
 	"github.com/JustinTDCT/CineVault/internal/repository"
 	"github.com/JustinTDCT/CineVault/internal/scanner"
 	"github.com/JustinTDCT/CineVault/internal/stream"
@@ -39,14 +40,17 @@ type Server struct {
 	studioRepo     *repository.StudioRepository
 	settingsRepo   *repository.SettingsRepository
 	jobRepo        *repository.JobRepository
-	segmentRepo    *repository.SegmentRepository
-	detector       *detection.Detector
-	scanner        *scanner.Scanner
-	transcoder     *stream.Transcoder
-	jobQueue       *jobs.Queue
-	wsHub          *WSHub
-	scrapers       []metadata.Scraper
-	router         *http.ServeMux
+	segmentRepo      *repository.SegmentRepository
+	analyticsRepo    *repository.AnalyticsRepository
+	notificationRepo *repository.NotificationRepository
+	detector         *detection.Detector
+	scanner          *scanner.Scanner
+	transcoder       *stream.Transcoder
+	jobQueue         *jobs.Queue
+	wsHub            *WSHub
+	webhookSender    *notifications.WebhookSender
+	scrapers         []metadata.Scraper
+	router           *http.ServeMux
 }
 
 type Response struct {
@@ -95,7 +99,10 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 	wsHub := NewWSHub()
 
 	segmentRepo := repository.NewSegmentRepository(database.DB)
+	analyticsRepo := repository.NewAnalyticsRepository(database.DB)
+	notificationRepo := repository.NewNotificationRepository(database.DB)
 	det := detection.NewDetector(cfg.FFmpeg.FFmpegPath)
+	webhookSender := notifications.NewWebhookSender()
 
 	s := &Server{
 		config:         cfg,
@@ -118,14 +125,17 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 		studioRepo:     repository.NewStudioRepository(database.DB),
 		settingsRepo:   settingsRepo,
 		jobRepo:        repository.NewJobRepository(database.DB),
-		segmentRepo:    segmentRepo,
-		detector:       det,
-		scanner:        sc,
-		transcoder:     transcoder,
-		jobQueue:       jobQueue,
-		wsHub:          wsHub,
-		scrapers:       scrapers,
-		router:         http.NewServeMux(),
+		segmentRepo:      segmentRepo,
+		analyticsRepo:    analyticsRepo,
+		notificationRepo: notificationRepo,
+		detector:         det,
+		scanner:          sc,
+		transcoder:       transcoder,
+		jobQueue:         jobQueue,
+		wsHub:            wsHub,
+		webhookSender:    webhookSender,
+		scrapers:         scrapers,
+		router:           http.NewServeMux(),
 	}
 
 	s.setupRoutes()
@@ -170,6 +180,22 @@ func (s *Server) SegmentRepo() *repository.SegmentRepository {
 
 func (s *Server) Detector() *detection.Detector {
 	return s.detector
+}
+
+func (s *Server) AnalyticsRepo() *repository.AnalyticsRepository {
+	return s.analyticsRepo
+}
+
+func (s *Server) NotificationRepo() *repository.NotificationRepository {
+	return s.notificationRepo
+}
+
+func (s *Server) Transcoder() *stream.Transcoder {
+	return s.transcoder
+}
+
+func (s *Server) WebhookSender() *notifications.WebhookSender {
+	return s.webhookSender
 }
 
 func (s *Server) setupRoutes() {
@@ -383,6 +409,31 @@ func (s *Server) setupRoutes() {
 	// System settings (admin only)
 	s.router.HandleFunc("GET /api/v1/settings/system", s.authMiddleware(s.handleGetSystemSettings, models.RoleAdmin))
 	s.router.HandleFunc("PUT /api/v1/settings/system", s.authMiddleware(s.handleUpdateSystemSettings, models.RoleAdmin))
+
+	// Analytics (admin only)
+	s.router.HandleFunc("GET /api/v1/analytics/overview", s.authMiddleware(s.handleAnalyticsOverview, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/analytics/streams", s.authMiddleware(s.handleAnalyticsStreams, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/analytics/streams/breakdown", s.authMiddleware(s.handleAnalyticsStreamBreakdown, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/analytics/watch-activity", s.authMiddleware(s.handleAnalyticsWatchActivity, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/analytics/users/activity", s.authMiddleware(s.handleAnalyticsUserActivity, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/analytics/transcodes", s.authMiddleware(s.handleAnalyticsTranscodes, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/analytics/system", s.authMiddleware(s.handleAnalyticsSystem, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/analytics/system/history", s.authMiddleware(s.handleAnalyticsSystemHistory, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/analytics/storage", s.authMiddleware(s.handleAnalyticsStorage, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/analytics/library-health", s.authMiddleware(s.handleAnalyticsLibraryHealth, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/analytics/trends", s.authMiddleware(s.handleAnalyticsTrends, models.RoleAdmin))
+
+	// Notifications (admin only)
+	s.router.HandleFunc("GET /api/v1/notifications/channels", s.authMiddleware(s.handleListNotificationChannels, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/notifications/channels", s.authMiddleware(s.handleCreateNotificationChannel, models.RoleAdmin))
+	s.router.HandleFunc("PUT /api/v1/notifications/channels/{id}", s.authMiddleware(s.handleUpdateNotificationChannel, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/notifications/channels/{id}", s.authMiddleware(s.handleDeleteNotificationChannel, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/notifications/channels/{id}/test", s.authMiddleware(s.handleTestNotificationChannel, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/notifications/alerts", s.authMiddleware(s.handleListAlertRules, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/notifications/alerts", s.authMiddleware(s.handleCreateAlertRule, models.RoleAdmin))
+	s.router.HandleFunc("PUT /api/v1/notifications/alerts/{id}", s.authMiddleware(s.handleUpdateAlertRule, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/notifications/alerts/{id}", s.authMiddleware(s.handleDeleteAlertRule, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/notifications/log", s.authMiddleware(s.handleGetAlertLog, models.RoleAdmin))
 }
 
 // ──────────────────── Middleware ────────────────────

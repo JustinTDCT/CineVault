@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/JustinTDCT/CineVault/internal/analytics"
 	"github.com/JustinTDCT/CineVault/internal/api"
 	"github.com/JustinTDCT/CineVault/internal/config"
 	"github.com/JustinTDCT/CineVault/internal/db"
 	"github.com/JustinTDCT/CineVault/internal/detection"
 	"github.com/JustinTDCT/CineVault/internal/fingerprint"
 	"github.com/JustinTDCT/CineVault/internal/jobs"
+	"github.com/JustinTDCT/CineVault/internal/notifications"
 )
 
 const banner = `
@@ -22,7 +24,7 @@ const banner = `
   \_____|_|_| |_|\___|    \/ \__,_|\__,_|_|\__|
                                                 
   Self-Hosted Media Server - Phase 3
-  Version 0.46.0
+  Version 0.47.0
 `
 
 func main() {
@@ -68,6 +70,21 @@ func main() {
 		}
 	}()
 	defer jobQueue.Stop()
+
+	// Start analytics collector (system metrics every 60s)
+	collector := analytics.NewCollector(server.AnalyticsRepo(), server.Transcoder(), []string{cfg.Paths.Media})
+	go collector.Start()
+	defer collector.Stop()
+
+	// Start daily stats rollup scheduler
+	rollupStop := make(chan struct{})
+	go analytics.StartRollupScheduler(server.AnalyticsRepo(), rollupStop)
+	defer close(rollupStop)
+
+	// Start alert evaluator (checks rules every 5m)
+	alertEval := notifications.NewAlertEvaluator(server.AnalyticsRepo(), server.NotificationRepo(), server.WebhookSender())
+	go alertEval.Start()
+	defer alertEval.Stop()
 
 	addr := cfg.Server.Address()
 	log.Printf("Server starting on http://%s\n", addr)

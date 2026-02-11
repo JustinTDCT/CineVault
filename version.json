@@ -1,6 +1,6 @@
 {
-  "version": "0.46.0",
+  "version": "0.47.0",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Advanced library filters: codec, HDR format, resolution, audio codec, bitrate range filtering. Enhanced Atmos/DTS:X audio detection. Missing episode gap detection for TV libraries."
+  "notes": "Server analytics dashboard: stream sessions tracking, transcode history, system metrics (CPU/RAM/GPU/disk), daily stats rollup, notification channels (Discord/Slack/generic), configurable alert rules, who-watched-what activity feed, library health reports, Chart.js visualizations."
 }

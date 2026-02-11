@@ -819,3 +819,217 @@ type DuplicatePair struct {
 	MediaB          *MediaItem `json:"media_b"`
 	SimilarityScore float64    `json:"similarity_score"`
 }
+
+// ──────────────────── Stream Sessions ────────────────────
+
+type PlaybackType string
+
+const (
+	PlaybackDirectPlay   PlaybackType = "direct_play"
+	PlaybackDirectStream PlaybackType = "direct_stream"
+	PlaybackTranscode    PlaybackType = "transcode"
+)
+
+type StreamSession struct {
+	ID              uuid.UUID    `json:"id" db:"id"`
+	UserID          uuid.UUID    `json:"user_id" db:"user_id"`
+	MediaItemID     uuid.UUID    `json:"media_item_id" db:"media_item_id"`
+	PlaybackType    PlaybackType `json:"playback_type" db:"playback_type"`
+	Quality         *string      `json:"quality,omitempty" db:"quality"`
+	Codec           *string      `json:"codec,omitempty" db:"codec"`
+	Resolution      *string      `json:"resolution,omitempty" db:"resolution"`
+	Container       *string      `json:"container,omitempty" db:"container"`
+	BytesServed     int64        `json:"bytes_served" db:"bytes_served"`
+	DurationSeconds int          `json:"duration_seconds" db:"duration_seconds"`
+	ClientInfo      *string      `json:"client_info,omitempty" db:"client_info"`
+	StartedAt       time.Time    `json:"started_at" db:"started_at"`
+	EndedAt         *time.Time   `json:"ended_at,omitempty" db:"ended_at"`
+	IsActive        bool         `json:"is_active" db:"is_active"`
+	// Joined
+	Username  string `json:"username,omitempty" db:"-"`
+	MediaTitle string `json:"media_title,omitempty" db:"-"`
+}
+
+// ──────────────────── Transcode History ────────────────────
+
+type TranscodeHistoryRecord struct {
+	ID               uuid.UUID  `json:"id" db:"id"`
+	MediaItemID      uuid.UUID  `json:"media_item_id" db:"media_item_id"`
+	UserID           uuid.UUID  `json:"user_id" db:"user_id"`
+	InputCodec       *string    `json:"input_codec,omitempty" db:"input_codec"`
+	OutputCodec      *string    `json:"output_codec,omitempty" db:"output_codec"`
+	InputResolution  *string    `json:"input_resolution,omitempty" db:"input_resolution"`
+	OutputResolution *string    `json:"output_resolution,omitempty" db:"output_resolution"`
+	HWAccel          *string    `json:"hw_accel,omitempty" db:"hw_accel"`
+	Quality          *string    `json:"quality,omitempty" db:"quality"`
+	DurationSeconds  int        `json:"duration_seconds" db:"duration_seconds"`
+	FileSizeBytes    int64      `json:"file_size_bytes" db:"file_size_bytes"`
+	Success          bool       `json:"success" db:"success"`
+	ErrorMessage     *string    `json:"error_message,omitempty" db:"error_message"`
+	StartedAt        time.Time  `json:"started_at" db:"started_at"`
+	CompletedAt      *time.Time `json:"completed_at,omitempty" db:"completed_at"`
+	// Joined
+	MediaTitle string `json:"media_title,omitempty" db:"-"`
+}
+
+// ──────────────────── System Metrics ────────────────────
+
+type SystemMetric struct {
+	ID                uuid.UUID  `json:"id" db:"id"`
+	CPUPercent        float32    `json:"cpu_percent" db:"cpu_percent"`
+	MemoryPercent     float32    `json:"memory_percent" db:"memory_percent"`
+	MemoryUsedMB      int        `json:"memory_used_mb" db:"memory_used_mb"`
+	GPUEncoderPercent *float32   `json:"gpu_encoder_percent,omitempty" db:"gpu_encoder_percent"`
+	GPUMemoryPercent  *float32   `json:"gpu_memory_percent,omitempty" db:"gpu_memory_percent"`
+	GPUTempCelsius    *float32   `json:"gpu_temp_celsius,omitempty" db:"gpu_temp_celsius"`
+	DiskTotalGB       float32    `json:"disk_total_gb" db:"disk_total_gb"`
+	DiskUsedGB        float32    `json:"disk_used_gb" db:"disk_used_gb"`
+	DiskFreeGB        float32    `json:"disk_free_gb" db:"disk_free_gb"`
+	ActiveStreams     int        `json:"active_streams" db:"active_streams"`
+	ActiveTranscodes  int        `json:"active_transcodes" db:"active_transcodes"`
+	RecordedAt        time.Time  `json:"recorded_at" db:"recorded_at"`
+}
+
+// ──────────────────── Daily Stats ────────────────────
+
+type DailyStat struct {
+	ID               uuid.UUID `json:"id" db:"id"`
+	StatDate         time.Time `json:"stat_date" db:"stat_date"`
+	TotalPlays       int       `json:"total_plays" db:"total_plays"`
+	UniqueUsers      int       `json:"unique_users" db:"unique_users"`
+	TotalWatchMinutes int      `json:"total_watch_minutes" db:"total_watch_minutes"`
+	TotalBytesServed int64     `json:"total_bytes_served" db:"total_bytes_served"`
+	Transcodes       int       `json:"transcodes" db:"transcodes"`
+	DirectPlays      int       `json:"direct_plays" db:"direct_plays"`
+	DirectStreams    int        `json:"direct_streams" db:"direct_streams"`
+	TranscodeFailures int      `json:"transcode_failures" db:"transcode_failures"`
+	NewMediaAdded    int       `json:"new_media_added" db:"new_media_added"`
+	LibrarySizeTotal int       `json:"library_size_total" db:"library_size_total"`
+	StorageUsedBytes int64     `json:"storage_used_bytes" db:"storage_used_bytes"`
+}
+
+// ──────────────────── Notification Channels ────────────────────
+
+type NotificationChannel struct {
+	ID          uuid.UUID `json:"id" db:"id"`
+	Name        string    `json:"name" db:"name"`
+	ChannelType string    `json:"channel_type" db:"channel_type"`
+	WebhookURL  string    `json:"webhook_url" db:"webhook_url"`
+	IsEnabled   bool      `json:"is_enabled" db:"is_enabled"`
+	Events      string    `json:"events" db:"events"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// ──────────────────── Alert Rules ────────────────────
+
+type AlertRule struct {
+	ID              uuid.UUID  `json:"id" db:"id"`
+	Name            string     `json:"name" db:"name"`
+	ConditionType   string     `json:"condition_type" db:"condition_type"`
+	Threshold       float32    `json:"threshold" db:"threshold"`
+	CooldownMinutes int        `json:"cooldown_minutes" db:"cooldown_minutes"`
+	ChannelID       uuid.UUID  `json:"channel_id" db:"channel_id"`
+	IsEnabled       bool       `json:"is_enabled" db:"is_enabled"`
+	LastTriggeredAt *time.Time `json:"last_triggered_at,omitempty" db:"last_triggered_at"`
+	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
+	// Joined
+	ChannelName string `json:"channel_name,omitempty" db:"-"`
+}
+
+// ──────────────────── Alert Log ────────────────────
+
+type AlertLogEntry struct {
+	ID          uuid.UUID  `json:"id" db:"id"`
+	RuleID      *uuid.UUID `json:"rule_id,omitempty" db:"rule_id"`
+	ChannelID   *uuid.UUID `json:"channel_id,omitempty" db:"channel_id"`
+	Message     string     `json:"message" db:"message"`
+	Success     bool       `json:"success" db:"success"`
+	ErrorDetail *string    `json:"error_detail,omitempty" db:"error_detail"`
+	SentAt      time.Time  `json:"sent_at" db:"sent_at"`
+	// Joined
+	RuleName    string `json:"rule_name,omitempty" db:"-"`
+	ChannelName string `json:"channel_name,omitempty" db:"-"`
+}
+
+// ──────────────────── Analytics Response Types ────────────────────
+
+type AnalyticsOverview struct {
+	ActiveStreams     int     `json:"active_streams"`
+	TotalPlaysToday  int     `json:"total_plays_today"`
+	TotalPlaysWeek   int     `json:"total_plays_week"`
+	UniqueUsersToday int     `json:"unique_users_today"`
+	BandwidthToday   int64   `json:"bandwidth_today_bytes"`
+	LibrarySize      int     `json:"library_size"`
+	StorageUsedBytes int64   `json:"storage_used_bytes"`
+	TranscodesToday  int     `json:"transcodes_today"`
+	DirectPlaysToday int     `json:"direct_plays_today"`
+	FailuresToday    int     `json:"failures_today"`
+	CPUPercent       float32 `json:"cpu_percent"`
+	MemoryPercent    float32 `json:"memory_percent"`
+	DiskFreeGB       float32 `json:"disk_free_gb"`
+}
+
+type StreamTypeBreakdown struct {
+	DirectPlays   int `json:"direct_plays"`
+	DirectStreams int `json:"direct_streams"`
+	Transcodes    int `json:"transcodes"`
+	Total         int `json:"total"`
+}
+
+type UserActivitySummary struct {
+	UserID          uuid.UUID `json:"user_id"`
+	Username        string    `json:"username"`
+	TotalPlays      int       `json:"total_plays"`
+	TotalWatchMins  int       `json:"total_watch_minutes"`
+	LastActive      time.Time `json:"last_active"`
+	FavoriteGenre   string    `json:"favorite_genre,omitempty"`
+}
+
+type LibraryHealthReport struct {
+	LibraryID         uuid.UUID          `json:"library_id"`
+	LibraryName       string             `json:"library_name"`
+	TotalItems        int                `json:"total_items"`
+	MissingMetadata   int                `json:"missing_metadata"`
+	MissingPoster     int                `json:"missing_poster"`
+	MetadataPercent   float64            `json:"metadata_percent"`
+	CodecDistribution []NameCount        `json:"codec_distribution"`
+	ResolutionDist    []NameCount        `json:"resolution_distribution"`
+	HDRCount          int                `json:"hdr_count"`
+	AtmosCount        int                `json:"atmos_count"`
+}
+
+type NameCount struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+type StorageInfo struct {
+	LibraryID   uuid.UUID `json:"library_id"`
+	LibraryName string    `json:"library_name"`
+	FileCount   int       `json:"file_count"`
+	TotalBytes  int64     `json:"total_bytes"`
+}
+
+type TranscodeStats struct {
+	TotalTranscodes   int         `json:"total_transcodes"`
+	SuccessCount      int         `json:"success_count"`
+	FailureCount      int         `json:"failure_count"`
+	SuccessRate       float64     `json:"success_rate"`
+	AvgDurationSecs   float64     `json:"avg_duration_seconds"`
+	HWAccelPercent    float64     `json:"hw_accel_percent"`
+	CodecDistribution []NameCount `json:"codec_distribution"`
+}
+
+type WatchActivityEntry struct {
+	UserID        uuid.UUID `json:"user_id"`
+	Username      string    `json:"username"`
+	MediaItemID   uuid.UUID `json:"media_item_id"`
+	MediaTitle    string    `json:"media_title"`
+	PlaybackType  string    `json:"playback_type"`
+	WatchedAt     time.Time `json:"watched_at"`
+	DurationMins  int       `json:"duration_minutes"`
+	Completed     bool      `json:"completed"`
+	PosterPath    *string   `json:"poster_path,omitempty"`
+}
