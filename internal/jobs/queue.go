@@ -10,12 +10,13 @@ import (
 )
 
 const (
-	TaskScanLibrary    = "scan:library"
-	TaskFingerprint    = "fingerprint:media"
-	TaskPhashLibrary   = "phash:library"
-	TaskGeneratePreview = "preview:generate"
+	TaskScanLibrary      = "scan:library"
+	TaskFingerprint      = "fingerprint:media"
+	TaskPhashLibrary     = "phash:library"
+	TaskGeneratePreview  = "preview:generate"
 	TaskMetadataScrape   = "metadata:scrape"
 	TaskMetadataRefresh  = "metadata:refresh"
+	TaskDetectSegments   = "detect:segments"
 )
 
 type Queue struct {

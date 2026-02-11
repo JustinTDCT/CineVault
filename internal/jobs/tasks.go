@@ -14,6 +14,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/JustinTDCT/CineVault/internal/config"
+	"github.com/JustinTDCT/CineVault/internal/detection"
 	"github.com/JustinTDCT/CineVault/internal/fingerprint"
 	"github.com/JustinTDCT/CineVault/internal/metadata"
 	"github.com/JustinTDCT/CineVault/internal/models"
@@ -42,6 +43,10 @@ type PhashLibraryPayload struct {
 type MetadataPayload struct {
 	MediaItemID string `json:"media_item_id"`
 	Source      string `json:"source"`
+}
+
+type DetectSegmentsPayload struct {
+	LibraryID string `json:"library_id"`
 }
 
 // ──────── Handlers ────────
@@ -1132,12 +1137,146 @@ func removeExistingPosters(dir, filename string) error {
 	return nil
 }
 
+// ──────── Segment Detection Handler ────────
+
+type DetectSegmentsHandler struct {
+	detector    *detection.Detector
+	segmentRepo *repository.SegmentRepository
+	libRepo     *repository.LibraryRepository
+	notifier    EventNotifier
+}
+
+func NewDetectSegmentsHandler(det *detection.Detector, segRepo *repository.SegmentRepository,
+	libRepo *repository.LibraryRepository, notifier EventNotifier) *DetectSegmentsHandler {
+	return &DetectSegmentsHandler{
+		detector: det, segmentRepo: segRepo, libRepo: libRepo, notifier: notifier,
+	}
+}
+
+func (h *DetectSegmentsHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
+	var p DetectSegmentsPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return fmt.Errorf("unmarshal: %w", err)
+	}
+
+	libID, _ := uuid.Parse(p.LibraryID)
+	library, err := h.libRepo.GetByID(libID)
+	if err != nil {
+		return fmt.Errorf("get library: %w", err)
+	}
+
+	taskID := "detect:" + p.LibraryID
+	taskDesc := "Detecting skip segments: " + library.Name
+
+	log.Printf("Detect: starting segment detection for library %q", library.Name)
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskDetectSegments,
+			"status": "running", "progress": 0, "description": taskDesc,
+		})
+	}
+
+	// Phase 1: Cross-episode intro detection for TV seasons
+	seasonIDs, err := h.segmentRepo.ListSeasonIDsInLibrary(libID)
+	if err != nil {
+		log.Printf("Detect: failed to list seasons: %v", err)
+	}
+
+	seasonsDone := 0
+	for _, seasonID := range seasonIDs {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		episodes, err := h.segmentRepo.ListEpisodesBySeasonID(seasonID)
+		if err != nil || len(episodes) < 2 {
+			continue
+		}
+
+		introResults := h.detector.DetectIntros(episodes)
+		for mediaID, seg := range introResults {
+			seg.MediaItemID = mediaID
+			if err := h.segmentRepo.Upsert(seg); err != nil {
+				log.Printf("Detect: failed to save intro for %s: %v", mediaID, err)
+			}
+		}
+		seasonsDone++
+
+		if h.notifier != nil {
+			pct := int(float64(seasonsDone) / float64(len(seasonIDs)) * 40)
+			desc := fmt.Sprintf("Detecting intros: %s (%d/%d seasons)", library.Name, seasonsDone, len(seasonIDs))
+			h.notifier.Broadcast("task:update", map[string]interface{}{
+				"task_id": taskID, "task_type": TaskDetectSegments,
+				"status": "running", "progress": pct, "description": desc,
+			})
+		}
+	}
+	log.Printf("Detect: completed intro detection for %d seasons", seasonsDone)
+
+	// Phase 2: Per-item credits, anime, and recap detection
+	mediaTypes := []string{"tv_shows", "movies"}
+	items, err := h.segmentRepo.ListItemsWithoutSegments(libID, mediaTypes)
+	if err != nil {
+		log.Printf("Detect: failed to list items: %v", err)
+		items = nil
+	}
+
+	// Also include items that only have intro (need credits/recap)
+	allItems, err := h.segmentRepo.ListItemsWithoutSegments(libID, mediaTypes)
+	if err == nil {
+		items = allItems
+	}
+
+	itemsDone := 0
+	var lastBroadcast time.Time
+	for _, item := range items {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		result := h.detector.DetectAll(item)
+		for _, seg := range result.Segments {
+			if err := h.segmentRepo.Upsert(seg); err != nil {
+				log.Printf("Detect: failed to save %s for %s: %v", seg.SegmentType, item.FileName, err)
+			}
+		}
+		itemsDone++
+
+		if h.notifier != nil {
+			now := time.Now()
+			if now.Sub(lastBroadcast) >= 500*time.Millisecond || itemsDone == len(items) {
+				lastBroadcast = now
+				pct := 40 + int(float64(itemsDone)/float64(len(items))*60)
+				desc := fmt.Sprintf("Detecting segments: %s · %s (%d/%d)", library.Name, item.FileName, itemsDone, len(items))
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskDetectSegments,
+					"status": "running", "progress": pct, "description": desc,
+				})
+			}
+		}
+	}
+
+	log.Printf("Detect: completed — %d seasons, %d items processed in %q", seasonsDone, itemsDone, library.Name)
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskDetectSegments,
+			"status": "complete", "progress": 100, "description": taskDesc,
+		})
+	}
+	return nil
+}
+
 // ──────── Register all handlers ────────
 
 func RegisterHandlers(q *Queue, sc *scanner.Scanner, libRepo *repository.LibraryRepository,
 	mediaRepo *repository.MediaRepository, jobRepo *repository.JobRepository,
 	fp *fingerprint.Fingerprinter, notifier EventNotifier,
-	scrapers []metadata.Scraper, settingsRepo *repository.SettingsRepository, cfg *config.Config) {
+	scrapers []metadata.Scraper, settingsRepo *repository.SettingsRepository, cfg *config.Config,
+	det *detection.Detector, segRepo *repository.SegmentRepository) {
 
 	q.RegisterHandler(TaskScanLibrary, NewScanHandler(sc, libRepo, jobRepo, q, notifier))
 	q.RegisterHandler(TaskFingerprint, NewFingerprintHandler(mediaRepo))
@@ -1145,6 +1284,7 @@ func RegisterHandlers(q *Queue, sc *scanner.Scanner, libRepo *repository.Library
 	q.RegisterHandler(TaskGeneratePreview, NewPreviewHandler())
 	q.RegisterHandler(TaskMetadataScrape, NewMetadataScrapeHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))
 	q.RegisterHandler(TaskMetadataRefresh, NewMetadataRefreshHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))
+	q.RegisterHandler(TaskDetectSegments, NewDetectSegmentsHandler(det, segRepo, libRepo, notifier))
 
 	// Ignore unused import
 	_ = models.JobPending

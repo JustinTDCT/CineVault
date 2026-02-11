@@ -8,6 +8,7 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/auth"
 	"github.com/JustinTDCT/CineVault/internal/config"
 	"github.com/JustinTDCT/CineVault/internal/db"
+	"github.com/JustinTDCT/CineVault/internal/detection"
 	"github.com/JustinTDCT/CineVault/internal/jobs"
 	"github.com/JustinTDCT/CineVault/internal/metadata"
 	"github.com/JustinTDCT/CineVault/internal/models"
@@ -38,6 +39,8 @@ type Server struct {
 	studioRepo     *repository.StudioRepository
 	settingsRepo   *repository.SettingsRepository
 	jobRepo        *repository.JobRepository
+	segmentRepo    *repository.SegmentRepository
+	detector       *detection.Detector
 	scanner        *scanner.Scanner
 	transcoder     *stream.Transcoder
 	jobQueue       *jobs.Queue
@@ -91,6 +94,9 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 
 	wsHub := NewWSHub()
 
+	segmentRepo := repository.NewSegmentRepository(database.DB)
+	det := detection.NewDetector(cfg.FFmpeg.FFmpegPath)
+
 	s := &Server{
 		config:         cfg,
 		db:             database,
@@ -112,6 +118,8 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 		studioRepo:     repository.NewStudioRepository(database.DB),
 		settingsRepo:   settingsRepo,
 		jobRepo:        repository.NewJobRepository(database.DB),
+		segmentRepo:    segmentRepo,
+		detector:       det,
 		scanner:        sc,
 		transcoder:     transcoder,
 		jobQueue:       jobQueue,
@@ -154,6 +162,14 @@ func (s *Server) SettingsRepo() *repository.SettingsRepository {
 
 func (s *Server) Config() *config.Config {
 	return s.config
+}
+
+func (s *Server) SegmentRepo() *repository.SegmentRepository {
+	return s.segmentRepo
+}
+
+func (s *Server) Detector() *detection.Detector {
+	return s.detector
 }
 
 func (s *Server) setupRoutes() {
@@ -345,6 +361,18 @@ func (s *Server) setupRoutes() {
 	// Playback preferences
 	s.router.HandleFunc("GET /api/v1/settings/playback", s.authMiddleware(s.handleGetPlaybackPrefs, models.RoleUser))
 	s.router.HandleFunc("PUT /api/v1/settings/playback", s.authMiddleware(s.handleUpdatePlaybackPrefs, models.RoleUser))
+
+	// Skip preferences (per user)
+	s.router.HandleFunc("GET /api/v1/settings/skip", s.authMiddleware(s.handleGetSkipPrefs, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/settings/skip", s.authMiddleware(s.handleUpdateSkipPrefs, models.RoleUser))
+
+	// Media segments (skip markers)
+	s.router.HandleFunc("GET /api/v1/media/{mediaId}/segments", s.authMiddleware(s.handleGetSegments, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/media/{mediaId}/segments", s.authMiddleware(s.handleUpsertSegment, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/media/{mediaId}/segments/{type}", s.authMiddleware(s.handleDeleteSegment, models.RoleAdmin))
+
+	// Segment detection (admin trigger)
+	s.router.HandleFunc("POST /api/v1/libraries/{id}/detect-segments", s.authMiddleware(s.handleDetectSegments, models.RoleAdmin))
 
 	// System settings (admin only)
 	s.router.HandleFunc("GET /api/v1/settings/system", s.authMiddleware(s.handleGetSystemSettings, models.RoleAdmin))

@@ -187,6 +187,10 @@
             <button class="player-close" onclick="closePlayer()">&#10005;</button>
         </div>
         <video id="videoPlayer"></video>
+        <div class="skip-segment-btn" id="skipSegmentBtn" onclick="skipCurrentSegment()" style="display:none;">
+            <span id="skipSegmentLabel">Skip Intro</span>
+            <span class="skip-arrow">&#9654;&#9654;</span>
+        </div>
         <div class="player-controls">
             <div class="player-progress" id="playerProgress" onclick="seekPlayer(event)">
                 <div class="player-progress-fill" id="playerProgressFill"></div>
@@ -1407,6 +1411,7 @@
                         <button class="detail-tab" onclick="showDetailTab(this,'tags-tab','${m.id}')">Tags</button>
                         ${m.edition_count > 1 ? '<button class="detail-tab" onclick="showDetailTab(this,\'editions\',\''+m.id+'\')">Editions</button>' : ''}
                         <button class="detail-tab" onclick="showDetailTab(this,'metadata','${m.id}')">Metadata</button>
+                        <button class="detail-tab" onclick="showDetailTab(this,'segments','${m.id}')">Segments</button>
                         <button class="detail-tab" onclick="showDetailTab(this,'file','${m.id}')">File</button>
                     </div>
                     <div class="detail-tab-content" id="detailTabContent">
@@ -1562,6 +1567,37 @@
 
                 tc.innerHTML = html;
             }
+        } else if (tab === 'segments') {
+            tc.innerHTML = '<div class="spinner"></div>';
+            const segRes = await api('GET', '/media/' + mediaId + '/segments');
+            const isAdmin = currentUser && currentUser.role === 'admin';
+            const segs = (segRes.success && segRes.data) ? segRes.data : [];
+
+            if (segs.length > 0) {
+                const typeLabel = { intro: 'Intro', credits: 'Credits', recap: 'Recap', preview: 'Preview' };
+                const sourceLabel = { auto: 'Auto-detected', manual: 'Manual', community: 'Community' };
+                let html = '<table style="width:100%;font-size:0.85rem;">';
+                html += '<thead><tr><th style="text-align:left;padding:6px 12px 6px 0;color:#8a9bae;">Type</th><th style="text-align:left;padding:6px 12px;color:#8a9bae;">Start</th><th style="text-align:left;padding:6px 12px;color:#8a9bae;">End</th><th style="text-align:left;padding:6px 12px;color:#8a9bae;">Confidence</th><th style="text-align:left;padding:6px 12px;color:#8a9bae;">Source</th>';
+                if (isAdmin) html += '<th style="padding:6px 0;"></th>';
+                html += '</tr></thead><tbody>';
+                segs.forEach(seg => {
+                    html += `<tr>
+                        <td style="padding:6px 12px 6px 0;"><span class="tag tag-cyan">${typeLabel[seg.segment_type] || seg.segment_type}</span></td>
+                        <td style="padding:6px 12px;">${formatTime(seg.start_seconds)}</td>
+                        <td style="padding:6px 12px;">${formatTime(seg.end_seconds)}</td>
+                        <td style="padding:6px 12px;">${Math.round(seg.confidence * 100)}%</td>
+                        <td style="padding:6px 12px;">${sourceLabel[seg.source] || seg.source}${seg.verified ? ' &#9989;' : ''}</td>
+                        ${isAdmin ? '<td style="padding:6px 0;"><button class="btn-danger btn-small" onclick="deleteSegment(\''+mediaId+'\',\''+seg.segment_type+'\')">Delete</button></td>' : ''}
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                if (isAdmin) html += `<div style="margin-top:16px;"><button class="btn-secondary btn-small" onclick="showAddSegmentForm('${mediaId}')">+ Add Segment</button></div>`;
+                tc.innerHTML = html;
+            } else {
+                let html = '<p style="color:#5a6a7f;margin-bottom:16px;">No skip segments detected for this item.</p>';
+                if (isAdmin) html += `<button class="btn-secondary btn-small" onclick="showAddSegmentForm('${mediaId}')">+ Add Segment Manually</button>`;
+                tc.innerHTML = html;
+            }
         } else if (tab === 'file') {
             tc.innerHTML = '<p style="color:#5a6a7f;">Loading file info...</p>';
             const data = await api('GET', '/media/' + mediaId);
@@ -1580,6 +1616,73 @@
                     <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Added</td><td>${new Date(m.added_at).toLocaleString()}</td></tr>
                 </table>`;
             }
+        }
+    }
+
+    // ──── Manual Segment Editor ────
+    function showAddSegmentForm(mediaId) {
+        const tc = document.getElementById('detailTabContent');
+        tc.innerHTML += `
+            <div class="segment-editor" style="margin-top:20px;padding:16px;background:var(--surface-card);border-radius:var(--radius-lg);border:1px solid var(--border-subtle);">
+                <h4 style="color:#e5e5e5;margin:0 0 12px;">Add Skip Segment</h4>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                    <div>
+                        <label style="color:#8a9bae;font-size:0.8rem;">Type</label>
+                        <select id="segType" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-subtle-input);border-radius:var(--radius-md);color:#e5e5e5;">
+                            <option value="intro">Intro</option>
+                            <option value="credits">Credits</option>
+                            <option value="recap">Recap</option>
+                            <option value="preview">Preview</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="color:#8a9bae;font-size:0.8rem;">Start (seconds)</label>
+                        <input type="number" id="segStart" step="0.1" min="0" placeholder="0.0" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-subtle-input);border-radius:var(--radius-md);color:#e5e5e5;">
+                    </div>
+                    <div>
+                        <label style="color:#8a9bae;font-size:0.8rem;">End (seconds)</label>
+                        <input type="number" id="segEnd" step="0.1" min="0" placeholder="90.0" style="width:100%;padding:8px;background:var(--bg-secondary);border:1px solid var(--border-subtle-input);border-radius:var(--radius-md);color:#e5e5e5;">
+                    </div>
+                </div>
+                <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+                    <button class="btn-secondary btn-small" onclick="showDetailTab(document.querySelector('.detail-tab[onclick*=segments]'),'segments','${mediaId}')">Cancel</button>
+                    <button class="btn-primary btn-small" onclick="saveSegment('${mediaId}')">Save</button>
+                </div>
+            </div>`;
+    }
+
+    async function saveSegment(mediaId) {
+        const segType = document.getElementById('segType').value;
+        const start = parseFloat(document.getElementById('segStart').value);
+        const end = parseFloat(document.getElementById('segEnd').value);
+        if (isNaN(start) || isNaN(end) || end <= start) {
+            toast('Invalid time range', 'error');
+            return;
+        }
+        const res = await api('POST', '/media/' + mediaId + '/segments', {
+            segment_type: segType,
+            start_seconds: start,
+            end_seconds: end,
+            verified: true
+        });
+        if (res.success) {
+            toast('Segment saved!');
+            const btn = document.querySelector('.detail-tab[onclick*="segments"]');
+            if (btn) showDetailTab(btn, 'segments', mediaId);
+        } else {
+            toast(res.error || 'Failed to save segment', 'error');
+        }
+    }
+
+    async function deleteSegment(mediaId, segType) {
+        if (!confirm('Delete this ' + segType + ' segment?')) return;
+        const res = await api('DELETE', '/media/' + mediaId + '/segments/' + segType);
+        if (res.success) {
+            toast('Segment deleted');
+            const btn = document.querySelector('.detail-tab[onclick*="segments"]');
+            if (btn) showDetailTab(btn, 'segments', mediaId);
+        } else {
+            toast(res.error || 'Failed to delete', 'error');
         }
     }
 
@@ -3313,6 +3416,92 @@
     let knownDuration = 0; // Total duration from DB
     let seekOffset = 0; // FFmpeg -ss offset for MPEGTS streams
 
+    // ── Skip Segment State ──
+    let currentSegments = [];     // MediaSegment[] for current media
+    let activeSegment = null;     // Currently active segment (user is inside it)
+    let skipPrefs = null;         // UserSkipPreference
+    let skipPrefsLoaded = false;
+
+    // Load user skip preferences (cached for session)
+    async function loadSkipPrefs() {
+        if (skipPrefsLoaded) return;
+        const res = await api('GET', '/settings/skip');
+        if (res.success) skipPrefs = res.data;
+        else skipPrefs = { skip_intros: false, skip_credits: false, skip_recaps: false, show_skip_button: true };
+        skipPrefsLoaded = true;
+    }
+
+    // Load segments for a media item
+    async function loadSegments(mediaId) {
+        currentSegments = [];
+        activeSegment = null;
+        const res = await api('GET', '/media/' + mediaId + '/segments');
+        if (res.success && res.data) currentSegments = res.data;
+    }
+
+    // Check segments against current playback time (called from updatePlayerUI)
+    function checkSegments() {
+        if (!currentSegments.length || !skipPrefs) return;
+        const video = document.getElementById('videoPlayer');
+        const currentTime = video.currentTime + seekOffset;
+        const btn = document.getElementById('skipSegmentBtn');
+        const label = document.getElementById('skipSegmentLabel');
+
+        let foundSegment = null;
+        for (const seg of currentSegments) {
+            // Show button 2 seconds before segment starts, hide after it ends
+            if (currentTime >= seg.start_seconds - 2 && currentTime < seg.end_seconds) {
+                foundSegment = seg;
+                break;
+            }
+        }
+
+        if (foundSegment && foundSegment !== activeSegment) {
+            activeSegment = foundSegment;
+            const typeLabel = { intro: 'Skip Intro', credits: 'Skip Credits', recap: 'Skip Recap', preview: 'Skip Preview' };
+            label.textContent = typeLabel[foundSegment.segment_type] || 'Skip';
+
+            // Auto-skip check
+            const autoSkip = (foundSegment.segment_type === 'intro' && skipPrefs.skip_intros)
+                || (foundSegment.segment_type === 'credits' && skipPrefs.skip_credits)
+                || (foundSegment.segment_type === 'recap' && skipPrefs.skip_recaps);
+
+            if (autoSkip && currentTime >= foundSegment.start_seconds) {
+                // Auto-skip: jump to end of segment
+                performSkip(foundSegment);
+                return;
+            }
+
+            // Show skip button if user has show_skip_button enabled
+            if (skipPrefs.show_skip_button) {
+                btn.style.display = 'flex';
+            }
+        } else if (!foundSegment && activeSegment) {
+            // Left the segment region
+            activeSegment = null;
+            btn.style.display = 'none';
+        }
+    }
+
+    // Perform a skip to end of a segment
+    function performSkip(seg) {
+        const video = document.getElementById('videoPlayer');
+        const btn = document.getElementById('skipSegmentBtn');
+        btn.style.display = 'none';
+        activeSegment = null;
+
+        if (currentPlayMode === 'mpegts') {
+            startMpegtsPlay(currentMediaId, localStorage.getItem('token'), seg.end_seconds);
+        } else {
+            video.currentTime = seg.end_seconds - seekOffset;
+        }
+    }
+
+    // Skip button click handler
+    function skipCurrentSegment() {
+        if (activeSegment) performSkip(activeSegment);
+    }
+
     // Destroy all active players
     function destroyPlayers() {
         if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
@@ -3342,6 +3531,10 @@
         document.getElementById('playerTitle').textContent = title;
         overlay.classList.add('active');
         const token = localStorage.getItem('token');
+
+        // Load skip segments and preferences in parallel with stream info
+        loadSkipPrefs();
+        loadSegments(mediaId);
 
         // Fetch stream info
         const info = await api('GET', `/stream/${mediaId}/info`);
@@ -3558,6 +3751,9 @@
         currentPlayMode = null;
         knownDuration = 0;
         seekOffset = 0;
+        currentSegments = [];
+        activeSegment = null;
+        document.getElementById('skipSegmentBtn').style.display = 'none';
     }
 
     function updatePlayerUI() {
@@ -3573,6 +3769,9 @@
             fill.style.width = Math.min((currentTime / totalDuration * 100), 100) + '%';
             timeEl.textContent = formatTime(currentTime) + ' / ' + formatTime(totalDuration);
         }
+
+        // Check for skip segments
+        checkSegments();
     }
 
     function togglePlay() { const v=document.getElementById('videoPlayer'); v.paused?v.play():v.pause(); }

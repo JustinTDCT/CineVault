@@ -23,6 +23,9 @@
             <div class="settings-nav-item active" data-section="video">
                 <span class="settings-nav-icon">&#127916;</span><span>Video</span>
             </div>
+            <div class="settings-nav-item" data-section="skip">
+                <span class="settings-nav-icon">&#9193;</span><span>Skip</span>
+            </div>
             <div class="settings-nav-item" data-section="transcoder">
                 <span class="settings-nav-icon">&#9881;</span><span>Transcoder</span>
             </div>
@@ -106,6 +109,7 @@
 
         switch(section) {
             case 'video': loadVideoSection(); break;
+            case 'skip': loadSkipSection(); break;
             case 'transcoder': loadTranscoderSection(); break;
             case 'users': loadUsersSection(); break;
             case 'security': loadSecuritySection(); break;
@@ -333,6 +337,106 @@
         if (introMutedEl) settings.login_intro_muted = introMutedEl.checked ? 'true' : 'false';
         const d = await api('PUT', '/settings/system', settings);
         if (d.success) toast('Experience settings saved!'); else toast(d.error, 'error');
+    }
+
+    // ──── Skip Preferences Section ────
+    async function loadSkipSection() {
+        const mc = document.getElementById('settingsContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Skip Detection</h2></div>
+            <p class="section-desc">Configure automatic intro, credits, and recap skipping behavior.</p>
+            <div class="settings-grid" id="skipGrid"><div class="spinner"></div></div>`;
+
+        const res = await api('GET', '/settings/skip');
+        const prefs = res.success ? res.data : { skip_intros: false, skip_credits: false, skip_recaps: false, show_skip_button: true };
+        const isAdmin = currentUser && currentUser.role === 'admin';
+
+        document.getElementById('skipGrid').innerHTML = `
+            <div class="settings-card full-width">
+                <h3>Skip Button Behavior</h3>
+                <p class="settings-helper" style="margin-bottom:16px;">When a skip segment is detected, a "Skip Intro / Credits / Recap" button appears on the player. Enable auto-skip to skip automatically without pressing the button.</p>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setShowSkipBtn" ${prefs.show_skip_button?'checked':''}><span class="toggle-slider"></span></span>
+                        Show Skip Button
+                    </label>
+                </div>
+                <p class="settings-helper" style="margin-bottom:20px;">Display the skip button overlay when intros, credits, or recaps are detected.</p>
+                <h3 style="margin-top:24px;">Auto-Skip</h3>
+                <p class="settings-helper" style="margin-bottom:16px;">Automatically skip these segments without showing a button.</p>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setSkipIntros" ${prefs.skip_intros?'checked':''}><span class="toggle-slider"></span></span>
+                        Auto-skip Intros
+                    </label>
+                </div>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setSkipCredits" ${prefs.skip_credits?'checked':''}><span class="toggle-slider"></span></span>
+                        Auto-skip Credits
+                    </label>
+                </div>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setSkipRecaps" ${prefs.skip_recaps?'checked':''}><span class="toggle-slider"></span></span>
+                        Auto-skip Recaps
+                    </label>
+                </div>
+                <div style="text-align:right;margin-top:20px;">
+                    <button class="btn-primary" onclick="saveSkipPrefs()">Save</button>
+                </div>
+            </div>
+            ${isAdmin ? `<div class="settings-card full-width">
+                <h3>Detect Skip Segments</h3>
+                <p class="settings-helper" style="margin-bottom:16px;">Run the skip detection engine on a library to identify intros, credits, recaps, and anime OP/ED sequences.</p>
+                <div id="skipDetectLibList"><div class="spinner"></div></div>
+            </div>` : ''}`;
+
+        if (isAdmin) loadSkipDetectLibraries();
+    }
+
+    async function loadSkipDetectLibraries() {
+        const libRes = await api('GET', '/libraries');
+        const container = document.getElementById('skipDetectLibList');
+        if (!libRes.success || !libRes.data || !libRes.data.length) {
+            container.innerHTML = '<p style="color:#5a6a7f;">No libraries found.</p>';
+            return;
+        }
+        container.innerHTML = libRes.data
+            .filter(lib => lib.media_type === 'tv_shows' || lib.media_type === 'movies')
+            .map(lib => `
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-subtle);">
+                    <div>
+                        <strong>${lib.name}</strong>
+                        <span class="tag tag-cyan" style="margin-left:8px;">${lib.media_type === 'tv_shows' ? 'TV Shows' : 'Movies'}</span>
+                    </div>
+                    <button class="btn-secondary btn-small" onclick="runSegmentDetection('${lib.id}', this)">&#128269; Detect Segments</button>
+                </div>
+            `).join('');
+    }
+
+    async function runSegmentDetection(libId, btn) {
+        btn.disabled = true;
+        btn.textContent = 'Queued...';
+        const res = await api('POST', '/libraries/' + libId + '/detect-segments');
+        if (res.success) {
+            toast('Segment detection queued!');
+            btn.textContent = 'Running...';
+        } else {
+            toast(res.error || 'Failed to start detection', 'error');
+            btn.disabled = false;
+            btn.textContent = '🔍 Detect Segments';
+        }
+    }
+
+    async function saveSkipPrefs() {
+        const prefs = {
+            skip_intros: document.getElementById('setSkipIntros').checked,
+            skip_credits: document.getElementById('setSkipCredits').checked,
+            skip_recaps: document.getElementById('setSkipRecaps').checked,
+            show_skip_button: document.getElementById('setShowSkipBtn').checked,
+        };
+        const d = await api('PUT', '/settings/skip', prefs);
+        if (d.success) toast('Skip preferences saved!'); else toast(d.error, 'error');
     }
 
     // ──── Libraries Section ────

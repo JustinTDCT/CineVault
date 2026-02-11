@@ -1,6 +1,6 @@
 {
-  "version": "0.43.0",
+  "version": "0.44.0",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Netflix-level UI polish: external CSS with design tokens, hero banner, skeleton loading, expanded hover cards, keyboard navigation, responsive breakpoints, Inter display font, enhanced Continue Watching"
+  "notes": "Skip detection system: intro/credits/recap/anime OP-ED detection, per-user auto-skip preferences, player skip button overlay, manual segment editor, background detection job queue"
 }

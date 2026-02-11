@@ -734,6 +734,49 @@ type MetadataMatch struct {
 	Confidence       float64  `json:"confidence"`
 }
 
+// ──────────────────── Media Segments (Skip Detection) ────────────────────
+
+type SegmentType string
+
+const (
+	SegmentIntro   SegmentType = "intro"
+	SegmentCredits SegmentType = "credits"
+	SegmentRecap   SegmentType = "recap"
+	SegmentPreview SegmentType = "preview"
+)
+
+type SegmentSource string
+
+const (
+	SegmentSourceAuto      SegmentSource = "auto"
+	SegmentSourceManual    SegmentSource = "manual"
+	SegmentSourceCommunity SegmentSource = "community"
+)
+
+type MediaSegment struct {
+	ID           uuid.UUID     `json:"id" db:"id"`
+	MediaItemID  uuid.UUID     `json:"media_item_id" db:"media_item_id"`
+	SegmentType  SegmentType   `json:"segment_type" db:"segment_type"`
+	StartSeconds float64       `json:"start_seconds" db:"start_seconds"`
+	EndSeconds   float64       `json:"end_seconds" db:"end_seconds"`
+	Confidence   float64       `json:"confidence" db:"confidence"`
+	Source       SegmentSource `json:"source" db:"source"`
+	Verified     bool          `json:"verified" db:"verified"`
+	CreatedAt    time.Time     `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time     `json:"updated_at" db:"updated_at"`
+}
+
+type UserSkipPreference struct {
+	ID             uuid.UUID `json:"id" db:"id"`
+	UserID         uuid.UUID `json:"user_id" db:"user_id"`
+	SkipIntros     bool      `json:"skip_intros" db:"skip_intros"`
+	SkipCredits    bool      `json:"skip_credits" db:"skip_credits"`
+	SkipRecaps     bool      `json:"skip_recaps" db:"skip_recaps"`
+	ShowSkipButton bool      `json:"show_skip_button" db:"show_skip_button"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+}
+
 // ──────────────────── Duplicate Pair ────────────────────
 
 type DuplicatePair struct {
