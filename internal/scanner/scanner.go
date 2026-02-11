@@ -543,9 +543,23 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 			// Apply extended metadata from cache (respecting per-field locks)
 			tagline, origLang, country, trailerURL, logoURL := filterLockedExtended(item.LockedFields,
 				result.Match.Tagline, result.Match.OriginalLanguage, result.Match.Country, result.Match.TrailerURL, result.LogoURL)
-			if tagline != nil || origLang != nil || country != nil || trailerURL != nil || logoURL != nil {
-				_ = s.mediaRepo.UpdateExtendedMetadata(item.ID, tagline, origLang, country, trailerURL, logoURL)
+			extUpdate := &repository.ExtendedMetadataUpdate{
+				Tagline:          tagline,
+				OriginalLanguage: origLang,
+				Country:          country,
+				TrailerURL:       trailerURL,
+				LogoPath:         logoURL,
 			}
+			if result.OriginalTitle != nil && !isFieldLocked(item.LockedFields, "title") {
+				extUpdate.OriginalTitle = result.OriginalTitle
+			}
+			if result.SortTitle != nil && !isFieldLocked(item.LockedFields, "title") {
+				extUpdate.SortTitle = result.SortTitle
+			}
+			if result.ReleaseDate != nil && !isFieldLocked(item.LockedFields, "year") {
+				extUpdate.ReleaseDate = result.ReleaseDate
+			}
+			_ = s.mediaRepo.UpdateExtendedMetadataFull(item.ID, extUpdate)
 
 			// Auto-create collection from cache
 			if result.Match.CollectionID != nil && result.Match.CollectionName != nil {
@@ -622,9 +636,20 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 	d := combined.Details
 	eTagline, eLang, eCountry, eTrailer, eLogo := filterLockedExtended(item.LockedFields,
 		d.Tagline, d.OriginalLanguage, d.Country, d.TrailerURL, nil)
-	if eTagline != nil || eLang != nil || eCountry != nil || eTrailer != nil || eLogo != nil {
-		_ = s.mediaRepo.UpdateExtendedMetadata(item.ID, eTagline, eLang, eCountry, eTrailer, eLogo)
+	extUpdate := &repository.ExtendedMetadataUpdate{
+		Tagline:          eTagline,
+		OriginalLanguage: eLang,
+		Country:          eCountry,
+		TrailerURL:       eTrailer,
+		LogoPath:         eLogo,
 	}
+	if d.OriginalTitle != nil && !isFieldLocked(item.LockedFields, "title") {
+		extUpdate.OriginalTitle = d.OriginalTitle
+	}
+	if d.ReleaseDate != nil && !isFieldLocked(item.LockedFields, "year") {
+		extUpdate.ReleaseDate = d.ReleaseDate
+	}
+	_ = s.mediaRepo.UpdateExtendedMetadataFull(item.ID, extUpdate)
 
 	// Auto-create movie collection from TMDB belongs_to_collection
 	if combined.Details.CollectionID != nil && combined.Details.CollectionName != nil {
@@ -641,6 +666,8 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 			BackdropURL:      d.BackdropURL,
 			CollectionID:     d.CollectionID,
 			CollectionName:   d.CollectionName,
+			OriginalTitle:    d.OriginalTitle,
+			ReleaseDate:      d.ReleaseDate,
 		}
 		if combined.Credits != nil {
 			creditsJSON, err := json.Marshal(combined.Credits)
@@ -975,9 +1002,20 @@ func (s *Scanner) applyDirectMatch(item *models.MediaItem, match *models.Metadat
 	// Apply extended metadata (respecting per-field locks)
 	eTagline, eLang, eCountry, eTrailer, eLogo := filterLockedExtended(item.LockedFields,
 		match.Tagline, match.OriginalLanguage, match.Country, match.TrailerURL, nil)
-	if eTagline != nil || eLang != nil || eCountry != nil || eTrailer != nil || eLogo != nil {
-		_ = s.mediaRepo.UpdateExtendedMetadata(item.ID, eTagline, eLang, eCountry, eTrailer, eLogo)
+	extUpdate := &repository.ExtendedMetadataUpdate{
+		Tagline:          eTagline,
+		OriginalLanguage: eLang,
+		Country:          eCountry,
+		TrailerURL:       eTrailer,
+		LogoPath:         eLogo,
 	}
+	if match.OriginalTitle != nil && !isFieldLocked(item.LockedFields, "title") {
+		extUpdate.OriginalTitle = match.OriginalTitle
+	}
+	if match.ReleaseDate != nil && !isFieldLocked(item.LockedFields, "year") {
+		extUpdate.ReleaseDate = match.ReleaseDate
+	}
+	_ = s.mediaRepo.UpdateExtendedMetadataFull(item.ID, extUpdate)
 
 	// Enrich with genres, ratings, etc.
 	if match.Source == "tmdb" {
@@ -1332,9 +1370,26 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 	// Apply extended metadata from cache (respecting per-field locks)
 	eTagline, eLang, eCountry, eTrailer, eLogo := filterLockedExtended(item.LockedFields,
 		match.Tagline, match.OriginalLanguage, match.Country, match.TrailerURL, result.LogoURL)
-	if eTagline != nil || eLang != nil || eCountry != nil || eTrailer != nil || eLogo != nil {
-		_ = s.mediaRepo.UpdateExtendedMetadata(item.ID, eTagline, eLang, eCountry, eTrailer, eLogo)
+	extUpdate := &repository.ExtendedMetadataUpdate{
+		Tagline:          eTagline,
+		OriginalLanguage: eLang,
+		Country:          eCountry,
+		TrailerURL:       eTrailer,
+		LogoPath:         eLogo,
 	}
+
+	// Apply original_title, sort_title, release_date from cache (respecting locks)
+	if result.OriginalTitle != nil && !isFieldLocked(item.LockedFields, "title") {
+		extUpdate.OriginalTitle = result.OriginalTitle
+	}
+	if result.SortTitle != nil && !isFieldLocked(item.LockedFields, "title") {
+		extUpdate.SortTitle = result.SortTitle
+	}
+	if result.ReleaseDate != nil && !isFieldLocked(item.LockedFields, "year") {
+		extUpdate.ReleaseDate = result.ReleaseDate
+	}
+
+	_ = s.mediaRepo.UpdateExtendedMetadataFull(item.ID, extUpdate)
 
 	// Auto-create movie collection from cache data
 	if match.CollectionID != nil && match.CollectionName != nil {
@@ -1345,6 +1400,16 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 // parseCacheCredits delegates to metadata.ParseCacheCredits.
 func parseCacheCredits(castCrewJSON string) *metadata.TMDBCredits {
 	return metadata.ParseCacheCredits(castCrewJSON)
+}
+
+// isFieldLocked checks if a specific field name is present in the locked_fields array.
+func isFieldLocked(lf pq.StringArray, field string) bool {
+	for _, f := range lf {
+		if f == "*" || f == field {
+			return true
+		}
+	}
+	return false
 }
 
 // filterLockedExtended nils out extended metadata values for fields that are locked on the item.
@@ -1488,9 +1553,20 @@ func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, med
 	// Apply extended metadata from TMDB details (respecting per-field locks)
 	eTagline, eLang, eCountry, eTrailer, eLogo := filterLockedExtended(lockedFields,
 		details.Tagline, details.OriginalLanguage, details.Country, details.TrailerURL, nil)
-	if eTagline != nil || eLang != nil || eCountry != nil || eTrailer != nil || eLogo != nil {
-		_ = s.mediaRepo.UpdateExtendedMetadata(itemID, eTagline, eLang, eCountry, eTrailer, eLogo)
+	detExtUpdate := &repository.ExtendedMetadataUpdate{
+		Tagline:          eTagline,
+		OriginalLanguage: eLang,
+		Country:          eCountry,
+		TrailerURL:       eTrailer,
+		LogoPath:         eLogo,
 	}
+	if details.OriginalTitle != nil && !isLocked("title") {
+		detExtUpdate.OriginalTitle = details.OriginalTitle
+	}
+	if details.ReleaseDate != nil && !isLocked("year") {
+		detExtUpdate.ReleaseDate = details.ReleaseDate
+	}
+	_ = s.mediaRepo.UpdateExtendedMetadataFull(itemID, detExtUpdate)
 
 	// Create/link genre tags (respecting genres lock)
 	if s.tagRepo != nil && len(details.Genres) > 0 && !isLocked("genres") {

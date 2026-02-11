@@ -230,13 +230,14 @@ func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, erro
 	defer resp.Body.Close()
 
 	var r struct {
-		ID          int     `json:"id"`
-		Title       string  `json:"title"`
-		Overview    string  `json:"overview"`
-		PosterPath  string  `json:"poster_path"`
-		ReleaseDate string  `json:"release_date"`
-		VoteAverage float64 `json:"vote_average"`
-		IMDBId      string  `json:"imdb_id"`
+		ID            int     `json:"id"`
+		Title         string  `json:"title"`
+		OriginalTitle string  `json:"original_title"`
+		Overview      string  `json:"overview"`
+		PosterPath    string  `json:"poster_path"`
+		ReleaseDate   string  `json:"release_date"`
+		VoteAverage   float64 `json:"vote_average"`
+		IMDBId        string  `json:"imdb_id"`
 		Genres      []struct {
 			ID   int    `json:"id"`
 			Name string `json:"name"`
@@ -270,11 +271,22 @@ func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, erro
 
 	contentRating := extractUSCertification(r.ReleaseDates.Results)
 
+	var originalTitle *string
+	if r.OriginalTitle != "" && r.OriginalTitle != r.Title {
+		originalTitle = &r.OriginalTitle
+	}
+	var releaseDate *string
+	if r.ReleaseDate != "" {
+		releaseDate = &r.ReleaseDate
+	}
+
 	return &models.MetadataMatch{
 		Source:        "tmdb",
 		ExternalID:    fmt.Sprintf("%d", r.ID),
 		Title:         r.Title,
+		OriginalTitle: originalTitle,
 		Year:          year,
+		ReleaseDate:   releaseDate,
 		Description:   &overview,
 		PosterURL:     posterURL,
 		Rating:        &rating,
@@ -311,15 +323,16 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 	}
 
 	var r struct {
-		ID          int     `json:"id"`
-		Title       string  `json:"title"`
-		Overview    string  `json:"overview"`
-		Tagline     string  `json:"tagline"`
-		PosterPath  string  `json:"poster_path"`
-		BackdropPath string `json:"backdrop_path"`
-		ReleaseDate string  `json:"release_date"`
-		VoteAverage float64 `json:"vote_average"`
-		IMDBId      string  `json:"imdb_id"`
+		ID            int     `json:"id"`
+		Title         string  `json:"title"`
+		OriginalTitle string  `json:"original_title"`
+		Overview      string  `json:"overview"`
+		Tagline       string  `json:"tagline"`
+		PosterPath    string  `json:"poster_path"`
+		BackdropPath  string  `json:"backdrop_path"`
+		ReleaseDate   string  `json:"release_date"`
+		VoteAverage   float64 `json:"vote_average"`
+		IMDBId        string  `json:"imdb_id"`
 		OriginalLanguage string `json:"original_language"`
 		ProductionCountries []struct {
 			ISO31661 string `json:"iso_3166_1"`
@@ -430,12 +443,26 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 		keywords = append(keywords, kw.Name)
 	}
 
+	// Original title
+	var originalTitle *string
+	if r.OriginalTitle != "" && r.OriginalTitle != r.Title {
+		originalTitle = &r.OriginalTitle
+	}
+
+	// Release date (full date string for storage)
+	var releaseDate *string
+	if r.ReleaseDate != "" {
+		releaseDate = &r.ReleaseDate
+	}
+
 	return &DetailsWithCredits{
 		Details: &models.MetadataMatch{
 			Source:           "tmdb",
 			ExternalID:       fmt.Sprintf("%d", r.ID),
 			Title:            r.Title,
+			OriginalTitle:    originalTitle,
 			Year:             year,
+			ReleaseDate:      releaseDate,
 			Description:      &overview,
 			Tagline:          tagline,
 			PosterURL:        posterURL,
@@ -473,6 +500,7 @@ func (s *TMDBScraper) GetTVDetails(externalID string) (*models.MetadataMatch, er
 	var r struct {
 		ID           int     `json:"id"`
 		Name         string  `json:"name"`
+		OriginalName string  `json:"original_name"`
 		Overview     string  `json:"overview"`
 		PosterPath   string  `json:"poster_path"`
 		FirstAirDate string  `json:"first_air_date"`
@@ -507,17 +535,28 @@ func (s *TMDBScraper) GetTVDetails(externalID string) (*models.MetadataMatch, er
 		genres = append(genres, g.Name)
 	}
 
+	var originalTitle *string
+	if r.OriginalName != "" && r.OriginalName != r.Name {
+		originalTitle = &r.OriginalName
+	}
+	var releaseDate *string
+	if r.FirstAirDate != "" {
+		releaseDate = &r.FirstAirDate
+	}
+
 	return &models.MetadataMatch{
-		Source:      "tmdb",
-		ExternalID:  fmt.Sprintf("%d", r.ID),
-		Title:       r.Name,
-		Year:        year,
-		Description: &overview,
-		PosterURL:   posterURL,
-		Rating:      &rating,
-		Genres:      genres,
-		IMDBId:      r.ExternalIDs.IMDBId,
-		Confidence:  1.0,
+		Source:        "tmdb",
+		ExternalID:    fmt.Sprintf("%d", r.ID),
+		Title:         r.Name,
+		OriginalTitle: originalTitle,
+		Year:          year,
+		ReleaseDate:   releaseDate,
+		Description:   &overview,
+		PosterURL:     posterURL,
+		Rating:        &rating,
+		Genres:        genres,
+		IMDBId:        r.ExternalIDs.IMDBId,
+		Confidence:    1.0,
 	}, nil
 }
 

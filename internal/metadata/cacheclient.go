@@ -45,6 +45,8 @@ type cacheEntry struct {
 	IMDBID          *string  `json:"imdb_id,omitempty"`
 	MediaType       string   `json:"media_type"`
 	Title           string   `json:"title"`
+	OriginalTitle   *string  `json:"original_title,omitempty"`
+	SortTitle       *string  `json:"sort_title,omitempty"`
 	Year            *int     `json:"year,omitempty"`
 	ReleaseDate     *string  `json:"release_date,omitempty"`
 	Description     *string  `json:"description,omitempty"`
@@ -94,7 +96,9 @@ type cacheContributeRequest struct {
 	IMDBID           *string  `json:"imdb_id,omitempty"`
 	MediaType        string   `json:"media_type"`
 	Title            string   `json:"title"`
+	OriginalTitle    *string  `json:"original_title,omitempty"`
 	Year             *int     `json:"year,omitempty"`
+	ReleaseDate      *string  `json:"release_date,omitempty"`
 	Description      *string  `json:"description,omitempty"`
 	PosterURL        *string  `json:"poster_url,omitempty"`
 	BackdropURL      *string  `json:"backdrop_url,omitempty"`
@@ -145,9 +149,12 @@ type CacheLookupResult struct {
 	ExternalIDsJSON *string
 
 	// Extended metadata from cache
-	LogoURL    *string
-	BannerURL  *string
-	BackdropURL *string
+	LogoURL       *string
+	BannerURL     *string
+	BackdropURL   *string
+	OriginalTitle *string
+	SortTitle     *string
+	ReleaseDate   *string
 
 	// Keywords from TMDB (for mood tagging)
 	Keywords []string
@@ -295,6 +302,11 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 	result.LogoURL = entry.LogoURL
 	result.BannerURL = entry.BannerURL
 	result.BackdropURL = match.BackdropURL
+
+	// Pass through title variants and release date
+	result.OriginalTitle = entry.OriginalTitle
+	result.SortTitle = entry.SortTitle
+	result.ReleaseDate = entry.ReleaseDate
 
 	// Extract ratings (now enriched inline by cache server, not just OMDb flag)
 	if entry.IMDBRating != nil || entry.RTCriticScore != nil || entry.RTAudienceScore != nil {
@@ -494,6 +506,9 @@ type ContributeExtras struct {
 	CollectionName   *string
 	BackdropURL      *string
 	Keywords         *string
+	OriginalTitle    *string
+	ReleaseDate      *string
+	TVDBID           *int
 }
 
 // Contribute pushes a locally-fetched metadata result back to the cache server
@@ -592,6 +607,15 @@ func (c *CacheClient) Contribute(match *models.MetadataMatch, extras ...Contribu
 		}
 		if ex.Keywords != nil {
 			req.Keywords = ex.Keywords
+		}
+		if ex.OriginalTitle != nil {
+			req.OriginalTitle = ex.OriginalTitle
+		}
+		if ex.ReleaseDate != nil {
+			req.ReleaseDate = ex.ReleaseDate
+		}
+		if ex.TVDBID != nil {
+			req.TVDBID = ex.TVDBID
 		}
 	}
 

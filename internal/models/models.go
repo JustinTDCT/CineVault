@@ -750,7 +750,9 @@ type MetadataMatch struct {
 	Source           string   `json:"source"`
 	ExternalID       string   `json:"external_id"`
 	Title            string   `json:"title"`
+	OriginalTitle    *string  `json:"original_title,omitempty"`
 	Year             *int     `json:"year,omitempty"`
+	ReleaseDate      *string  `json:"release_date,omitempty"`
 	Description      *string  `json:"description,omitempty"`
 	Tagline          *string  `json:"tagline,omitempty"`
 	PosterURL        *string  `json:"poster_url,omitempty"`

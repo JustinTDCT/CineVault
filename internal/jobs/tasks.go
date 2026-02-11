@@ -495,9 +495,20 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 					if item.IsFieldLocked("country") { country = nil }
 					if item.IsFieldLocked("trailer_url") { trailerURL = nil }
 					if item.IsFieldLocked("logo_path") { logoPath = nil }
-					if tagline != nil || origLang != nil || country != nil || trailerURL != nil || logoPath != nil {
-						_ = h.mediaRepo.UpdateExtendedMetadata(item.ID, tagline, origLang, country, trailerURL, logoPath)
+					extUpdate := &repository.ExtendedMetadataUpdate{
+						Tagline: tagline, OriginalLanguage: origLang,
+						Country: country, TrailerURL: trailerURL, LogoPath: logoPath,
 					}
+					if result.OriginalTitle != nil && !item.IsFieldLocked("title") {
+						extUpdate.OriginalTitle = result.OriginalTitle
+					}
+					if result.SortTitle != nil && !item.IsFieldLocked("title") {
+						extUpdate.SortTitle = result.SortTitle
+					}
+					if result.ReleaseDate != nil && !item.IsFieldLocked("year") {
+						extUpdate.ReleaseDate = result.ReleaseDate
+					}
+					_ = h.mediaRepo.UpdateExtendedMetadataFull(item.ID, extUpdate)
 					// Apply backdrop from cache (skip if locked)
 					if !item.IsFieldLocked("backdrop_path") && result.BackdropURL != nil && *result.BackdropURL != "" && h.cfg.Paths.Preview != "" {
 						bdFilename := item.ID.String() + "_backdrop.jpg"
@@ -877,9 +888,20 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 					if item.IsFieldLocked("country") { country = nil }
 					if item.IsFieldLocked("trailer_url") { trailerURL = nil }
 					if item.IsFieldLocked("logo_path") { logoPath = nil }
-					if tagline != nil || origLang != nil || country != nil || trailerURL != nil || logoPath != nil {
-						_ = h.mediaRepo.UpdateExtendedMetadata(item.ID, tagline, origLang, country, trailerURL, logoPath)
+					extUpdate2 := &repository.ExtendedMetadataUpdate{
+						Tagline: tagline, OriginalLanguage: origLang,
+						Country: country, TrailerURL: trailerURL, LogoPath: logoPath,
 					}
+					if result.OriginalTitle != nil && !item.IsFieldLocked("title") {
+						extUpdate2.OriginalTitle = result.OriginalTitle
+					}
+					if result.SortTitle != nil && !item.IsFieldLocked("title") {
+						extUpdate2.SortTitle = result.SortTitle
+					}
+					if result.ReleaseDate != nil && !item.IsFieldLocked("year") {
+						extUpdate2.ReleaseDate = result.ReleaseDate
+					}
+					_ = h.mediaRepo.UpdateExtendedMetadataFull(item.ID, extUpdate2)
 					// Apply backdrop from cache (skip if locked)
 					if !item.IsFieldLocked("backdrop_path") && result.BackdropURL != nil && *result.BackdropURL != "" && h.cfg.Paths.Preview != "" {
 						bdFilename := item.ID.String() + "_backdrop.jpg"

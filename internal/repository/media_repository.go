@@ -602,36 +602,82 @@ func (r *MediaRepository) UpdateContentRating(id uuid.UUID, contentRating string
 	return err
 }
 
+// ExtendedMetadataUpdate holds optional fields for extended metadata updates.
+// Only non-nil fields are written to the database.
+type ExtendedMetadataUpdate struct {
+	Tagline          *string
+	OriginalLanguage *string
+	Country          *string
+	TrailerURL       *string
+	LogoPath         *string
+	OriginalTitle    *string
+	SortTitle        *string
+	ReleaseDate      *string
+	BannerPath       *string
+}
+
 // UpdateExtendedMetadata sets extended metadata fields (tagline, language, country, trailer, logo).
 // Only non-nil fields are updated; nil values are left unchanged.
 func (r *MediaRepository) UpdateExtendedMetadata(id uuid.UUID, tagline, originalLang, country, trailerURL, logoPath *string) error {
+	return r.UpdateExtendedMetadataFull(id, &ExtendedMetadataUpdate{
+		Tagline:          tagline,
+		OriginalLanguage: originalLang,
+		Country:          country,
+		TrailerURL:       trailerURL,
+		LogoPath:         logoPath,
+	})
+}
+
+// UpdateExtendedMetadataFull sets all extended metadata fields from an update struct.
+// Only non-nil fields are updated; nil values are left unchanged.
+func (r *MediaRepository) UpdateExtendedMetadataFull(id uuid.UUID, u *ExtendedMetadataUpdate) error {
 	setClauses := []string{}
 	args := []interface{}{}
 	idx := 1
 
-	if tagline != nil {
+	if u.Tagline != nil {
 		setClauses = append(setClauses, fmt.Sprintf("tagline = $%d", idx))
-		args = append(args, *tagline)
+		args = append(args, *u.Tagline)
 		idx++
 	}
-	if originalLang != nil {
+	if u.OriginalLanguage != nil {
 		setClauses = append(setClauses, fmt.Sprintf("original_language = $%d", idx))
-		args = append(args, *originalLang)
+		args = append(args, *u.OriginalLanguage)
 		idx++
 	}
-	if country != nil {
+	if u.Country != nil {
 		setClauses = append(setClauses, fmt.Sprintf("country = $%d", idx))
-		args = append(args, *country)
+		args = append(args, *u.Country)
 		idx++
 	}
-	if trailerURL != nil {
+	if u.TrailerURL != nil {
 		setClauses = append(setClauses, fmt.Sprintf("trailer_url = $%d", idx))
-		args = append(args, *trailerURL)
+		args = append(args, *u.TrailerURL)
 		idx++
 	}
-	if logoPath != nil {
+	if u.LogoPath != nil {
 		setClauses = append(setClauses, fmt.Sprintf("logo_path = $%d", idx))
-		args = append(args, *logoPath)
+		args = append(args, *u.LogoPath)
+		idx++
+	}
+	if u.OriginalTitle != nil {
+		setClauses = append(setClauses, fmt.Sprintf("original_title = $%d", idx))
+		args = append(args, *u.OriginalTitle)
+		idx++
+	}
+	if u.SortTitle != nil {
+		setClauses = append(setClauses, fmt.Sprintf("sort_title = $%d", idx))
+		args = append(args, *u.SortTitle)
+		idx++
+	}
+	if u.ReleaseDate != nil {
+		setClauses = append(setClauses, fmt.Sprintf("release_date = $%d", idx))
+		args = append(args, *u.ReleaseDate)
+		idx++
+	}
+	if u.BannerPath != nil {
+		setClauses = append(setClauses, fmt.Sprintf("banner_path = $%d", idx))
+		args = append(args, *u.BannerPath)
 		idx++
 	}
 
