@@ -772,7 +772,12 @@
         const input = document.getElementById('pickerNewCollName');
         const name = input.value.trim();
         if (!name) { toast('Enter a collection name', 'error'); return; }
-        const res = await api('POST', '/collections', { name, collection_type: 'manual', visibility: 'private' });
+        const body = { name, collection_type: 'manual', visibility: 'private' };
+        // Attach library context so the collection appears in library-scoped views
+        if (_gridState.libraryId) {
+            body.library_id = _gridState.libraryId;
+        }
+        const res = await api('POST', '/collections', body);
         if (res.success) {
             toast('Collection "' + name + '" created');
             input.value = '';
@@ -3309,7 +3314,13 @@
         const input = document.getElementById('collPickerNewName');
         const name = input.value.trim();
         if (!name) { toast('Enter a collection name', 'error'); return; }
-        const res = await api('POST', '/collections', { name, collection_type: 'manual', visibility: 'private' });
+        // Get library_id from the media item so the collection is scoped to its library
+        const body = { name, collection_type: 'manual', visibility: 'private' };
+        const mediaRes = await api('GET', '/media/' + mediaId);
+        if (mediaRes.success && mediaRes.data && mediaRes.data.library_id) {
+            body.library_id = mediaRes.data.library_id;
+        }
+        const res = await api('POST', '/collections', body);
         if (!res.success) { toast(res.error || 'Failed to create collection', 'error'); return; }
         const collId = res.data && res.data.id;
         if (collId) {
