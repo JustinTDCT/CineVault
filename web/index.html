@@ -390,6 +390,104 @@
     <!-- Library Context Menu (shared, fixed-position) -->
     <div class="lib-ctx-menu" id="libCtxMenu"></div>
 
+    <!-- Bulk Action Bar -->
+    <div class="bulk-action-bar" id="bulkActionBar">
+        <div class="bulk-bar-left">
+            <span class="bulk-count" id="bulkCount">0 selected</span>
+            <button onclick="selectAllVisible()">Select All</button>
+        </div>
+        <div class="bulk-bar-actions">
+            <button onclick="openBulkEditModal()">&#9998; Edit</button>
+            <button onclick="bulkMarkPlayed()">&#9989; Played</button>
+            <button onclick="bulkMarkUnplayed()">&#9711; Unplayed</button>
+            <button onclick="bulkRefreshMetadata()">&#8635; Refresh</button>
+            <button onclick="openBulkAddToCollection()">&#128218; Collection</button>
+            <button class="bulk-btn-danger" onclick="bulkDelete()">&#128465; Delete</button>
+        </div>
+        <div class="bulk-bar-right">
+            <button onclick="selectionState.clear()">&#10005; Cancel</button>
+        </div>
+    </div>
+
+    <!-- Bulk Edit Modal -->
+    <div class="bulk-edit-overlay" id="bulkEditOverlay">
+        <div class="bulk-edit-modal">
+            <div class="bulk-edit-title">Bulk Edit</div>
+            <div class="bulk-edit-subtitle" id="bulkEditSubtitle">Editing 0 items — only checked fields will be applied</div>
+
+            <div class="bulk-field-row" id="bfRating">
+                <div class="bulk-field-check"><input type="checkbox" id="bfRatingCheck" onchange="toggleBulkField('bfRating')"></div>
+                <div class="bulk-field-body">
+                    <label>Rating</label>
+                    <input type="number" id="bfRatingVal" min="0" max="10" step="0.1" placeholder="0.0 – 10.0" disabled>
+                </div>
+            </div>
+
+            <div class="bulk-field-row" id="bfEdition">
+                <div class="bulk-field-check"><input type="checkbox" id="bfEditionCheck" onchange="toggleBulkField('bfEdition')"></div>
+                <div class="bulk-field-body">
+                    <label>Edition Type</label>
+                    <select id="bfEditionVal" disabled>
+                        <option value="Theatrical">Theatrical</option>
+                        <option value="Director's Cut">Director's Cut</option>
+                        <option value="Extended">Extended</option>
+                        <option value="Extended Edition">Extended Edition</option>
+                        <option value="Unrated">Unrated</option>
+                        <option value="Remastered">Remastered</option>
+                        <option value="IMAX">IMAX</option>
+                        <option value="4K Remaster">4K Remaster</option>
+                        <option value="Special Edition">Special Edition</option>
+                        <option value="Alternate">Alternate</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="bulk-field-row" id="bfTags">
+                <div class="bulk-field-check"><input type="checkbox" id="bfTagsCheck" onchange="toggleBulkField('bfTags')"></div>
+                <div class="bulk-field-body">
+                    <label>Custom Tags</label>
+                    <div class="bulk-tag-mode">
+                        <button class="active" id="bfTagModeAdd" onclick="setBulkTagMode('add')">+ Add</button>
+                        <button id="bfTagModeRemove" onclick="setBulkTagMode('remove')">- Remove</button>
+                        <button id="bfTagModeReplace" onclick="setBulkTagMode('replace')">Replace</button>
+                    </div>
+                    <input type="text" id="bfTagsVal" placeholder="e.g. reference, demo-disc, keeper" disabled>
+                </div>
+            </div>
+
+            <div class="bulk-field-row" id="bfNotes">
+                <div class="bulk-field-check"><input type="checkbox" id="bfNotesCheck" onchange="toggleBulkField('bfNotes')"></div>
+                <div class="bulk-field-body">
+                    <label>Custom Notes</label>
+                    <div class="bulk-tag-mode">
+                        <button class="active" id="bfNotesModeAppend" onclick="setBulkNotesMode('append')">Append</button>
+                        <button id="bfNotesModeReplace" onclick="setBulkNotesMode('replace')">Replace</button>
+                    </div>
+                    <textarea id="bfNotesVal" rows="2" placeholder="Notes to apply..." disabled></textarea>
+                </div>
+            </div>
+
+            <div class="bulk-edit-actions">
+                <button class="btn-secondary" onclick="closeBulkEditModal()">Cancel</button>
+                <button class="btn-primary" onclick="saveBulkEdit()">Apply to All</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Collection Picker Modal -->
+    <div class="collection-picker-overlay" id="collectionPickerOverlay">
+        <div class="collection-picker-modal">
+            <div class="collection-picker-title">Add to Collection</div>
+            <div class="collection-picker-list" id="collectionPickerList">
+                <div class="spinner"></div> Loading collections...
+            </div>
+            <div class="collection-picker-actions">
+                <button class="btn-secondary" onclick="closeCollectionPicker()">Cancel</button>
+                <button class="btn-primary" onclick="saveToCollections()">Add Selected</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
 
@@ -427,6 +525,276 @@
     function posterSrc(path, updatedAt) { if (!path) return ''; const ts = updatedAt ? new Date(updatedAt).getTime() : Date.now(); return path + '?v=' + ts; }
     function formatDuration(sec) { if (!sec) return ''; const m = Math.floor(sec/60); const s = sec%60; return m + ':' + String(s).padStart(2,'0'); }
     function formatTime(sec) { const h = Math.floor(sec/3600); const m = Math.floor((sec%3600)/60); const s = Math.floor(sec%60); return (h>0?h+':':'')+String(m).padStart(h>0?2:1,'0')+':'+String(s).padStart(2,'0'); }
+
+    // ──── Multi-Select State Manager ────
+    const selectionState = {
+        active: false,
+        selectedIds: new Set(),
+        lastClickedId: null,
+        tagMode: 'add',     // add | remove | replace
+        notesMode: 'append', // append | replace
+
+        toggle(id, shiftKey) {
+            if (shiftKey && this.lastClickedId && this.lastClickedId !== id) {
+                this._rangeSelect(id);
+            } else if (this.selectedIds.has(id)) {
+                this.selectedIds.delete(id);
+            } else {
+                this.selectedIds.add(id);
+            }
+            this.lastClickedId = id;
+            this._sync();
+        },
+
+        _rangeSelect(id) {
+            const cards = Array.from(document.querySelectorAll('.media-card[data-media-id]'));
+            const ids = cards.map(c => c.dataset.mediaId);
+            const startIdx = ids.indexOf(this.lastClickedId);
+            const endIdx = ids.indexOf(id);
+            if (startIdx === -1 || endIdx === -1) return;
+            const lo = Math.min(startIdx, endIdx);
+            const hi = Math.max(startIdx, endIdx);
+            for (let i = lo; i <= hi; i++) {
+                this.selectedIds.add(ids[i]);
+            }
+        },
+
+        selectAll() {
+            document.querySelectorAll('.media-card[data-media-id]').forEach(c => {
+                this.selectedIds.add(c.dataset.mediaId);
+            });
+            this._sync();
+        },
+
+        clear() {
+            this.selectedIds.clear();
+            this.lastClickedId = null;
+            this._sync();
+        },
+
+        count() { return this.selectedIds.size; },
+
+        _sync() {
+            const n = this.selectedIds.size;
+            this.active = n > 0;
+
+            // Toggle body class
+            document.body.classList.toggle('select-mode', this.active);
+
+            // Update action bar
+            const bar = document.getElementById('bulkActionBar');
+            bar.classList.toggle('visible', this.active);
+            document.getElementById('bulkCount').textContent = n + ' selected';
+
+            // Update card visual state
+            document.querySelectorAll('.media-card[data-media-id]').forEach(card => {
+                card.classList.toggle('selected', this.selectedIds.has(card.dataset.mediaId));
+            });
+        }
+    };
+
+    function handleCardClick(id, event) {
+        if (selectionState.active) {
+            event.preventDefault();
+            event.stopPropagation();
+            selectionState.toggle(id, event.shiftKey);
+        } else {
+            loadMediaDetail(id);
+        }
+    }
+
+    function handleCheckboxClick(id, event) {
+        event.preventDefault();
+        event.stopPropagation();
+        selectionState.toggle(id, event.shiftKey);
+    }
+
+    function selectAllVisible() {
+        selectionState.selectAll();
+    }
+
+    // ──── Bulk Edit Modal Logic ────
+    function toggleBulkField(rowId) {
+        const row = document.getElementById(rowId);
+        const check = row.querySelector('input[type="checkbox"]');
+        const inputs = row.querySelectorAll('.bulk-field-body input, .bulk-field-body select, .bulk-field-body textarea');
+        row.classList.toggle('active', check.checked);
+        inputs.forEach(inp => inp.disabled = !check.checked);
+    }
+
+    function setBulkTagMode(mode) {
+        selectionState.tagMode = mode;
+        document.getElementById('bfTagModeAdd').classList.toggle('active', mode === 'add');
+        document.getElementById('bfTagModeRemove').classList.toggle('active', mode === 'remove');
+        document.getElementById('bfTagModeReplace').classList.toggle('active', mode === 'replace');
+    }
+
+    function setBulkNotesMode(mode) {
+        selectionState.notesMode = mode;
+        document.getElementById('bfNotesModeAppend').classList.toggle('active', mode === 'append');
+        document.getElementById('bfNotesModeReplace').classList.toggle('active', mode === 'replace');
+    }
+
+    function openBulkEditModal() {
+        if (selectionState.count() === 0) return;
+        document.getElementById('bulkEditSubtitle').textContent =
+            'Editing ' + selectionState.count() + ' items — only checked fields will be applied';
+        // Reset fields
+        ['bfRatingCheck','bfEditionCheck','bfTagsCheck','bfNotesCheck'].forEach(id => {
+            document.getElementById(id).checked = false;
+        });
+        ['bfRating','bfEdition','bfTags','bfNotes'].forEach(id => {
+            const row = document.getElementById(id);
+            row.classList.remove('active');
+            row.querySelectorAll('.bulk-field-body input, .bulk-field-body select, .bulk-field-body textarea')
+                .forEach(inp => { inp.disabled = true; inp.value = ''; });
+        });
+        setBulkTagMode('add');
+        setBulkNotesMode('append');
+        document.getElementById('bulkEditOverlay').classList.add('active');
+    }
+
+    function closeBulkEditModal() {
+        document.getElementById('bulkEditOverlay').classList.remove('active');
+    }
+
+    async function saveBulkEdit() {
+        const ids = Array.from(selectionState.selectedIds);
+        if (ids.length === 0) return;
+        const fields = {};
+
+        if (document.getElementById('bfRatingCheck').checked) {
+            const v = document.getElementById('bfRatingVal').value;
+            if (v !== '') fields.rating = parseFloat(v);
+        }
+        if (document.getElementById('bfEditionCheck').checked) {
+            fields.edition_type = document.getElementById('bfEditionVal').value;
+        }
+        if (document.getElementById('bfTagsCheck').checked) {
+            fields.custom_tags = document.getElementById('bfTagsVal').value;
+            fields.tag_mode = selectionState.tagMode;
+        }
+        if (document.getElementById('bfNotesCheck').checked) {
+            fields.custom_notes = document.getElementById('bfNotesVal').value;
+            fields.notes_mode = selectionState.notesMode;
+        }
+
+        if (Object.keys(fields).length === 0) {
+            toast('No fields selected to apply', 'error');
+            return;
+        }
+
+        const res = await api('PUT', '/media/bulk', { ids, fields });
+        if (res.success) {
+            toast('Updated ' + ids.length + ' items');
+            closeBulkEditModal();
+            selectionState.clear();
+        } else {
+            toast(res.error || 'Bulk update failed', 'error');
+        }
+    }
+
+    // ──── Bulk Actions ────
+    async function bulkMarkPlayed() {
+        const ids = Array.from(selectionState.selectedIds);
+        if (ids.length === 0) return;
+        const res = await api('POST', '/media/bulk-action', { ids, action: 'mark_played' });
+        if (res.success) { toast(ids.length + ' items marked as played'); selectionState.clear(); }
+        else toast(res.error || 'Failed', 'error');
+    }
+
+    async function bulkMarkUnplayed() {
+        const ids = Array.from(selectionState.selectedIds);
+        if (ids.length === 0) return;
+        const res = await api('POST', '/media/bulk-action', { ids, action: 'mark_unplayed' });
+        if (res.success) { toast(ids.length + ' items marked as unplayed'); selectionState.clear(); }
+        else toast(res.error || 'Failed', 'error');
+    }
+
+    async function bulkRefreshMetadata() {
+        const ids = Array.from(selectionState.selectedIds);
+        if (ids.length === 0) return;
+        const res = await api('POST', '/media/bulk-action', { ids, action: 'refresh_metadata' });
+        if (res.success) { toast('Metadata refresh queued for ' + ids.length + ' items'); selectionState.clear(); }
+        else toast(res.error || 'Failed', 'error');
+    }
+
+    async function bulkDelete() {
+        const ids = Array.from(selectionState.selectedIds);
+        if (ids.length === 0) return;
+        if (!confirm('Delete ' + ids.length + ' media items? This cannot be undone.')) return;
+        const res = await api('POST', '/media/bulk-action', { ids, action: 'delete' });
+        if (res.success) {
+            toast(ids.length + ' items deleted');
+            selectionState.clear();
+            // Reload current view
+            const mc = document.getElementById('mainContent');
+            document.querySelectorAll('.media-card').forEach(c => {
+                if (ids.includes(c.dataset.mediaId)) c.remove();
+            });
+        } else toast(res.error || 'Delete failed', 'error');
+    }
+
+    // ──── Collection Picker ────
+    let _pickerSelectedCollections = new Set();
+
+    async function openBulkAddToCollection() {
+        if (selectionState.count() === 0) return;
+        _pickerSelectedCollections.clear();
+        const list = document.getElementById('collectionPickerList');
+        list.innerHTML = '<div class="spinner"></div> Loading...';
+        document.getElementById('collectionPickerOverlay').classList.add('active');
+
+        const res = await api('GET', '/collections');
+        if (!res.success || !res.data) {
+            list.innerHTML = '<div style="color:var(--text-tertiary);padding:12px;">No collections found. Create one first.</div>';
+            return;
+        }
+        const collections = res.data.filter(c => c.collection_type !== 'smart');
+        if (collections.length === 0) {
+            list.innerHTML = '<div style="color:var(--text-tertiary);padding:12px;">No manual collections found. Create one first.</div>';
+            return;
+        }
+        list.innerHTML = collections.map(c => `
+            <div class="collection-picker-item" onclick="togglePickerCollection('${c.id}', this)">
+                <input type="checkbox" onclick="event.stopPropagation();">
+                <span>${c.name}</span>
+            </div>
+        `).join('');
+    }
+
+    function togglePickerCollection(id, el) {
+        const cb = el.querySelector('input[type="checkbox"]');
+        if (_pickerSelectedCollections.has(id)) {
+            _pickerSelectedCollections.delete(id);
+            cb.checked = false;
+            el.classList.remove('selected');
+        } else {
+            _pickerSelectedCollections.add(id);
+            cb.checked = true;
+            el.classList.add('selected');
+        }
+    }
+
+    function closeCollectionPicker() {
+        document.getElementById('collectionPickerOverlay').classList.remove('active');
+    }
+
+    async function saveToCollections() {
+        const mediaIds = Array.from(selectionState.selectedIds);
+        const collIds = Array.from(_pickerSelectedCollections);
+        if (collIds.length === 0) { toast('Select at least one collection', 'error'); return; }
+
+        let added = 0;
+        for (const collId of collIds) {
+            const items = mediaIds.map((mid, i) => ({ media_item_id: mid, position: i }));
+            const res = await api('POST', '/collections/' + collId + '/items/bulk', items);
+            if (res.success) added++;
+        }
+        toast('Added ' + mediaIds.length + ' items to ' + added + ' collection' + (added !== 1 ? 's' : ''));
+        closeCollectionPicker();
+        selectionState.clear();
+    }
 
     // ──── Task Activity Tracker ────
     function handleTaskUpdate(data) {
@@ -1209,6 +1577,7 @@
 
     // ──── Navigation ────
     function navigate(view, extra) {
+        selectionState.clear();
         closeUserDropdown();
         document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
         if (view === 'library' && extra) {
@@ -1256,8 +1625,12 @@
         // Hover info extras
         const hoverMeta = [year, res, item.codec].filter(Boolean).join(' \u00b7 ');
         const ratingBadge = item.rating ? `<span class="hover-rating-badge">&#11088; ${item.rating.toFixed(1)}</span>` : '';
-        return `<div class="media-card" tabindex="0" onclick="loadMediaDetail('${item.id}')">
+        const isSelected = selectionState.selectedIds.has(item.id);
+        return `<div class="media-card${isSelected ? ' selected' : ''}" tabindex="0" data-media-id="${item.id}" onclick="handleCardClick('${item.id}', event)">
             <div class="media-poster" style="position:relative;">
+                <div class="select-checkbox" onclick="handleCheckboxClick('${item.id}', event)">
+                    <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
                 ${item.poster_path ? '<img src="'+posterSrc(item.poster_path, item.updated_at)+'" alt="" loading="lazy">' : mediaIcon(item.media_type)}
                 ${res ? '<span class="quality-badge">'+res+'</span>' : ''}
                 ${edBadge}

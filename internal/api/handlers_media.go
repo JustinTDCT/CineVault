@@ -239,6 +239,254 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: media})
 }
 
+// handleBulkUpdateMedia updates specific fields across multiple media items.
+func (s *Server) handleBulkUpdateMedia(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs    []uuid.UUID            `json:"ids"`
+		Fields map[string]interface{} `json:"fields"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(req.IDs) == 0 {
+		s.respondError(w, http.StatusBadRequest, "no IDs provided")
+		return
+	}
+	if len(req.Fields) == 0 {
+		s.respondError(w, http.StatusBadRequest, "no fields to update")
+		return
+	}
+
+	// Handle tag add/remove modes that require per-item processing
+	tagMode, _ := req.Fields["tag_mode"].(string)
+	tagsValue, hasTags := req.Fields["custom_tags"]
+	notesMode, _ := req.Fields["notes_mode"].(string)
+	notesValue, hasNotes := req.Fields["custom_notes"]
+
+	// Remove mode keys from the direct update fields
+	delete(req.Fields, "tag_mode")
+	delete(req.Fields, "notes_mode")
+
+	// For tag add/remove, we need per-item processing
+	if hasTags && (tagMode == "add" || tagMode == "remove") {
+		delete(req.Fields, "custom_tags")
+		tagsStr, _ := tagsValue.(string)
+		newTags := splitTags(tagsStr)
+
+		existing, err := s.mediaRepo.BulkGetCustomTags(req.IDs)
+		if err == nil {
+			for _, id := range req.IDs {
+				current := parseTagsJSON(existing[id])
+				if tagMode == "add" {
+					current = mergeTags(current, newTags)
+				} else {
+					current = removeTags(current, newTags)
+				}
+				tagJSON := buildTagsJSON(current)
+				_ = s.mediaRepo.UpdateCustomTags(id, tagJSON)
+			}
+		}
+	} else if hasTags && tagMode == "replace" {
+		// Convert tags string to JSON format for direct bulk update
+		tagsStr, _ := tagsValue.(string)
+		tags := splitTags(tagsStr)
+		req.Fields["custom_tags"] = buildTagsJSON(tags)
+	}
+
+	// For notes append mode, process per-item
+	if hasNotes && notesMode == "append" {
+		delete(req.Fields, "custom_notes")
+		notesStr, _ := notesValue.(string)
+		if notesStr != "" {
+			existing, err := s.mediaRepo.BulkGetCustomNotes(req.IDs)
+			if err == nil {
+				for _, id := range req.IDs {
+					current := existing[id]
+					if current != "" {
+						current = current + "\n" + notesStr
+					} else {
+						current = notesStr
+					}
+					_ = s.mediaRepo.UpdateCustomNotes(id, &current)
+				}
+			}
+		}
+	}
+	// For notes replace, leave in fields for direct update
+
+	// Do direct bulk update for remaining simple fields
+	if len(req.Fields) > 0 {
+		if err := s.mediaRepo.BulkUpdateFields(req.IDs, req.Fields); err != nil {
+			s.respondError(w, http.StatusInternalServerError, "bulk update failed: "+err.Error())
+			return
+		}
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{
+		"message": "bulk update complete",
+		"count":   len(req.IDs),
+	}})
+}
+
+// handleBulkAction performs bulk actions on multiple media items.
+func (s *Server) handleBulkAction(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs    []uuid.UUID            `json:"ids"`
+		Action string                 `json:"action"`
+		Params map[string]interface{} `json:"params"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(req.IDs) == 0 {
+		s.respondError(w, http.StatusBadRequest, "no IDs provided")
+		return
+	}
+
+	userID := s.getUserID(r)
+
+	switch req.Action {
+	case "mark_played":
+		for _, id := range req.IDs {
+			wh := &models.WatchHistory{
+				ID:          uuid.New(),
+				UserID:      userID,
+				MediaItemID: id,
+				Completed:   true,
+			}
+			_ = s.watchRepo.Upsert(wh)
+		}
+	case "mark_unplayed":
+		for _, id := range req.IDs {
+			wh := &models.WatchHistory{
+				ID:              uuid.New(),
+				UserID:          userID,
+				MediaItemID:     id,
+				ProgressSeconds: 0,
+				Completed:       false,
+			}
+			_ = s.watchRepo.Upsert(wh)
+		}
+	case "refresh_metadata":
+		for _, id := range req.IDs {
+			_ = s.mediaRepo.ResetMetadataLock(id)
+		}
+	case "delete":
+		count, err := s.mediaRepo.BulkDelete(req.IDs)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, "delete failed: "+err.Error())
+			return
+		}
+		s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{
+			"message": "items deleted",
+			"count":   count,
+		}})
+		return
+	default:
+		s.respondError(w, http.StatusBadRequest, "unknown action: "+req.Action)
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{
+		"message": req.Action + " complete",
+		"count":   len(req.IDs),
+	}})
+}
+
+// Tag helper functions for bulk operations
+func splitTags(s string) []string {
+	parts := []string{}
+	for _, p := range splitComma(s) {
+		t := trimSpace(p)
+		if t != "" {
+			parts = append(parts, t)
+		}
+	}
+	return parts
+}
+
+func splitComma(s string) []string {
+	result := []string{}
+	current := ""
+	for _, c := range s {
+		if c == ',' {
+			result = append(result, current)
+			current = ""
+		} else {
+			current += string(c)
+		}
+	}
+	result = append(result, current)
+	return result
+}
+
+func trimSpace(s string) string {
+	start := 0
+	end := len(s) - 1
+	for start <= end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\n') {
+		start++
+	}
+	for end >= start && (s[end] == ' ' || s[end] == '\t' || s[end] == '\n') {
+		end--
+	}
+	if start > end {
+		return ""
+	}
+	return s[start : end+1]
+}
+
+func parseTagsJSON(s string) []string {
+	if s == "" || s == "{}" {
+		return []string{}
+	}
+	var obj struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.Unmarshal([]byte(s), &obj); err != nil {
+		return []string{}
+	}
+	return obj.Tags
+}
+
+func buildTagsJSON(tags []string) string {
+	if len(tags) == 0 {
+		return `{"tags":[]}`
+	}
+	b, _ := json.Marshal(map[string][]string{"tags": tags})
+	return string(b)
+}
+
+func mergeTags(existing, add []string) []string {
+	set := map[string]bool{}
+	for _, t := range existing {
+		set[t] = true
+	}
+	for _, t := range add {
+		set[t] = true
+	}
+	result := make([]string, 0, len(set))
+	for t := range set {
+		result = append(result, t)
+	}
+	return result
+}
+
+func removeTags(existing, remove []string) []string {
+	removeSet := map[string]bool{}
+	for _, t := range remove {
+		removeSet[t] = true
+	}
+	result := []string{}
+	for _, t := range existing {
+		if !removeSet[t] {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
 // handleSetEditionParent links a media item as a child edition of a parent item.
 func (s *Server) handleSetEditionParent(w http.ResponseWriter, r *http.Request) {
 	childID, err := uuid.Parse(r.PathValue("id"))

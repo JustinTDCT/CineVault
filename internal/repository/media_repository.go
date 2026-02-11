@@ -1147,6 +1147,130 @@ func (r *MediaRepository) UpdateCustomTags(id uuid.UUID, tagsJSON string) error 
 	return err
 }
 
+// BulkUpdateFields updates specific fields across multiple media items in a single transaction.
+// The fields map should contain column names mapped to their new values.
+func (r *MediaRepository) BulkUpdateFields(ids []uuid.UUID, fields map[string]interface{}) error {
+	if len(ids) == 0 || len(fields) == 0 {
+		return nil
+	}
+
+	// Whitelist of allowed columns
+	allowed := map[string]bool{
+		"rating": true, "edition_type": true, "custom_notes": true, "custom_tags": true,
+	}
+
+	setClauses := []string{}
+	args := []interface{}{}
+	argIdx := 1
+
+	for col, val := range fields {
+		if !allowed[col] {
+			continue
+		}
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, argIdx))
+		args = append(args, val)
+		argIdx++
+	}
+
+	if len(setClauses) == 0 {
+		return nil
+	}
+
+	setClauses = append(setClauses, "metadata_locked = true", "updated_at = CURRENT_TIMESTAMP")
+
+	// Build ID placeholders
+	idPlaceholders := make([]string, len(ids))
+	for i, id := range ids {
+		idPlaceholders[i] = fmt.Sprintf("$%d", argIdx)
+		args = append(args, id)
+		argIdx++
+	}
+
+	query := fmt.Sprintf("UPDATE media_items SET %s WHERE id IN (%s)",
+		strings.Join(setClauses, ", "),
+		strings.Join(idPlaceholders, ", "))
+
+	_, err := r.db.Exec(query, args...)
+	return err
+}
+
+// BulkDelete removes multiple media items by ID.
+func (r *MediaRepository) BulkDelete(ids []uuid.UUID) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := fmt.Sprintf("DELETE FROM media_items WHERE id IN (%s)", strings.Join(placeholders, ", "))
+	result, err := r.db.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// BulkGetCustomTags fetches custom_tags for multiple items (used for tag add/remove operations).
+func (r *MediaRepository) BulkGetCustomTags(ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	if len(ids) == 0 {
+		return map[uuid.UUID]string{}, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := fmt.Sprintf("SELECT id, COALESCE(custom_tags, '') FROM media_items WHERE id IN (%s)", strings.Join(placeholders, ", "))
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[uuid.UUID]string)
+	for rows.Next() {
+		var id uuid.UUID
+		var tags string
+		if err := rows.Scan(&id, &tags); err != nil {
+			continue
+		}
+		result[id] = tags
+	}
+	return result, nil
+}
+
+// BulkGetCustomNotes fetches custom_notes for multiple items (used for note append operations).
+func (r *MediaRepository) BulkGetCustomNotes(ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	if len(ids) == 0 {
+		return map[uuid.UUID]string{}, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	query := fmt.Sprintf("SELECT id, COALESCE(custom_notes, '') FROM media_items WHERE id IN (%s)", strings.Join(placeholders, ", "))
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[uuid.UUID]string)
+	for rows.Next() {
+		var id uuid.UUID
+		var notes string
+		if err := rows.Scan(&id, &notes); err != nil {
+			continue
+		}
+		result[id] = notes
+	}
+	return result, nil
+}
+
 // PopulateEditionCounts enriches a slice of MediaItems with edition group info.
 // For each item that is the default edition in a group, sets EditionGroupID and EditionCount.
 func (r *MediaRepository) PopulateEditionCounts(items []*models.MediaItem) error {

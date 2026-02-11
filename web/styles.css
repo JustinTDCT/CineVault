@@ -2061,3 +2061,229 @@ body {
 
     .section-title { font-size: var(--text-2xl); }
 }
+
+/* ══════════════════════════════════════
+   30. Multi-Select & Bulk Actions
+   ══════════════════════════════════════ */
+
+/* Selection Checkbox on Media Cards */
+.select-checkbox {
+    position: absolute; top: 8px; left: 8px; z-index: 5;
+    width: 28px; height: 28px; border-radius: var(--radius-full);
+    background: rgba(10, 25, 41, 0.7); backdrop-filter: blur(4px);
+    border: 2px solid rgba(255,255,255,0.4);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0; transition: all 0.2s ease;
+    pointer-events: none;
+}
+.select-checkbox svg {
+    width: 16px; height: 16px; fill: none; stroke: transparent;
+    stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round;
+    transition: stroke 0.15s;
+}
+.media-card:hover .select-checkbox {
+    opacity: 1; pointer-events: auto;
+}
+/* Selection mode — all checkboxes always visible */
+.select-mode .select-checkbox {
+    opacity: 1; pointer-events: auto;
+}
+/* Selected state */
+.media-card.selected .select-checkbox {
+    background: var(--accent-gradient);
+    border-color: var(--accent);
+}
+.media-card.selected .select-checkbox svg {
+    stroke: var(--bg-primary);
+}
+.media-card.selected .media-poster {
+    box-shadow: 0 0 0 3px var(--accent), var(--shadow-card-hover);
+}
+.media-card.selected .media-poster::after {
+    content: ''; position: absolute; inset: 0;
+    background: rgba(0, 217, 255, 0.08);
+    border-radius: inherit; pointer-events: none;
+}
+/* In selection mode, card click = toggle selection, hide play overlay */
+.select-mode .media-card .play-overlay { display: none; }
+
+/* Floating Bulk Action Bar */
+.bulk-action-bar {
+    position: fixed; bottom: 0; left: var(--sidebar-width); right: 0;
+    z-index: 900; padding: 12px 24px;
+    background: linear-gradient(135deg, rgba(13, 27, 42, 0.97) 0%, rgba(26, 35, 50, 0.97) 100%);
+    backdrop-filter: blur(16px);
+    border-top: 1px solid rgba(0, 217, 255, 0.25);
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4);
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.bulk-action-bar.visible {
+    transform: translateY(0);
+}
+.bulk-bar-left {
+    display: flex; align-items: center; gap: 12px;
+}
+.bulk-count {
+    font-size: var(--text-base); font-weight: 600; color: var(--accent);
+    white-space: nowrap;
+}
+.bulk-bar-actions {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.bulk-bar-actions button, .bulk-bar-left button {
+    padding: 8px 16px; border-radius: var(--radius-lg); border: 1px solid var(--border-subtle);
+    background: rgba(255, 255, 255, 0.05); color: var(--text-primary);
+    font-size: var(--text-sm); font-weight: 500; cursor: pointer;
+    transition: all 0.15s; white-space: nowrap;
+}
+.bulk-bar-actions button:hover, .bulk-bar-left button:hover {
+    background: rgba(0, 217, 255, 0.15); border-color: var(--accent); color: var(--accent);
+}
+.bulk-bar-actions .bulk-btn-danger {
+    border-color: rgba(255, 59, 48, 0.4); color: #ff6b6b;
+}
+.bulk-bar-actions .bulk-btn-danger:hover {
+    background: rgba(255, 59, 48, 0.15); border-color: #ff3b30; color: #ff3b30;
+}
+.bulk-bar-right button {
+    padding: 8px 16px; border-radius: var(--radius-lg); border: 1px solid var(--border-subtle);
+    background: rgba(255, 255, 255, 0.05); color: var(--text-secondary);
+    font-size: var(--text-sm); cursor: pointer; transition: all 0.15s;
+}
+.bulk-bar-right button:hover {
+    background: rgba(255, 255, 255, 0.1); color: var(--text-primary);
+}
+
+/* Bulk Edit Modal */
+.bulk-edit-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px);
+    display: none; align-items: center; justify-content: center;
+}
+.bulk-edit-overlay.active { display: flex; }
+.bulk-edit-modal {
+    background: linear-gradient(135deg, #1a2332 0%, #0d1b2a 100%);
+    border: 1px solid rgba(0, 217, 255, 0.2); border-radius: var(--radius-2xl);
+    padding: 28px; max-width: 520px; width: 90%; max-height: 80vh; overflow-y: auto;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+.bulk-edit-title {
+    font-size: var(--text-xl); font-weight: 700; margin-bottom: 6px;
+    background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.bulk-edit-subtitle {
+    font-size: var(--text-sm); color: var(--text-tertiary); margin-bottom: 20px;
+}
+.bulk-field-row {
+    display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px;
+    padding: 10px 12px; border-radius: var(--radius-lg);
+    background: rgba(255, 255, 255, 0.02); border: 1px solid transparent;
+    transition: border-color 0.15s;
+}
+.bulk-field-row.active {
+    border-color: rgba(0, 217, 255, 0.2);
+    background: rgba(0, 217, 255, 0.03);
+}
+.bulk-field-check {
+    flex-shrink: 0; margin-top: 3px;
+}
+.bulk-field-check input[type="checkbox"] {
+    width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer;
+}
+.bulk-field-body {
+    flex: 1; min-width: 0;
+}
+.bulk-field-body label {
+    display: block; font-size: var(--text-sm); font-weight: 600;
+    color: var(--text-secondary); margin-bottom: 6px;
+}
+.bulk-field-body input,
+.bulk-field-body select,
+.bulk-field-body textarea {
+    width: 100%; padding: 8px 12px; border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    background: rgba(13, 27, 42, 0.8); color: var(--text-primary);
+    font-size: var(--text-sm); transition: border-color 0.15s;
+}
+.bulk-field-body input:focus,
+.bulk-field-body select:focus,
+.bulk-field-body textarea:focus {
+    border-color: var(--accent); outline: none;
+}
+.bulk-field-body input:disabled,
+.bulk-field-body select:disabled,
+.bulk-field-body textarea:disabled {
+    opacity: 0.4; cursor: not-allowed;
+}
+.bulk-tag-mode {
+    display: flex; gap: 6px; margin-bottom: 6px;
+}
+.bulk-tag-mode button {
+    padding: 4px 10px; border-radius: var(--radius-sm); font-size: 0.72rem; font-weight: 600;
+    border: 1px solid var(--border-subtle); background: transparent;
+    color: var(--text-tertiary); cursor: pointer; transition: all 0.15s;
+}
+.bulk-tag-mode button.active {
+    background: rgba(0, 217, 255, 0.15); border-color: var(--accent); color: var(--accent);
+}
+.bulk-edit-actions {
+    display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;
+    padding-top: 16px; border-top: 1px solid var(--border-subtle);
+}
+
+/* Collection Picker Modal */
+.collection-picker-overlay {
+    position: fixed; inset: 0; z-index: 1010;
+    background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px);
+    display: none; align-items: center; justify-content: center;
+}
+.collection-picker-overlay.active { display: flex; }
+.collection-picker-modal {
+    background: linear-gradient(135deg, #1a2332 0%, #0d1b2a 100%);
+    border: 1px solid rgba(0, 217, 255, 0.2); border-radius: var(--radius-2xl);
+    padding: 28px; max-width: 440px; width: 90%; max-height: 70vh;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+.collection-picker-title {
+    font-size: var(--text-lg); font-weight: 700; margin-bottom: 16px;
+    background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.collection-picker-list {
+    max-height: 40vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
+    margin-bottom: 16px;
+}
+.collection-picker-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    border-radius: var(--radius-lg); cursor: pointer;
+    background: rgba(255, 255, 255, 0.02); border: 1px solid transparent;
+    transition: all 0.15s;
+}
+.collection-picker-item:hover {
+    background: rgba(0, 217, 255, 0.06); border-color: rgba(0, 217, 255, 0.15);
+}
+.collection-picker-item.selected {
+    background: rgba(0, 217, 255, 0.1); border-color: var(--accent);
+}
+.collection-picker-item input[type="checkbox"] {
+    accent-color: var(--accent); width: 16px; height: 16px;
+}
+.collection-picker-item span {
+    font-size: var(--text-sm); color: var(--text-primary);
+}
+.collection-picker-actions {
+    display: flex; gap: 10px; justify-content: flex-end;
+    padding-top: 12px; border-top: 1px solid var(--border-subtle);
+}
+
+/* Responsive adjustments for bulk action bar */
+@media (max-width: 768px) {
+    .bulk-action-bar { left: 0; padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+    .bulk-bar-actions { gap: 6px; }
+    .bulk-bar-actions button, .bulk-bar-left button { padding: 6px 10px; font-size: 0.75rem; }
+}
+@media (max-width: 480px) {
+    .bulk-bar-actions button span.btn-label { display: none; }
+    .bulk-edit-modal { padding: 20px; }
+}

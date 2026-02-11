@@ -1,6 +1,6 @@
 {
-  "version": "0.48.03",
+  "version": "0.49.00",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Fix profile PIN bypass on page refresh and unclickable PIN input on profile switch."
+  "notes": "Add Plex-style multi-item selection and bulk editing across all grid views."
 }
