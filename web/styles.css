@@ -606,14 +606,15 @@ body {
 .ft-picker {
     display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 9000;
     min-width: 420px; max-height: 360px;
-    background: var(--bg-card); border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg); box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    background: #1a2233; border: 1px solid rgba(255,255,255,0.12);
+    border-radius: var(--radius-lg); box-shadow: 0 12px 40px rgba(0,0,0,0.7);
     overflow: hidden;
 }
 .ft-picker.open { display: flex; }
 .ft-picker-cats {
-    width: 170px; border-right: 1px solid var(--border-subtle);
+    width: 170px; border-right: 1px solid rgba(255,255,255,0.08);
     overflow-y: auto; padding: 4px 0; flex-shrink: 0;
+    background: #151d2b;
 }
 .ft-picker-cat {
     display: flex; justify-content: space-between; align-items: center;
@@ -626,7 +627,7 @@ body {
     font-size: 11px; color: var(--text-dim); background: rgba(255,255,255,0.06);
     border-radius: 10px; padding: 1px 7px; min-width: 20px; text-align: center;
 }
-.ft-picker-vals { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.ft-picker-vals { flex: 1; overflow-y: auto; display: flex; flex-direction: column; background: #1a2233; }
 .ft-picker-val-list { overflow-y: auto; flex: 1; padding: 4px 0; }
 .ft-picker-val {
     padding: 6px 14px; cursor: pointer; font-size: 13px; color: var(--text-secondary);
