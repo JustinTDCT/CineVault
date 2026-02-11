@@ -167,8 +167,10 @@
     <div class="household-picker-overlay" id="householdPickerOverlay">
         <div class="household-picker-title">Who's Watching?</div>
         <div class="household-picker-grid" id="householdPickerGrid"></div>
-        <input type="text" id="hpPinHidden" inputmode="numeric" style="position:absolute;opacity:0;pointer-events:none;">
     </div>
+
+    <!-- Shared hidden PIN input for profile switch / household picker (must be outside overlays so it's always focusable) -->
+    <input type="text" id="hpPinHidden" inputmode="numeric" style="position:fixed;top:-9999px;left:-9999px;opacity:0;">
 
     <!-- Manage Profiles Modal -->
     <div class="manage-profiles-overlay" id="manageProfilesOverlay">
@@ -4758,19 +4760,22 @@
     }
 
     async function switchToProfile(profileId, hasPin) {
-        if (currentUser && currentUser.id === profileId) {
-            closeProfileSwitch();
-            closeHouseholdPicker();
-            return;
-        }
-
+        // Always require PIN if profile has one, even if re-selecting current profile
         if (hasPin) {
-            // Show inline PIN entry
             showInlinePinEntry(profileId);
             return;
         }
 
-        // No PIN — switch immediately
+        // Same profile, no PIN — just mark picked and proceed
+        if (currentUser && currentUser.id === profileId) {
+            sessionStorage.setItem('profile_picked', '1');
+            closeProfileSwitch();
+            closeHouseholdPicker();
+            loadHomeView();
+            return;
+        }
+
+        // Different profile, no PIN — switch immediately
         try {
             const data = await api('POST', '/household/switch', { profile_id: profileId });
             if (data.success) {
@@ -4820,6 +4825,13 @@
             <div class="hp-pin-cancel" onclick="hideInlinePinEntry()">Cancel</div>
         `;
         pinDiv.style.display = 'flex';
+
+        // Click anywhere on the PIN overlay to re-focus the hidden input
+        pinDiv.onclick = function(e) {
+            if (!e.target.classList.contains('hp-pin-cancel')) {
+                document.getElementById('hpPinHidden').focus();
+            }
+        };
 
         const hi = document.getElementById('hpPinHidden');
         hi.value = '';

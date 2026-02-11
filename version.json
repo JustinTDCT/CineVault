@@ -1,6 +1,6 @@
 {
-  "version": "0.48.0",
+  "version": "0.48.01",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "UI feature wiring: add/remove collection items, poster/backdrop editing, cast display in edit modal, year/rating library filters, mood tags on media detail, 30-day trends chart, transcoder settings, user admin management, NFO import/export toggles."
+  "notes": "Fix profile PIN bypass on page refresh and unclickable PIN input on profile switch."
 }
