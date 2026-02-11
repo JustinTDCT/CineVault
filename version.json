@@ -1,5 +1,5 @@
 {
-  "version": "0.48.02",
+  "version": "0.48.03",
   "phase": 3,
   "released": "2026-02-11",
   "notes": "Fix profile PIN bypass on page refresh and unclickable PIN input on profile switch."
