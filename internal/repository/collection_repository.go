@@ -261,7 +261,7 @@ func (r *CollectionRepository) ListItems(collectionID uuid.UUID, sortMode string
 		       COALESCE(m.title, ts.title, al.title, bk.title, '') AS item_title,
 		       m.year, COALESCE(m.poster_path, ts.poster_path, al.poster_path, bk.poster_path, '') AS item_poster,
 		       m.rating, m.duration_seconds, m.resolution,
-		       COALESCE(m.media_type, '') AS item_media_type
+		       COALESCE(m.media_type::text, '') AS item_media_type
 		FROM collection_items ci
 		LEFT JOIN media_items m ON m.id = ci.media_item_id
 		LEFT JOIN tv_shows ts ON ts.id = ci.tv_show_id
