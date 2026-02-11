@@ -2140,22 +2140,13 @@
     function buildFilterQS() {
         const f = _gridState.filters || {};
         const params = [];
-        if (f.genre) params.push('genre=' + encodeURIComponent(f.genre));
-        if (f.folder) params.push('folder=' + encodeURIComponent(f.folder));
-        if (f.content_rating) params.push('content_rating=' + encodeURIComponent(f.content_rating));
-        if (f.edition) params.push('edition=' + encodeURIComponent(f.edition));
-        if (f.source) params.push('source=' + encodeURIComponent(f.source));
-        if (f.dynamic_range) params.push('dynamic_range=' + encodeURIComponent(f.dynamic_range));
-        if (f.codec) params.push('codec=' + encodeURIComponent(f.codec));
-        if (f.hdr_format) params.push('hdr_format=' + encodeURIComponent(f.hdr_format));
-        if (f.resolution) params.push('resolution=' + encodeURIComponent(f.resolution));
-        if (f.audio_codec) params.push('audio_codec=' + encodeURIComponent(f.audio_codec));
-        if (f.bitrate_range) params.push('bitrate_range=' + encodeURIComponent(f.bitrate_range));
-        if (f.year_from) params.push('year_from=' + encodeURIComponent(f.year_from));
-        if (f.year_to) params.push('year_to=' + encodeURIComponent(f.year_to));
-        if (f.min_rating) params.push('min_rating=' + encodeURIComponent(f.min_rating));
-        if (f.sort) params.push('sort=' + encodeURIComponent(f.sort));
-        if (f.order) params.push('order=' + encodeURIComponent(f.order));
+        const keys = ['genre','folder','content_rating','edition','source','dynamic_range',
+            'codec','hdr_format','resolution','audio_codec','bitrate_range','country',
+            'duration_range','watch_status','added_days','year_from','year_to','min_rating',
+            'sort','order'];
+        for (const k of keys) {
+            if (f[k]) params.push(k + '=' + encodeURIComponent(f[k]));
+        }
         return params.length > 0 ? '&' + params.join('&') : '';
     }
 
@@ -2371,8 +2362,9 @@
         const edOpts = (opts.editions || []).map(e => `<option value="${e}">${e}</option>`).join('');
         const srcOpts = (opts.sources || []).map(s => `<option value="${s}">${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
         const drOpts = (opts.dynamic_ranges || []).map(d => `<option value="${d}">${d}</option>`).join('');
+        const countryOpts = (opts.countries || []).map(c => `<option value="${c}">${c}</option>`).join('');
 
-        // New advanced filter options
+        // Advanced filter options
         const codecMap = {'hevc':'HEVC (H.265)','h264':'H.264','av1':'AV1','mpeg4':'MPEG-4','mpeg2video':'MPEG-2','vp9':'VP9','vc1':'VC-1'};
         const codecOpts = (opts.codecs || []).map(c => `<option value="${c}">${codecMap[c] || c.toUpperCase()}</option>`).join('');
         const hdrOpts = (opts.hdr_formats || []).map(h => `<option value="${h}">${h}</option>`).join('');
@@ -2380,10 +2372,11 @@
         const acMap = {'truehd':'TrueHD','eac3':'EAC3 (DD+)','ac3':'AC3 (DD)','aac':'AAC','dts':'DTS','flac':'FLAC','opus':'Opus','vorbis':'Vorbis','pcm_s16le':'PCM','pcm_s24le':'PCM 24-bit','mp3':'MP3'};
         const acOpts = (opts.audio_codecs || []).map(a => `<option value="${a}">${acMap[a] || a.toUpperCase()}</option>`).join('');
 
-        const hasAnyFilter = genreOpts || folderOpts || crOpts || edOpts || srcOpts || drOpts || codecOpts || hdrOpts || resOpts || acOpts;
+        const hasAnyFilter = genreOpts || folderOpts || crOpts || edOpts || srcOpts || drOpts || codecOpts || hdrOpts || resOpts || acOpts || countryOpts;
 
         return `<div class="filter-toolbar" id="filterToolbar">
             ${genreOpts ? `<select id="ftGenre" onchange="applyLibFilter()"><option value="">All Genres</option>${genreOpts}</select>` : ''}
+            ${countryOpts ? `<select id="ftCountry" onchange="applyLibFilter()"><option value="">All Countries</option>${countryOpts}</select>` : ''}
             ${folderOpts ? `<select id="ftFolder" onchange="applyLibFilter()"><option value="">All Folders</option>${folderOpts}</select>` : ''}
             ${crOpts ? `<select id="ftRating" onchange="applyLibFilter()"><option value="">All Ratings</option>${crOpts}</select>` : ''}
             ${edOpts ? `<select id="ftEdition" onchange="applyLibFilter()"><option value="">All Editions</option>${edOpts}</select>` : ''}
@@ -2400,12 +2393,31 @@
                 <option value="high">15-30 Mbps</option>
                 <option value="ultra">30+ Mbps</option>
             </select>
+            <select id="ftDuration" onchange="applyLibFilter()">
+                <option value="">All Lengths</option>
+                <option value="short">&lt; 30 min</option>
+                <option value="medium">30-90 min</option>
+                <option value="long">90-180 min</option>
+                <option value="vlong">180+ min</option>
+            </select>
+            <select id="ftWatchStatus" onchange="applyLibFilter()">
+                <option value="">All</option>
+                <option value="watched">Watched</option>
+                <option value="unwatched">Unwatched</option>
+            </select>
+            <select id="ftAddedDays" onchange="applyLibFilter()">
+                <option value="">Added Anytime</option>
+                <option value="1">Today</option>
+                <option value="7">Last 7 Days</option>
+                <option value="30">Last 30 Days</option>
+                <option value="90">Last 90 Days</option>
+            </select>
             <div class="ft-sep"></div>
             <span class="ft-label">Year</span>
-            <input type="number" id="ftYearFrom" placeholder="From" min="1900" max="2099" style="width:72px;" onchange="applyLibFilter()">
-            <input type="number" id="ftYearTo" placeholder="To" min="1900" max="2099" style="width:72px;" onchange="applyLibFilter()">
+            <input type="number" id="ftYearFrom" placeholder="From" min="1900" max="2099" onchange="applyLibFilter()">
+            <input type="number" id="ftYearTo" placeholder="To" min="1900" max="2099" onchange="applyLibFilter()">
             <span class="ft-label">Min Rating</span>
-            <input type="number" id="ftMinRating" placeholder="0" min="0" max="10" step="0.5" style="width:64px;" onchange="applyLibFilter()">
+            <input type="number" id="ftMinRating" placeholder="0" min="0" max="10" step="0.5" onchange="applyLibFilter()">
             <div class="ft-sep"></div>
             <span class="ft-label">Sort</span>
             <select id="ftSort" onchange="applyLibFilter()">
@@ -2417,6 +2429,7 @@
                 <option value="rt_rating">Rotten Tomatoes</option>
                 <option value="rating">TMDB Rating</option>
                 <option value="audience_score">Audience Score</option>
+                <option value="added_at">Date Added</option>
             </select>
             <select id="ftOrder" onchange="applyLibFilter()">
                 <option value="asc">A&#8594;Z / Low&#8594;High</option>
@@ -2432,44 +2445,32 @@
 
     function applyLibFilter() {
         const f = {};
-        const genre = document.getElementById('ftGenre');
-        const folder = document.getElementById('ftFolder');
-        const rating = document.getElementById('ftRating');
-        const edition = document.getElementById('ftEdition');
-        const source = document.getElementById('ftSource');
-        const dynRange = document.getElementById('ftDynRange');
-        const codec = document.getElementById('ftCodec');
-        const hdr = document.getElementById('ftHDR');
-        const resolution = document.getElementById('ftResolution');
-        const audioCodec = document.getElementById('ftAudioCodec');
-        const bitrate = document.getElementById('ftBitrate');
+        const els = {
+            genre: 'ftGenre', folder: 'ftFolder', content_rating: 'ftRating',
+            edition: 'ftEdition', source: 'ftSource', dynamic_range: 'ftDynRange',
+            codec: 'ftCodec', hdr_format: 'ftHDR', resolution: 'ftResolution',
+            audio_codec: 'ftAudioCodec', bitrate_range: 'ftBitrate', country: 'ftCountry',
+            duration_range: 'ftDuration', watch_status: 'ftWatchStatus', added_days: 'ftAddedDays',
+            sort: 'ftSort'
+        };
+        for (const [key, id] of Object.entries(els)) {
+            const el = document.getElementById(id);
+            if (el && el.value) f[key] = el.value;
+        }
+        const order = document.getElementById('ftOrder');
+        if (order && order.value !== 'asc') f.order = order.value;
         const yearFrom = document.getElementById('ftYearFrom');
         const yearTo = document.getElementById('ftYearTo');
         const minRating = document.getElementById('ftMinRating');
-        const sort = document.getElementById('ftSort');
-        const order = document.getElementById('ftOrder');
-        if (genre && genre.value) f.genre = genre.value;
-        if (folder && folder.value) f.folder = folder.value;
-        if (rating && rating.value) f.content_rating = rating.value;
-        if (edition && edition.value) f.edition = edition.value;
-        if (source && source.value) f.source = source.value;
-        if (dynRange && dynRange.value) f.dynamic_range = dynRange.value;
-        if (codec && codec.value) f.codec = codec.value;
-        if (hdr && hdr.value) f.hdr_format = hdr.value;
-        if (resolution && resolution.value) f.resolution = resolution.value;
-        if (audioCodec && audioCodec.value) f.audio_codec = audioCodec.value;
-        if (bitrate && bitrate.value) f.bitrate_range = bitrate.value;
         if (yearFrom && yearFrom.value) f.year_from = yearFrom.value;
         if (yearTo && yearTo.value) f.year_to = yearTo.value;
         if (minRating && minRating.value) f.min_rating = minRating.value;
-        if (sort && sort.value) f.sort = sort.value;
-        if (order && order.value !== 'asc') f.order = order.value;
         _gridState.filters = f;
         reloadLibraryGrid();
     }
 
     function resetLibFilters() {
-        const selectIds = ['ftGenre','ftFolder','ftRating','ftEdition','ftSource','ftDynRange','ftCodec','ftHDR','ftResolution','ftAudioCodec','ftBitrate','ftSort','ftOrder'];
+        const selectIds = ['ftGenre','ftFolder','ftRating','ftEdition','ftSource','ftDynRange','ftCodec','ftHDR','ftResolution','ftAudioCodec','ftBitrate','ftCountry','ftDuration','ftWatchStatus','ftAddedDays','ftSort','ftOrder'];
         selectIds.forEach(id => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
         const inputIds = ['ftYearFrom','ftYearTo','ftMinRating'];
         inputIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });

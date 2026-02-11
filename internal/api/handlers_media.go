@@ -25,6 +25,13 @@ func parseMediaFilter(r *http.Request) *repository.MediaFilter {
 		Resolution:    q.Get("resolution"),
 		AudioCodec:    q.Get("audio_codec"),
 		BitrateRange:  q.Get("bitrate_range"),
+		Country:       q.Get("country"),
+		DurationRange: q.Get("duration_range"),
+		WatchStatus:   q.Get("watch_status"),
+		AddedDays:     q.Get("added_days"),
+		YearFrom:      q.Get("year_from"),
+		YearTo:        q.Get("year_to"),
+		MinRating:     q.Get("min_rating"),
 		Sort:          q.Get("sort"),
 		Order:         q.Get("order"),
 	}
@@ -32,6 +39,8 @@ func parseMediaFilter(r *http.Request) *repository.MediaFilter {
 	if f.Genre == "" && f.Folder == "" && f.ContentRating == "" && f.Edition == "" &&
 		f.Source == "" && f.DynamicRange == "" && f.Codec == "" && f.HDRFormat == "" &&
 		f.Resolution == "" && f.AudioCodec == "" && f.BitrateRange == "" &&
+		f.Country == "" && f.DurationRange == "" && f.WatchStatus == "" && f.AddedDays == "" &&
+		f.YearFrom == "" && f.YearTo == "" && f.MinRating == "" &&
 		f.Sort == "" && f.Order == "" {
 		return nil
 	}

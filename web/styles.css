@@ -574,7 +574,9 @@ body {
 .filter-toolbar input[type="number"] {
     background: rgba(255,255,255,0.07); color: var(--text-primary); border: 1px solid var(--border-subtle-input);
     border-radius: var(--radius-sm); padding: 6px var(--sp-2); font-size: var(--text-sm); font-family: var(--font-display);
+    width: 72px;
 }
+.filter-toolbar input#ftMinRating { width: 64px; }
 .filter-toolbar input[type="number"]:focus { outline: none; border-color: var(--accent); }
 .filter-toolbar input[type="number"]::placeholder { color: var(--text-dim); }
 .filter-toolbar .ft-btn {

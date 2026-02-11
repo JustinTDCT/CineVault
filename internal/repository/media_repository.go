@@ -23,7 +23,14 @@ type MediaFilter struct {
 	Resolution    string // e.g. "4K", "1080p", "720p"
 	AudioCodec    string // e.g. "truehd", "eac3", "aac"
 	BitrateRange  string // "low" (<5Mbps), "medium" (5-15), "high" (15-30), "ultra" (30+)
-	Sort          string // "title" (default), "year", "resolution", "duration", "rt_rating", "rating", "audience_score", "bitrate"
+	Country       string // e.g. "United States", "Canada"
+	DurationRange string // "short" (<30min), "medium" (30-90), "long" (90-180), "vlong" (>180)
+	WatchStatus   string // "watched", "unwatched"
+	AddedDays     string // "1" (today), "7", "30", "90"
+	YearFrom      string // e.g. "2000"
+	YearTo        string // e.g. "2025"
+	MinRating     string // e.g. "7"
+	Sort          string // "title" (default), "year", "resolution", "duration", "rt_rating", "rating", "audience_score", "bitrate", "added_at"
 	Order         string // "asc" (default), "desc"
 }
 
@@ -222,6 +229,51 @@ func buildFilterClauses(f *MediaFilter, paramStart int) (string, string, string,
 				wheres = append(wheres, `m.bitrate IS NOT NULL AND m.bitrate >= 30000000`)
 			}
 		}
+		if f.Country != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.country = $%d`, p))
+			args = append(args, f.Country)
+			p++
+		}
+		if f.DurationRange != "" {
+			switch f.DurationRange {
+			case "short":
+				wheres = append(wheres, `m.duration_seconds IS NOT NULL AND m.duration_seconds > 0 AND m.duration_seconds < 1800`)
+			case "medium":
+				wheres = append(wheres, `m.duration_seconds IS NOT NULL AND m.duration_seconds >= 1800 AND m.duration_seconds < 5400`)
+			case "long":
+				wheres = append(wheres, `m.duration_seconds IS NOT NULL AND m.duration_seconds >= 5400 AND m.duration_seconds < 10800`)
+			case "vlong":
+				wheres = append(wheres, `m.duration_seconds IS NOT NULL AND m.duration_seconds >= 10800`)
+			}
+		}
+		if f.WatchStatus != "" {
+			switch f.WatchStatus {
+			case "watched":
+				wheres = append(wheres, `EXISTS (SELECT 1 FROM watch_history wh WHERE wh.media_item_id = m.id)`)
+			case "unwatched":
+				wheres = append(wheres, `NOT EXISTS (SELECT 1 FROM watch_history wh WHERE wh.media_item_id = m.id)`)
+			}
+		}
+		if f.AddedDays != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.added_at >= NOW() - ($%d || ' days')::interval`, p))
+			args = append(args, f.AddedDays)
+			p++
+		}
+		if f.YearFrom != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.year >= $%d`, p))
+			args = append(args, f.YearFrom)
+			p++
+		}
+		if f.YearTo != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.year <= $%d`, p))
+			args = append(args, f.YearTo)
+			p++
+		}
+		if f.MinRating != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.rating >= $%d`, p))
+			args = append(args, f.MinRating)
+			p++
+		}
 	}
 
 	// Always exclude child editions (non-default edition items) from library listings
@@ -255,6 +307,8 @@ func buildFilterClauses(f *MediaFilter, paramStart int) (string, string, string,
 			orderCol = "m.duration_seconds"
 		case "bitrate":
 			orderCol = "m.bitrate"
+		case "added_at":
+			orderCol = "m.added_at"
 		}
 	}
 	dir := "ASC"
@@ -838,6 +892,7 @@ type FilterOptions struct {
 	HDRFormats     []string `json:"hdr_formats"`
 	Resolutions    []string `json:"resolutions"`
 	AudioCodecs    []string `json:"audio_codecs"`
+	Countries      []string `json:"countries"`
 }
 
 // GetLibraryFilterOptions returns the distinct values available for filtering a library.
@@ -983,8 +1038,10 @@ func (r *MediaRepository) GetLibraryFilterOptions(libraryID uuid.UUID) (*FilterO
 
 	// Resolutions
 	resRows, err := r.db.Query(`
-		SELECT DISTINCT resolution FROM media_items
-		WHERE library_id = $1 AND resolution IS NOT NULL AND resolution != ''
+		SELECT resolution FROM (
+			SELECT DISTINCT resolution FROM media_items
+			WHERE library_id = $1 AND resolution IS NOT NULL AND resolution != ''
+		) sub
 		ORDER BY CASE resolution WHEN '4K' THEN 1 WHEN '1080p' THEN 2 WHEN '720p' THEN 3 WHEN '480p' THEN 4 ELSE 5 END`, libraryID)
 	if err != nil {
 		return nil, err
@@ -1013,6 +1070,23 @@ func (r *MediaRepository) GetLibraryFilterOptions(libraryID uuid.UUID) (*FilterO
 			return nil, err
 		}
 		opts.AudioCodecs = append(opts.AudioCodecs, ac)
+	}
+
+	// Countries
+	countryRows, err := r.db.Query(`
+		SELECT DISTINCT country FROM media_items
+		WHERE library_id = $1 AND country IS NOT NULL AND country != ''
+		ORDER BY country`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer countryRows.Close()
+	for countryRows.Next() {
+		var c string
+		if err := countryRows.Scan(&c); err != nil {
+			return nil, err
+		}
+		opts.Countries = append(opts.Countries, c)
 	}
 
 	return opts, nil

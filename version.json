@@ -1,6 +1,6 @@
 {
-  "version": "0.49.00",
+  "version": "0.50.00",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Add Plex-style multi-item selection and bulk editing across all grid views."
+  "notes": "Fix filter API bug; add country, duration, watched status, added date, and date added sort filters."
 }
