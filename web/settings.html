@@ -270,24 +270,52 @@
         if (currentUser?.role === 'admin') {
             const users = await api('GET', '/users');
             if (users.success && users.data) {
-                usersHtml = `<div class="settings-card full-width">
-                    <h3>All Users</h3>
-                    ${users.data.map(u => `<div class="user-admin-row" id="user-row-${u.id}" style="display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:10px;background:rgba(0,0,0,0.2);margin-bottom:8px;">
-                        <span style="width:10px;height:10px;border-radius:50%;display:inline-block;background:${u.is_active!==false?'#51cf66':'#ff6b6b'};box-shadow:0 0 8px ${u.is_active!==false?'rgba(52,199,89,0.5)':'rgba(255,59,48,0.5)'};"></span>
-                        <strong style="flex:1;">${u.username}</strong>
-                        <span class="tag tag-cyan">${u.role}</span>
-                        <span style="color:#5a6a7f;font-size:0.78rem;flex:1;">${u.email||''}</span>
-                        ${u.id !== currentUser.id ? `
-                            <select class="user-role-select" data-uid="${u.id}" style="padding:4px 8px;font-size:0.78rem;background:rgba(0,0,0,0.3);color:#e5e5e5;border:1px solid rgba(255,255,255,0.1);border-radius:6px;" onchange="changeUserRole('${u.id}', this.value)">
+                // Separate master accounts and sub-profiles
+                const masters = users.data.filter(u => !u.parent_user_id);
+                const subs = users.data.filter(u => u.parent_user_id);
+                const subsByParent = {};
+                subs.forEach(u => {
+                    if (!subsByParent[u.parent_user_id]) subsByParent[u.parent_user_id] = [];
+                    subsByParent[u.parent_user_id].push(u);
+                });
+
+                function renderUserRow(u, isSub) {
+                    const dot = `<span class="user-status-dot ${u.is_active!==false?'active':'inactive'}"></span>`;
+                    const nameLabel = isSub ? (u.display_name || u.username) : u.username;
+                    const isYou = u.id === currentUser.id;
+                    const actions = isYou
+                        ? '<span class="tag tag-green" style="font-size:0.72rem;">You</span>'
+                        : `<select class="user-role-select" data-uid="${u.id}" onchange="changeUserRole('${u.id}', this.value)">
                                 <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
                                 <option value="user" ${u.role==='user'?'selected':''}>User</option>
                                 <option value="guest" ${u.role==='guest'?'selected':''}>Guest</option>
                             </select>
                             <button class="btn-secondary btn-small" onclick="toggleUserActive('${u.id}', ${u.is_active!==false?'false':'true'})" title="${u.is_active!==false?'Deactivate':'Activate'}">${u.is_active!==false?'&#128683; Disable':'&#9989; Enable'}</button>
                             <button class="btn-secondary btn-small" onclick="adminSetPin('${u.id}','${u.username}')" title="Set PIN">&#128273; PIN</button>
-                            <button class="btn-danger btn-small" onclick="deleteUser('${u.id}','${u.username}')" title="Delete user">&#128465;</button>
-                        ` : '<span class="tag tag-green" style="font-size:0.72rem;">You</span>'}
-                    </div>`).join('')}
+                            <button class="btn-danger btn-small" onclick="deleteUser('${u.id}','${u.username}')" title="Delete user">&#128465;</button>`;
+                    return `<div class="user-admin-row ${isSub?'user-sub-row':''}" id="user-row-${u.id}">
+                        ${dot}
+                        <strong class="user-admin-name">${nameLabel}</strong>
+                        <span class="tag tag-cyan">${u.role}</span>
+                        <span class="user-admin-email">${u.email||''}</span>
+                        ${isSub ? '<span class="tag tag-purple" style="font-size:0.68rem;">Sub-profile</span>' : ''}
+                        ${u.is_kids_profile ? '<span class="tag tag-green" style="font-size:0.68rem;">Kids</span>' : ''}
+                        ${u.has_pin ? '<span class="tag tag-orange" style="font-size:0.68rem;">PIN</span>' : ''}
+                        <span style="flex:1;"></span>
+                        ${actions}
+                    </div>`;
+                }
+
+                let rowsHtml = '';
+                masters.forEach(m => {
+                    rowsHtml += renderUserRow(m, false);
+                    const children = subsByParent[m.id] || [];
+                    children.forEach(sub => { rowsHtml += renderUserRow(sub, true); });
+                });
+
+                usersHtml = `<div class="settings-card full-width">
+                    <h3>All Users</h3>
+                    ${rowsHtml}
                 </div>`;
             }
         }
