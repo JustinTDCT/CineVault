@@ -1423,11 +1423,11 @@ body {
 .mp-kids-toggle input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--kids); }
 
 /* ── Avatar Grid ── */
-.avatar-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: var(--sp-3); margin: var(--sp-3) 0; }
+.avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: var(--sp-3); margin: var(--sp-3) 0; }
 .avatar-option {
-    width: 50px; height: 50px; border-radius: var(--radius-full); cursor: pointer;
+    width: 100%; aspect-ratio: 1; max-width: 56px; border-radius: var(--radius-full); cursor: pointer;
     display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
-    border: 3px solid transparent; transition: all 0.2s;
+    border: 3px solid transparent; transition: all 0.2s; overflow: hidden;
 }
 .avatar-option:hover { transform: scale(1.1); border-color: rgba(0,217,255,0.4); }
 .avatar-option.selected { border-color: var(--accent); box-shadow: 0 0 12px rgba(0,217,255,0.4); }
@@ -1726,6 +1726,7 @@ body {
     padding: 25px; border-radius: var(--radius-2xl);
     background: var(--surface);
     border: 1px solid var(--accent-border);
+    overflow: hidden;
 }
 .settings-card h3 { color: var(--accent); margin-bottom: var(--sp-4); font-size: var(--text-xl); font-family: var(--font-display); }
 .settings-card.full-width { grid-column: 1 / -1; }
