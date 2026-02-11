@@ -114,6 +114,7 @@ Smart collections store their filter criteria as a JSONB `rules` object. All fie
   "year_to": 2025,
   "min_rating": 7.0,
   "content_rating": ["PG-13", "R"],
+  "media_types": ["movies"],
   "keywords": ["heist", "time travel"],
   "performers": ["Tom Hanks", "Meryl Streep"],
   "studios": ["A24", "Marvel Studios"],
@@ -138,6 +139,7 @@ Smart collections store their filter criteria as a JSONB `rules` object. All fie
 | `year_to` | int | Maximum release year (inclusive) |
 | `min_rating` | float | Minimum TMDB rating |
 | `content_rating` | string[] | Allowed content ratings (NULL ratings are always included) |
+| `media_types` | string[] | Restrict to specific media types (e.g., `["movies", "tv_shows"]`) |
 | `keywords` | string[] | Match items whose TMDB keywords contain any of these (case-insensitive substring match) |
 | `performers` | string[] | Match items featuring any of these actors or directors (case-insensitive exact name match via `performers` table) |
 | `studios` | string[] | Match items produced by any of these studios (case-insensitive exact name match via `studios` table) |
