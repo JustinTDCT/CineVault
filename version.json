@@ -1,6 +1,6 @@
 {
-  "version": "0.51.01",
+  "version": "0.51.02",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Fix Active Tasks tooltip z-index rendering behind library items."
+  "notes": "Fix Parent Movie search results not displaying (missing active CSS rule)."
 }
