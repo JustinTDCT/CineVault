@@ -2130,6 +2130,26 @@
 
     // ──── Paginated Media Grid with Alpha Jump ────
     let _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [], filters: {} };
+    let _filterOpts = {};
+    let _pickerVals = [];
+
+    const FILTER_DEFS = [
+        { key: 'genre', label: 'Genre', apiKey: 'genres' },
+        { key: 'country', label: 'Country', apiKey: 'countries' },
+        { key: 'content_rating', label: 'Content Rating', apiKey: 'content_ratings' },
+        { key: 'folder', label: 'Folder', apiKey: 'folders', displayFn: v => v.split('/').filter(Boolean).pop() || v },
+        { key: 'edition', label: 'Edition', apiKey: 'editions' },
+        { key: 'source', label: 'Source', apiKey: 'sources', displayFn: v => v.charAt(0).toUpperCase() + v.slice(1) },
+        { key: 'dynamic_range', label: 'Dynamic Range', apiKey: 'dynamic_ranges' },
+        { key: 'resolution', label: 'Resolution', apiKey: 'resolutions' },
+        { key: 'codec', label: 'Codec', apiKey: 'codecs', displayMap: {'hevc':'HEVC (H.265)','h264':'H.264','av1':'AV1','mpeg4':'MPEG-4','mpeg2video':'MPEG-2','vp9':'VP9','vc1':'VC-1'} },
+        { key: 'hdr_format', label: 'HDR Format', apiKey: 'hdr_formats' },
+        { key: 'audio_codec', label: 'Audio Codec', apiKey: 'audio_codecs', displayMap: {'truehd':'TrueHD','eac3':'EAC3 (DD+)','ac3':'AC3 (DD)','aac':'AAC','dts':'DTS','flac':'FLAC','opus':'Opus','vorbis':'Vorbis','pcm_s16le':'PCM','pcm_s24le':'PCM 24-bit','mp3':'MP3'} },
+        { key: 'bitrate_range', label: 'Bitrate', options: [{v:'low',l:'< 5 Mbps'},{v:'medium',l:'5-15 Mbps'},{v:'high',l:'15-30 Mbps'},{v:'ultra',l:'30+ Mbps'}] },
+        { key: 'duration_range', label: 'Duration', options: [{v:'short',l:'< 30 min'},{v:'medium',l:'30-90 min'},{v:'long',l:'90-180 min'},{v:'vlong',l:'180+ min'}] },
+        { key: 'watch_status', label: 'Watched', options: [{v:'watched',l:'Watched'},{v:'unwatched',l:'Unwatched'}] },
+        { key: 'added_days', label: 'Recently Added', options: [{v:'1',l:'Today'},{v:'7',l:'Last 7 Days'},{v:'30',l:'Last 30 Days'},{v:'90',l:'Last 90 Days'}] }
+    ];
 
     function teardownGrid() {
         if (_gridState.observer) { _gridState.observer.disconnect(); _gridState.observer = null; }
@@ -2343,6 +2363,7 @@
             <div id="collectionsArea" style="display:none;"></div>
             <div id="seriesArea" style="display:none;"></div>`;
 
+        renderFilterChips();
         setupScrollObserver();
         loadMoreMedia();
 
@@ -2352,71 +2373,44 @@
     }
 
     // ──── Filter Toolbar ────
+    function escFilterHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    function getFilterValues(def) {
+        if (def.options) return def.options;
+        if (def.apiKey && _filterOpts[def.apiKey] && _filterOpts[def.apiKey].length > 0) {
+            return _filterOpts[def.apiKey].map(v => ({
+                v: v,
+                l: def.displayMap ? (def.displayMap[v] || v.toUpperCase()) :
+                   def.displayFn ? def.displayFn(v) : v
+            }));
+        }
+        return [];
+    }
+
+    function getFilterLabel(key, value) {
+        const def = FILTER_DEFS.find(d => d.key === key);
+        if (!def) return value;
+        const vals = getFilterValues(def);
+        const opt = vals.find(o => o.v === value);
+        return opt ? opt.l : value;
+    }
+
     function buildFilterToolbar(opts) {
-        const genreOpts = (opts.genres || []).map(g => `<option value="${g}">${g}</option>`).join('');
-        const folderOpts = (opts.folders || []).map(f => {
-            const short = f.split('/').filter(Boolean).pop() || f;
-            return `<option value="${f}">${short}</option>`;
-        }).join('');
-        const crOpts = (opts.content_ratings || []).map(c => `<option value="${c}">${c}</option>`).join('');
-        const edOpts = (opts.editions || []).map(e => `<option value="${e}">${e}</option>`).join('');
-        const srcOpts = (opts.sources || []).map(s => `<option value="${s}">${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
-        const drOpts = (opts.dynamic_ranges || []).map(d => `<option value="${d}">${d}</option>`).join('');
-        const countryOpts = (opts.countries || []).map(c => `<option value="${c}">${c}</option>`).join('');
-
-        // Advanced filter options
-        const codecMap = {'hevc':'HEVC (H.265)','h264':'H.264','av1':'AV1','mpeg4':'MPEG-4','mpeg2video':'MPEG-2','vp9':'VP9','vc1':'VC-1'};
-        const codecOpts = (opts.codecs || []).map(c => `<option value="${c}">${codecMap[c] || c.toUpperCase()}</option>`).join('');
-        const hdrOpts = (opts.hdr_formats || []).map(h => `<option value="${h}">${h}</option>`).join('');
-        const resOpts = (opts.resolutions || []).map(r => `<option value="${r}">${r}</option>`).join('');
-        const acMap = {'truehd':'TrueHD','eac3':'EAC3 (DD+)','ac3':'AC3 (DD)','aac':'AAC','dts':'DTS','flac':'FLAC','opus':'Opus','vorbis':'Vorbis','pcm_s16le':'PCM','pcm_s24le':'PCM 24-bit','mp3':'MP3'};
-        const acOpts = (opts.audio_codecs || []).map(a => `<option value="${a}">${acMap[a] || a.toUpperCase()}</option>`).join('');
-
-        const hasAnyFilter = genreOpts || folderOpts || crOpts || edOpts || srcOpts || drOpts || codecOpts || hdrOpts || resOpts || acOpts || countryOpts;
-
+        _filterOpts = opts;
         return `<div class="filter-toolbar" id="filterToolbar">
-            ${genreOpts ? `<select id="ftGenre" onchange="applyLibFilter()"><option value="">All Genres</option>${genreOpts}</select>` : ''}
-            ${countryOpts ? `<select id="ftCountry" onchange="applyLibFilter()"><option value="">All Countries</option>${countryOpts}</select>` : ''}
-            ${folderOpts ? `<select id="ftFolder" onchange="applyLibFilter()"><option value="">All Folders</option>${folderOpts}</select>` : ''}
-            ${crOpts ? `<select id="ftRating" onchange="applyLibFilter()"><option value="">All Ratings</option>${crOpts}</select>` : ''}
-            ${edOpts ? `<select id="ftEdition" onchange="applyLibFilter()"><option value="">All Editions</option>${edOpts}</select>` : ''}
-            ${srcOpts ? `<select id="ftSource" onchange="applyLibFilter()"><option value="">All Sources</option>${srcOpts}</select>` : ''}
-            ${drOpts ? `<select id="ftDynRange" onchange="applyLibFilter()"><option value="">All DR</option>${drOpts}</select>` : ''}
-            ${resOpts ? `<select id="ftResolution" onchange="applyLibFilter()"><option value="">All Resolutions</option>${resOpts}</select>` : ''}
-            ${codecOpts ? `<select id="ftCodec" onchange="applyLibFilter()"><option value="">All Codecs</option>${codecOpts}</select>` : ''}
-            ${hdrOpts ? `<select id="ftHDR" onchange="applyLibFilter()"><option value="">All HDR</option>${hdrOpts}</select>` : ''}
-            ${acOpts ? `<select id="ftAudioCodec" onchange="applyLibFilter()"><option value="">All Audio</option>${acOpts}</select>` : ''}
-            <select id="ftBitrate" onchange="applyLibFilter()">
-                <option value="">All Bitrates</option>
-                <option value="low">&lt; 5 Mbps</option>
-                <option value="medium">5-15 Mbps</option>
-                <option value="high">15-30 Mbps</option>
-                <option value="ultra">30+ Mbps</option>
-            </select>
-            <select id="ftDuration" onchange="applyLibFilter()">
-                <option value="">All Lengths</option>
-                <option value="short">&lt; 30 min</option>
-                <option value="medium">30-90 min</option>
-                <option value="long">90-180 min</option>
-                <option value="vlong">180+ min</option>
-            </select>
-            <select id="ftWatchStatus" onchange="applyLibFilter()">
-                <option value="">All</option>
-                <option value="watched">Watched</option>
-                <option value="unwatched">Unwatched</option>
-            </select>
-            <select id="ftAddedDays" onchange="applyLibFilter()">
-                <option value="">Added Anytime</option>
-                <option value="1">Today</option>
-                <option value="7">Last 7 Days</option>
-                <option value="30">Last 30 Days</option>
-                <option value="90">Last 90 Days</option>
-            </select>
+            <div class="ft-add-wrapper">
+                <button class="ft-add-btn" onclick="toggleFilterPicker(event)">&#43; Filter</button>
+                <div class="ft-picker" id="ftPicker">
+                    <div class="ft-picker-cats" id="ftPickerCats"></div>
+                    <div class="ft-picker-vals" id="ftPickerVals"></div>
+                </div>
+            </div>
+            <div class="ft-chips" id="ftChips"></div>
             <div class="ft-sep"></div>
             <span class="ft-label">Year</span>
             <input type="number" id="ftYearFrom" placeholder="From" min="1900" max="2099" onchange="applyLibFilter()">
             <input type="number" id="ftYearTo" placeholder="To" min="1900" max="2099" onchange="applyLibFilter()">
-            <span class="ft-label">Min Rating</span>
+            <span class="ft-label">Rating</span>
             <input type="number" id="ftMinRating" placeholder="0" min="0" max="10" step="0.5" onchange="applyLibFilter()">
             <div class="ft-sep"></div>
             <span class="ft-label">Sort</span>
@@ -2439,42 +2433,118 @@
             <button class="ft-btn" id="ftGridBtn" onclick="showLibraryGrid()" title="Grid view">&#9638; Grid</button>
             <button class="ft-btn" id="ftCollBtn" onclick="showLibraryCollections()" title="Collections view">&#128218; Collections</button>
             <button class="ft-btn" id="ftSeriesBtn" onclick="showLibrarySeries()" title="Series view">&#127910; Series</button>
-            ${hasAnyFilter ? '<button class="ft-reset" onclick="resetLibFilters()" title="Reset filters">&#10005; Reset</button>' : ''}
+            <button class="ft-reset" onclick="resetLibFilters()" title="Reset all filters">&#10005; Reset</button>
         </div>`;
+    }
+
+    function toggleFilterPicker(e) {
+        e.stopPropagation();
+        const picker = document.getElementById('ftPicker');
+        if (picker.classList.contains('open')) { closeFilterPicker(); return; }
+        const catsEl = document.getElementById('ftPickerCats');
+        const valsEl = document.getElementById('ftPickerVals');
+        let catHtml = '';
+        for (const def of FILTER_DEFS) {
+            if ((_gridState.filters || {})[def.key]) continue;
+            const vals = getFilterValues(def);
+            if (!vals || vals.length === 0) continue;
+            catHtml += `<div class="ft-picker-cat" data-key="${def.key}" onclick="showFilterValues('${def.key}')" onmouseenter="showFilterValues('${def.key}')">${escFilterHtml(def.label)}<span class="ft-picker-cat-count">${vals.length}</span></div>`;
+        }
+        catsEl.innerHTML = catHtml || '<div class="ft-picker-empty">No more filters available</div>';
+        valsEl.innerHTML = '<div class="ft-picker-hint">Hover a category to see options</div>';
+        picker.classList.add('open');
+        setTimeout(() => document.addEventListener('click', _closePickerOnOutside), 0);
+    }
+
+    function _closePickerOnOutside(e) {
+        const wrapper = document.querySelector('.ft-add-wrapper');
+        if (wrapper && !wrapper.contains(e.target)) closeFilterPicker();
+    }
+
+    function closeFilterPicker() {
+        const picker = document.getElementById('ftPicker');
+        if (picker) picker.classList.remove('open');
+        document.removeEventListener('click', _closePickerOnOutside);
+    }
+
+    function showFilterValues(key) {
+        const def = FILTER_DEFS.find(d => d.key === key);
+        if (!def) return;
+        _pickerVals = getFilterValues(def);
+        const valsEl = document.getElementById('ftPickerVals');
+        const searchBox = _pickerVals.length > 10
+            ? `<div class="ft-picker-search"><input type="text" placeholder="Search ${def.label.toLowerCase()}..." oninput="filterPickerVals(this.value)" onclick="event.stopPropagation()"></div>` : '';
+        valsEl.innerHTML = searchBox + `<div class="ft-picker-val-list" id="ftPickerValList">${_pickerVals.map((opt, i) =>
+            `<div class="ft-picker-val" onclick="pickFilterValue('${key}',${i})">${escFilterHtml(opt.l)}</div>`
+        ).join('')}</div>`;
+        document.querySelectorAll('.ft-picker-cat').forEach(el => {
+            el.classList.toggle('active', el.dataset.key === key);
+        });
+    }
+
+    function filterPickerVals(q) {
+        const list = document.getElementById('ftPickerValList');
+        if (!list) return;
+        const lq = q.toLowerCase();
+        list.querySelectorAll('.ft-picker-val').forEach(el => {
+            el.style.display = el.textContent.toLowerCase().includes(lq) ? '' : 'none';
+        });
+    }
+
+    function pickFilterValue(key, idx) {
+        const value = _pickerVals[idx].v;
+        if (!_gridState.filters) _gridState.filters = {};
+        _gridState.filters[key] = value;
+        closeFilterPicker();
+        renderFilterChips();
+        reloadLibraryGrid();
+    }
+
+    function removeFilter(key) {
+        if (_gridState.filters) delete _gridState.filters[key];
+        renderFilterChips();
+        reloadLibraryGrid();
+    }
+
+    function renderFilterChips() {
+        const chipsEl = document.getElementById('ftChips');
+        if (!chipsEl) return;
+        const f = _gridState.filters || {};
+        let html = '';
+        for (const def of FILTER_DEFS) {
+            if (!f[def.key]) continue;
+            const label = getFilterLabel(def.key, f[def.key]);
+            html += `<div class="ft-chip"><span class="ft-chip-cat">${escFilterHtml(def.label)}:</span> ${escFilterHtml(label)}<span class="ft-chip-x" onclick="removeFilter('${def.key}')" title="Remove filter">&times;</span></div>`;
+        }
+        chipsEl.innerHTML = html;
     }
 
     function applyLibFilter() {
         const f = {};
-        const els = {
-            genre: 'ftGenre', folder: 'ftFolder', content_rating: 'ftRating',
-            edition: 'ftEdition', source: 'ftSource', dynamic_range: 'ftDynRange',
-            codec: 'ftCodec', hdr_format: 'ftHDR', resolution: 'ftResolution',
-            audio_codec: 'ftAudioCodec', bitrate_range: 'ftBitrate', country: 'ftCountry',
-            duration_range: 'ftDuration', watch_status: 'ftWatchStatus', added_days: 'ftAddedDays',
-            sort: 'ftSort'
-        };
-        for (const [key, id] of Object.entries(els)) {
-            const el = document.getElementById(id);
-            if (el && el.value) f[key] = el.value;
-        }
-        const order = document.getElementById('ftOrder');
-        if (order && order.value !== 'asc') f.order = order.value;
+        // Preserve chip-based filters
+        const pickerKeys = new Set(FILTER_DEFS.map(d => d.key));
+        const existing = _gridState.filters || {};
+        for (const k of pickerKeys) { if (existing[k]) f[k] = existing[k]; }
+        // Read DOM inputs
         const yearFrom = document.getElementById('ftYearFrom');
         const yearTo = document.getElementById('ftYearTo');
         const minRating = document.getElementById('ftMinRating');
+        const sort = document.getElementById('ftSort');
+        const order = document.getElementById('ftOrder');
         if (yearFrom && yearFrom.value) f.year_from = yearFrom.value;
         if (yearTo && yearTo.value) f.year_to = yearTo.value;
         if (minRating && minRating.value) f.min_rating = minRating.value;
+        if (sort && sort.value) f.sort = sort.value;
+        if (order && order.value !== 'asc') f.order = order.value;
         _gridState.filters = f;
         reloadLibraryGrid();
     }
 
     function resetLibFilters() {
-        const selectIds = ['ftGenre','ftFolder','ftRating','ftEdition','ftSource','ftDynRange','ftCodec','ftHDR','ftResolution','ftAudioCodec','ftBitrate','ftCountry','ftDuration','ftWatchStatus','ftAddedDays','ftSort','ftOrder'];
-        selectIds.forEach(id => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
-        const inputIds = ['ftYearFrom','ftYearTo','ftMinRating'];
-        inputIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        ['ftSort','ftOrder'].forEach(id => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
+        ['ftYearFrom','ftYearTo','ftMinRating'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
         _gridState.filters = {};
+        renderFilterChips();
         reloadLibraryGrid();
     }
 

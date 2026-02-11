@@ -1,6 +1,6 @@
 {
-  "version": "0.50.00",
+  "version": "0.50.01",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Fix filter API bug; add country, duration, watched status, added date, and date added sort filters."
+  "notes": "Redesign filter toolbar with picker dropdown and removable chips."
 }

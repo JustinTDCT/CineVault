@@ -554,9 +554,10 @@ body {
 /* ══════════════════════════════════════
    8. Filter Toolbar
    ══════════════════════════════════════ */
+/* ── Filter Toolbar ── */
 .filter-toolbar {
-    display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
-    padding: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-4); border-radius: var(--radius-lg);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 14px; margin-bottom: var(--sp-4); border-radius: var(--radius-lg);
     background: rgba(30,36,50,0.85); backdrop-filter: blur(12px);
     border: 1px solid var(--border-subtle);
 }
@@ -569,7 +570,7 @@ body {
 }
 .filter-toolbar select:hover { border-color: rgba(0,217,255,0.4); }
 .filter-toolbar select:focus { outline: none; border-color: var(--accent); }
-.filter-toolbar .ft-sep { width: 1px; height: 24px; background: var(--border-subtle-input); margin: 0 var(--sp-1); }
+.filter-toolbar .ft-sep { width: 1px; height: 24px; background: var(--border-subtle-input); margin: 0 2px; }
 .filter-toolbar .ft-label { color: var(--text-muted); font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.5px; }
 .filter-toolbar input[type="number"] {
     background: rgba(255,255,255,0.07); color: var(--text-primary); border: 1px solid var(--border-subtle-input);
@@ -589,6 +590,76 @@ body {
     background: none; border: none; color: var(--text-muted); font-size: var(--text-sm); cursor: pointer; padding: var(--sp-1) var(--sp-2);
 }
 .filter-toolbar .ft-reset:hover { color: var(--error); }
+
+/* ── Add Filter Button ── */
+.ft-add-wrapper { position: relative; }
+.ft-add-btn {
+    background: rgba(0,217,255,0.08); color: var(--accent); border: 1px dashed rgba(0,217,255,0.35);
+    border-radius: 20px; padding: 5px 14px; font-size: 13px; cursor: pointer; transition: all 0.2s;
+    white-space: nowrap;
+}
+.ft-add-btn:hover { background: rgba(0,217,255,0.18); border-style: solid; }
+
+/* ── Filter Picker Dropdown ── */
+.ft-picker {
+    display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 200;
+    min-width: 420px; max-height: 360px;
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    overflow: hidden;
+}
+.ft-picker.open { display: flex; }
+.ft-picker-cats {
+    width: 170px; border-right: 1px solid var(--border-subtle);
+    overflow-y: auto; padding: 4px 0; flex-shrink: 0;
+}
+.ft-picker-cat {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px; cursor: pointer; font-size: 13px; color: var(--text-secondary);
+    transition: background 0.15s, color 0.15s;
+}
+.ft-picker-cat:hover { background: rgba(0,217,255,0.06); color: var(--text-primary); }
+.ft-picker-cat.active { background: rgba(0,217,255,0.1); color: var(--accent); border-left: 2px solid var(--accent); }
+.ft-picker-cat-count {
+    font-size: 11px; color: var(--text-dim); background: rgba(255,255,255,0.06);
+    border-radius: 10px; padding: 1px 7px; min-width: 20px; text-align: center;
+}
+.ft-picker-vals { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.ft-picker-val-list { overflow-y: auto; flex: 1; padding: 4px 0; }
+.ft-picker-val {
+    padding: 6px 14px; cursor: pointer; font-size: 13px; color: var(--text-secondary);
+    transition: background 0.12s;
+}
+.ft-picker-val:hover { background: rgba(0,217,255,0.08); color: var(--text-primary); }
+.ft-picker-search {
+    padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); flex-shrink: 0;
+}
+.ft-picker-search input {
+    width: 100%; background: rgba(255,255,255,0.06); color: var(--text-primary);
+    border: 1px solid var(--border-subtle-input); border-radius: var(--radius-sm);
+    padding: 6px 10px; font-size: 13px; outline: none;
+}
+.ft-picker-search input:focus { border-color: var(--accent); }
+.ft-picker-search input::placeholder { color: var(--text-dim); }
+.ft-picker-hint, .ft-picker-empty {
+    padding: 24px 16px; color: var(--text-dim); font-size: 13px; text-align: center;
+}
+
+/* ── Filter Chips ── */
+.ft-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ft-chip {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: rgba(0,217,255,0.08); color: var(--text-primary);
+    border: 1px solid rgba(0,217,255,0.2); border-radius: 20px;
+    padding: 4px 6px 4px 10px; font-size: 12px; white-space: nowrap;
+}
+.ft-chip-cat { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; margin-right: 2px; }
+.ft-chip-x {
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0.5; font-size: 16px; line-height: 1;
+    width: 18px; height: 18px; border-radius: 50%; transition: all 0.15s;
+}
+.ft-chip-x:hover { opacity: 1; color: var(--error); background: rgba(255,80,80,0.15); }
 
 /* Missing episodes banner */
 .missing-episodes-banner {
