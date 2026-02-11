@@ -1792,7 +1792,8 @@
         const hoverMeta = [year, res, item.codec].filter(Boolean).join(' \u00b7 ');
         const ratingBadge = item.rating ? `<span class="hover-rating-badge">&#11088; ${item.rating.toFixed(1)}</span>` : '';
         const isSelected = selectionState.selectedIds.has(item.id);
-        return `<div class="media-card${isSelected ? ' selected' : ''}" tabindex="0" data-media-id="${item.id}" onclick="handleCardClick('${item.id}', event)">
+        const sortAttr = item.sort_title ? ' data-sort-title="'+item.sort_title.replace(/"/g,'&amp;quot;')+'"' : '';
+        return `<div class="media-card${isSelected ? ' selected' : ''}" tabindex="0" data-media-id="${item.id}"${sortAttr} onclick="handleCardClick('${item.id}', event)">
             <div class="media-poster" style="position:relative;">
                 <div class="select-checkbox" onclick="handleCheckboxClick('${item.id}', event)">
                     <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -2390,8 +2391,8 @@
             if (rect.top >= containerTop - 50) {
                 const title = card.querySelector('.media-title');
                 if (title) {
-                    const first = title.textContent.trim().charAt(0).toUpperCase();
-                    activeLetter = (first >= 'A' && first <= 'Z') ? first : '#';
+                    const sortTitle = card.dataset.sortTitle || title.textContent;
+                    activeLetter = sortableTitleLetter(sortTitle);
                 }
                 break;
             }
@@ -2399,6 +2400,14 @@
         jump.querySelectorAll('.alpha-jump-letter').forEach(el => {
             el.classList.toggle('active', el.dataset.letter === activeLetter);
         });
+    }
+
+    // Strip leading articles (The, A, An) for alpha-jump matching
+    function sortableTitleLetter(text) {
+        const t = text.trim();
+        const stripped = t.replace(/^(The|A|An)\s+/i, '');
+        const first = stripped.charAt(0).toUpperCase();
+        return (first >= 'A' && first <= 'Z') ? first : '#';
     }
 
     async function jumpToLetter(el) {
@@ -2417,8 +2426,9 @@
         for (const card of cards) {
             const title = card.querySelector('.media-title');
             if (title) {
-                const first = title.textContent.trim().charAt(0).toUpperCase();
-                const cardLetter = (first >= 'A' && first <= 'Z') ? first : '#';
+                // Use sort_title from data attr if available, else strip articles from display title
+                const sortTitle = card.dataset.sortTitle || title.textContent;
+                const cardLetter = sortableTitleLetter(sortTitle);
                 if (cardLetter === letter) {
                     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     break;
