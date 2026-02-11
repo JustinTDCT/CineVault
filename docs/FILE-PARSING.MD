@@ -308,6 +308,8 @@ After parsing and insertion, items are matched against external providers. See [
 - Logo and banner from fanart.tv
 - Auto-collection creation from TMDB `belongs_to_collection`
 - External IDs stored (TMDB, IMDB, TVDB, MusicBrainz, OpenLibrary, PornDB)
+- TMDB keywords stored as JSON on the media item
+- Mood tags auto-assigned from keyword mappings (see [RECOMMENDATIONS.MD](RECOMMENDATIONS.MD) for mood categories)
 
 ---
 
@@ -325,13 +327,16 @@ The following tokens are recognized as junk and stripped during universal fallba
 `480p`, `480i`, `576p`, `576i`, `720p`, `720i`, `1080p`, `1080i`, `2160p`, `4k`, `uhd`, `ultrahd`, `hd`, `sd`
 
 ### Source
-`bluray`, `blu-ray`, `bdrip`, `brrip`, `bdremux`, `bdrc`, `hdrip`, `hddvd`, `dvd`, `dvdrip`, `dvdscr`, `dvdscreener`, `webrip`, `web-dl`, `webdl`, `hdtv`, `pdtv`, `dsr`, `dsrip`, `tvrip`, `cam`, `screener`, `scr`, `telecine`, `telesync`, `retail`, `ppv`, `stv`
+`bluray`, `blu-ray`, `bdrip`, `brrip`, `bdremux`, `bdrc`, `hdrip`, `hddvd`, `hddvdrip`, `dvd`, `dvdrip`, `dvdscr`, `dvdscreener`, `webrip`, `web-dl`, `webdl`, `hdtv`, `pdtv`, `dsr`, `dsrip`, `tvrip`, `cam`, `screener`, `scr`, `tc`, `telecine`, `ts`, `telesync`, `retail`, `ppv`, `stv`
 
 ### Container Tokens
 `mkv`, `mp4`, `avi` (when appearing as tokens in the filename, not as the file extension)
 
 ### Release / Misc
-`remux`, `proper`, `repack`, `rerip`, `internal`, `limited`, `custom`, `extended`, `unrated`, `remastered`, `special.edition`, `multi`, `multisubs`, `dubbed`, `subbed`, `subs`, `sub`, `ws`, `fs`, `fragment`, `xxx`, `nfo`, `read.nfo`, `readnfo`, `nfofix`, `1cd`–`4cd`, `cd1`–`cd4`
+`remux`, `proper`, `repack`, `rerip`, `internal`, `limited`, `custom`, `extended`, `unrated`, `remastered`, `theatrical`, `special.edition`, `multi`, `multisubs`, `dubbed`, `subbed`, `subs`, `sub`, `ws`, `fs`, `fragment`, `xxx`, `nfo`, `read.nfo`, `readnfo`, `nfofix`, `1cd`–`4cd`, `cd1`–`cd4`
+
+### DVD Region Codes
+`r1`, `r3`, `r5`
 
 ---
 

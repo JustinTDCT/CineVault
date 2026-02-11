@@ -220,6 +220,9 @@ Sub-profiles are checked using their own user ID — they do not automatically i
 | PUT | `/api/v1/household/profiles/{id}` | Update sub-profile (master only) |
 | DELETE | `/api/v1/household/profiles/{id}` | Delete sub-profile (master only) |
 | GET | `/api/v1/recommendations` | Personalized recommendations |
+| GET | `/api/v1/recommendations/because-you-watched` | "Because you watched X" similarity rows |
+| PUT | `/api/v1/collections/{id}` | Update collection metadata and rules |
+| GET | `/api/v1/collections/{id}/evaluate` | Evaluate smart collection rules |
 
 ### Admin Only
 
@@ -247,5 +250,9 @@ Sub-profiles are checked using their own user ID — they do not automatically i
 | Migration | Description |
 |---|---|
 | 004 | Adds `library_access` enum, `access_level` column on libraries, `library_permissions` table |
+| 012 | Adds `pin_hash` and `display_name` columns for fast login support |
+| 013 | Adds `login_intro_enabled` and `login_intro_muted` settings |
+| 014 | Adds `first_name` and `last_name` columns to users |
 | 019 | Adds `max_content_rating`, `is_kids_profile`, `avatar_id` columns to users |
 | 020 | Adds `parent_user_id` column with FK + index for household profiles |
+| 021 | Adds `mood` to tag category enum, `rules` JSONB on collections, `keywords` on media items, recommendation indexes |

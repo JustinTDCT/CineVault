@@ -20,7 +20,7 @@ The cache server is the primary metadata source. On a miss, it fetches from exte
 
 ### TMDB (The Movie Database)
 - **Used for**: Movies, TV shows
-- **Provides**: Title, description, tagline, year, release date, original language, production country, poster, backdrop, genres, content rating, runtime, cast/crew, trailer URL, IMDB ID, TVDB ID (for TV), collection membership
+- **Provides**: Title, description, tagline, year, release date, original language, production country, poster, backdrop, genres, content rating, runtime, cast/crew, trailer URL, IMDB ID, TVDB ID (for TV), collection membership, keywords
 - **Access**: Via cache server (primary) or direct API (fallback)
 
 ### OMDb (Open Movie Database)
@@ -107,6 +107,7 @@ A single lookup returns all of the following (when available):
 | IMDB ID | TMDB |
 | TVDB ID | TMDB external IDs (TV shows only) |
 | Collection ID/name | TMDB `belongs_to_collection` (movies only) |
+| Keywords | TMDB (array of keyword strings) |
 | IMDB rating | OMDb |
 | RT critic score | OMDb |
 | RT audience score | OMDb |
@@ -157,6 +158,8 @@ For each new media file:
      - Fetch fanart.tv logos/banners
      - Persist source type from filename (bluray, web-dl, hdtv, etc.)
      - Detect HDR format and dynamic range from FFprobe color metadata
+     - Store TMDB keywords as JSON on media item
+     - Map keywords to mood tags and link as mood-category tags
   8. Export NFO (if nfo_export enabled)
   9. Contribute result to cache server (background, helps other instances)
 ```
@@ -208,7 +211,7 @@ CineVault supports locking metadata at two levels:
 - **Full lock** (`metadata_locked = true` or `locked_fields = ["*"]`): All fields are locked. Auto-match and re-enrichment skip this item entirely.
 - **Per-field lock** (`locked_fields = ["title", "description", ...]`): Only specified fields are protected from automatic updates.
 
-Lockable fields: `title`, `description`, `year`, `rating`, `poster_path`, `content_rating`, `tagline`, `original_language`, `country`, `trailer_url`, `logo_path`, `backdrop_path`, `imdb_rating`, `rt_rating`, `audience_score`, `genres`, `cast`, `source_type`, `hdr_format`, `custom_notes`, `custom_tags`.
+Lockable fields: `title`, `description`, `year`, `rating`, `poster_path`, `content_rating`, `tagline`, `original_language`, `country`, `trailer_url`, `logo_path`, `backdrop_path`, `imdb_rating`, `rt_rating`, `audience_score`, `genres`, `cast`, `custom_notes`, `custom_tags`, `external_ids`.
 
 When a user manually edits metadata, `metadata_locked` is set to `true` to prevent the next scan from overwriting their changes.
 
@@ -274,8 +277,9 @@ This works from both the cache server path and direct TMDB path.
 | `imdb_rating` | OMDb | IMDB user rating |
 | `rt_rating` | OMDb | Rotten Tomatoes critic score |
 | `audience_score` | OMDb | Rotten Tomatoes audience score |
-| `runtime` | FFprobe/TMDB | Duration in seconds (from FFprobe) or minutes (from TMDB) |
-| `genres` | TMDB/NFO | Linked as tags |
+| `runtime` | FFprobe/TMDB | Duration in seconds |
+| `genres` | TMDB/NFO | Linked as genre-category tags |
+| `keywords` | TMDB | JSON array of TMDB keyword strings, used for mood tag derivation |
 | `cast/crew` | TMDB/NFO | Linked as performers with roles |
 | `external_ids` | All | JSON object of provider IDs |
 | `locked_fields` | User/NFO | Array of field names protected from auto-update |
