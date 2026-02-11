@@ -4,64 +4,64 @@
 
 Self-hosted media server with AI-powered organization, duplicate detection, and multi-format streaming.
 
-## What's Working
-
-### Media Management
-- **9 media types** — Movies, Adult Movies, TV Shows, Music, Music Videos, Home Videos, Other Videos, Photos, Audiobooks
-- **Multi-folder libraries** with folder browser, per-library permissions (Everyone / Select Users / Admin Only)
-- **Library scanning** with ffprobe metadata extraction and DB persistence
-- **TV show hierarchy** auto-created from file paths (show / season / episode)
-- **Edition groups** (Director's Cut, Remastered, etc.)
-- **Sister groups** for linking related content
-- **User collections** for curating favorites
-- **Drag-and-drop sort ordering** for media, collections, editions, performers
-
-### Playback & Streaming
-- **Direct Play** — Range-request streaming for natively compatible formats (MP4, WebM)
-- **MPEG-TS Remux** — On-the-fly FFmpeg remux for MKV/AVI with mpegts.js playback
-- **HLS Transcoding** — Hardware-accelerated transcoding (NVENC, QSV, VAAPI) with quality selection
-- **Full video player UI** — Play/pause, seek, skip, volume, fullscreen, keyboard shortcuts
-- **Watch history & continue watching**
-
-### Metadata & Enrichment
-- **TMDB** scraping for movies and TV shows
-- **MusicBrainz** for music metadata
-- **Open Library** for audiobooks
-- **OMDb API** integration for IMDB ratings, Rotten Tomatoes, audience scores
-- **Metadata cache server** for faster lookups with automatic fallback to direct API calls
-- **Per-item metadata lock** to prevent overwrites on re-scan
-
-### Duplicate Detection
-- **Perceptual hashing (pHash)** and audio fingerprinting with similarity scoring
-- **Review queue** — side-by-side comparison, merge as edition, delete, or ignore
-- **Badge count** in sidebar for pending duplicates
-
-### People, Tags & Studios
-- **Performers / People** — Actors, directors, musicians, narrators with media linking
-- **Tags / Genres** — Hierarchical tag system with categories
-- **Studios / Labels** — Studio, label, publisher, network, distributor entities
-
-### Authentication & Access
-- **Multi-user** with roles (Admin / User / Guest) and JWT auth
-- **Fast Login** — PIN-based quick login with user avatar selection screen
-- **Cinematic login intro** with admin toggle for skip/mute
-- **User profile editing** with display name, email, avatar
-
-### UI & Experience
-- **Dedicated settings page** with left navigation (Video, Transcoder, Users, Security, Experience, Libraries, Metadata)
-- **Admin panel** — System status, user management, job queue monitor
-- **User avatar dropdown** — Edit Profile, Settings, Logout
-- **Real-time WebSocket updates** — Live scan progress, job status, toast notifications
-- **Background job queue** (Asynq + Redis) for async scanning, fingerprinting, preview generation, metadata scraping
-
 ## Tech Stack
 
-- **Backend**: Go 1.24
-- **Database**: PostgreSQL 16
-- **Cache/Queue**: Redis 7 + Asynq
-- **Streaming**: FFmpeg (HLS transcoding, MPEG-TS remux)
-- **Frontend**: Single-page HTML app, mpegts.js, HLS.js, SortableJS
-- **Deployment**: Docker Compose
+| Component | Technology |
+|-----------|------------|
+| Backend | Go 1.24 |
+| Database | PostgreSQL 16 |
+| Cache / Queue | Redis 7 + Asynq |
+| Streaming | FFmpeg (HLS transcoding, MPEG-TS remux) |
+| Frontend | Single-page HTML app, mpegts.js, HLS.js, SortableJS |
+| Deployment | Docker Compose |
+
+## Features at a Glance
+
+### Media Management
+9 media types (Movies, Adult Movies, TV Shows, Music, Music Videos, Home Videos, Other Videos, Photos, Audiobooks), multi-folder libraries with access control, TV show hierarchy auto-created from file paths, edition groups, sister groups, and drag-and-drop sort ordering.
+
+See [docs/FILE-PARSING.MD](docs/FILE-PARSING.MD) for filename conventions, folder structure, and the ingestion pipeline.
+
+### Playback and Streaming
+Direct Play for natively compatible formats, MPEG-TS remux for MKV/AVI via FFmpeg, and HLS transcoding with hardware acceleration (NVENC, QSV, VAAPI) and quality selection. Full video player UI with watch history and continue watching.
+
+### Metadata and Enrichment
+Cache-first architecture pulling from TMDB, OMDb, fanart.tv, MusicBrainz, OpenLibrary, and PornDB. NFO import/export, per-field metadata locking, auto-collections from TMDB franchise data, and mood tagging derived from TMDB keywords.
+
+See [docs/METADATA.MD](docs/METADATA.MD) for the full metadata flow, cache server architecture, and field reference.
+
+### Duplicate Detection
+Perceptual hashing (pHash) and audio fingerprinting with similarity scoring. Review queue with side-by-side comparison and resolution options (merge as edition, delete, ignore, sister group).
+
+### Filtering and Search
+Library-level dropdown filters (genre, year, rating, mood, resolution, source type, and more) combined with AND logic. Global cross-library text search and missing episode detection for TV shows.
+
+See [docs/FILTER-SEARCH.MD](docs/FILTER-SEARCH.MD) for filter mechanics, query building, and the duplicate finder.
+
+### Collections
+Manual and smart collections with nesting support. Smart collections use JSONB rule sets that re-evaluate dynamically. Movie series auto-created from TMDB collection data. Collection statistics, template presets, and full CRUD API.
+
+See [docs/COLLECTIONS.MD](docs/COLLECTIONS.MD) for rule syntax, hierarchy model, and endpoints.
+
+### Recommendations
+Personalized scoring based on recency-weighted genre affinity and cast/director overlap. "Because You Watched" similarity rows. Mood tags mapped from TMDB keywords. Smart collections as dynamic playlists.
+
+See [docs/RECOMMENDATIONS.MD](docs/RECOMMENDATIONS.MD) for the scoring algorithm, mood mapping, and filters.
+
+### Intro and Credits Detection
+Audio fingerprint cross-episode intro detection, black-frame/silence credits detection, anime OP/ED heuristics, and recap scene-change density analysis. Per-user auto-skip preferences with skip button overlay.
+
+See [docs/INTRO-CREDITS.MD](docs/INTRO-CREDITS.MD) for detection methods, confidence levels, and player behavior.
+
+### Users and Households
+Multi-user with roles (Admin / User / Guest), JWT auth, PIN-based fast login, master/sub-profile household system, parental controls with content rating caps, kids mode, and per-library access control.
+
+See [docs/USERS.MD](docs/USERS.MD) for authentication flows, household architecture, and permissions.
+
+### Analytics and Monitoring
+Real-time stream and transcode tracking, system metrics polling, nightly rollup aggregation, configurable alert rules with webhook delivery, and a Chart.js admin dashboard.
+
+See [docs/ANALYTICS-DASHBOARD.MD](docs/ANALYTICS-DASHBOARD.MD) for data collection, alerting, and dashboard components.
 
 ## Quick Start
 
@@ -80,84 +80,6 @@ go build -o cinevault ./cmd/cinevault/
 ```
 
 Server starts on `http://localhost:8080`
-
-## API Endpoints (70+)
-
-### Authentication
-- `POST /api/v1/auth/register` - Register new user
-- `POST /api/v1/auth/login` - Login and get JWT token
-- `PUT /api/v1/auth/pin` - Set fast login PIN
-
-### Libraries
-- `GET /api/v1/libraries` - List all libraries
-- `POST /api/v1/libraries` - Create library (Admin)
-- `GET /api/v1/libraries/{id}` - Get library details
-- `PUT /api/v1/libraries/{id}` - Update library (Admin)
-- `DELETE /api/v1/libraries/{id}` - Delete library (Admin)
-- `POST /api/v1/libraries/{id}/scan` - Trigger library scan (async via job queue)
-- `POST /api/v1/libraries/{id}/auto-match` - Bulk metadata auto-match (Admin)
-
-### Media
-- `GET /api/v1/libraries/{id}/media` - List media in library
-- `GET /api/v1/media/{id}` - Get media details
-- `GET /api/v1/media/search?q=query` - Search media
-- `POST /api/v1/media/{id}/identify` - Search external metadata sources
-- `POST /api/v1/media/{id}/apply-meta` - Apply metadata match
-
-### Streaming
-- `GET /api/v1/stream/{mediaId}/master.m3u8` - HLS master playlist
-- `GET /api/v1/stream/{mediaId}/{quality}/{segment}` - HLS segment
-- `GET /api/v1/stream/{mediaId}/direct` - Direct file stream (range requests)
-
-### Performers
-- `GET /api/v1/performers` - List/search performers
-- `POST /api/v1/performers` - Create performer (Admin)
-- `GET /api/v1/performers/{id}` - Get performer with linked media
-- `PUT /api/v1/performers/{id}` - Update performer (Admin)
-- `DELETE /api/v1/performers/{id}` - Delete performer (Admin)
-- `POST /api/v1/media/{id}/performers` - Link performer to media
-- `DELETE /api/v1/media/{id}/performers/{performerId}` - Unlink performer
-
-### Tags / Genres
-- `GET /api/v1/tags?tree=true` - List tags (flat or tree)
-- `POST /api/v1/tags` - Create tag (Admin)
-- `PUT /api/v1/tags/{id}` - Update tag (Admin)
-- `DELETE /api/v1/tags/{id}` - Delete tag (Admin)
-- `POST /api/v1/media/{id}/tags` - Assign tags to media
-- `DELETE /api/v1/media/{id}/tags/{tagId}` - Remove tag from media
-
-### Studios / Labels
-- `GET /api/v1/studios` - List studios
-- `POST /api/v1/studios` - Create studio (Admin)
-- `GET /api/v1/studios/{id}` - Get studio details
-- `PUT /api/v1/studios/{id}` - Update studio (Admin)
-- `DELETE /api/v1/studios/{id}` - Delete studio (Admin)
-- `POST /api/v1/media/{id}/studios` - Link studio to media
-- `DELETE /api/v1/media/{id}/studios/{studioId}` - Unlink studio
-
-### Duplicates
-- `GET /api/v1/duplicates` - List pending duplicate pairs
-- `POST /api/v1/duplicates/resolve` - Resolve duplicate (merge/delete/ignore/sister/edition)
-
-### Edition Groups / Sister Groups / Collections
-- Full CRUD endpoints
-
-### Watch History
-- `POST /api/v1/watch/{mediaId}/progress` - Update watch progress
-- `GET /api/v1/watch/continue` - Get continue watching list
-
-### WebSocket
-- `GET /api/v1/ws?token=JWT` - Real-time event stream
-
-### Settings & Admin
-- `GET /api/v1/settings/playback` - Get playback preferences
-- `PUT /api/v1/settings/playback` - Update playback preferences
-- `GET /api/v1/settings/system` - Get system settings (Admin)
-- `PUT /api/v1/settings/system` - Update system settings (Admin)
-- `GET /api/v1/jobs` - List recent jobs (Admin)
-- `GET /api/v1/jobs/{id}` - Get job status (Admin)
-- `PATCH /api/v1/sort` - Update sort order for any entity type (Admin)
-- `GET /api/v1/users` - List users (Admin)
 
 ## Environment Variables
 
