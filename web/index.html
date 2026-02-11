@@ -2567,15 +2567,24 @@
         const data = await api('GET', '/collections?library_id=' + libId);
         const collections = (data.success && data.data) ? data.data : [];
 
+        // Header with action buttons
+        let html = `<div class="section-header" style="margin-bottom:16px;">
+            <h2 class="section-title" style="font-size:var(--text-lg);margin:0;">Collections</h2>
+            <div style="display:flex;gap:8px;">
+                <button class="btn-secondary" onclick="createCollectionTemplates('${libId}')" title="Create smart collection presets">+ Templates</button>
+                <button class="btn-primary" onclick="showCreateCollection(null, '${libId}')">+ New</button>
+            </div>
+        </div>`;
+
         if (collections.length === 0) {
-            collArea.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128218;</div><div class="empty-state-title">No collections</div><p>Create a collection for this library to see it here</p></div>';
+            collArea.innerHTML = html + '<div class="empty-state"><div class="empty-state-icon">&#128218;</div><div class="empty-state-title">No collections</div><p>Create a collection or use templates to get started</p></div>';
             return;
         }
 
         // Show only top-level collections (no parent)
         const topLevel = collections.filter(c => !c.parent_collection_id);
         const toShow = topLevel.length > 0 ? topLevel : collections;
-        collArea.innerHTML = '<div class="collection-grid">' + toShow.map(c => {
+        collArea.innerHTML = html + '<div class="collection-grid">' + toShow.map(c => {
             const poster = c.poster_path
                 ? `<img src="${posterSrc(c.poster_path, c.updated_at)}" alt="">`
                 : '&#128218;';
@@ -3101,7 +3110,10 @@
         }
     }
 
-    function showCreateCollection(parentId) {
+    let _createCollectionLibId = null;
+
+    function showCreateCollection(parentId, libraryId) {
+        _createCollectionLibId = libraryId || null;
         const mc = document.getElementById('mainContent');
         mc.innerHTML = `<div class="section-header"><h2 class="section-title">New Collection</h2></div>
         <div style="max-width:700px;">
@@ -3198,7 +3210,7 @@
             </div>
             <div style="margin-top:20px;">
                 <button class="btn-primary" onclick="createCollection()">Create Collection</button>
-                <button class="btn-secondary" style="margin-left:12px;" onclick="loadCollectionsView()">Cancel</button>
+                <button class="btn-secondary" style="margin-left:12px;" onclick="cancelCreateCollection()">Cancel</button>
             </div>
         </div>`;
     }
@@ -3258,6 +3270,7 @@
 
         const body = { name: name, description: desc, visibility: vis, collection_type: collType, item_sort_mode: sortMode };
         if (parentId) body.parent_collection_id = parentId;
+        if (_createCollectionLibId) body.library_id = _createCollectionLibId;
 
         if (collType === 'smart') {
             const rules = buildSmartRules();
@@ -3266,8 +3279,28 @@
         }
 
         const r = await api('POST', '/collections', body);
-        if (r.success) { toast('Collection created!'); loadCollectionsView(); }
+        if (r.success) {
+            toast('Collection created!');
+            if (_createCollectionLibId) {
+                // Return to library view with collections tab active
+                await loadLibraryView(_createCollectionLibId);
+                _createCollectionLibId = null;
+                showLibraryCollections();
+            } else {
+                loadCollectionsView();
+            }
+        }
         else toast(r.error, 'error');
+    }
+
+    async function cancelCreateCollection() {
+        if (_createCollectionLibId) {
+            await loadLibraryView(_createCollectionLibId);
+            _createCollectionLibId = null;
+            showLibraryCollections();
+        } else {
+            loadCollectionsView();
+        }
     }
 
     async function deleteCollection(id) {
@@ -3277,9 +3310,16 @@
         else toast(d.error, 'error');
     }
 
-    async function createCollectionTemplates() {
+    async function createCollectionTemplates(libraryId) {
         const r = await api('POST', '/collections/templates');
-        if (r.success) { toast(`${r.data.count} template collection(s) created`); loadCollectionsView(); }
+        if (r.success) {
+            toast(`${r.data.count} template collection(s) created`);
+            if (libraryId) {
+                showLibraryCollections();
+            } else {
+                loadCollectionsView();
+            }
+        }
         else toast(r.error || 'Failed to create templates', 'error');
     }
 
