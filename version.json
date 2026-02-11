@@ -1,6 +1,6 @@
 {
-  "version": "0.42.0",
+  "version": "0.43.0",
   "phase": 3,
-  "released": "2026-02-10",
-  "notes": "Enhanced recommendations: weighted genre/cast/director affinity, skip detection, Because You Watched rows, smart collections with rules engine, mood tagging from TMDB keywords"
+  "released": "2026-02-11",
+  "notes": "Netflix-level UI polish: external CSS with design tokens, hero banner, skeleton loading, expanded hover cards, keyboard navigation, responsive breakpoints, Inter display font, enhanced Continue Watching"
 }
