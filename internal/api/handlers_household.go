@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 	"unicode"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
@@ -193,10 +195,16 @@ func (s *Server) handleCreateSubProfile(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Generate system username and dummy email
+	// Generate username from display name (e.g. "Kids" → "jdube_kids")
 	subID := uuid.New()
-	sysUsername := fmt.Sprintf("%s_profile%d", master.Username, count+1)
-	sysEmail := fmt.Sprintf("%s_profile%d@household.local", master.Username, count+1)
+	slug := strings.ToLower(strings.TrimSpace(req.DisplayName))
+	slug = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(slug, "_")
+	slug = strings.Trim(slug, "_")
+	if slug == "" {
+		slug = fmt.Sprintf("profile%d", count+1)
+	}
+	sysUsername := fmt.Sprintf("%s_%s", master.Username, slug)
+	sysEmail := fmt.Sprintf("%s@household.local", sysUsername)
 
 	// Hash PIN if provided
 	var pinHash *string
