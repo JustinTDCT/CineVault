@@ -55,6 +55,8 @@
             <div class="settings-nav-item admin-only" data-section="analytics">
                 <span class="settings-nav-icon">&#128202;</span><span>Analytics</span>
             </div>
+
+            <div class="sidebar-footer" id="sidebarFooter"></div>
         </div>
 
         <!-- Main Content -->
@@ -101,9 +103,19 @@
                 el.style.display = (currentUser.role === 'admin') ? '' : 'none';
             });
             navigateSection(getInitialSection());
+            loadSidebarVersion();
         } else {
             window.location.href = 'index.html';
         }
+    }
+
+    async function loadSidebarVersion() {
+        try {
+            const d = await api('GET', '/status');
+            const ver = d.success && d.data ? d.data.version : '';
+            const el = document.getElementById('sidebarFooter');
+            if (el && ver) el.innerHTML = `<div class="sidebar-version">v${ver}</div><div class="sidebar-credit">Designed by 21 Mexican Jumping Llamas</div>`;
+        } catch {}
     }
 
     function getInitialSection() {

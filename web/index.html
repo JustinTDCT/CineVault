@@ -38,6 +38,7 @@
                 <div class="nav-label">Libraries</div>
             </div>
 
+            <div class="sidebar-footer" id="sidebarFooter"></div>
         </div>
 
         <!-- Main Content -->
@@ -932,6 +933,17 @@
                 }
             } catch {}
             // Admin features moved to Settings page (Analytics under Content, Admin under Access)
+        } catch {}
+        // Load version footer
+        loadSidebarVersion();
+    }
+
+    async function loadSidebarVersion() {
+        try {
+            const d = await api('GET', '/status');
+            const ver = d.success && d.data ? d.data.version : '';
+            const el = document.getElementById('sidebarFooter');
+            if (el && ver) el.innerHTML = `<div class="sidebar-version">v${ver}</div><div class="sidebar-credit">Designed by 21 Mexican Jumping Llamas</div>`;
         } catch {}
     }
 

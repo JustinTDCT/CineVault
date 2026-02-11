@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"unicode"
@@ -36,11 +37,24 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	version := "unknown"
+	phase := "?"
+	if data, err := os.ReadFile("version.json"); err == nil {
+		var v map[string]interface{}
+		if json.Unmarshal(data, &v) == nil {
+			if ver, ok := v["version"].(string); ok {
+				version = ver
+			}
+			if p, ok := v["phase"].(float64); ok {
+				phase = fmt.Sprintf("%d", int(p))
+			}
+		}
+	}
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data: map[string]interface{}{
-			"version":    "0.41.0",
-			"phase":      "3",
+			"version":    version,
+			"phase":      phase,
 			"ws_clients": s.wsHub.ClientCount(),
 		},
 	})
