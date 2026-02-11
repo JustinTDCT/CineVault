@@ -426,7 +426,7 @@ body {
     font-size: 0.7rem; font-weight: 700; color: var(--accent);
 }
 .task-tooltip {
-    display: none; position: absolute; top: 110%; right: -20px; z-index: 100;
+    display: none; position: absolute; top: 110%; right: -20px; z-index: 10000;
     background: linear-gradient(135deg, #1a2a3e 0%, #0e1c2f 100%);
     border: 1px solid var(--accent-border-strong); border-radius: var(--radius-xl);
     padding: var(--sp-3) var(--sp-4); min-width: 240px;
