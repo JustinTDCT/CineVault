@@ -5863,8 +5863,68 @@
                     </div>
                     <button class="btn-primary" onclick="saveProfilePin(${profPinLength})">Set PIN</button>
                 </div>
+            </div>
+            <div class="settings-card full-width">
+                <h3>Overlay Badges</h3>
+                <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:16px;">Choose which badges appear on poster cards. Syncs across all your devices.</p>
+                <div id="profileOverlayToggles"><div class="spinner"></div></div>
             </div>`;
+
+        // Load overlay prefs into the profile card
+        loadProfileOverlayToggles();
     };
+
+    async function loadProfileOverlayToggles() {
+        const res = await api('GET', '/settings/display');
+        const p = res.success && res.data ? res.data.overlay_settings : {
+            resolution_hdr: true, audio_codec: true, ratings: true,
+            content_rating: false, edition_type: true, source_type: false
+        };
+        document.getElementById('profileOverlayToggles').innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">
+                <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                    <span class="toggle-switch"><input type="checkbox" id="profOvResHdr" ${p.resolution_hdr?'checked':''}><span class="toggle-slider"></span></span>
+                    Resolution &amp; HDR
+                </label>
+                <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                    <span class="toggle-switch"><input type="checkbox" id="profOvAudio" ${p.audio_codec?'checked':''}><span class="toggle-slider"></span></span>
+                    Audio Codec
+                </label>
+                <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                    <span class="toggle-switch"><input type="checkbox" id="profOvRatings" ${p.ratings?'checked':''}><span class="toggle-slider"></span></span>
+                    Ratings
+                </label>
+                <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                    <span class="toggle-switch"><input type="checkbox" id="profOvContentRating" ${p.content_rating?'checked':''}><span class="toggle-slider"></span></span>
+                    Content Rating
+                </label>
+                <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                    <span class="toggle-switch"><input type="checkbox" id="profOvEdition" ${p.edition_type?'checked':''}><span class="toggle-slider"></span></span>
+                    Edition Type
+                </label>
+                <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                    <span class="toggle-switch"><input type="checkbox" id="profOvSource" ${p.source_type?'checked':''}><span class="toggle-slider"></span></span>
+                    Source Type
+                </label>
+            </div>
+            <button class="btn-primary" onclick="saveProfileOverlayPrefs()" style="margin-top:16px;">Save Overlay Settings</button>`;
+    }
+
+    async function saveProfileOverlayPrefs() {
+        const settings = {
+            resolution_hdr: document.getElementById('profOvResHdr').checked,
+            audio_codec: document.getElementById('profOvAudio').checked,
+            ratings: document.getElementById('profOvRatings').checked,
+            content_rating: document.getElementById('profOvContentRating').checked,
+            edition_type: document.getElementById('profOvEdition').checked,
+            source_type: document.getElementById('profOvSource').checked,
+        };
+        const d = await api('PUT', '/settings/display', { overlay_settings: settings });
+        if (d.success) {
+            overlayPrefs = settings;
+            toast('Overlay settings saved!');
+        } else toast(d.error || 'Failed to save', 'error');
+    }
 
     function selectAvatar(avatarId) {
         document.getElementById('profAvatar').value = avatarId;
