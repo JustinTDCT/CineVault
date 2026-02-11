@@ -42,6 +42,9 @@ type Scanner struct {
 	pendingEpisodeMeta map[uuid.UUID]string
 	// pendingMultiParts tracks multi-part files by "dir|baseTitle" for post-scan sister grouping
 	pendingMultiParts map[string][]multiPartEntry
+	// scanShowsByFolder maps cleaned folder show names → TVShow records for the current scan,
+	// preventing duplicate show creation when autoMatchTVShow renames the title in the DB.
+	scanShowsByFolder map[string]*models.TVShow
 	// mu protects concurrent access during parallel enrichment
 	mu sync.Mutex
 }
@@ -103,6 +106,7 @@ func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepos
 		matchedShows:       make(map[uuid.UUID]bool),
 		pendingEpisodeMeta: make(map[uuid.UUID]string),
 		pendingMultiParts:  make(map[string][]multiPartEntry),
+		scanShowsByFolder:  make(map[string]*models.TVShow),
 	}
 }
 
@@ -389,6 +393,7 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 	s.matchedShows = make(map[uuid.UUID]bool)
 	s.pendingEpisodeMeta = make(map[uuid.UUID]string)
 	s.pendingMultiParts = make(map[string][]multiPartEntry)
+	s.scanShowsByFolder = make(map[string]*models.TVShow)
 
 	return result, nil
 }
@@ -853,20 +858,27 @@ func (s *Scanner) handleTVHierarchy(library *models.Library, item *models.MediaI
 
 	log.Printf("TV parse: show=%q season=%d episode=%d (from %s)", showName, seasonNum, episodeNum, relPath)
 
-	// Find or create show
-	show, err := s.tvRepo.FindShowByTitle(library.ID, showName)
-	if err != nil {
-		return err
-	}
-	if show == nil {
-		show = &models.TVShow{
-			ID:        uuid.New(),
-			LibraryID: library.ID,
-			Title:     showName,
+	// Find or create show — use in-memory folder map to avoid duplicate creation
+	// when autoMatchTVShow renames the title in the DB (e.g. "24 - Legacy" → "24").
+	folderKey := library.ID.String() + "|" + strings.ToLower(showName)
+	show, ok := s.scanShowsByFolder[folderKey]
+	if !ok {
+		var err error
+		show, err = s.tvRepo.FindShowByTitle(library.ID, showName)
+		if err != nil {
+			return err
 		}
-		if err := s.tvRepo.CreateShow(show); err != nil {
-			return fmt.Errorf("create show: %w", err)
+		if show == nil {
+			show = &models.TVShow{
+				ID:        uuid.New(),
+				LibraryID: library.ID,
+				Title:     showName,
+			}
+			if err := s.tvRepo.CreateShow(show); err != nil {
+				return fmt.Errorf("create show: %w", err)
+			}
 		}
+		s.scanShowsByFolder[folderKey] = show
 	}
 	item.TVShowID = &show.ID
 
@@ -2007,6 +2019,19 @@ func (s *Scanner) autoMatchTVShow(showID uuid.UUID) {
 		return
 	}
 
+	// ── Try cache server first ──
+	cacheClient := s.getCacheClient()
+	if cacheClient != nil {
+		result := cacheClient.Lookup(searchQuery, nil, models.MediaTypeTVShows)
+		if result != nil && result.Match != nil {
+			log.Printf("Auto-match TV: %q → %q (source=cache/%s, confidence=%.2f)",
+				show.Title, result.Match.Title, result.Source, result.Confidence)
+			s.applyTVShowCacheResult(showID, show, result)
+			return
+		}
+	}
+
+	// ── Fall back to direct TMDB ──
 	match := metadata.FindBestMatch(s.scrapers, searchQuery, models.MediaTypeTVShows)
 	if match == nil {
 		log.Printf("Auto-match: no TV match for %q", searchQuery)
@@ -2039,6 +2064,73 @@ func (s *Scanner) autoMatchTVShow(showID uuid.UUID) {
 	if match.Source == "tmdb" && match.ExternalID != "" {
 		s.enrichTVShowDetails(showID, match.ExternalID)
 		// Queue episode-level metadata fetch for after all files are scanned
+		s.pendingEpisodeMeta[showID] = match.ExternalID
+	}
+
+	// Contribute TV show to cache server in background
+	if cacheClient != nil {
+		go cacheClient.Contribute(match, metadata.ContributeExtras{
+			MediaType: models.MediaTypeTVShows,
+		})
+	}
+}
+
+// applyTVShowCacheResult applies a cache server hit to a TV show record,
+// including poster, genres, ratings, and queuing episode metadata fetch.
+func (s *Scanner) applyTVShowCacheResult(showID uuid.UUID, show *models.TVShow, result *metadata.CacheLookupResult) {
+	match := result.Match
+
+	// Download poster if available
+	var posterPath *string
+	if match.PosterURL != nil && s.posterDir != "" {
+		filename := "tvshow_" + showID.String() + ".jpg"
+		_, err := metadata.DownloadPoster(*match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+		if err != nil {
+			log.Printf("Auto-match: TV poster download failed for %s: %v", showID, err)
+		} else {
+			webPath := "/previews/posters/" + filename
+			posterPath = &webPath
+		}
+	}
+
+	if err := s.tvRepo.UpdateShowMetadata(showID, match.Title, match.Year,
+		match.Description, match.Rating, posterPath); err != nil {
+		log.Printf("Auto-match: TV show DB update failed for %s: %v", showID, err)
+	}
+
+	// Get all episodes for this show to apply genres/ratings
+	episodes, err := s.mediaRepo.ListByTVShow(showID)
+	if err != nil {
+		log.Printf("Auto-match: failed to list episodes for genre/rating enrichment: %v", err)
+		episodes = nil
+	}
+
+	// Link genre tags to all episodes
+	if s.tagRepo != nil && len(result.Genres) > 0 && episodes != nil {
+		for _, ep := range episodes {
+			if !ep.IsFieldLocked("genres") {
+				s.linkGenreTags(ep.ID, result.Genres)
+			}
+		}
+	}
+
+	// Apply OMDb ratings from cache to all episodes
+	if result.Ratings != nil && episodes != nil {
+		for _, ep := range episodes {
+			_ = s.mediaRepo.UpdateRatingsWithLocks(ep.ID, result.Ratings.IMDBRating, result.Ratings.RTScore, result.Ratings.AudienceScore, ep.LockedFields)
+		}
+	}
+
+	// Use cast/crew from cache if available
+	if s.performerRepo != nil && result.CastCrewJSON != nil && *result.CastCrewJSON != "" && len(episodes) > 0 {
+		credits := parseCacheCredits(*result.CastCrewJSON)
+		if credits != nil {
+			s.enrichWithCredits(episodes[0].ID, credits)
+		}
+	}
+
+	// Queue episode-level metadata fetch if we have a TMDB external ID
+	if match.ExternalID != "" {
 		s.pendingEpisodeMeta[showID] = match.ExternalID
 	}
 }

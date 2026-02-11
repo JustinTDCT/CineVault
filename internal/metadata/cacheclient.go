@@ -509,6 +509,9 @@ type ContributeExtras struct {
 	OriginalTitle    *string
 	ReleaseDate      *string
 	TVDBID           *int
+	// MediaType overrides the default media type derived from match.Source.
+	// Use this for TV shows (models.MediaTypeTVShows) since TMDB source defaults to "movie".
+	MediaType models.MediaType
 }
 
 // Contribute pushes a locally-fetched metadata result back to the cache server
@@ -542,11 +545,16 @@ func (c *CacheClient) Contribute(match *models.MetadataMatch, extras ...Contribu
 
 	// Map source to cache server media type
 	mediaType := "movie"
-	switch match.Source {
-	case "musicbrainz":
-		mediaType = "music"
-	case "openlibrary":
-		mediaType = "audiobook"
+	// Check extras first for explicit media type override (e.g. TV shows via TMDB)
+	if len(extras) > 0 && extras[0].MediaType != "" {
+		mediaType = mediaTypeToCacheType(extras[0].MediaType)
+	} else {
+		switch match.Source {
+		case "musicbrainz":
+			mediaType = "music"
+		case "openlibrary":
+			mediaType = "audiobook"
+		}
 	}
 
 	req := cacheContributeRequest{
