@@ -2090,12 +2090,12 @@
                 let ids = null;
                 try { if (m.external_ids) ids = JSON.parse(m.external_ids); } catch(e) {}
 
-                let html = '<div style="margin-bottom:16px;">';
+                let html = '<div class="metadata-tab-badges">';
                 // Cache server badge
                 if (ids && ids.cache_server) {
-                    html += '<span class="tag" style="background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.3);margin-right:8px;">Cache Server</span>';
+                    html += '<span class="tag tag-green">Cache Server</span>';
                 } else {
-                    html += '<span class="tag" style="background:rgba(100,116,139,0.15);color:#94a3b8;border:1px solid rgba(100,116,139,0.2);margin-right:8px;">Direct API</span>';
+                    html += '<span class="tag" style="background:rgba(100,116,139,0.15);color:#94a3b8;border:1px solid rgba(100,116,139,0.2);">Direct API</span>';
                 }
                 // Source badge
                 if (ids && ids.source) {
@@ -2104,7 +2104,7 @@
                 }
                 html += '</div>';
 
-                // External IDs table
+                // External IDs section
                 const idRows = [];
                 if (ids) {
                     if (ids.tmdb_id) idRows.push({name:'TMDB', id:ids.tmdb_id, url:'https://www.themoviedb.org/movie/'+ids.tmdb_id});
@@ -2114,6 +2114,8 @@
                     if (ids.openlibrary_id) idRows.push({name:'OpenLibrary', id:ids.openlibrary_id, url:'https://openlibrary.org/works/'+ids.openlibrary_id});
                 }
 
+                html += '<div class="metadata-tab-section">';
+                html += '<h4 class="metadata-tab-heading">External IDs</h4>';
                 if (idRows.length > 0) {
                     html += '<table class="metadata-ids-table">';
                     html += '<thead><tr><th>Service</th><th>External ID</th></tr></thead><tbody>';
@@ -2123,8 +2125,9 @@
                     });
                     html += '</tbody></table>';
                 } else {
-                    html += '<p style="color:#5a6a7f;margin-top:12px;">No external IDs stored. Run a metadata refresh or identify this item to populate.</p>';
+                    html += '<p style="color:var(--text-muted);">No external IDs stored. Run a metadata refresh or identify this item to populate.</p>';
                 }
+                html += '</div>';
 
                 // Technical metadata section
                 const techRows = [];
@@ -2133,14 +2136,16 @@
                 if (m.custom_notes) techRows.push({k:'Custom Notes', v:m.custom_notes});
                 const ctRaw = m.custom_tags ? (typeof m.custom_tags === 'string' ? JSON.parse(m.custom_tags || '{}') : m.custom_tags) : {};
                 const ctArr = ctRaw.tags || [];
-                if (ctArr.length > 0) techRows.push({k:'Custom Tags', v:ctArr.map(t=>'<span class="tag tag-blue" style="margin:0 4px 0 0;">'+t+'</span>').join('')});
+                if (ctArr.length > 0) techRows.push({k:'Custom Tags', v:ctArr.map(t=>'<span class="tag tag-blue">'+t+'</span>').join(' ')});
                 if (techRows.length > 0) {
-                    html += '<h4 style="color:#e5e5e5;margin:20px 0 10px;">Technical &amp; Custom Metadata</h4>';
-                    html += '<table style="width:100%;font-size:0.85rem;">';
+                    html += '<div class="metadata-tab-section">';
+                    html += '<h4 class="metadata-tab-heading">Technical &amp; Custom Metadata</h4>';
+                    html += '<table class="metadata-tech-table">';
                     techRows.forEach(r => {
-                        html += '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;width:140px;">'+r.k+'</td><td>'+r.v+'</td></tr>';
+                        html += '<tr><td class="metadata-tech-label">'+r.k+'</td><td class="metadata-tech-value">'+r.v+'</td></tr>';
                     });
                     html += '</table>';
+                    html += '</div>';
                 }
 
                 tc.innerHTML = html;
