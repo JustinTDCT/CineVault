@@ -154,49 +154,11 @@ Mood tags are a tag category (`mood`) that describes the emotional tone of conte
 
 ## Smart Collections
 
-### What They Are
-
 Smart collections are dynamic playlists that automatically populate based on user-defined rules. Unlike manual collections where items are added one by one, smart collections evaluate their rules against the library each time they are viewed.
 
-### Creating a Smart Collection
+Smart collections support a wide range of filter criteria including genres, moods, performers, studios, duration ranges, recency, and configurable sorting. Results can be sorted by title, year, rating, added date, duration, or randomly.
 
-`POST /api/v1/collections` with `collection_type: "smart"` and a `rules` JSON object.
-
-### Rules Schema
-
-```json
-{
-  "genres": ["action", "sci-fi"],
-  "moods": ["intense", "adrenaline"],
-  "year_from": 2000,
-  "year_to": 2025,
-  "min_rating": 7.0,
-  "content_rating": ["PG-13", "R"],
-  "keywords": ["heist", "time travel"],
-  "max_results": 50
-}
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `genres` | string[] | Match items tagged with any of these genres (case-insensitive) |
-| `moods` | string[] | Match items tagged with any of these moods (case-insensitive) |
-| `year_from` | int | Minimum release year (inclusive) |
-| `year_to` | int | Maximum release year (inclusive) |
-| `min_rating` | float | Minimum TMDB rating |
-| `content_rating` | string[] | Allowed content ratings (NULL ratings are always included) |
-| `keywords` | string[] | Match items whose TMDB keywords contain any of these (case-insensitive substring match) |
-| `max_results` | int | Maximum items returned (default 100, cap 500) |
-
-All rule fields are optional. When multiple fields are set, they combine with AND logic (items must match all specified criteria). Within a field, values are OR (e.g., genres ["action", "comedy"] matches items tagged with either).
-
-### Evaluating a Smart Collection
-
-`GET /api/v1/collections/{id}/evaluate` — runs the rules query and returns matching media items, sorted by rating (descending), then title.
-
-### Updating Rules
-
-`PUT /api/v1/collections/{id}` — updates collection metadata (name, description, poster, visibility, sort mode) and/or the `rules` JSON.
+For full documentation of collections (manual, smart, nested, statistics, templates, and all API endpoints), see [COLLECTIONS.MD](COLLECTIONS.MD).
 
 ---
 
@@ -206,11 +168,10 @@ All rule fields are optional. When multiple fields are set, they combine with AN
 |---|---|---|
 | GET | `/api/v1/recommendations` | Personalized recommendations (top 20) |
 | GET | `/api/v1/recommendations/because-you-watched` | Content-similarity rows (5 sources x 8 similar) |
-| POST | `/api/v1/collections` | Create collection (set `collection_type: "smart"` with `rules`) |
-| PUT | `/api/v1/collections/{id}` | Update collection metadata and rules |
-| GET | `/api/v1/collections/{id}/evaluate` | Evaluate smart collection rules |
 
 All endpoints require authentication (Bearer token) and `user` role minimum.
+
+For collection-related endpoints, see [COLLECTIONS.MD](COLLECTIONS.MD).
 
 ---
 
