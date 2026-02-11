@@ -403,7 +403,7 @@ func (r *CollectionRepository) EvaluateSmartCollection(rulesJSON string, library
 		placeholders := make([]string, len(rules.Genres))
 		for i, g := range rules.Genres {
 			placeholders[i] = fmt.Sprintf("$%d", paramIdx)
-			args = append(args, g)
+			args = append(args, strings.ToLower(strings.TrimSpace(g)))
 			paramIdx++
 		}
 		conditions = append(conditions, `EXISTS (
@@ -418,7 +418,7 @@ func (r *CollectionRepository) EvaluateSmartCollection(rulesJSON string, library
 		placeholders := make([]string, len(rules.ExcludeGenres))
 		for i, g := range rules.ExcludeGenres {
 			placeholders[i] = fmt.Sprintf("$%d", paramIdx)
-			args = append(args, g)
+			args = append(args, strings.ToLower(strings.TrimSpace(g)))
 			paramIdx++
 		}
 		conditions = append(conditions, `NOT EXISTS (
@@ -433,7 +433,7 @@ func (r *CollectionRepository) EvaluateSmartCollection(rulesJSON string, library
 		placeholders := make([]string, len(rules.Moods))
 		for i, mood := range rules.Moods {
 			placeholders[i] = fmt.Sprintf("$%d", paramIdx)
-			args = append(args, mood)
+			args = append(args, strings.ToLower(strings.TrimSpace(mood)))
 			paramIdx++
 		}
 		conditions = append(conditions, `EXISTS (
