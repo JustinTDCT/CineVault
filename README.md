@@ -1,6 +1,10 @@
 # CineVault
 
 > **This is still under heavy development and is far from complete but you are welcome to try it out and give me feedback. I am taking what I like best from Plex, Jellyfin, and StashApp and making one media player that does it all.**
+>
+> This is now and always will be free. There is no charge for sharing or downloading apps and what not! The only thing I ask is that you donate or support my work. Totally voluntary. This just helps me offset the cost of time and effort I spend doing this - and while my ideas spawn from my own needs I try to make them open because I know other people can benefit from them also!
+>
+> **[Buy Me A Pizza](https://buymeacoffee.com/jtdct)**
 
 Self-hosted media server with AI-powered organization, duplicate detection, and multi-format streaming.
 
