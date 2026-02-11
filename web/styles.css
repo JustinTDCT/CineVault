@@ -2272,6 +2272,20 @@ body {
 .collection-picker-item span {
     font-size: var(--text-sm); color: var(--text-primary);
 }
+.picker-create-row {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 12px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle);
+}
+.picker-create-input {
+    flex: 1; padding: 8px 12px; border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    background: rgba(13, 27, 42, 0.8); color: var(--text-primary);
+    font-size: var(--text-sm); transition: border-color 0.15s;
+}
+.picker-create-input:focus {
+    border-color: var(--accent); outline: none;
+}
+.picker-create-input::placeholder { color: var(--text-muted); }
 .collection-picker-actions {
     display: flex; gap: 10px; justify-content: flex-end;
     padding-top: 12px; border-top: 1px solid var(--border-subtle);

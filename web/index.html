@@ -478,6 +478,10 @@
     <div class="collection-picker-overlay" id="collectionPickerOverlay">
         <div class="collection-picker-modal">
             <div class="collection-picker-title">Add to Collection</div>
+            <div class="picker-create-row" id="pickerCreateRow">
+                <input type="text" id="pickerNewCollName" placeholder="New collection name..." class="picker-create-input">
+                <button class="btn-primary btn-small" onclick="pickerCreateCollection()">Create</button>
+            </div>
             <div class="collection-picker-list" id="collectionPickerList">
                 <div class="spinner"></div> Loading collections...
             </div>
@@ -741,26 +745,45 @@
     async function openBulkAddToCollection() {
         if (selectionState.count() === 0) return;
         _pickerSelectedCollections.clear();
+        document.getElementById('pickerNewCollName').value = '';
         const list = document.getElementById('collectionPickerList');
         list.innerHTML = '<div class="spinner"></div> Loading...';
         document.getElementById('collectionPickerOverlay').classList.add('active');
+        await _refreshPickerList();
+    }
 
+    async function _refreshPickerList() {
+        const list = document.getElementById('collectionPickerList');
         const res = await api('GET', '/collections');
-        if (!res.success || !res.data) {
-            list.innerHTML = '<div style="color:var(--text-tertiary);padding:12px;">No collections found. Create one first.</div>';
-            return;
-        }
-        const collections = res.data.filter(c => c.collection_type !== 'smart');
+        const collections = (res.success && res.data) ? res.data.filter(c => c.collection_type !== 'smart') : [];
         if (collections.length === 0) {
-            list.innerHTML = '<div style="color:var(--text-tertiary);padding:12px;">No manual collections found. Create one first.</div>';
+            list.innerHTML = '<div style="color:var(--text-tertiary);padding:12px;">No manual collections yet. Create one above.</div>';
             return;
         }
         list.innerHTML = collections.map(c => `
-            <div class="collection-picker-item" onclick="togglePickerCollection('${c.id}', this)">
-                <input type="checkbox" onclick="event.stopPropagation();">
+            <div class="collection-picker-item${_pickerSelectedCollections.has(c.id) ? ' selected' : ''}" onclick="togglePickerCollection('${c.id}', this)">
+                <input type="checkbox"${_pickerSelectedCollections.has(c.id) ? ' checked' : ''} onclick="event.stopPropagation();">
                 <span>${c.name}</span>
             </div>
         `).join('');
+    }
+
+    async function pickerCreateCollection() {
+        const input = document.getElementById('pickerNewCollName');
+        const name = input.value.trim();
+        if (!name) { toast('Enter a collection name', 'error'); return; }
+        const res = await api('POST', '/collections', { name, collection_type: 'manual', visibility: 'private' });
+        if (res.success) {
+            toast('Collection "' + name + '" created');
+            input.value = '';
+            // Auto-select the newly created collection
+            if (res.data && res.data.id) {
+                _pickerSelectedCollections.add(res.data.id);
+            }
+            await _refreshPickerList();
+        } else {
+            toast(res.error || 'Failed to create collection', 'error');
+        }
     }
 
     function togglePickerCollection(id, el) {
@@ -3258,27 +3281,47 @@
     // ──── Add to Collection Picker ────
     async function showAddToCollectionPicker(mediaId) {
         const collRes = await api('GET', '/collections');
-        if (!collRes.success || !collRes.data || collRes.data.length === 0) {
-            toast('No collections found. Create one first.', 'error');
-            return;
-        }
-        const manualColls = collRes.data.filter(c => c.collection_type === 'manual');
-        if (manualColls.length === 0) {
-            toast('No manual collections found. Smart collections auto-populate.', 'error');
-            return;
-        }
+        const manualColls = (collRes.success && collRes.data) ? collRes.data.filter(c => c.collection_type === 'manual') : [];
         const options = manualColls.map(c => `<option value="${c.id}">${c.name} (${c.item_count || 0} items)</option>`).join('');
         // Show inline picker below detail actions
         const existing = document.getElementById('collPickerInline');
         if (existing) existing.remove();
         const picker = document.createElement('div');
         picker.id = 'collPickerInline';
-        picker.style.cssText = 'display:flex;gap:10px;align-items:center;margin-top:10px;padding:12px;background:rgba(0,0,0,0.3);border:1px solid var(--accent-border);border-radius:10px;';
-        picker.innerHTML = `<select id="collPickerSelect" style="flex:1;">${options}</select>
-            <button class="btn-primary btn-small" onclick="addToCollection('${mediaId}')">Add</button>
-            <button class="btn-secondary btn-small" onclick="this.parentElement.remove()">Cancel</button>`;
+        picker.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:10px;padding:12px;background:rgba(0,0,0,0.3);border:1px solid var(--accent-border);border-radius:10px;';
+        picker.innerHTML = `
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input type="text" id="collPickerNewName" placeholder="New collection name..." style="flex:1;">
+                <button class="btn-primary btn-small" onclick="detailCreateAndAdd('${mediaId}')">Create & Add</button>
+            </div>
+            ${manualColls.length > 0 ? `<div style="display:flex;gap:8px;align-items:center;">
+                <select id="collPickerSelect" style="flex:1;">${options}</select>
+                <button class="btn-primary btn-small" onclick="addToCollection('${mediaId}')">Add</button>
+            </div>` : '<div style="color:var(--text-tertiary);font-size:0.82rem;">No existing collections — create one above</div>'}
+            <div style="display:flex;justify-content:flex-end;">
+                <button class="btn-secondary btn-small" onclick="this.closest(\'#collPickerInline\').remove()">Cancel</button>
+            </div>`;
         const actions = document.querySelector('.detail-actions');
         if (actions) actions.parentElement.insertBefore(picker, actions.nextSibling);
+    }
+
+    async function detailCreateAndAdd(mediaId) {
+        const input = document.getElementById('collPickerNewName');
+        const name = input.value.trim();
+        if (!name) { toast('Enter a collection name', 'error'); return; }
+        const res = await api('POST', '/collections', { name, collection_type: 'manual', visibility: 'private' });
+        if (!res.success) { toast(res.error || 'Failed to create collection', 'error'); return; }
+        const collId = res.data && res.data.id;
+        if (collId) {
+            const addRes = await api('POST', '/collections/' + collId + '/items', { media_item_id: mediaId });
+            if (addRes.success) {
+                toast('Created "' + name + '" and added item');
+                const picker = document.getElementById('collPickerInline');
+                if (picker) picker.remove();
+            } else {
+                toast('Collection created but failed to add: ' + (addRes.error || ''), 'error');
+            }
+        }
     }
 
     async function addToCollection(mediaId) {
