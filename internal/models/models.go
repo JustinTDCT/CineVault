@@ -680,6 +680,62 @@ type Studio struct {
 	MediaCount int `json:"media_count,omitempty" db:"-"`
 }
 
+// ──────────────────── Media Subtitles ────────────────────
+
+type SubtitleSource string
+
+const (
+	SubtitleSourceExternal SubtitleSource = "external"
+	SubtitleSourceEmbedded SubtitleSource = "embedded"
+)
+
+type MediaSubtitle struct {
+	ID          uuid.UUID      `json:"id" db:"id"`
+	MediaItemID uuid.UUID      `json:"media_item_id" db:"media_item_id"`
+	Language    *string        `json:"language,omitempty" db:"language"`
+	Title       *string        `json:"title,omitempty" db:"title"`
+	Format      string         `json:"format" db:"format"`
+	FilePath    *string        `json:"file_path,omitempty" db:"file_path"`
+	StreamIndex *int           `json:"stream_index,omitempty" db:"stream_index"`
+	Source      SubtitleSource `json:"source" db:"source"`
+	IsDefault   bool           `json:"is_default" db:"is_default"`
+	IsForced    bool           `json:"is_forced" db:"is_forced"`
+	IsSDH       bool           `json:"is_sdh" db:"is_sdh"`
+	CreatedAt   time.Time      `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at" db:"updated_at"`
+}
+
+// ──────────────────── Media Audio Tracks ────────────────────
+
+type MediaAudioTrack struct {
+	ID            uuid.UUID `json:"id" db:"id"`
+	MediaItemID   uuid.UUID `json:"media_item_id" db:"media_item_id"`
+	StreamIndex   int       `json:"stream_index" db:"stream_index"`
+	Language      *string   `json:"language,omitempty" db:"language"`
+	Title         *string   `json:"title,omitempty" db:"title"`
+	Codec         string    `json:"codec" db:"codec"`
+	Channels      int       `json:"channels" db:"channels"`
+	ChannelLayout *string   `json:"channel_layout,omitempty" db:"channel_layout"`
+	Bitrate       *int      `json:"bitrate,omitempty" db:"bitrate"`
+	SampleRate    *int      `json:"sample_rate,omitempty" db:"sample_rate"`
+	IsDefault     bool      `json:"is_default" db:"is_default"`
+	IsCommentary  bool      `json:"is_commentary" db:"is_commentary"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// ──────────────────── Media Chapters ────────────────────
+
+type MediaChapter struct {
+	ID           uuid.UUID `json:"id" db:"id"`
+	MediaItemID  uuid.UUID `json:"media_item_id" db:"media_item_id"`
+	Title        *string   `json:"title,omitempty" db:"title"`
+	StartSeconds float64   `json:"start_seconds" db:"start_seconds"`
+	EndSeconds   *float64  `json:"end_seconds,omitempty" db:"end_seconds"`
+	SortOrder    int       `json:"sort_order" db:"sort_order"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+}
+
 // ──────────────────── Streaming ────────────────────
 
 type TranscodeSession struct {

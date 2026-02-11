@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -110,6 +111,34 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 		duration = *media.DurationSeconds
 	}
 
+	// Fetch subtitle tracks, audio tracks, and chapters
+	var subtitles interface{} = []interface{}{}
+	var audioTracks interface{} = []interface{}{}
+	var chapters interface{} = []interface{}{}
+
+	if s.tracksRepo != nil {
+		if subs, err := s.tracksRepo.GetSubtitlesByMediaID(mediaID); err == nil && len(subs) > 0 {
+			subtitles = subs
+		}
+		if tracks, err := s.tracksRepo.GetAudioTracksByMediaID(mediaID); err == nil && len(tracks) > 0 {
+			audioTracks = tracks
+		}
+		if chaps, err := s.tracksRepo.GetChaptersByMediaID(mediaID); err == nil && len(chaps) > 0 {
+			chapters = chaps
+		}
+	}
+
+	// HDR info
+	hdrFormat := ""
+	dynamicRange := "SDR"
+	if media.HDRFormat != nil {
+		hdrFormat = *media.HDRFormat
+		dynamicRange = "HDR"
+	}
+	if media.DynamicRange != "" {
+		dynamicRange = media.DynamicRange
+	}
+
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data: map[string]interface{}{
@@ -124,6 +153,11 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 			"needs_remux":         needsRemux,
 			"duration_seconds":    duration,
 			"transcode_qualities": transcodeQualities,
+			"subtitles":           subtitles,
+			"audio_tracks":        audioTracks,
+			"chapters":            chapters,
+			"hdr_format":          hdrFormat,
+			"dynamic_range":       dynamicRange,
 		},
 	})
 }
@@ -292,6 +326,62 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 		dur := int(time.Since(startTime).Seconds())
 		_ = s.analyticsRepo.EndStreamSession(sessionRecord.ID, 0, dur)
 	}
+}
+
+// handleStreamSubtitle serves a subtitle track as WebVTT.
+// GET /api/v1/stream/{mediaId}/subtitles/{id}
+func (s *Server) handleStreamSubtitle(w http.ResponseWriter, r *http.Request) {
+	subtitleID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid subtitle id")
+		return
+	}
+
+	sub, err := s.tracksRepo.GetSubtitleByID(subtitleID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			s.respondError(w, http.StatusNotFound, "subtitle not found")
+		} else {
+			s.respondError(w, http.StatusInternalServerError, "failed to fetch subtitle")
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+
+	if sub.Source == models.SubtitleSourceExternal && sub.FilePath != nil {
+		// External subtitle file: convert to WebVTT on-the-fly
+		if err := stream.ServeSubtitleFile(w, *sub.FilePath, sub.Format); err != nil {
+			log.Printf("Subtitle serve error: %v", err)
+			s.respondError(w, http.StatusInternalServerError, "failed to convert subtitle")
+		}
+		return
+	}
+
+	// Embedded subtitle: extract from media file via FFmpeg
+	if sub.StreamIndex == nil {
+		s.respondError(w, http.StatusInternalServerError, "embedded subtitle missing stream index")
+		return
+	}
+
+	// Get the media item to find the file path
+	media, err := s.mediaRepo.GetByID(sub.MediaItemID)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "media not found")
+		return
+	}
+
+	vtt, err := stream.ExtractEmbeddedSubtitle(s.config.FFmpeg.FFmpegPath, media.FilePath, *sub.StreamIndex)
+	if err != nil {
+		log.Printf("Embedded subtitle extraction error: %v", err)
+		s.respondError(w, http.StatusInternalServerError, "failed to extract subtitle")
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(vtt))
 }
 
 // normalizeResolution maps actual pixel heights to standard resolution labels

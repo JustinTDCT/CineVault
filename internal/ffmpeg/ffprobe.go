@@ -10,8 +10,9 @@ import (
 
 type FFprobe struct{ Path string }
 type ProbeResult struct {
-	Format  FormatInfo   `json:"format"`
-	Streams []StreamInfo `json:"streams"`
+	Format   FormatInfo   `json:"format"`
+	Streams  []StreamInfo `json:"streams"`
+	Chapters []ChapterInfo `json:"chapters"`
 }
 type FormatInfo struct {
 	Filename string `json:"filename"`
@@ -20,12 +21,16 @@ type FormatInfo struct {
 	Bitrate  string `json:"bit_rate"`
 }
 type StreamInfo struct {
+	Index          int            `json:"index"`
 	CodecType      string         `json:"codec_type"`
 	CodecName      string         `json:"codec_name"`
+	CodecLongName  string         `json:"codec_long_name"`
 	Width          int            `json:"width"`
 	Height         int            `json:"height"`
 	Channels       int            `json:"channels"`
 	ChannelLayout  string         `json:"channel_layout"`
+	SampleRate     string         `json:"sample_rate"`
+	BitRate        string         `json:"bit_rate"`
 	ColorTransfer  string         `json:"color_transfer"`
 	ColorPrimaries string         `json:"color_primaries"`
 	ColorSpace     string         `json:"color_space"`
@@ -33,6 +38,7 @@ type StreamInfo struct {
 	Profile        string         `json:"profile"`
 	SideDataList   []SideDataItem `json:"side_data_list"`
 	Tags           map[string]string `json:"tags"`
+	Disposition    Disposition    `json:"disposition"`
 }
 
 // SideDataItem represents a side_data entry from ffprobe (used for Dolby Vision RPU detection).
@@ -40,10 +46,30 @@ type SideDataItem struct {
 	SideDataType string `json:"side_data_type"`
 }
 
+// Disposition flags from ffprobe stream disposition.
+type Disposition struct {
+	Default    int `json:"default"`
+	Forced     int `json:"forced"`
+	Comment    int `json:"comment"`
+	HearingImpaired int `json:"hearing_impaired"`
+}
+
+// ChapterInfo represents a chapter entry from ffprobe.
+type ChapterInfo struct {
+	ID        int               `json:"id"`
+	TimeBase  string            `json:"time_base"`
+	Start     int64             `json:"start"`
+	StartTime string            `json:"start_time"`
+	End       int64             `json:"end"`
+	EndTime   string            `json:"end_time"`
+	Tags      map[string]string `json:"tags"`
+}
+
 func NewFFprobe(path string) *FFprobe { return &FFprobe{Path: path} }
 
 func (f *FFprobe) Probe(filePath string) (*ProbeResult, error) {
-	cmd := exec.Command(f.Path, "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath)
+	cmd := exec.Command(f.Path, "-v", "quiet", "-print_format", "json",
+		"-show_format", "-show_streams", "-show_chapters", filePath)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("ffprobe failed: %w", err)
@@ -229,6 +255,137 @@ func (r *ProbeResult) GetDynamicRange() string {
 		return "HDR"
 	}
 	return "SDR"
+}
+
+// ── Subtitle Track Extraction ──
+
+// SubtitleTrack represents a detected embedded subtitle stream.
+type SubtitleTrack struct {
+	StreamIndex int
+	CodecName   string
+	Language    string
+	Title       string
+	IsDefault   bool
+	IsForced    bool
+	IsSDH       bool
+}
+
+// GetSubtitleTracks returns all subtitle streams found in the file.
+func (r *ProbeResult) GetSubtitleTracks() []SubtitleTrack {
+	var tracks []SubtitleTrack
+	for _, s := range r.Streams {
+		if s.CodecType != "subtitle" {
+			continue
+		}
+		track := SubtitleTrack{
+			StreamIndex: s.Index,
+			CodecName:   s.CodecName,
+			IsDefault:   s.Disposition.Default == 1,
+			IsForced:    s.Disposition.Forced == 1,
+			IsSDH:       s.Disposition.HearingImpaired == 1,
+		}
+		if lang, ok := s.Tags["language"]; ok {
+			track.Language = lang
+		}
+		if title, ok := s.Tags["title"]; ok {
+			track.Title = title
+			// Detect SDH from title if not in disposition
+			lower := strings.ToLower(title)
+			if strings.Contains(lower, "sdh") || strings.Contains(lower, "hearing impaired") {
+				track.IsSDH = true
+			}
+			// Detect forced from title
+			if strings.Contains(lower, "forced") {
+				track.IsForced = true
+			}
+		}
+		tracks = append(tracks, track)
+	}
+	return tracks
+}
+
+// ── Audio Track Extraction ──
+
+// AudioTrack represents a detected audio stream.
+type AudioTrack struct {
+	StreamIndex   int
+	CodecName     string
+	Channels      int
+	ChannelLayout string
+	SampleRate    int
+	BitRate       int64
+	Language      string
+	Title         string
+	IsDefault     bool
+	IsCommentary  bool
+}
+
+// GetAudioTracks returns all audio streams found in the file.
+func (r *ProbeResult) GetAudioTracks() []AudioTrack {
+	var tracks []AudioTrack
+	for _, s := range r.Streams {
+		if s.CodecType != "audio" {
+			continue
+		}
+		track := AudioTrack{
+			StreamIndex:   s.Index,
+			CodecName:     s.CodecName,
+			Channels:      s.Channels,
+			ChannelLayout: s.ChannelLayout,
+			IsDefault:     s.Disposition.Default == 1,
+			IsCommentary:  s.Disposition.Comment == 1,
+		}
+		if sr, err := strconv.Atoi(s.SampleRate); err == nil {
+			track.SampleRate = sr
+		}
+		if br, err := strconv.ParseInt(s.BitRate, 10, 64); err == nil {
+			track.BitRate = br
+		}
+		if lang, ok := s.Tags["language"]; ok {
+			track.Language = lang
+		}
+		if title, ok := s.Tags["title"]; ok {
+			track.Title = title
+			// Detect commentary from title
+			lower := strings.ToLower(title)
+			if strings.Contains(lower, "commentary") || strings.Contains(lower, "comment") {
+				track.IsCommentary = true
+			}
+		}
+		tracks = append(tracks, track)
+	}
+	return tracks
+}
+
+// ── Chapter Extraction ──
+
+// Chapter represents a chapter marker from the container.
+type Chapter struct {
+	Title        string
+	StartSeconds float64
+	EndSeconds   float64
+	SortOrder    int
+}
+
+// GetChapters returns all chapters found in the file.
+func (r *ProbeResult) GetChapters() []Chapter {
+	var chapters []Chapter
+	for i, c := range r.Chapters {
+		ch := Chapter{
+			SortOrder: i,
+		}
+		if start, err := strconv.ParseFloat(c.StartTime, 64); err == nil {
+			ch.StartSeconds = start
+		}
+		if end, err := strconv.ParseFloat(c.EndTime, 64); err == nil {
+			ch.EndSeconds = end
+		}
+		if title, ok := c.Tags["title"]; ok {
+			ch.Title = title
+		}
+		chapters = append(chapters, ch)
+	}
+	return chapters
 }
 
 func (r *ProbeResult) GetFileSize() int64 {

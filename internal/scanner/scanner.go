@@ -34,6 +34,7 @@ type Scanner struct {
 	settingsRepo  *repository.SettingsRepository
 	sisterRepo    *repository.SisterRepository
 	seriesRepo    *repository.SeriesRepository
+	tracksRepo    *repository.TracksRepository
 	scrapers      []metadata.Scraper
 	posterDir     string
 	// matchedShows tracks TV show IDs already matched this scan to avoid duplicate lookups
@@ -85,7 +86,7 @@ func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepos
 	audiobookRepo *repository.AudiobookRepository, galleryRepo *repository.GalleryRepository,
 	tagRepo *repository.TagRepository, performerRepo *repository.PerformerRepository,
 	settingsRepo *repository.SettingsRepository, sisterRepo *repository.SisterRepository,
-	seriesRepo *repository.SeriesRepository,
+	seriesRepo *repository.SeriesRepository, tracksRepo *repository.TracksRepository,
 	scrapers []metadata.Scraper, posterDir string,
 ) *Scanner {
 	return &Scanner{
@@ -101,6 +102,7 @@ func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepos
 		settingsRepo:       settingsRepo,
 		sisterRepo:         sisterRepo,
 		seriesRepo:         seriesRepo,
+		tracksRepo:         tracksRepo,
 		scrapers:           scrapers,
 		posterDir:          posterDir,
 		matchedShows:       make(map[uuid.UUID]bool),
@@ -266,12 +268,14 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 			}
 
 			// Probe with ffprobe for video/audio types (overrides filename-parsed values)
+			var probeResult *ffmpeg.ProbeResult
 			if s.isProbeableType(library.MediaType) {
 				probe, probeErr := s.ffprobe.Probe(path)
 				if probeErr != nil {
 					log.Printf("ffprobe failed for %s: %v", path, probeErr)
 					result.Errors = append(result.Errors, fmt.Sprintf("probe failed: %s", path))
 				} else {
+					probeResult = probe
 					s.applyProbeData(item, probe)
 				}
 			}
@@ -294,6 +298,11 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 			if err := s.mediaRepo.Create(item); err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("insert failed %s: %v", path, err))
 				return nil
+			}
+
+			// ── Extract and store subtitle tracks, audio tracks, and chapters ──
+			if probeResult != nil && s.tracksRepo != nil {
+				s.extractAndStoreTracks(item.ID, path, probeResult)
 			}
 
 			// Track multi-part files for post-scan sister grouping
@@ -840,6 +849,154 @@ func (s *Scanner) applyProbeData(item *models.MediaItem, probe *ffmpeg.ProbeResu
 		item.DynamicRange = "HDR"
 	} else {
 		item.DynamicRange = "SDR"
+	}
+}
+
+// extractAndStoreTracks detects external subtitle files, stores embedded subtitle/audio tracks,
+// and chapter markers from ffprobe data into the tracks tables.
+func (s *Scanner) extractAndStoreTracks(mediaItemID uuid.UUID, filePath string, probe *ffmpeg.ProbeResult) {
+	// ── External subtitle files ──
+	subtitleExts := map[string]string{
+		".srt": "subrip", ".ass": "ass", ".ssa": "ssa",
+		".sub": "subviewer", ".vtt": "webvtt",
+	}
+
+	dir := filepath.Dir(filePath)
+	baseName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			ext := strings.ToLower(filepath.Ext(name))
+			format, isSub := subtitleExts[ext]
+			if !isSub {
+				continue
+			}
+			// Match subtitle files that start with the media filename
+			nameWithoutExt := strings.TrimSuffix(name, ext)
+			if !strings.HasPrefix(strings.ToLower(nameWithoutExt), strings.ToLower(baseName)) {
+				continue
+			}
+
+			subPath := filepath.Join(dir, name)
+
+			// Parse language and flags from the suffix after the base name
+			// e.g. "Movie.en.forced.srt" → language="en", forced=true
+			suffix := nameWithoutExt[len(baseName):]
+			suffix = strings.TrimPrefix(suffix, ".")
+			parts := strings.Split(strings.ToLower(suffix), ".")
+
+			var lang string
+			isForced := false
+			isSDH := false
+			isDefault := false
+			for _, p := range parts {
+				switch p {
+				case "forced":
+					isForced = true
+				case "sdh", "hi", "cc":
+					isSDH = true
+				case "default":
+					isDefault = true
+				default:
+					if len(p) == 2 || len(p) == 3 {
+						lang = p // ISO 639 language code
+					}
+				}
+			}
+
+			sub := &models.MediaSubtitle{
+				MediaItemID: mediaItemID,
+				Format:      format,
+				FilePath:    &subPath,
+				Source:      models.SubtitleSourceExternal,
+				IsDefault:   isDefault,
+				IsForced:    isForced,
+				IsSDH:       isSDH,
+			}
+			if lang != "" {
+				sub.Language = &lang
+			}
+
+			if err := s.tracksRepo.CreateSubtitle(sub); err != nil {
+				log.Printf("Failed to store external subtitle %s: %v", name, err)
+			}
+		}
+	}
+
+	// ── Embedded subtitle tracks ──
+	for _, st := range probe.GetSubtitleTracks() {
+		sub := &models.MediaSubtitle{
+			MediaItemID: mediaItemID,
+			Format:      st.CodecName,
+			Source:      models.SubtitleSourceEmbedded,
+			StreamIndex: &st.StreamIndex,
+			IsDefault:   st.IsDefault,
+			IsForced:    st.IsForced,
+			IsSDH:       st.IsSDH,
+		}
+		if st.Language != "" {
+			sub.Language = &st.Language
+		}
+		if st.Title != "" {
+			sub.Title = &st.Title
+		}
+		if err := s.tracksRepo.CreateSubtitle(sub); err != nil {
+			log.Printf("Failed to store embedded subtitle track %d: %v", st.StreamIndex, err)
+		}
+	}
+
+	// ── Audio tracks ──
+	for _, at := range probe.GetAudioTracks() {
+		track := &models.MediaAudioTrack{
+			MediaItemID:   mediaItemID,
+			StreamIndex:   at.StreamIndex,
+			Codec:         at.CodecName,
+			Channels:      at.Channels,
+			IsDefault:     at.IsDefault,
+			IsCommentary:  at.IsCommentary,
+		}
+		if at.Language != "" {
+			track.Language = &at.Language
+		}
+		if at.Title != "" {
+			track.Title = &at.Title
+		}
+		if at.ChannelLayout != "" {
+			track.ChannelLayout = &at.ChannelLayout
+		}
+		if at.BitRate > 0 {
+			br := int(at.BitRate)
+			track.Bitrate = &br
+		}
+		if at.SampleRate > 0 {
+			track.SampleRate = &at.SampleRate
+		}
+		if err := s.tracksRepo.CreateAudioTrack(track); err != nil {
+			log.Printf("Failed to store audio track %d: %v", at.StreamIndex, err)
+		}
+	}
+
+	// ── Chapters ──
+	for _, ch := range probe.GetChapters() {
+		chapter := &models.MediaChapter{
+			MediaItemID:  mediaItemID,
+			StartSeconds: ch.StartSeconds,
+			SortOrder:    ch.SortOrder,
+		}
+		if ch.EndSeconds > 0 {
+			chapter.EndSeconds = &ch.EndSeconds
+		}
+		if ch.Title != "" {
+			chapter.Title = &ch.Title
+		}
+		if err := s.tracksRepo.CreateChapter(chapter); err != nil {
+			log.Printf("Failed to store chapter %d: %v", ch.SortOrder, err)
+		}
 	}
 }
 

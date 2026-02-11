@@ -44,6 +44,7 @@ type Server struct {
 	analyticsRepo     *repository.AnalyticsRepository
 	notificationRepo  *repository.NotificationRepository
 	displayPrefsRepo  *repository.DisplayPreferencesRepository
+	tracksRepo        *repository.TracksRepository
 	detector         *detection.Detector
 	scanner          *scanner.Scanner
 	transcoder       *stream.Transcoder
@@ -93,8 +94,9 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 	performerRepo := repository.NewPerformerRepository(database.DB)
 	sisterRepo := repository.NewSisterRepository(database.DB)
 	seriesRepo := repository.NewSeriesRepository(database.DB)
+	tracksRepo := repository.NewTracksRepository(database.DB)
 	posterDir := cfg.Paths.Preview
-	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, cfg.FFmpeg.FFmpegPath, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo, tagRepo, performerRepo, settingsRepo, sisterRepo, seriesRepo, scrapers, posterDir)
+	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, cfg.FFmpeg.FFmpegPath, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo, tagRepo, performerRepo, settingsRepo, sisterRepo, seriesRepo, tracksRepo, scrapers, posterDir)
 	transcoder := stream.NewTranscoder(cfg.FFmpeg.FFmpegPath, cfg.Paths.Preview)
 
 	wsHub := NewWSHub()
@@ -130,6 +132,7 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 		analyticsRepo:    analyticsRepo,
 		notificationRepo: notificationRepo,
 		displayPrefsRepo: repository.NewDisplayPreferencesRepository(database.DB),
+		tracksRepo:       tracksRepo,
 		detector:         det,
 		scanner:          sc,
 		transcoder:       transcoder,
@@ -301,6 +304,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /api/v1/stream/{mediaId}/master.m3u8", s.authMiddleware(s.handleStreamMaster, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/stream/{mediaId}/{quality}/{segment}", s.authMiddleware(s.handleStreamSegment, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/stream/{mediaId}/direct", s.authMiddleware(s.handleStreamDirect, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/stream/{mediaId}/subtitles/{id}", s.authMiddleware(s.handleStreamSubtitle, models.RoleUser))
 
 	// Edition groups
 	s.router.HandleFunc("GET /api/v1/editions", s.authMiddleware(s.handleListEditions, models.RoleUser))

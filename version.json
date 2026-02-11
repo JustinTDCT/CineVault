@@ -1,6 +1,6 @@
 {
-  "version": "0.52.00",
-  "phase": 3,
+  "version": "0.53.00",
+  "phase": 4,
   "released": "2026-02-11",
-  "notes": "Add Kometa-style overlay badges on poster cards with per-user display preferences."
+  "notes": "Phase 1: Core playback — subtitle tracks (external + embedded), audio track catalog, chapter markers, WebVTT conversion, subtitle/audio/chapter extraction during scan, player UI selectors."
 }
