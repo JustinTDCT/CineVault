@@ -1747,15 +1747,17 @@
             if (audioLabel) trBadges += `<span class="overlay-badge overlay-badge-audio">${audioLabel}</span>`;
         }
 
-        // TOP-LEFT: Content Rating, Edition Type
+        // TOP-LEFT: Content Rating + Edition Type (single row)
         if (p.content_rating && item.content_rating) {
             tlBadges += `<span class="overlay-badge overlay-badge-content-rating">${item.content_rating}</span>`;
         }
         if (p.edition_type) {
-            const edLabel = mapEditionLabel(item);
-            if (edLabel) tlBadges += `<span class="overlay-badge overlay-badge-edition">${edLabel}</span>`;
             if (item.edition_count && item.edition_count > 1) {
+                // Multiple editions: only show count badge, skip individual edition label
                 tlBadges += `<span class="overlay-badge overlay-badge-edition">${item.edition_count} Editions</span>`;
+            } else {
+                const edLabel = mapEditionLabel(item);
+                if (edLabel) tlBadges += `<span class="overlay-badge overlay-badge-edition">${edLabel}</span>`;
             }
         }
 

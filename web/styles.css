@@ -799,8 +799,8 @@ body {
 }
 .overlay-zone-tl {
     position: absolute; top: 8px; left: 8px;
-    display: flex; flex-direction: column; align-items: flex-start; gap: 4px; z-index: 3;
-    pointer-events: none;
+    display: flex; flex-direction: row; align-items: flex-start; gap: 4px; z-index: 3;
+    pointer-events: none; flex-wrap: wrap;
 }
 .overlay-zone-bl {
     position: absolute; bottom: 8px; left: 8px;
