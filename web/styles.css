@@ -416,7 +416,7 @@ body {
 .ud-icon { width: 18px; text-align: center; }
 
 /* ── Task Indicator ── */
-.task-indicator { position: relative; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.task-indicator { position: relative; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
 .task-indicator.active { animation: task-pulse 2s ease infinite; }
 @keyframes task-pulse { 0%,100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 8px rgba(0,217,255,0.3); } }
 .task-ring { width: 36px; height: 36px; transform: rotate(-90deg); }
