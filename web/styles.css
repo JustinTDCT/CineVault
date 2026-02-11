@@ -560,6 +560,7 @@ body {
     padding: 8px 14px; margin-bottom: var(--sp-4); border-radius: var(--radius-lg);
     background: rgba(30,36,50,0.85); backdrop-filter: blur(12px);
     border: 1px solid var(--border-subtle);
+    position: relative; z-index: 500;
 }
 .filter-toolbar select {
     background: rgba(255,255,255,0.07); color: #c5d0dc; border: 1px solid var(--border-subtle-input);
@@ -601,8 +602,9 @@ body {
 .ft-add-btn:hover { background: rgba(0,217,255,0.18); border-style: solid; }
 
 /* ── Filter Picker Dropdown ── */
+.ft-add-wrapper { z-index: 500; }
 .ft-picker {
-    display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 200;
+    display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 9000;
     min-width: 420px; max-height: 360px;
     background: var(--bg-card); border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg); box-shadow: 0 8px 32px rgba(0,0,0,0.5);
