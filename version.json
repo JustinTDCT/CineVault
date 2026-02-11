@@ -1,6 +1,6 @@
 {
-  "version": "0.45.0",
+  "version": "0.46.0",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Enhanced collections: nested collections, collection detail view, smart collection rule builder with performer/studio/duration/recency filters, configurable sort modes, collection statistics, bulk add, template presets"
+  "notes": "Advanced library filters: codec, HDR format, resolution, audio codec, bitrate range filtering. Enhanced Atmos/DTS:X audio detection. Missing episode gap detection for TV libraries."
 }

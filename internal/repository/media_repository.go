@@ -18,7 +18,12 @@ type MediaFilter struct {
 	Edition       string // e.g. "Director's Cut"
 	Source        string // e.g. "bluray", "web", "hdtv"
 	DynamicRange  string // "SDR" or "HDR"
-	Sort          string // "title" (default), "year", "resolution", "duration", "rt_rating", "rating", "audience_score"
+	Codec         string // e.g. "hevc", "h264", "av1"
+	HDRFormat     string // e.g. "Dolby Vision", "HDR10", "HLG"
+	Resolution    string // e.g. "4K", "1080p", "720p"
+	AudioCodec    string // e.g. "truehd", "eac3", "aac"
+	BitrateRange  string // "low" (<5Mbps), "medium" (5-15), "high" (15-30), "ultra" (30+)
+	Sort          string // "title" (default), "year", "resolution", "duration", "rt_rating", "rating", "audience_score", "bitrate"
 	Order         string // "asc" (default), "desc"
 }
 
@@ -39,7 +44,7 @@ func (r *MediaRepository) DB() *sql.DB {
 const mediaColumns = `id, library_id, media_type, file_path, file_name, file_size,
 	file_hash, title, sort_title, original_title, description, tagline, year, release_date,
 	duration_seconds, rating, resolution, width, height, codec, container,
-	bitrate, framerate, audio_codec, audio_channels,
+	bitrate, framerate, audio_codec, audio_channels, audio_format,
 	original_language, country, trailer_url,
 	poster_path, thumbnail_path, backdrop_path, logo_path,
 	tv_show_id, tv_season_id, episode_number,
@@ -68,7 +73,7 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.Description, &item.Tagline, &item.Year, &item.ReleaseDate,
 		&item.DurationSeconds, &item.Rating, &item.Resolution, &item.Width, &item.Height,
 		&item.Codec, &item.Container, &item.Bitrate, &item.Framerate,
-		&item.AudioCodec, &item.AudioChannels,
+		&item.AudioCodec, &item.AudioChannels, &item.AudioFormat,
 		&item.OriginalLanguage, &item.Country, &item.TrailerURL,
 		&item.PosterPath, &item.ThumbnailPath, &item.BackdropPath, &item.LogoPath,
 		&item.TVShowID, &item.TVSeasonID, &item.EpisodeNumber,
@@ -185,6 +190,38 @@ func buildFilterClauses(f *MediaFilter, paramStart int) (string, string, string,
 			args = append(args, f.DynamicRange)
 			p++
 		}
+		if f.Codec != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.codec = $%d`, p))
+			args = append(args, f.Codec)
+			p++
+		}
+		if f.HDRFormat != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.hdr_format = $%d`, p))
+			args = append(args, f.HDRFormat)
+			p++
+		}
+		if f.Resolution != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.resolution = $%d`, p))
+			args = append(args, f.Resolution)
+			p++
+		}
+		if f.AudioCodec != "" {
+			wheres = append(wheres, fmt.Sprintf(`m.audio_codec = $%d`, p))
+			args = append(args, f.AudioCodec)
+			p++
+		}
+		if f.BitrateRange != "" {
+			switch f.BitrateRange {
+			case "low":
+				wheres = append(wheres, `m.bitrate IS NOT NULL AND m.bitrate < 5000000`)
+			case "medium":
+				wheres = append(wheres, `m.bitrate IS NOT NULL AND m.bitrate >= 5000000 AND m.bitrate < 15000000`)
+			case "high":
+				wheres = append(wheres, `m.bitrate IS NOT NULL AND m.bitrate >= 15000000 AND m.bitrate < 30000000`)
+			case "ultra":
+				wheres = append(wheres, `m.bitrate IS NOT NULL AND m.bitrate >= 30000000`)
+			}
+		}
 	}
 
 	// Always exclude child editions (non-default edition items) from library listings
@@ -216,6 +253,8 @@ func buildFilterClauses(f *MediaFilter, paramStart int) (string, string, string,
 			orderCol = "m.height"
 		case "duration":
 			orderCol = "m.duration_seconds"
+		case "bitrate":
+			orderCol = "m.bitrate"
 		}
 	}
 	dir := "ASC"
@@ -749,6 +788,10 @@ type FilterOptions struct {
 	Editions       []string `json:"editions"`
 	Sources        []string `json:"sources"`
 	DynamicRanges  []string `json:"dynamic_ranges"`
+	Codecs         []string `json:"codecs"`
+	HDRFormats     []string `json:"hdr_formats"`
+	Resolutions    []string `json:"resolutions"`
+	AudioCodecs    []string `json:"audio_codecs"`
 }
 
 // GetLibraryFilterOptions returns the distinct values available for filtering a library.
@@ -856,6 +899,74 @@ func (r *MediaRepository) GetLibraryFilterOptions(libraryID uuid.UUID) (*FilterO
 			return nil, err
 		}
 		opts.DynamicRanges = append(opts.DynamicRanges, dr)
+	}
+
+	// Video codecs
+	codecRows, err := r.db.Query(`
+		SELECT DISTINCT codec FROM media_items
+		WHERE library_id = $1 AND codec IS NOT NULL AND codec != ''
+		ORDER BY codec`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer codecRows.Close()
+	for codecRows.Next() {
+		var c string
+		if err := codecRows.Scan(&c); err != nil {
+			return nil, err
+		}
+		opts.Codecs = append(opts.Codecs, c)
+	}
+
+	// HDR formats
+	hdrRows, err := r.db.Query(`
+		SELECT DISTINCT hdr_format FROM media_items
+		WHERE library_id = $1 AND hdr_format IS NOT NULL AND hdr_format != ''
+		ORDER BY hdr_format`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer hdrRows.Close()
+	for hdrRows.Next() {
+		var h string
+		if err := hdrRows.Scan(&h); err != nil {
+			return nil, err
+		}
+		opts.HDRFormats = append(opts.HDRFormats, h)
+	}
+
+	// Resolutions
+	resRows, err := r.db.Query(`
+		SELECT DISTINCT resolution FROM media_items
+		WHERE library_id = $1 AND resolution IS NOT NULL AND resolution != ''
+		ORDER BY CASE resolution WHEN '4K' THEN 1 WHEN '1080p' THEN 2 WHEN '720p' THEN 3 WHEN '480p' THEN 4 ELSE 5 END`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer resRows.Close()
+	for resRows.Next() {
+		var res string
+		if err := resRows.Scan(&res); err != nil {
+			return nil, err
+		}
+		opts.Resolutions = append(opts.Resolutions, res)
+	}
+
+	// Audio codecs
+	acRows, err := r.db.Query(`
+		SELECT DISTINCT audio_codec FROM media_items
+		WHERE library_id = $1 AND audio_codec IS NOT NULL AND audio_codec != ''
+		ORDER BY audio_codec`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer acRows.Close()
+	for acRows.Next() {
+		var ac string
+		if err := acRows.Scan(&ac); err != nil {
+			return nil, err
+		}
+		opts.AudioCodecs = append(opts.AudioCodecs, ac)
 	}
 
 	return opts, nil

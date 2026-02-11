@@ -788,6 +788,10 @@ func (s *Scanner) applyProbeData(item *models.MediaItem, probe *ffmpeg.ProbeResu
 	if ac != "" {
 		item.AudioCodec = &ac
 	}
+	af := probe.GetAudioFormat()
+	if af != "" {
+		item.AudioFormat = &af
+	}
 	br := probe.GetBitrate()
 	if br > 0 {
 		item.Bitrate = &br

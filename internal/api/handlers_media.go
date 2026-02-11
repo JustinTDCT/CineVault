@@ -20,11 +20,19 @@ func parseMediaFilter(r *http.Request) *repository.MediaFilter {
 		Edition:       q.Get("edition"),
 		Source:        q.Get("source"),
 		DynamicRange:  q.Get("dynamic_range"),
+		Codec:         q.Get("codec"),
+		HDRFormat:     q.Get("hdr_format"),
+		Resolution:    q.Get("resolution"),
+		AudioCodec:    q.Get("audio_codec"),
+		BitrateRange:  q.Get("bitrate_range"),
 		Sort:          q.Get("sort"),
 		Order:         q.Get("order"),
 	}
 	// Only return a filter if at least one field is set
-	if f.Genre == "" && f.Folder == "" && f.ContentRating == "" && f.Edition == "" && f.Source == "" && f.DynamicRange == "" && f.Sort == "" && f.Order == "" {
+	if f.Genre == "" && f.Folder == "" && f.ContentRating == "" && f.Edition == "" &&
+		f.Source == "" && f.DynamicRange == "" && f.Codec == "" && f.HDRFormat == "" &&
+		f.Resolution == "" && f.AudioCodec == "" && f.BitrateRange == "" &&
+		f.Sort == "" && f.Order == "" {
 		return nil
 	}
 	return f

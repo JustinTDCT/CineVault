@@ -3,10 +3,31 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
 )
+
+// MissingEpisodesResult holds gap detection results for a single season.
+type MissingEpisodesResult struct {
+	ShowID         uuid.UUID `json:"show_id"`
+	ShowTitle      string    `json:"show_title"`
+	SeasonID       uuid.UUID `json:"season_id"`
+	SeasonNumber   int       `json:"season_number"`
+	HaveCount      int       `json:"have_count"`
+	ExpectedCount  int       `json:"expected_count"`
+	MissingNumbers []int     `json:"missing_numbers"`
+}
+
+// MissingEpisodesShowResult groups missing episode data for a TV show.
+type MissingEpisodesShowResult struct {
+	ShowID        uuid.UUID                `json:"show_id"`
+	ShowTitle     string                   `json:"show_title"`
+	PosterPath    *string                  `json:"poster_path,omitempty"`
+	TotalMissing  int                      `json:"total_missing"`
+	Seasons       []MissingEpisodesResult  `json:"seasons"`
+}
 
 type TVRepository struct {
 	db *sql.DB
@@ -237,4 +258,171 @@ func (r *TVRepository) ListEpisodesBySeason(seasonID uuid.UUID) ([]*models.Media
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// GetMissingEpisodes detects missing episode numbers for all shows in a library.
+// It compares actual episode numbers against the expected range (1..max episode number found).
+func (r *TVRepository) GetMissingEpisodes(libraryID uuid.UUID) ([]MissingEpisodesShowResult, error) {
+	// Get all shows in library
+	shows, err := r.ListShowsByLibrary(libraryID)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []MissingEpisodesShowResult
+
+	for _, show := range shows {
+		seasons, err := r.ListSeasonsByShow(show.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		var showSeasons []MissingEpisodesResult
+		totalMissing := 0
+
+		for _, season := range seasons {
+			// Get actual episode numbers for this season
+			rows, err := r.db.Query(`
+				SELECT episode_number FROM media_items
+				WHERE tv_season_id = $1 AND episode_number IS NOT NULL
+				ORDER BY episode_number`, season.ID)
+			if err != nil {
+				return nil, err
+			}
+
+			var haveEps []int
+			for rows.Next() {
+				var epNum int
+				if err := rows.Scan(&epNum); err != nil {
+					rows.Close()
+					return nil, err
+				}
+				haveEps = append(haveEps, epNum)
+			}
+			rows.Close()
+
+			if len(haveEps) == 0 {
+				continue
+			}
+
+			sort.Ints(haveEps)
+			maxEp := haveEps[len(haveEps)-1]
+
+			// Use the season's stored episode_count as expected if it's higher than max found
+			expectedCount := maxEp
+			if season.EpisodeCount > maxEp {
+				expectedCount = season.EpisodeCount
+			}
+
+			// Build set of present episodes for fast lookup
+			haveSet := make(map[int]bool, len(haveEps))
+			for _, ep := range haveEps {
+				haveSet[ep] = true
+			}
+
+			// Find missing numbers from 1..expectedCount
+			var missing []int
+			for i := 1; i <= expectedCount; i++ {
+				if !haveSet[i] {
+					missing = append(missing, i)
+				}
+			}
+
+			if len(missing) > 0 {
+				showSeasons = append(showSeasons, MissingEpisodesResult{
+					ShowID:         show.ID,
+					ShowTitle:      show.Title,
+					SeasonID:       season.ID,
+					SeasonNumber:   season.SeasonNumber,
+					HaveCount:      len(haveEps),
+					ExpectedCount:  expectedCount,
+					MissingNumbers: missing,
+				})
+				totalMissing += len(missing)
+			}
+		}
+
+		if len(showSeasons) > 0 {
+			results = append(results, MissingEpisodesShowResult{
+				ShowID:       show.ID,
+				ShowTitle:    show.Title,
+				PosterPath:   show.PosterPath,
+				TotalMissing: totalMissing,
+				Seasons:      showSeasons,
+			})
+		}
+	}
+
+	return results, nil
+}
+
+// GetSeasonMissingEpisodes detects missing episode numbers for a specific season.
+func (r *TVRepository) GetSeasonMissingEpisodes(seasonID uuid.UUID) (*MissingEpisodesResult, error) {
+	season, err := r.GetSeasonByID(seasonID)
+	if err != nil {
+		return nil, err
+	}
+
+	show, err := r.GetShowByID(season.TVShowID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.Query(`
+		SELECT episode_number FROM media_items
+		WHERE tv_season_id = $1 AND episode_number IS NOT NULL
+		ORDER BY episode_number`, seasonID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var haveEps []int
+	for rows.Next() {
+		var epNum int
+		if err := rows.Scan(&epNum); err != nil {
+			return nil, err
+		}
+		haveEps = append(haveEps, epNum)
+	}
+
+	if len(haveEps) == 0 {
+		return &MissingEpisodesResult{
+			ShowID:       show.ID,
+			ShowTitle:    show.Title,
+			SeasonID:     season.ID,
+			SeasonNumber: season.SeasonNumber,
+			HaveCount:    0,
+			ExpectedCount: season.EpisodeCount,
+		}, nil
+	}
+
+	sort.Ints(haveEps)
+	maxEp := haveEps[len(haveEps)-1]
+	expectedCount := maxEp
+	if season.EpisodeCount > maxEp {
+		expectedCount = season.EpisodeCount
+	}
+
+	haveSet := make(map[int]bool, len(haveEps))
+	for _, ep := range haveEps {
+		haveSet[ep] = true
+	}
+
+	var missing []int
+	for i := 1; i <= expectedCount; i++ {
+		if !haveSet[i] {
+			missing = append(missing, i)
+		}
+	}
+
+	return &MissingEpisodesResult{
+		ShowID:         show.ID,
+		ShowTitle:      show.Title,
+		SeasonID:       season.ID,
+		SeasonNumber:   season.SeasonNumber,
+		HaveCount:      len(haveEps),
+		ExpectedCount:  expectedCount,
+		MissingNumbers: missing,
+	}, nil
 }

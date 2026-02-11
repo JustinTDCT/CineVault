@@ -168,6 +168,7 @@ type MediaItem struct {
 	Framerate        *float64   `json:"framerate,omitempty" db:"framerate"`
 	AudioCodec       *string    `json:"audio_codec,omitempty" db:"audio_codec"`
 	AudioChannels    *int       `json:"audio_channels,omitempty" db:"audio_channels"`
+	AudioFormat      *string    `json:"audio_format,omitempty" db:"audio_format"`
 	OriginalLanguage *string    `json:"original_language,omitempty" db:"original_language"`
 	Country          *string    `json:"country,omitempty" db:"country"`
 	TrailerURL       *string    `json:"trailer_url,omitempty" db:"trailer_url"`

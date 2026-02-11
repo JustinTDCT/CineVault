@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/JustinTDCT/CineVault/internal/repository"
 	"github.com/google/uuid"
 )
 
@@ -55,6 +56,51 @@ func (s *Server) handleListSeasonEpisodes(w http.ResponseWriter, r *http.Request
 	}
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: episodes})
+}
+
+// handleMissingEpisodes returns missing episode detection for all shows in a library.
+func (s *Server) handleMissingEpisodes(w http.ResponseWriter, r *http.Request) {
+	libraryID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid library ID")
+		return
+	}
+
+	results, err := s.tvRepo.GetMissingEpisodes(libraryID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to detect missing episodes")
+		return
+	}
+	if results == nil {
+		results = []repository.MissingEpisodesShowResult{}
+	}
+
+	totalMissing := 0
+	for _, r := range results {
+		totalMissing += r.TotalMissing
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{
+		"shows":         results,
+		"total_missing": totalMissing,
+	}})
+}
+
+// handleSeasonMissingEpisodes returns missing episodes for a specific season.
+func (s *Server) handleSeasonMissingEpisodes(w http.ResponseWriter, r *http.Request) {
+	seasonID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid season ID")
+		return
+	}
+
+	result, err := s.tvRepo.GetSeasonMissingEpisodes(seasonID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to detect missing episodes")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: result})
 }
 
 // handleGetShow returns a single TV show by ID.

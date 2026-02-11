@@ -569,6 +569,15 @@ body {
 }
 .filter-toolbar .ft-reset:hover { color: var(--error); }
 
+/* Missing episodes banner */
+.missing-episodes-banner {
+    background: rgba(255,160,0,0.12); border: 1px solid rgba(255,160,0,0.35);
+    border-radius: var(--radius-sm); padding: 10px 16px; margin-bottom: var(--sp-4);
+    color: #ffb340; font-size: var(--text-sm); font-weight: 500;
+}
+.missing-meta { color: #ffb340 !important; font-weight: 500; }
+.tag-warning { background: rgba(255,160,0,0.18); color: #ffb340; border: 1px solid rgba(255,160,0,0.35); }
+
 /* ══════════════════════════════════════
    9. Media Grid & Cards
    ══════════════════════════════════════ */

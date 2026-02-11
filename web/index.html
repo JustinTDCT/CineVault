@@ -1703,6 +1703,13 @@
         if (f.folder) params.push('folder=' + encodeURIComponent(f.folder));
         if (f.content_rating) params.push('content_rating=' + encodeURIComponent(f.content_rating));
         if (f.edition) params.push('edition=' + encodeURIComponent(f.edition));
+        if (f.source) params.push('source=' + encodeURIComponent(f.source));
+        if (f.dynamic_range) params.push('dynamic_range=' + encodeURIComponent(f.dynamic_range));
+        if (f.codec) params.push('codec=' + encodeURIComponent(f.codec));
+        if (f.hdr_format) params.push('hdr_format=' + encodeURIComponent(f.hdr_format));
+        if (f.resolution) params.push('resolution=' + encodeURIComponent(f.resolution));
+        if (f.audio_codec) params.push('audio_codec=' + encodeURIComponent(f.audio_codec));
+        if (f.bitrate_range) params.push('bitrate_range=' + encodeURIComponent(f.bitrate_range));
         if (f.sort) params.push('sort=' + encodeURIComponent(f.sort));
         if (f.order) params.push('order=' + encodeURIComponent(f.order));
         return params.length > 0 ? '&' + params.join('&') : '';
@@ -1921,7 +1928,15 @@
         const srcOpts = (opts.sources || []).map(s => `<option value="${s}">${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
         const drOpts = (opts.dynamic_ranges || []).map(d => `<option value="${d}">${d}</option>`).join('');
 
-        const hasAnyFilter = genreOpts || folderOpts || crOpts || edOpts || srcOpts || drOpts;
+        // New advanced filter options
+        const codecMap = {'hevc':'HEVC (H.265)','h264':'H.264','av1':'AV1','mpeg4':'MPEG-4','mpeg2video':'MPEG-2','vp9':'VP9','vc1':'VC-1'};
+        const codecOpts = (opts.codecs || []).map(c => `<option value="${c}">${codecMap[c] || c.toUpperCase()}</option>`).join('');
+        const hdrOpts = (opts.hdr_formats || []).map(h => `<option value="${h}">${h}</option>`).join('');
+        const resOpts = (opts.resolutions || []).map(r => `<option value="${r}">${r}</option>`).join('');
+        const acMap = {'truehd':'TrueHD','eac3':'EAC3 (DD+)','ac3':'AC3 (DD)','aac':'AAC','dts':'DTS','flac':'FLAC','opus':'Opus','vorbis':'Vorbis','pcm_s16le':'PCM','pcm_s24le':'PCM 24-bit','mp3':'MP3'};
+        const acOpts = (opts.audio_codecs || []).map(a => `<option value="${a}">${acMap[a] || a.toUpperCase()}</option>`).join('');
+
+        const hasAnyFilter = genreOpts || folderOpts || crOpts || edOpts || srcOpts || drOpts || codecOpts || hdrOpts || resOpts || acOpts;
 
         return `<div class="filter-toolbar" id="filterToolbar">
             ${genreOpts ? `<select id="ftGenre" onchange="applyLibFilter()"><option value="">All Genres</option>${genreOpts}</select>` : ''}
@@ -1930,6 +1945,17 @@
             ${edOpts ? `<select id="ftEdition" onchange="applyLibFilter()"><option value="">All Editions</option>${edOpts}</select>` : ''}
             ${srcOpts ? `<select id="ftSource" onchange="applyLibFilter()"><option value="">All Sources</option>${srcOpts}</select>` : ''}
             ${drOpts ? `<select id="ftDynRange" onchange="applyLibFilter()"><option value="">All DR</option>${drOpts}</select>` : ''}
+            ${resOpts ? `<select id="ftResolution" onchange="applyLibFilter()"><option value="">All Resolutions</option>${resOpts}</select>` : ''}
+            ${codecOpts ? `<select id="ftCodec" onchange="applyLibFilter()"><option value="">All Codecs</option>${codecOpts}</select>` : ''}
+            ${hdrOpts ? `<select id="ftHDR" onchange="applyLibFilter()"><option value="">All HDR</option>${hdrOpts}</select>` : ''}
+            ${acOpts ? `<select id="ftAudioCodec" onchange="applyLibFilter()"><option value="">All Audio</option>${acOpts}</select>` : ''}
+            <select id="ftBitrate" onchange="applyLibFilter()">
+                <option value="">All Bitrates</option>
+                <option value="low">&lt; 5 Mbps</option>
+                <option value="medium">5-15 Mbps</option>
+                <option value="high">15-30 Mbps</option>
+                <option value="ultra">30+ Mbps</option>
+            </select>
             <div class="ft-sep"></div>
             <span class="ft-label">Sort</span>
             <select id="ftSort" onchange="applyLibFilter()">
@@ -1937,13 +1963,14 @@
                 <option value="year">Year</option>
                 <option value="resolution">Resolution</option>
                 <option value="duration">Length</option>
+                <option value="bitrate">Bitrate</option>
                 <option value="rt_rating">Rotten Tomatoes</option>
                 <option value="rating">TMDB Rating</option>
                 <option value="audience_score">Audience Score</option>
             </select>
             <select id="ftOrder" onchange="applyLibFilter()">
-                <option value="asc">A→Z / Low→High</option>
-                <option value="desc">Z→A / High→Low</option>
+                <option value="asc">A&#8594;Z / Low&#8594;High</option>
+                <option value="desc">Z&#8594;A / High&#8594;Low</option>
             </select>
             <div class="ft-sep"></div>
             <button class="ft-btn" id="ftGridBtn" onclick="showLibraryGrid()" title="Grid view">&#9638; Grid</button>
@@ -1961,6 +1988,11 @@
         const edition = document.getElementById('ftEdition');
         const source = document.getElementById('ftSource');
         const dynRange = document.getElementById('ftDynRange');
+        const codec = document.getElementById('ftCodec');
+        const hdr = document.getElementById('ftHDR');
+        const resolution = document.getElementById('ftResolution');
+        const audioCodec = document.getElementById('ftAudioCodec');
+        const bitrate = document.getElementById('ftBitrate');
         const sort = document.getElementById('ftSort');
         const order = document.getElementById('ftOrder');
         if (genre && genre.value) f.genre = genre.value;
@@ -1969,6 +2001,11 @@
         if (edition && edition.value) f.edition = edition.value;
         if (source && source.value) f.source = source.value;
         if (dynRange && dynRange.value) f.dynamic_range = dynRange.value;
+        if (codec && codec.value) f.codec = codec.value;
+        if (hdr && hdr.value) f.hdr_format = hdr.value;
+        if (resolution && resolution.value) f.resolution = resolution.value;
+        if (audioCodec && audioCodec.value) f.audio_codec = audioCodec.value;
+        if (bitrate && bitrate.value) f.bitrate_range = bitrate.value;
         if (sort && sort.value) f.sort = sort.value;
         if (order && order.value !== 'asc') f.order = order.value;
         _gridState.filters = f;
@@ -1976,7 +2013,7 @@
     }
 
     function resetLibFilters() {
-        const ids = ['ftGenre','ftFolder','ftRating','ftEdition','ftSource','ftDynRange','ftSort','ftOrder'];
+        const ids = ['ftGenre','ftFolder','ftRating','ftEdition','ftSource','ftDynRange','ftCodec','ftHDR','ftResolution','ftAudioCodec','ftBitrate','ftSort','ftOrder'];
         ids.forEach(id => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
         _gridState.filters = {};
         reloadLibraryGrid();
@@ -2116,37 +2153,60 @@
         const seasons = data.data.seasons || [];
         const totalEps = seasons.reduce((sum, s) => sum + (s.episode_count || 0), 0);
 
+        // Fetch missing episode data for the library
+        let missingMap = {}; // seasonId -> {missing_numbers, have_count, expected_count}
+        let totalMissing = 0;
+        const libId = show.library_id;
+        if (libId) {
+            const missingData = await api('GET', '/libraries/' + libId + '/missing-episodes');
+            if (missingData.success && missingData.data && missingData.data.shows) {
+                const showMissing = missingData.data.shows.find(s => s.show_id === showId);
+                if (showMissing) {
+                    totalMissing = showMissing.total_missing;
+                    (showMissing.seasons || []).forEach(sm => { missingMap[sm.season_id] = sm; });
+                }
+            }
+        }
+
+        const missingBadge = totalMissing > 0 ? ` <span class="tag tag-warning" style="margin-left:8px;">${totalMissing} missing episode${totalMissing !== 1 ? 's' : ''}</span>` : '';
+
         const heroHTML = `
             <div class="detail-hero">
                 <div class="detail-poster">${show.poster_path ? '<img src="'+posterSrc(show.poster_path, show.updated_at)+'">' : '&#128250;'}</div>
                 <div class="detail-info">
                     <h1>${show.title}</h1>
-                    <div class="meta-row">${show.year ? show.year + ' \u00b7 ' : ''}${seasons.length} Season${seasons.length !== 1 ? 's' : ''} \u00b7 ${totalEps} Episode${totalEps !== 1 ? 's' : ''}</div>
+                    <div class="meta-row">${show.year ? show.year + ' \u00b7 ' : ''}${seasons.length} Season${seasons.length !== 1 ? 's' : ''} \u00b7 ${totalEps} Episode${totalEps !== 1 ? 's' : ''}${missingBadge}</div>
                     ${show.description ? '<p class="description">'+show.description+'</p>' : ''}
                 </div>
             </div>`;
 
         if (seasons.length === 1) {
-            // Single season: show episodes directly (like Plex single-season view)
+            const sm = missingMap[seasons[0].id];
+            const singleMissing = sm ? `<div class="missing-episodes-banner">${sm.have_count}/${sm.expected_count} episodes \u00b7 Missing: ${sm.missing_numbers.join(', ')}</div>` : '';
             mc.innerHTML = heroHTML + `
                 <h3 style="color:#e5e5e5;margin:24px 0 16px;">${totalEps} Episode${totalEps !== 1 ? 's' : ''}</h3>
+                ${singleMissing}
                 <div class="media-grid" id="season-${seasons[0].id}"><div class="spinner"></div></div>
                 <button class="btn-secondary" onclick="history.back(); return false;" style="margin-top:20px;">&#8592; Back</button>`;
             loadSeasonEpisodes(seasons[0].id);
         } else {
-            // Multiple seasons: show season cards (like Plex multi-season view)
             mc.innerHTML = heroHTML + `
                 <h3 style="color:#e5e5e5;margin:24px 0 16px;">Seasons</h3>
                 <div class="media-grid" id="seasonsGrid">
-                    ${seasons.map(s => `<div class="media-card" onclick="loadSeasonView('${showId}','${s.id}', ${s.season_number})">
+                    ${seasons.map(s => {
+                        const sm = missingMap[s.id];
+                        const missingLabel = sm ? `<div class="media-meta missing-meta">${sm.have_count}/${sm.expected_count} eps \u00b7 ${sm.missing_numbers.length} missing</div>` : '';
+                        return `<div class="media-card" onclick="loadSeasonView('${showId}','${s.id}', ${s.season_number})">
                         <div class="media-poster">
                             ${s.poster_path ? '<img src="'+posterSrc(s.poster_path, s.updated_at)+'" alt="">' : (show.poster_path ? '<img src="'+posterSrc(show.poster_path, show.updated_at)+'" alt="">' : '&#128250;')}
                         </div>
                         <div class="media-info">
                             <div class="media-title">${s.title || 'Season ' + s.season_number}</div>
                             <div class="media-meta">${s.episode_count} episode${s.episode_count !== 1 ? 's' : ''}</div>
+                            ${missingLabel}
                         </div>
-                    </div>`).join('')}
+                    </div>`;
+                    }).join('')}
                 </div>
                 <button class="btn-secondary" onclick="history.back(); return false;" style="margin-top:20px;">&#8592; Back</button>`;
         }
@@ -2155,13 +2215,22 @@
     async function loadSeasonView(showId, seasonId, seasonNum) {
         const mc = document.getElementById('mainContent');
         mc.innerHTML = '<div class="spinner"></div> Loading...';
-        // Get show info for the hero
-        const showData = await api('GET', '/tv/shows/' + showId);
+        // Get show info and missing episode data in parallel
+        const [showData, missingData] = await Promise.all([
+            api('GET', '/tv/shows/' + showId),
+            api('GET', '/tv/seasons/' + seasonId + '/missing')
+        ]);
         if (!showData.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Show not found</div></div>'; return; }
         const show = showData.data.show;
         const seasons = showData.data.seasons || [];
         const season = seasons.find(s => s.id === seasonId);
         const epCount = season ? season.episode_count : 0;
+
+        let missingBanner = '';
+        if (missingData.success && missingData.data && missingData.data.missing_numbers && missingData.data.missing_numbers.length > 0) {
+            const md = missingData.data;
+            missingBanner = `<div class="missing-episodes-banner">${md.have_count}/${md.expected_count} episodes \u00b7 Missing: ${md.missing_numbers.join(', ')}</div>`;
+        }
 
         mc.innerHTML = `
             <div class="detail-hero">
@@ -2173,6 +2242,7 @@
                 </div>
             </div>
             <h3 style="color:#e5e5e5;margin:24px 0 16px;">${epCount} Episode${epCount !== 1 ? 's' : ''}</h3>
+            ${missingBanner}
             <div class="media-grid" id="season-${seasonId}"><div class="spinner"></div></div>
             <button class="btn-secondary" onclick="loadShowView('${showId}')" style="margin-top:20px;">&#8592; Back to ${show.title}</button>`;
         loadSeasonEpisodes(seasonId);
