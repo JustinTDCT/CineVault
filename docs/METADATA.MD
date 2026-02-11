@@ -286,6 +286,7 @@ This works from both the cache server path and direct TMDB path.
 | `source_type` | Filename parser | Media source (bluray, web-dl, hdtv, remux, etc.) |
 | `hdr_format` | FFprobe | HDR technology (Dolby Vision, HDR10, HLG, PQ) |
 | `dynamic_range` | FFprobe | SDR or HDR classification |
+| `audio_format` | FFprobe | Enhanced audio format with spatial audio detection (TrueHD Atmos, EAC3 Atmos, DTS-HD MA DTS:X, etc.) |
 | `custom_notes` | User/NFO | Freeform text annotation |
 | `custom_tags` | User | JSON array of user-defined tags |
 

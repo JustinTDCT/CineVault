@@ -271,6 +271,7 @@ For video and audio files, ffprobe extracts technical metadata:
 - Container format (from file extension)
 - **HDR format detection**: Identifies Dolby Vision (via DOVI RPU side data), HDR10 (PQ transfer + BT.2020 primaries), HLG (arib-std-b67 transfer), or generic PQ
 - **Dynamic range classification**: HDR (any HDR format detected) or SDR (default)
+- **Audio format detection**: Enhanced audio format string that detects spatial audio features on top of the base codec. Identifies Dolby Atmos (on TrueHD or EAC3) via side data, profile, and channel count heuristics. Identifies DTS:X on DTS-HD MA via profile detection. Returns display-friendly names (e.g., "TrueHD Atmos", "EAC3 Atmos", "DTS-HD MA DTS:X", "FLAC", "AAC")
 
 FFprobe values **override** any filename-parsed values for resolution and container. Source type from filename parsing (e.g., bluray, web-dl, hdtv) is persisted to the `source_type` field on the media item.
 
