@@ -1,6 +1,6 @@
 {
-  "version": "0.50.01",
+  "version": "0.51.00",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Redesign filter toolbar with picker dropdown and removable chips."
+  "notes": "Smart collection rules: searchable dropdown pickers with multi-select chips."
 }

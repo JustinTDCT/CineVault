@@ -3183,8 +3183,131 @@
 
     let _createCollectionLibId = null;
 
+    // ──── Reusable Rule Picker ────
+    const _rulePickerState = {};
+    let _rulePickerDebounce = null;
+
+    function initRulePicker(fieldId, options, searchFn) {
+        _rulePickerState[fieldId] = { selected: [], options: options || [], searchFn: searchFn || null };
+        const wrap = document.getElementById(fieldId);
+        if (!wrap) return;
+        _renderPickerDropdown(fieldId);
+        _renderPickerChips(fieldId);
+    }
+
+    function _renderPickerDropdown(fieldId) {
+        const wrap = document.getElementById(fieldId);
+        const input = wrap.querySelector('.rule-picker-input');
+        const dd = wrap.querySelector('.rule-picker-dropdown');
+        if (!input || !dd) return;
+        const st = _rulePickerState[fieldId];
+        const q = input.value.toLowerCase();
+        const filtered = st.options.filter(o => {
+            if (st.selected.includes(o)) return false;
+            return !q || o.toLowerCase().includes(q);
+        });
+        if (filtered.length === 0) {
+            dd.innerHTML = '<div class="rule-picker-empty">' + (q ? 'No matches' : 'No options available') + '</div>';
+        } else {
+            dd.innerHTML = filtered.map(o =>
+                `<div class="rule-picker-opt" onmousedown="rulePickerSelect('${fieldId}',this)" data-val="${escFilterHtml(o)}">${escFilterHtml(o)}</div>`
+            ).join('');
+        }
+    }
+
+    function rulePickerSelect(fieldId, el) {
+        const val = el.dataset.val;
+        const st = _rulePickerState[fieldId];
+        if (!st.selected.includes(val)) {
+            st.selected.push(val);
+        }
+        const wrap = document.getElementById(fieldId);
+        const input = wrap.querySelector('.rule-picker-input');
+        input.value = '';
+        _renderPickerChips(fieldId);
+        _renderPickerDropdown(fieldId);
+    }
+
+    function rulePickerRemove(fieldId, val) {
+        const st = _rulePickerState[fieldId];
+        st.selected = st.selected.filter(v => v !== val);
+        _renderPickerChips(fieldId);
+        _renderPickerDropdown(fieldId);
+    }
+
+    function _renderPickerChips(fieldId) {
+        const wrap = document.getElementById(fieldId);
+        const chipsEl = wrap.querySelector('.rule-picker-chips');
+        if (!chipsEl) return;
+        const st = _rulePickerState[fieldId];
+        chipsEl.innerHTML = st.selected.map(v =>
+            `<div class="rule-picker-chip">${escFilterHtml(v)}<span class="rule-picker-chip-x" onclick="rulePickerRemove('${fieldId}','${v.replace(/'/g,"\\'")}')">&times;</span></div>`
+        ).join('');
+    }
+
+    function rulePickerInputHandler(fieldId) {
+        const st = _rulePickerState[fieldId];
+        if (st.searchFn) {
+            clearTimeout(_rulePickerDebounce);
+            _rulePickerDebounce = setTimeout(async () => {
+                const wrap = document.getElementById(fieldId);
+                const input = wrap.querySelector('.rule-picker-input');
+                const q = input.value.trim();
+                if (q.length < 2) { st.options = []; _renderPickerDropdown(fieldId); return; }
+                const results = await st.searchFn(q);
+                st.options = results;
+                _renderPickerDropdown(fieldId);
+            }, 300);
+        } else {
+            _renderPickerDropdown(fieldId);
+        }
+    }
+
+    function rulePickerFocus(fieldId) {
+        const wrap = document.getElementById(fieldId);
+        const dd = wrap.querySelector('.rule-picker-dropdown');
+        _renderPickerDropdown(fieldId);
+        dd.classList.add('open');
+    }
+
+    function rulePickerBlur(fieldId) {
+        setTimeout(() => {
+            const wrap = document.getElementById(fieldId);
+            if (!wrap) return;
+            const dd = wrap.querySelector('.rule-picker-dropdown');
+            if (dd) dd.classList.remove('open');
+        }, 200);
+    }
+
+    function rulePickerKeydown(fieldId, e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const wrap = document.getElementById(fieldId);
+            const input = wrap.querySelector('.rule-picker-input');
+            const val = input.value.trim();
+            if (!val) return;
+            const st = _rulePickerState[fieldId];
+            if (!st.selected.includes(val)) { st.selected.push(val); }
+            input.value = '';
+            _renderPickerChips(fieldId);
+            _renderPickerDropdown(fieldId);
+        }
+    }
+
+    function buildPickerHtml(fieldId, placeholder, isSearch) {
+        return `<div class="rule-picker" id="${fieldId}">
+            <input type="text" class="rule-picker-input" placeholder="${placeholder}"
+                onfocus="rulePickerFocus('${fieldId}')" onblur="rulePickerBlur('${fieldId}')"
+                oninput="rulePickerInputHandler('${fieldId}')"
+                onkeydown="rulePickerKeydown('${fieldId}', event)">
+            <div class="rule-picker-dropdown"></div>
+            <div class="rule-picker-chips"></div>
+        </div>`;
+    }
+
     function showCreateCollection(parentId, libraryId) {
         _createCollectionLibId = libraryId || null;
+        _smartPickersInitialized = false;
         const mc = document.getElementById('mainContent');
         mc.innerHTML = `<div class="section-header"><h2 class="section-title">New Collection</h2></div>
         <div style="max-width:700px;">
@@ -3214,23 +3337,23 @@
             <div id="smartRulesSection" style="display:none;">
                 <h3 style="margin:20px 0 12px;color:var(--text-primary);">Smart Collection Rules</h3>
                 <div class="smart-rule-builder">
-                    <div class="rule-group"><label>Genres (comma-separated)</label>
-                        <input type="text" id="ruleGenres" placeholder="e.g. action, sci-fi">
+                    <div class="rule-group"><label>Genres</label>
+                        ${buildPickerHtml('ruleGenres', 'Search genres...')}
                     </div>
                     <div class="rule-group"><label>Exclude Genres</label>
-                        <input type="text" id="ruleExcludeGenres" placeholder="e.g. horror, romance">
+                        ${buildPickerHtml('ruleExcludeGenres', 'Search genres to exclude...')}
                     </div>
                     <div class="rule-group"><label>Moods</label>
-                        <input type="text" id="ruleMoods" placeholder="e.g. intense, thrilling">
+                        ${buildPickerHtml('ruleMoods', 'Search moods...')}
                     </div>
                     <div class="rule-group"><label>Performers</label>
-                        <input type="text" id="rulePerformers" placeholder="e.g. Tom Hanks, Meryl Streep">
+                        ${buildPickerHtml('rulePerformers', 'Type to search performers...', true)}
                     </div>
                     <div class="rule-group"><label>Studios</label>
-                        <input type="text" id="ruleStudios" placeholder="e.g. Marvel Studios, A24">
+                        ${buildPickerHtml('ruleStudios', 'Search studios...')}
                     </div>
                     <div class="rule-group"><label>Keywords</label>
-                        <input type="text" id="ruleKeywords" placeholder="e.g. time travel, heist">
+                        ${buildPickerHtml('ruleKeywords', 'Type keyword and press Enter')}
                     </div>
                     <div class="rule-group"><label>Year Range</label>
                         <div class="rule-row">
@@ -3253,7 +3376,7 @@
                         <input type="number" id="ruleAddedWithin" placeholder="e.g. 30">
                     </div>
                     <div class="rule-group"><label>Content Rating</label>
-                        <input type="text" id="ruleContentRating" placeholder="e.g. PG-13, R">
+                        ${buildPickerHtml('ruleContentRating', 'Select content rating...')}
                     </div>
                     <div class="rule-group"><label>Sort By</label>
                         <select id="ruleSortBy">
@@ -3286,24 +3409,63 @@
         </div>`;
     }
 
+    let _smartPickersInitialized = false;
     function setCollType(type) {
         document.getElementById('collType').value = type;
         document.getElementById('smartRulesSection').style.display = type === 'smart' ? 'block' : 'none';
         document.getElementById('collTypeManualBtn').className = type === 'manual' ? 'btn-primary' : 'btn-secondary';
         document.getElementById('collTypeSmartBtn').className = type === 'smart' ? 'btn-primary' : 'btn-secondary';
+        if (type === 'smart' && !_smartPickersInitialized) {
+            _smartPickersInitialized = true;
+            initSmartPickers();
+        }
+    }
+
+    async function initSmartPickers() {
+        let genres = [], contentRatings = [], moods = [], studios = [];
+        // Fetch library-scoped filter options (genres, content ratings)
+        if (_createCollectionLibId) {
+            const filterData = await api('GET', '/libraries/' + _createCollectionLibId + '/filters');
+            if (filterData.success && filterData.data) {
+                genres = filterData.data.genres || [];
+                contentRatings = filterData.data.content_ratings || [];
+            }
+        }
+        // Fetch moods from tags
+        const moodData = await api('GET', '/tags?category=mood');
+        if (moodData.success && moodData.data) {
+            moods = moodData.data.map(t => t.name);
+        }
+        // Fetch studios
+        const studioData = await api('GET', '/studios?limit=500');
+        if (studioData.success && studioData.data) {
+            studios = studioData.data.map(s => s.name);
+        }
+        // Initialize pickers with fetched data
+        initRulePicker('ruleGenres', genres);
+        initRulePicker('ruleExcludeGenres', genres);
+        initRulePicker('ruleMoods', moods);
+        initRulePicker('ruleStudios', studios);
+        initRulePicker('ruleContentRating', contentRatings);
+        initRulePicker('ruleKeywords', []);  // free-text only
+        // Performers: search-as-you-type
+        initRulePicker('rulePerformers', [], async (q) => {
+            const res = await api('GET', '/performers?q=' + encodeURIComponent(q) + '&limit=50');
+            return (res.success && res.data) ? res.data.map(p => p.name) : [];
+        });
     }
 
     function buildSmartRules() {
-        const parseList = id => { const v = document.getElementById(id).value.trim(); return v ? v.split(',').map(s => s.trim()).filter(Boolean) : []; };
+        const pickerList = id => (_rulePickerState[id] && _rulePickerState[id].selected.length > 0) ? [..._rulePickerState[id].selected] : [];
         const parseNum = id => { const v = document.getElementById(id).value.trim(); return v ? Number(v) : null; };
         const rules = {};
-        const genres = parseList('ruleGenres'); if (genres.length) rules.genres = genres;
-        const excludeGenres = parseList('ruleExcludeGenres'); if (excludeGenres.length) rules.exclude_genres = excludeGenres;
-        const moods = parseList('ruleMoods'); if (moods.length) rules.moods = moods;
-        const performers = parseList('rulePerformers'); if (performers.length) rules.performers = performers;
-        const studios = parseList('ruleStudios'); if (studios.length) rules.studios = studios;
-        const keywords = parseList('ruleKeywords'); if (keywords.length) rules.keywords = keywords;
-        const contentRating = parseList('ruleContentRating'); if (contentRating.length) rules.content_rating = contentRating;
+        const genres = pickerList('ruleGenres'); if (genres.length) rules.genres = genres;
+        const excludeGenres = pickerList('ruleExcludeGenres'); if (excludeGenres.length) rules.exclude_genres = excludeGenres;
+        const moods = pickerList('ruleMoods'); if (moods.length) rules.moods = moods;
+        const performers = pickerList('rulePerformers'); if (performers.length) rules.performers = performers;
+        const studios = pickerList('ruleStudios'); if (studios.length) rules.studios = studios;
+        const keywords = pickerList('ruleKeywords'); if (keywords.length) rules.keywords = keywords;
+        const contentRating = pickerList('ruleContentRating'); if (contentRating.length) rules.content_rating = contentRating;
         const yf = parseNum('ruleYearFrom'); if (yf !== null) rules.year_from = yf;
         const yt = parseNum('ruleYearTo'); if (yt !== null) rules.year_to = yt;
         const mr = parseNum('ruleMinRating'); if (mr !== null) rules.min_rating = mr;

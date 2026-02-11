@@ -664,6 +664,62 @@ body {
 }
 .ft-chip-x:hover { opacity: 1; color: var(--error); background: rgba(255,80,80,0.15); }
 
+/* ── Smart Rule Pickers ── */
+.smart-rule-builder { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.rule-group { background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 14px 16px; }
+.rule-group label { display: block; font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; }
+.rule-group input[type="text"], .rule-group input[type="number"] {
+    width: 100%; background: rgba(255,255,255,0.06); color: var(--text-primary);
+    border: 1px solid var(--border-subtle-input); border-radius: var(--radius-sm);
+    padding: 8px 10px; font-size: 13px; box-sizing: border-box;
+}
+.rule-group input:focus { outline: none; border-color: var(--accent); }
+.rule-group input::placeholder { color: var(--text-dim); }
+.rule-group select { width: 100%; }
+.rule-row { display: flex; align-items: center; gap: 8px; }
+.rule-row input { flex: 1; }
+
+/* Rule picker wrapper */
+.rule-picker { position: relative; }
+.rule-picker-input {
+    width: 100%; background: rgba(255,255,255,0.06); color: var(--text-primary);
+    border: 1px solid var(--border-subtle-input); border-radius: var(--radius-sm);
+    padding: 8px 10px; font-size: 13px; box-sizing: border-box; cursor: text;
+}
+.rule-picker-input:focus { outline: none; border-color: var(--accent); }
+.rule-picker-input::placeholder { color: var(--text-dim); }
+
+/* Rule picker dropdown */
+.rule-picker-dropdown {
+    display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    z-index: 9000; max-height: 220px; overflow-y: auto;
+    background: #1a2233; border: 1px solid rgba(255,255,255,0.12);
+    border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.rule-picker-dropdown.open { display: block; }
+.rule-picker-opt {
+    padding: 7px 12px; cursor: pointer; font-size: 13px; color: var(--text-secondary);
+    transition: background 0.12s;
+}
+.rule-picker-opt:hover { background: rgba(0,217,255,0.1); color: var(--text-primary); }
+.rule-picker-opt.selected { opacity: 0.4; pointer-events: none; }
+.rule-picker-empty { padding: 12px; color: var(--text-dim); font-size: 13px; text-align: center; }
+
+/* Rule picker chips */
+.rule-picker-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.rule-picker-chip {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: rgba(0,217,255,0.08); color: var(--text-primary);
+    border: 1px solid rgba(0,217,255,0.2); border-radius: 16px;
+    padding: 3px 6px 3px 9px; font-size: 12px; white-space: nowrap;
+}
+.rule-picker-chip-x {
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0.5; font-size: 15px; line-height: 1;
+    width: 16px; height: 16px; border-radius: 50%; transition: all 0.15s;
+}
+.rule-picker-chip-x:hover { opacity: 1; color: var(--error); background: rgba(255,80,80,0.15); }
+
 /* Missing episodes banner */
 .missing-episodes-banner {
     background: rgba(255,160,0,0.12); border: 1px solid rgba(255,160,0,0.35);
