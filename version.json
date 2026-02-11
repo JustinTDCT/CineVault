@@ -1,6 +1,6 @@
 {
-  "version": "0.44.0",
+  "version": "0.45.0",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Skip detection system: intro/credits/recap/anime OP-ED detection, per-user auto-skip preferences, player skip button overlay, manual segment editor, background detection job queue"
+  "notes": "Enhanced collections: nested collections, collection detail view, smart collection rule builder with performer/studio/duration/recency filters, configurable sort modes, collection statistics, bulk add, template presets"
 }

@@ -452,35 +452,60 @@ type MovieSeriesItem struct {
 // ──────────────────── Collections ────────────────────
 
 type Collection struct {
-	ID             uuid.UUID  `json:"id" db:"id"`
-	UserID         uuid.UUID  `json:"user_id" db:"user_id"`
-	LibraryID      *uuid.UUID `json:"library_id,omitempty" db:"library_id"`
-	Name           string     `json:"name" db:"name"`
-	Description    *string    `json:"description,omitempty" db:"description"`
-	PosterPath     *string    `json:"poster_path,omitempty" db:"poster_path"`
-	CollectionType string     `json:"collection_type" db:"collection_type"`
-	Visibility     string     `json:"visibility" db:"visibility"`
-	ItemSortMode   string     `json:"item_sort_mode" db:"item_sort_mode"`
-	SortPosition   int        `json:"sort_position" db:"sort_position"`
-	Rules          *string    `json:"rules,omitempty" db:"rules"`
-	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
+	ID                 uuid.UUID  `json:"id" db:"id"`
+	UserID             uuid.UUID  `json:"user_id" db:"user_id"`
+	LibraryID          *uuid.UUID `json:"library_id,omitempty" db:"library_id"`
+	Name               string     `json:"name" db:"name"`
+	Description        *string    `json:"description,omitempty" db:"description"`
+	PosterPath         *string    `json:"poster_path,omitempty" db:"poster_path"`
+	CollectionType     string     `json:"collection_type" db:"collection_type"`
+	Visibility         string     `json:"visibility" db:"visibility"`
+	ItemSortMode       string     `json:"item_sort_mode" db:"item_sort_mode"`
+	SortPosition       int        `json:"sort_position" db:"sort_position"`
+	Rules              *string    `json:"rules,omitempty" db:"rules"`
+	ParentCollectionID *uuid.UUID `json:"parent_collection_id,omitempty" db:"parent_collection_id"`
+	CreatedAt          time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at" db:"updated_at"`
 	// Aggregated
-	ItemCount int              `json:"item_count,omitempty" db:"-"`
-	Items     []CollectionItem `json:"items,omitempty" db:"-"`
+	ItemCount  int              `json:"item_count,omitempty" db:"-"`
+	Items      []CollectionItem `json:"items,omitempty" db:"-"`
+	ChildCount int              `json:"child_count,omitempty" db:"-"`
 }
 
 // SmartCollectionRules defines the criteria for a smart collection.
 type SmartCollectionRules struct {
-	Genres        []string `json:"genres,omitempty"`
-	Moods         []string `json:"moods,omitempty"`
-	YearFrom      *int     `json:"year_from,omitempty"`
-	YearTo        *int     `json:"year_to,omitempty"`
-	MinRating     *float64 `json:"min_rating,omitempty"`
-	ContentRating []string `json:"content_rating,omitempty"`
-	MediaTypes    []string `json:"media_types,omitempty"`
-	Keywords      []string `json:"keywords,omitempty"`
-	MaxResults    int      `json:"max_results,omitempty"`
+	Genres         []string `json:"genres,omitempty"`
+	ExcludeGenres  []string `json:"exclude_genres,omitempty"`
+	Moods          []string `json:"moods,omitempty"`
+	YearFrom       *int     `json:"year_from,omitempty"`
+	YearTo         *int     `json:"year_to,omitempty"`
+	MinRating      *float64 `json:"min_rating,omitempty"`
+	ContentRating  []string `json:"content_rating,omitempty"`
+	MediaTypes     []string `json:"media_types,omitempty"`
+	Keywords       []string `json:"keywords,omitempty"`
+	Performers     []string `json:"performers,omitempty"`
+	Studios        []string `json:"studios,omitempty"`
+	MinDuration    *int     `json:"min_duration,omitempty"`
+	MaxDuration    *int     `json:"max_duration,omitempty"`
+	AddedWithin    *int     `json:"added_within,omitempty"`
+	ReleasedWithin *int     `json:"released_within,omitempty"`
+	SortBy         string   `json:"sort_by,omitempty"`
+	SortOrder      string   `json:"sort_order,omitempty"`
+	MaxResults     int      `json:"max_results,omitempty"`
+}
+
+// CollectionStats holds aggregate statistics for a collection.
+type CollectionStats struct {
+	TotalItems   int                `json:"total_items"`
+	TotalRuntime int                `json:"total_runtime_seconds"`
+	AvgRating    float64            `json:"avg_rating"`
+	Genres       []CollectionGenre  `json:"genres,omitempty"`
+}
+
+// CollectionGenre is a genre name with its count within a collection.
+type CollectionGenre struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
 }
 
 type CollectionItem struct {
@@ -495,6 +520,14 @@ type CollectionItem struct {
 	Notes          *string    `json:"notes,omitempty" db:"notes"`
 	AddedAt        time.Time  `json:"added_at" db:"added_at"`
 	AddedBy        *uuid.UUID `json:"added_by,omitempty" db:"added_by"`
+	// Joined metadata (populated by ListItems)
+	Title           string  `json:"title,omitempty" db:"-"`
+	Year            *int    `json:"year,omitempty" db:"-"`
+	PosterPath      *string `json:"poster_path,omitempty" db:"-"`
+	Rating          *float64 `json:"rating,omitempty" db:"-"`
+	DurationSeconds *int    `json:"duration_seconds,omitempty" db:"-"`
+	Resolution      *string `json:"resolution,omitempty" db:"-"`
+	MediaType       string  `json:"media_type,omitempty" db:"-"`
 }
 
 // ──────────────────── Watch History ────────────────────

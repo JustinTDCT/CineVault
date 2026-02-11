@@ -1192,6 +1192,7 @@
             case 'library': loadLibraryView(extra); break;
             case 'media': loadMediaTypeView(extra); break;
             case 'collections': loadCollectionsView(); break;
+            case 'collection': loadCollectionDetailView(extra); break;
             case 'performers': loadPerformersView(); break;
             case 'tags': loadTagsView(); break;
             case 'studios': loadStudiosView(); break;
@@ -2076,15 +2077,20 @@
             return;
         }
 
-        collArea.innerHTML = '<div class="collection-grid">' + collections.map(c => {
+        // Show only top-level collections (no parent)
+        const topLevel = collections.filter(c => !c.parent_collection_id);
+        const toShow = topLevel.length > 0 ? topLevel : collections;
+        collArea.innerHTML = '<div class="collection-grid">' + toShow.map(c => {
             const poster = c.poster_path
                 ? `<img src="${posterSrc(c.poster_path, c.updated_at)}" alt="">`
                 : '&#128218;';
+            const childInfo = c.child_count > 0 ? `<div class="cc-children">${c.child_count} sub-collection${c.child_count !== 1 ? 's' : ''}</div>` : '';
             return `<div class="collection-card" onclick="navigate('collection','${c.id}')">
                 <div class="cc-poster">${poster}</div>
                 <div class="cc-info">
                     <div class="cc-name">${c.name}</div>
                     <div class="cc-meta">${c.item_count || 0} item${(c.item_count||0) !== 1 ? 's' : ''}</div>
+                    ${childInfo}
                 </div>
             </div>`;
         }).join('') + '</div>';
@@ -2529,10 +2535,368 @@
     }
 
     // ──── Collections ────
-    async function loadCollectionsView(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">Collections</h2><button class="btn-primary" onclick="showCreateCollection()">+ New</button></div><div id="collList"><div class="spinner"></div></div>`;const data=await api('GET','/collections');const div=document.getElementById('collList');if(data.success&&data.data&&data.data.length>0){div.innerHTML=data.data.map(c=>`<div class="group-card"><div style="display:flex;justify-content:space-between;"><div><h4>${c.name}</h4>${c.description?'<p>'+c.description+'</p>':''}<span class="tag tag-green">${c.item_count||0} items</span><span class="tag tag-cyan">${c.visibility}</span></div><button class="btn-danger btn-small" onclick="deleteCollection('${c.id}')">Delete</button></div></div>`).join('');}else div.innerHTML='<div class="empty-state"><div class="empty-state-icon">&#11088;</div><div class="empty-state-title">No collections</div></div>';}
-    function showCreateCollection(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">New Collection</h2></div><div style="max-width:500px;"><div class="form-group"><label>Name</label><input type="text" id="collName"></div><div class="form-group"><label>Description</label><input type="text" id="collDesc"></div><div class="form-group"><label>Visibility</label><select id="collVis"><option value="private">Private</option><option value="shared">Shared</option><option value="public">Public</option></select></div><button class="btn-primary" onclick="createCollection()">Create</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadCollectionsView()">Cancel</button></div>`;}
-    async function createCollection(){const n=document.getElementById('collName').value,d=document.getElementById('collDesc').value||null,v=document.getElementById('collVis').value;if(!n){toast('Name required','error');return;}const r=await api('POST','/collections',{name:n,description:d,visibility:v});if(r.success){toast('Created!');loadCollectionsView();}else toast(r.error,'error');}
-    async function deleteCollection(id){if(!confirm('Delete?'))return;const d=await api('DELETE','/collections/'+id);if(d.success){toast('Deleted');loadCollectionsView();}else toast(d.error,'error');}
+    async function loadCollectionsView() {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Collections</h2>
+            <div><button class="btn-secondary" onclick="createCollectionTemplates()" title="Create smart collection presets">+ Templates</button>
+            <button class="btn-primary" onclick="showCreateCollection()">+ New</button></div></div>
+            <div id="collList"><div class="spinner"></div></div>`;
+        const data = await api('GET', '/collections');
+        const div = document.getElementById('collList');
+        const collections = (data.success && data.data) ? data.data : [];
+        if (collections.length > 0) {
+            // Show top-level collections (no parent) first
+            const topLevel = collections.filter(c => !c.parent_collection_id);
+            const nested = collections.filter(c => c.parent_collection_id);
+            const renderCollCard = c => {
+                const childBadge = c.child_count > 0 ? `<span class="tag tag-blue">${c.child_count} sub</span>` : '';
+                const typeBadge = c.collection_type === 'smart' ? '<span class="tag tag-purple">Smart</span>' : '';
+                return `<div class="group-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                    <div style="cursor:pointer;flex:1;" onclick="navigate('collection','${c.id}')">
+                        <h4>${c.name}</h4>
+                        ${c.description ? '<p style="color:var(--text-muted);font-size:var(--text-sm);">' + c.description + '</p>' : ''}
+                        <span class="tag tag-green">${c.item_count || 0} items</span>
+                        <span class="tag tag-cyan">${c.visibility}</span>
+                        ${typeBadge}${childBadge}
+                    </div>
+                    <button class="btn-danger btn-small" onclick="event.stopPropagation();deleteCollection('${c.id}')">Delete</button>
+                </div></div>`;
+            };
+            let html = topLevel.map(renderCollCard).join('');
+            if (nested.length > 0) {
+                html += '<h3 style="margin-top:20px;color:var(--text-secondary);">Nested Collections</h3>';
+                html += nested.map(renderCollCard).join('');
+            }
+            div.innerHTML = html;
+        } else {
+            div.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#11088;</div><div class="empty-state-title">No collections</div><p>Create a collection or use templates to get started</p></div>';
+        }
+    }
+
+    function showCreateCollection(parentId) {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">New Collection</h2></div>
+        <div style="max-width:700px;">
+            <div class="form-group"><label>Collection Type</label>
+                <div style="display:flex;gap:10px;">
+                    <button class="btn-primary" id="collTypeManualBtn" onclick="setCollType('manual')">Manual</button>
+                    <button class="btn-secondary" id="collTypeSmartBtn" onclick="setCollType('smart')">Smart</button>
+                </div>
+            </div>
+            <input type="hidden" id="collType" value="manual">
+            <input type="hidden" id="collParentId" value="${parentId || ''}">
+            <div class="form-group"><label>Name</label><input type="text" id="collName" placeholder="e.g. My Favorites"></div>
+            <div class="form-group"><label>Description</label><input type="text" id="collDesc" placeholder="Optional description"></div>
+            <div class="form-group"><label>Visibility</label>
+                <select id="collVis"><option value="private">Private</option><option value="shared">Shared</option><option value="public">Public</option></select>
+            </div>
+            <div class="form-group"><label>Sort Mode</label>
+                <select id="collSortMode">
+                    <option value="custom">Custom Order</option>
+                    <option value="title">Title</option>
+                    <option value="year">Year</option>
+                    <option value="rating">Rating</option>
+                    <option value="added">Recently Added</option>
+                    <option value="duration">Duration</option>
+                </select>
+            </div>
+            <div id="smartRulesSection" style="display:none;">
+                <h3 style="margin:20px 0 12px;color:var(--text-primary);">Smart Collection Rules</h3>
+                <div class="smart-rule-builder">
+                    <div class="rule-group"><label>Genres (comma-separated)</label>
+                        <input type="text" id="ruleGenres" placeholder="e.g. action, sci-fi">
+                    </div>
+                    <div class="rule-group"><label>Exclude Genres</label>
+                        <input type="text" id="ruleExcludeGenres" placeholder="e.g. horror, romance">
+                    </div>
+                    <div class="rule-group"><label>Moods</label>
+                        <input type="text" id="ruleMoods" placeholder="e.g. intense, thrilling">
+                    </div>
+                    <div class="rule-group"><label>Performers</label>
+                        <input type="text" id="rulePerformers" placeholder="e.g. Tom Hanks, Meryl Streep">
+                    </div>
+                    <div class="rule-group"><label>Studios</label>
+                        <input type="text" id="ruleStudios" placeholder="e.g. Marvel Studios, A24">
+                    </div>
+                    <div class="rule-group"><label>Keywords</label>
+                        <input type="text" id="ruleKeywords" placeholder="e.g. time travel, heist">
+                    </div>
+                    <div class="rule-group"><label>Year Range</label>
+                        <div class="rule-row">
+                            <input type="number" id="ruleYearFrom" placeholder="From">
+                            <span style="color:var(--text-muted);">to</span>
+                            <input type="number" id="ruleYearTo" placeholder="To">
+                        </div>
+                    </div>
+                    <div class="rule-group"><label>Min Rating (0-10)</label>
+                        <input type="number" id="ruleMinRating" placeholder="e.g. 7.0" step="0.1" min="0" max="10">
+                    </div>
+                    <div class="rule-group"><label>Duration Range (minutes)</label>
+                        <div class="rule-row">
+                            <input type="number" id="ruleMinDuration" placeholder="Min">
+                            <span style="color:var(--text-muted);">to</span>
+                            <input type="number" id="ruleMaxDuration" placeholder="Max">
+                        </div>
+                    </div>
+                    <div class="rule-group"><label>Added Within (days)</label>
+                        <input type="number" id="ruleAddedWithin" placeholder="e.g. 30">
+                    </div>
+                    <div class="rule-group"><label>Content Rating</label>
+                        <input type="text" id="ruleContentRating" placeholder="e.g. PG-13, R">
+                    </div>
+                    <div class="rule-group"><label>Sort By</label>
+                        <select id="ruleSortBy">
+                            <option value="">Default (Rating)</option>
+                            <option value="title">Title</option>
+                            <option value="year">Year</option>
+                            <option value="rating">Rating</option>
+                            <option value="added">Recently Added</option>
+                            <option value="duration">Duration</option>
+                            <option value="random">Random</option>
+                        </select>
+                    </div>
+                    <div class="rule-group"><label>Sort Order</label>
+                        <select id="ruleSortOrder">
+                            <option value="desc">Descending</option>
+                            <option value="asc">Ascending</option>
+                        </select>
+                    </div>
+                    <div class="rule-group"><label>Max Results</label>
+                        <input type="number" id="ruleMaxResults" placeholder="100" min="1" max="500">
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="previewSmartRules()">Preview Matches</button>
+                <div id="smartPreviewResult"></div>
+            </div>
+            <div style="margin-top:20px;">
+                <button class="btn-primary" onclick="createCollection()">Create Collection</button>
+                <button class="btn-secondary" style="margin-left:12px;" onclick="loadCollectionsView()">Cancel</button>
+            </div>
+        </div>`;
+    }
+
+    function setCollType(type) {
+        document.getElementById('collType').value = type;
+        document.getElementById('smartRulesSection').style.display = type === 'smart' ? 'block' : 'none';
+        document.getElementById('collTypeManualBtn').className = type === 'manual' ? 'btn-primary' : 'btn-secondary';
+        document.getElementById('collTypeSmartBtn').className = type === 'smart' ? 'btn-primary' : 'btn-secondary';
+    }
+
+    function buildSmartRules() {
+        const parseList = id => { const v = document.getElementById(id).value.trim(); return v ? v.split(',').map(s => s.trim()).filter(Boolean) : []; };
+        const parseNum = id => { const v = document.getElementById(id).value.trim(); return v ? Number(v) : null; };
+        const rules = {};
+        const genres = parseList('ruleGenres'); if (genres.length) rules.genres = genres;
+        const excludeGenres = parseList('ruleExcludeGenres'); if (excludeGenres.length) rules.exclude_genres = excludeGenres;
+        const moods = parseList('ruleMoods'); if (moods.length) rules.moods = moods;
+        const performers = parseList('rulePerformers'); if (performers.length) rules.performers = performers;
+        const studios = parseList('ruleStudios'); if (studios.length) rules.studios = studios;
+        const keywords = parseList('ruleKeywords'); if (keywords.length) rules.keywords = keywords;
+        const contentRating = parseList('ruleContentRating'); if (contentRating.length) rules.content_rating = contentRating;
+        const yf = parseNum('ruleYearFrom'); if (yf !== null) rules.year_from = yf;
+        const yt = parseNum('ruleYearTo'); if (yt !== null) rules.year_to = yt;
+        const mr = parseNum('ruleMinRating'); if (mr !== null) rules.min_rating = mr;
+        const minD = parseNum('ruleMinDuration'); if (minD !== null) rules.min_duration = minD;
+        const maxD = parseNum('ruleMaxDuration'); if (maxD !== null) rules.max_duration = maxD;
+        const aw = parseNum('ruleAddedWithin'); if (aw !== null) rules.added_within = aw;
+        const sb = document.getElementById('ruleSortBy').value; if (sb) rules.sort_by = sb;
+        const so = document.getElementById('ruleSortOrder').value; if (so) rules.sort_order = so;
+        const maxR = parseNum('ruleMaxResults'); if (maxR !== null) rules.max_results = maxR;
+        return rules;
+    }
+
+    async function previewSmartRules() {
+        const rules = buildSmartRules();
+        if (Object.keys(rules).length === 0) { toast('Add at least one rule', 'error'); return; }
+        // Create a temporary smart collection to preview
+        const tempRules = JSON.stringify(rules);
+        const res = await api('POST', '/collections', { name: '__preview_temp_' + Date.now(), collection_type: 'smart', rules: tempRules, visibility: 'private' });
+        if (!res.success) { document.getElementById('smartPreviewResult').innerHTML = '<div class="smart-preview-count">Error creating preview</div>'; return; }
+        const tempId = res.data.id;
+        const evalRes = await api('GET', '/collections/' + tempId + '/evaluate');
+        await api('DELETE', '/collections/' + tempId);
+        const count = (evalRes.success && evalRes.data) ? evalRes.data.length : 0;
+        document.getElementById('smartPreviewResult').innerHTML = `<div class="smart-preview-count">${count} matching item${count !== 1 ? 's' : ''} found</div>`;
+    }
+
+    async function createCollection() {
+        const name = document.getElementById('collName').value;
+        const desc = document.getElementById('collDesc').value || null;
+        const vis = document.getElementById('collVis').value;
+        const sortMode = document.getElementById('collSortMode').value;
+        const collType = document.getElementById('collType').value;
+        const parentId = document.getElementById('collParentId').value || null;
+        if (!name) { toast('Name required', 'error'); return; }
+
+        const body = { name: name, description: desc, visibility: vis, collection_type: collType, item_sort_mode: sortMode };
+        if (parentId) body.parent_collection_id = parentId;
+
+        if (collType === 'smart') {
+            const rules = buildSmartRules();
+            if (Object.keys(rules).length === 0) { toast('Smart collections need at least one rule', 'error'); return; }
+            body.rules = JSON.stringify(rules);
+        }
+
+        const r = await api('POST', '/collections', body);
+        if (r.success) { toast('Collection created!'); loadCollectionsView(); }
+        else toast(r.error, 'error');
+    }
+
+    async function deleteCollection(id) {
+        if (!confirm('Delete this collection?')) return;
+        const d = await api('DELETE', '/collections/' + id);
+        if (d.success) { toast('Deleted'); loadCollectionsView(); }
+        else toast(d.error, 'error');
+    }
+
+    async function createCollectionTemplates() {
+        const r = await api('POST', '/collections/templates');
+        if (r.success) { toast(`${r.data.count} template collection(s) created`); loadCollectionsView(); }
+        else toast(r.error || 'Failed to create templates', 'error');
+    }
+
+    function formatRuntime(seconds) {
+        if (!seconds) return '0m';
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        return h > 0 ? h + 'h ' + m + 'm' : m + 'm';
+    }
+
+    async function loadCollectionDetailView(collId) {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = '<div class="spinner"></div>';
+
+        const [collRes, statsRes, childRes] = await Promise.all([
+            api('GET', '/collections/' + collId),
+            api('GET', '/collections/' + collId + '/stats'),
+            api('GET', '/collections/' + collId + '/children')
+        ]);
+
+        if (!collRes.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Collection not found</div></div>'; return; }
+        const coll = collRes.data;
+        const stats = (statsRes.success && statsRes.data) ? statsRes.data : null;
+        const children = (childRes.success && childRes.data) ? childRes.data : [];
+
+        // Build breadcrumb
+        let breadcrumb = `<div class="collection-breadcrumb">
+            <a onclick="navigate('collections')">Collections</a>
+            <span class="cb-sep">&#8250;</span>
+            <span>${coll.name}</span>
+        </div>`;
+
+        // Header
+        const poster = coll.poster_path
+            ? `<img src="${posterSrc(coll.poster_path, coll.updated_at)}" alt="">`
+            : '&#128218;';
+        const typeBadge = coll.collection_type === 'smart' ? '<span class="tag tag-purple">Smart</span>' : '<span class="tag tag-blue">Manual</span>';
+
+        let headerHTML = `<div class="collection-detail-header">
+            <div class="collection-detail-poster">${poster}</div>
+            <div class="collection-detail-info">
+                <h1>${coll.name}</h1>
+                ${coll.description ? '<div class="cd-desc">' + coll.description + '</div>' : ''}
+                <div class="cd-badges">
+                    ${typeBadge}
+                    <span class="tag tag-cyan">${coll.visibility}</span>
+                    <span class="tag tag-green">${coll.item_count || 0} items</span>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                    <button class="btn-secondary btn-small" onclick="showCreateCollection('${coll.id}')">+ Sub-collection</button>
+                    <button class="btn-danger btn-small" onclick="deleteCollection('${coll.id}');navigate('collections');">Delete</button>
+                </div>
+            </div>
+        </div>`;
+
+        // Stats bar
+        let statsHTML = '';
+        if (stats && stats.total_items > 0) {
+            const genreChips = (stats.genres || []).slice(0, 6).map(g => `<span class="tag">${g.name} (${g.count})</span>`).join('');
+            statsHTML = `<div class="collection-stats-bar">
+                <div class="collection-stat"><span class="cs-value">${stats.total_items}</span><span class="cs-label">Items</span></div>
+                <div class="collection-stat"><span class="cs-value">${formatRuntime(stats.total_runtime_seconds)}</span><span class="cs-label">Runtime</span></div>
+                <div class="collection-stat"><span class="cs-value">${stats.avg_rating ? stats.avg_rating.toFixed(1) : '-'}</span><span class="cs-label">Avg Rating</span></div>
+                ${genreChips ? '<div class="collection-stat-genres">' + genreChips + '</div>' : ''}
+            </div>`;
+        }
+
+        // Sub-collections
+        let childHTML = '';
+        if (children.length > 0) {
+            childHTML = `<div class="sub-collections-section"><h3>Sub-collections</h3>
+                <div class="collection-grid">${children.map(c => {
+                    const cp = c.poster_path ? `<img src="${posterSrc(c.poster_path, c.updated_at)}" alt="">` : '&#128218;';
+                    return `<div class="collection-card" onclick="navigate('collection','${c.id}')">
+                        <div class="cc-poster">${cp}</div>
+                        <div class="cc-info">
+                            <div class="cc-name">${c.name}</div>
+                            <div class="cc-meta">${c.item_count || 0} item${(c.item_count||0) !== 1 ? 's' : ''}</div>
+                        </div>
+                    </div>`;
+                }).join('')}</div></div>`;
+        }
+
+        // Sort bar
+        const sortOptions = ['custom','title','year','rating','added','duration'];
+        const sortLabels = { custom:'Custom', title:'Title', year:'Year', rating:'Rating', added:'Added', duration:'Duration' };
+        let sortHTML = `<div class="collection-sort-bar">
+            <div class="csb-left"><span style="color:var(--text-muted);font-size:var(--text-sm);">Sort:</span>
+                <select id="collDetailSort" onchange="changeCollectionSort('${coll.id}', this.value)">
+                    ${sortOptions.map(o => `<option value="${o}" ${coll.item_sort_mode === o ? 'selected' : ''}>${sortLabels[o]}</option>`).join('')}
+                </select>
+            </div>
+            <div class="csb-right">
+                <button class="btn-secondary btn-small" onclick="navigate('collections')">&#8592; Back</button>
+            </div>
+        </div>`;
+
+        // Items grid
+        let itemsHTML = '';
+        if (coll.collection_type === 'smart') {
+            // Evaluate smart collection
+            const evalRes = await api('GET', '/collections/' + collId + '/evaluate');
+            const items = (evalRes.success && evalRes.data) ? evalRes.data : [];
+            if (items.length > 0) {
+                itemsHTML = '<div class="media-grid">' + items.map(renderMediaCard).join('') + '</div>';
+            } else {
+                itemsHTML = '<div class="empty-state"><div class="empty-state-icon">&#128269;</div><div class="empty-state-title">No matches</div><p>No items match the current smart rules</p></div>';
+            }
+        } else {
+            // Manual collection items with joined metadata
+            const items = coll.items || [];
+            if (items.length > 0) {
+                itemsHTML = '<div class="media-grid">' + items.map(ci => {
+                    // Render collection item as a media card using joined metadata
+                    const dur = ci.duration_seconds ? Math.floor(ci.duration_seconds / 60) + 'min' : '';
+                    const year = ci.year || '';
+                    const res = ci.resolution || '';
+                    const meta = [year, dur, res].filter(Boolean).join(' \u00b7 ');
+                    const itemId = ci.media_item_id || ci.tv_show_id || ci.album_id || ci.book_id || '';
+                    const clickAction = ci.media_item_id ? `loadMediaDetail('${ci.media_item_id}')` : (ci.tv_show_id ? `loadShowView('${ci.tv_show_id}')` : '');
+                    return `<div class="media-card" tabindex="0" onclick="${clickAction}">
+                        <div class="media-poster" style="position:relative;">
+                            ${ci.poster_path ? '<img src="' + posterSrc(ci.poster_path, coll.updated_at) + '" alt="" loading="lazy">' : '&#127916;'}
+                            ${res ? '<span class="quality-badge">' + res + '</span>' : ''}
+                            <div class="media-card-hover-info">
+                                <div class="hover-title">${ci.title || 'Untitled'}</div>
+                                <div class="hover-meta">${ci.rating ? '<span class="hover-rating-badge">&#11088; ' + ci.rating.toFixed(1) + '</span>' : ''}<span>${meta}</span></div>
+                            </div>
+                            <div class="play-overlay"><div class="play-button">&#9654;</div></div>
+                        </div>
+                        <div class="media-info"><div class="media-title">${ci.title || 'Untitled'}</div><div class="media-meta">${meta}</div></div>
+                    </div>`;
+                }).join('') + '</div>';
+            } else {
+                itemsHTML = '<div class="empty-state"><div class="empty-state-icon">&#128218;</div><div class="empty-state-title">Empty collection</div><p>Add items from media detail pages</p></div>';
+            }
+        }
+
+        mc.innerHTML = breadcrumb + headerHTML + statsHTML + childHTML + sortHTML + itemsHTML;
+    }
+
+    async function changeCollectionSort(collId, sortMode) {
+        await api('PUT', '/collections/' + collId, { item_sort_mode: sortMode });
+        loadCollectionDetailView(collId);
+    }
 
     // ──── Performers ────
     async function loadPerformersView() {

@@ -288,10 +288,14 @@ func (s *Server) setupRoutes() {
 	// Collections
 	s.router.HandleFunc("GET /api/v1/collections", s.authMiddleware(s.handleListCollections, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/collections", s.authMiddleware(s.handleCreateCollection, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/collections/templates", s.authMiddleware(s.handleCreateCollectionTemplates, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/collections/{id}", s.authMiddleware(s.handleGetCollection, models.RoleUser))
 	s.router.HandleFunc("PUT /api/v1/collections/{id}", s.authMiddleware(s.handleUpdateCollection, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/collections/{id}/evaluate", s.authMiddleware(s.handleEvaluateSmartCollection, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/collections/{id}/stats", s.authMiddleware(s.handleGetCollectionStats, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/collections/{id}/children", s.authMiddleware(s.handleListCollectionChildren, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/collections/{id}/items", s.authMiddleware(s.handleAddCollectionItem, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/collections/{id}/items/bulk", s.authMiddleware(s.handleBulkAddCollectionItems, models.RoleUser))
 	s.router.HandleFunc("DELETE /api/v1/collections/{id}/items/{itemId}", s.authMiddleware(s.handleRemoveCollectionItem, models.RoleUser))
 	s.router.HandleFunc("DELETE /api/v1/collections/{id}", s.authMiddleware(s.handleDeleteCollection, models.RoleUser))
 
