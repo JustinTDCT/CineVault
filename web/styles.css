@@ -371,6 +371,7 @@ body {
     display: flex; align-items: center; padding: var(--sp-4) var(--content-padding);
     gap: var(--sp-4); min-height: var(--topbar-height);
     border-bottom: 1px solid rgba(0,217,255,0.08);
+    position: relative; z-index: 50;
 }
 .search-box {
     flex: 1; max-width: 500px; position: relative;
@@ -417,7 +418,7 @@ body {
 /* ── Task Indicator ── */
 .task-indicator { position: relative; width: 36px; height: 36px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .task-indicator.active { animation: task-pulse 2s ease infinite; }
-@keyframes task-pulse { 0%,100% { filter: drop-shadow(0 0 0 transparent); } 50% { filter: drop-shadow(0 0 8px rgba(0,217,255,0.3)); } }
+@keyframes task-pulse { 0%,100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 8px rgba(0,217,255,0.3); } }
 .task-ring { width: 36px; height: 36px; transform: rotate(-90deg); }
 .task-ring-bg { fill: none; stroke: rgba(0,217,255,0.15); stroke-width: 3; }
 .task-ring-fill { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset 0.4s ease; }
