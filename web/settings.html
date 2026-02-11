@@ -30,6 +30,9 @@
             <div class="settings-nav-item" data-section="transcoder">
                 <span class="settings-nav-icon">&#9881;</span><span>Transcoder</span>
             </div>
+            <div class="settings-nav-item" data-section="overlays">
+                <span class="settings-nav-icon">&#127912;</span><span>Overlays</span>
+            </div>
 
             <div class="settings-nav-label">Access</div>
             <div class="settings-nav-item" data-section="users">
@@ -134,6 +137,7 @@
             case 'video': loadVideoSection(); break;
             case 'skip': loadSkipSection(); break;
             case 'transcoder': loadTranscoderSection(); break;
+            case 'overlays': loadOverlaysSection(); break;
             case 'users': loadUsersSection(); break;
             case 'security': loadSecuritySection(); break;
             case 'experience': loadExperienceSection(); break;
@@ -192,6 +196,91 @@
             auto_play_next: document.getElementById('setPbAutoPlay').checked
         });
         if (d.success) toast('Playback settings saved!'); else toast(d.error, 'error');
+    }
+
+    // ──── Overlay Badges Section ────
+    async function loadOverlaysSection() {
+        const mc = document.getElementById('settingsContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Overlay Badges</h2></div>
+            <p class="section-desc">Choose which overlay badges to display on poster cards across all your devices.</p>
+            <div class="settings-grid" id="overlaysGrid"><div class="spinner"></div></div>`;
+
+        const res = await api('GET', '/settings/display');
+        const prefs = res.success && res.data ? res.data.overlay_settings : {
+            resolution_hdr: true, audio_codec: true, ratings: true,
+            content_rating: false, edition_type: true, source_type: false
+        };
+
+        document.getElementById('overlaysGrid').innerHTML = `
+            <div class="settings-card full-width">
+                <h3>Badge Categories</h3>
+                <p class="settings-helper" style="margin-bottom:20px;">Toggle which badge types appear on poster cards. Changes apply across all platforms (web, mobile, TV).</p>
+
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:14px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="ovResHdr" ${prefs.resolution_hdr?'checked':''}><span class="toggle-slider"></span></span>
+                        Resolution &amp; HDR
+                    </label>
+                </div>
+                <p class="settings-helper" style="margin-bottom:18px;margin-top:-8px;">Shows video quality badges like 4K HDR, 4K DV, 1080p, 720p.</p>
+
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:14px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="ovAudio" ${prefs.audio_codec?'checked':''}><span class="toggle-slider"></span></span>
+                        Audio Codec
+                    </label>
+                </div>
+                <p class="settings-helper" style="margin-bottom:18px;margin-top:-8px;">Shows audio format badges like Atmos, DTS:X, TrueHD, DTS-HD.</p>
+
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:14px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="ovRatings" ${prefs.ratings?'checked':''}><span class="toggle-slider"></span></span>
+                        Ratings
+                    </label>
+                </div>
+                <p class="settings-helper" style="margin-bottom:18px;margin-top:-8px;">Shows IMDb, Rotten Tomatoes, and Audience Score rating pills.</p>
+
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:14px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="ovContentRating" ${prefs.content_rating?'checked':''}><span class="toggle-slider"></span></span>
+                        Content Rating
+                    </label>
+                </div>
+                <p class="settings-helper" style="margin-bottom:18px;margin-top:-8px;">Shows age rating badges like PG-13, R, TV-MA.</p>
+
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:14px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="ovEdition" ${prefs.edition_type?'checked':''}><span class="toggle-slider"></span></span>
+                        Edition Type
+                    </label>
+                </div>
+                <p class="settings-helper" style="margin-bottom:18px;margin-top:-8px;">Shows edition badges like Director's Cut, IMAX, Extended, Multiple Editions.</p>
+
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:14px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="ovSource" ${prefs.source_type?'checked':''}><span class="toggle-slider"></span></span>
+                        Source Type
+                    </label>
+                </div>
+                <p class="settings-helper" style="margin-bottom:18px;margin-top:-8px;">Shows media source badges like REMUX, Blu-Ray, WEB-DL.</p>
+
+                <div style="text-align:right;margin-top:20px;">
+                    <button class="btn-primary" onclick="saveOverlayPrefs()">Save</button>
+                </div>
+            </div>`;
+    }
+
+    async function saveOverlayPrefs() {
+        const settings = {
+            resolution_hdr: document.getElementById('ovResHdr').checked,
+            audio_codec: document.getElementById('ovAudio').checked,
+            ratings: document.getElementById('ovRatings').checked,
+            content_rating: document.getElementById('ovContentRating').checked,
+            edition_type: document.getElementById('ovEdition').checked,
+            source_type: document.getElementById('ovSource').checked,
+        };
+        const d = await api('PUT', '/settings/display', { overlay_settings: settings });
+        if (d.success) toast('Overlay settings saved!'); else toast(d.error || 'Failed to save', 'error');
     }
 
     // ──── Transcoder Section ────

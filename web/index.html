@@ -500,6 +500,8 @@
     let currentUser = null;
     let allLibraries = [];
     let ws = null;
+    // Overlay badge display preferences (fetched from server per-user)
+    let overlayPrefs = { resolution_hdr: true, audio_codec: true, ratings: true, content_rating: false, edition_type: true, source_type: false };
     let hlsPlayer = null;
     let mpegtsPlayer = null;
     let currentMediaId = null;
@@ -527,6 +529,14 @@
     const MEDIA_LABELS = { movies:'Movies', adult_movies:'Adult Movies', tv_shows:'TV Shows', music:'Music', music_videos:'Music Videos', home_videos:'Home Videos', other_videos:'Other Videos', images:'Photos', audiobooks:'Audiobooks' };
     function mediaIcon(type) { return MEDIA_ICONS[type] || '&#128191;'; }
     function posterSrc(path, updatedAt) { if (!path) return ''; const ts = updatedAt ? new Date(updatedAt).getTime() : Date.now(); return path + '?v=' + ts; }
+    async function fetchOverlayPrefs() {
+        try {
+            const res = await api('GET', '/settings/display');
+            if (res.success && res.data && res.data.overlay_settings) {
+                overlayPrefs = res.data.overlay_settings;
+            }
+        } catch(e) { /* keep defaults */ }
+    }
     function formatDuration(sec) { if (!sec) return ''; const m = Math.floor(sec/60); const s = sec%60; return m + ':' + String(s).padStart(2,'0'); }
     function formatTime(sec) { const h = Math.floor(sec/3600); const m = Math.floor((sec%3600)/60); const s = Math.floor(sec%60); return (h>0?h+':':'')+String(m).padStart(h>0?2:1,'0')+':'+String(s).padStart(2,'0'); }
 
@@ -1002,6 +1012,9 @@
                     if (played) sessionStorage.setItem('intro_played', '1');
                 }
             }
+
+            // Fetch overlay display preferences
+            fetchOverlayPrefs();
 
             // If we haven't picked a profile yet this session (master user), show picker
             if (!sessionStorage.getItem('profile_picked') && !currentUser.parent_user_id) {
@@ -1643,13 +1656,136 @@
         searchTimeout = setTimeout(() => { if (e.target.value.length >= 2) loadSearchView(e.target.value); }, 400);
     });
 
+    // ──── Overlay Badge Helpers ────
+    const AUDIO_LABEL_MAP = {
+        'truehd atmos': 'Atmos', 'truehd_atmos': 'Atmos', 'eac3 atmos': 'Atmos', 'eac3_atmos': 'Atmos',
+        'dolby atmos': 'Atmos', 'atmos': 'Atmos',
+        'truehd': 'TrueHD', 'dts-hd ma': 'DTS-HD MA', 'dts-hd': 'DTS-HD', 'dtshd': 'DTS-HD',
+        'dts-x': 'DTS:X', 'dtsx': 'DTS:X', 'dts:x': 'DTS:X',
+        'dts': 'DTS', 'eac3': 'EAC3', 'ac3': 'AC3', 'aac': 'AAC',
+        'flac': 'FLAC', 'pcm': 'PCM', 'opus': 'Opus', 'vorbis': 'Vorbis', 'mp3': 'MP3',
+        'pcm_s16le': 'PCM', 'pcm_s24le': 'PCM', 'pcm_s32le': 'PCM',
+    };
+    const EDITION_LABEL_MAP = {
+        'directors_cut': "Director's Cut", 'directors cut': "Director's Cut",
+        'extended': 'Extended', 'theatrical': 'Theatrical', 'unrated': 'Unrated',
+        'imax': 'IMAX', 'remastered': 'Remastered', 'criterion': 'Criterion',
+        'uncut': 'Uncut', 'special': 'Special', '3d': '3D',
+    };
+    const SOURCE_LABEL_MAP = {
+        'remux': 'REMUX', 'bluray': 'Blu-Ray', 'blu-ray': 'Blu-Ray',
+        'web-dl': 'WEB-DL', 'webdl': 'WEB-DL', 'webrip': 'WEBRip', 'web': 'WEB',
+        'hdtv': 'HDTV', 'dvd': 'DVD', 'dvdrip': 'DVDRip', 'bdrip': 'BDRip',
+        'brrip': 'BRRip', 'sdtv': 'SDTV', 'cam': 'CAM',
+    };
+
+    function buildResolutionLabel(item) {
+        let res = (item.resolution || '').toUpperCase();
+        if (!res) return '';
+        // Normalize common forms
+        if (res === '2160P' || res === '2160' || res === 'UHD') res = '4K';
+        const hdr = item.hdr_format || item.dynamic_range || '';
+        if (!hdr || hdr === 'SDR' || hdr === 'sdr') return res;
+        const hdrUpper = hdr.toUpperCase();
+        if (hdrUpper.includes('DOLBY VISION') || hdrUpper === 'DV' || hdrUpper.includes('DOLBY_VISION')) return res + ' DV';
+        if (hdrUpper.includes('HDR10+') || hdrUpper === 'HDR10PLUS') return res + ' HDR10+';
+        if (hdrUpper.includes('HDR10') || hdrUpper.includes('HDR')) return res + ' HDR';
+        if (hdrUpper.includes('HLG')) return res + ' HLG';
+        return res + ' ' + hdr;
+    }
+
+    function mapAudioLabel(item) {
+        const raw = (item.audio_codec || '').toLowerCase().trim();
+        if (!raw) return '';
+        // Try exact match first, then partial
+        if (AUDIO_LABEL_MAP[raw]) return AUDIO_LABEL_MAP[raw];
+        for (const [key, label] of Object.entries(AUDIO_LABEL_MAP)) {
+            if (raw.includes(key)) return label;
+        }
+        // Append channel info if available
+        const base = raw.toUpperCase();
+        if (item.audio_channels && item.audio_channels > 2) return base + ' ' + item.audio_channels + '.1';
+        return base;
+    }
+
+    function mapEditionLabel(item) {
+        const raw = (item.edition_type || '').toLowerCase().trim();
+        if (!raw || raw === 'standard' || raw === 'unknown') return '';
+        if (EDITION_LABEL_MAP[raw]) return EDITION_LABEL_MAP[raw];
+        // Try partial match
+        for (const [key, label] of Object.entries(EDITION_LABEL_MAP)) {
+            if (raw.includes(key)) return label;
+        }
+        // Capitalize first letter as fallback
+        return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+
+    function mapSourceLabel(item) {
+        const raw = (item.source_type || '').toLowerCase().trim();
+        if (!raw) return '';
+        if (SOURCE_LABEL_MAP[raw]) return SOURCE_LABEL_MAP[raw];
+        for (const [key, label] of Object.entries(SOURCE_LABEL_MAP)) {
+            if (raw.includes(key)) return label;
+        }
+        return raw.toUpperCase();
+    }
+
+    function renderOverlayBadges(item) {
+        const p = overlayPrefs;
+        let trBadges = '', tlBadges = '', blBadges = '', brBadges = '';
+
+        // TOP-RIGHT: Resolution + HDR, Audio Codec
+        if (p.resolution_hdr) {
+            const resLabel = buildResolutionLabel(item);
+            if (resLabel) {
+                const isHDR = resLabel.includes('HDR') || resLabel.includes('DV') || resLabel.includes('HLG');
+                trBadges += `<span class="overlay-badge ${isHDR ? 'overlay-badge-res-hdr' : 'overlay-badge-res'}">${resLabel}</span>`;
+            }
+        }
+        if (p.audio_codec) {
+            const audioLabel = mapAudioLabel(item);
+            if (audioLabel) trBadges += `<span class="overlay-badge overlay-badge-audio">${audioLabel}</span>`;
+        }
+
+        // TOP-LEFT: Content Rating, Edition Type
+        if (p.content_rating && item.content_rating) {
+            tlBadges += `<span class="overlay-badge overlay-badge-content-rating">${item.content_rating}</span>`;
+        }
+        if (p.edition_type) {
+            const edLabel = mapEditionLabel(item);
+            if (edLabel) tlBadges += `<span class="overlay-badge overlay-badge-edition">${edLabel}</span>`;
+            if (item.edition_count && item.edition_count > 1) {
+                tlBadges += `<span class="overlay-badge overlay-badge-edition">${item.edition_count} Editions</span>`;
+            }
+        }
+
+        // BOTTOM-LEFT: Ratings
+        if (p.ratings) {
+            if (item.imdb_rating) blBadges += `<span class="overlay-badge overlay-badge-imdb">IMDb ${item.imdb_rating.toFixed(1)}</span>`;
+            if (item.rt_rating) blBadges += `<span class="overlay-badge overlay-badge-rt">RT ${item.rt_rating}%</span>`;
+            if (item.audience_score) blBadges += `<span class="overlay-badge overlay-badge-tmdb">AS ${item.audience_score}%</span>`;
+        }
+
+        // BOTTOM-RIGHT: Source Type
+        if (p.source_type) {
+            const srcLabel = mapSourceLabel(item);
+            if (srcLabel) brBadges += `<span class="overlay-badge overlay-badge-source">${srcLabel}</span>`;
+        }
+
+        let html = '';
+        if (trBadges) html += `<div class="overlay-zone-tr">${trBadges}</div>`;
+        if (tlBadges) html += `<div class="overlay-zone-tl">${tlBadges}</div>`;
+        if (blBadges) html += `<div class="overlay-zone-bl">${blBadges}</div>`;
+        if (brBadges) html += `<div class="overlay-zone-br">${brBadges}</div>`;
+        return html;
+    }
+
     // ──── Media Card (with expanded hover info) ────
     function renderMediaCard(item) {
         const dur = item.duration_seconds ? Math.floor(item.duration_seconds/60)+'min' : '';
         const year = item.year || '';
         const res = item.resolution || '';
         const meta = [year, dur, res].filter(Boolean).join(' \u00b7 ');
-        const edBadge = item.edition_count && item.edition_count > 1 ? `<span class="edition-badge">Multiple Editions</span>` : '';
         // Hover info extras
         const hoverMeta = [year, res, item.codec].filter(Boolean).join(' \u00b7 ');
         const ratingBadge = item.rating ? `<span class="hover-rating-badge">&#11088; ${item.rating.toFixed(1)}</span>` : '';
@@ -1660,8 +1796,7 @@
                     <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
                 </div>
                 ${item.poster_path ? '<img src="'+posterSrc(item.poster_path, item.updated_at)+'" alt="" loading="lazy">' : mediaIcon(item.media_type)}
-                ${res ? '<span class="quality-badge">'+res+'</span>' : ''}
-                ${edBadge}
+                ${renderOverlayBadges(item)}
                 <div class="media-card-hover-info">
                     <div class="hover-title">${item.title}</div>
                     <div class="hover-meta">${ratingBadge}<span>${hoverMeta}</span></div>
@@ -1751,6 +1886,7 @@
                     return `<div class="media-card" tabindex="0" onclick="playMedia('${item.id}','${(item.title||'').replace(/'/g,"\\'")}')">
                         <div class="media-poster" style="position:relative;">
                             ${item.poster_path ? '<img src="'+posterSrc(item.poster_path, item.updated_at)+'">' : mediaIcon(item.media_type||'movies')}
+                            ${renderOverlayBadges(item)}
                             <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
                             ${timeLeft ? '<span class="cw-time-left">'+timeLeft+'</span>' : ''}
                             <button class="cw-remove" onclick="event.stopPropagation();removeContinue('${item.id}')" title="Remove">&#10005;</button>
@@ -2675,8 +2811,9 @@
         const year = show.year || '';
         const desc = show.description ? show.description.substring(0, 100) + '...' : '';
         return `<div class="media-card" onclick="loadShowView('${show.id}')">
-            <div class="media-poster">
+            <div class="media-poster" style="position:relative;">
                 ${show.poster_path ? '<img src="'+posterSrc(show.poster_path, show.updated_at)+'" alt="">' : '&#128250;'}
+                ${renderOverlayBadges(show)}
             </div>
             <div class="media-info"><div class="media-title">${show.title}</div><div class="media-meta">${year}</div></div>
         </div>`;
@@ -2798,9 +2935,9 @@
                 const res = ep.resolution || '';
                 const meta = [epNum, dur, res].filter(Boolean).join(' \u00b7 ');
                 return `<div class="media-card" onclick="loadMediaDetail('${ep.id}')">
-                    <div class="media-poster">
+                    <div class="media-poster" style="position:relative;">
                         ${ep.poster_path ? '<img src="'+posterSrc(ep.poster_path, ep.updated_at)+'" alt="">' : '&#128250;'}
-                        ${res ? '<span class="quality-badge">'+res+'</span>' : ''}
+                        ${renderOverlayBadges(ep)}
                         <div class="play-overlay"><div class="play-button">&#9654;</div></div>
                     </div>
                     <div class="media-info"><div class="media-title">${ep.title}</div><div class="media-meta">${meta}</div></div>
@@ -3748,7 +3885,7 @@
                     return `<div class="media-card" tabindex="0" onclick="${clickAction}">
                         <div class="media-poster" style="position:relative;">
                             ${ci.poster_path ? '<img src="' + posterSrc(ci.poster_path, coll.updated_at) + '" alt="" loading="lazy">' : '&#127916;'}
-                            ${res ? '<span class="quality-badge">' + res + '</span>' : ''}
+                            ${renderOverlayBadges(ci)}
                             <button class="cw-remove" onclick="event.stopPropagation();removeFromCollection('${collId}','${ci.id}')" title="Remove from collection">&#10005;</button>
                             <div class="media-card-hover-info">
                                 <div class="hover-title">${ci.title || 'Untitled'}</div>

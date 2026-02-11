@@ -720,6 +720,16 @@ type UserPlaybackPreference struct {
 	UpdatedAt        time.Time    `json:"updated_at" db:"updated_at"`
 }
 
+// ──────────────────── Display Preferences ────────────────────
+
+type UserDisplayPreferences struct {
+	ID              uuid.UUID `json:"id" db:"id"`
+	UserID          uuid.UUID `json:"user_id" db:"user_id"`
+	OverlaySettings string    `json:"overlay_settings" db:"overlay_settings"`
+	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
+}
+
 // ──────────────────── Job History ────────────────────
 
 type JobStatus string

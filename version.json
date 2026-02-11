@@ -1,6 +1,6 @@
 {
-  "version": "0.51.04",
+  "version": "0.52.00",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Style Editions tab table to match UI theme."
+  "notes": "Add Kometa-style overlay badges on poster cards with per-user display preferences."
 }

@@ -791,6 +791,81 @@ body {
     box-shadow: 0 4px 12px rgba(168,85,247,0.4);
 }
 
+/* ── Overlay Badge System ── */
+.overlay-zone-tr {
+    position: absolute; top: 8px; right: 8px;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 4px; z-index: 3;
+    pointer-events: none;
+}
+.overlay-zone-tl {
+    position: absolute; top: 8px; left: 8px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 4px; z-index: 3;
+    pointer-events: none;
+}
+.overlay-zone-bl {
+    position: absolute; bottom: 8px; left: 8px;
+    display: flex; flex-direction: row; align-items: flex-end; gap: 4px; z-index: 3;
+    pointer-events: none;
+}
+.overlay-zone-br {
+    position: absolute; bottom: 8px; right: 8px;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 4px; z-index: 3;
+    pointer-events: none;
+}
+.overlay-badge {
+    padding: 2px 7px; border-radius: var(--radius-sm); font-size: 0.6rem; font-weight: 700;
+    line-height: 1.4; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.4px;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+/* Resolution badges */
+.overlay-badge-res {
+    background: linear-gradient(135deg, rgba(0,217,255,0.92) 0%, rgba(0,153,204,0.92) 100%);
+    color: var(--bg-primary);
+    box-shadow: 0 2px 8px rgba(0,217,255,0.35);
+}
+.overlay-badge-res-hdr {
+    background: linear-gradient(135deg, rgba(255,215,0,0.92) 0%, rgba(204,163,0,0.92) 100%);
+    color: var(--bg-primary);
+    box-shadow: 0 2px 8px rgba(255,215,0,0.35);
+}
+/* Audio codec badge */
+.overlay-badge-audio {
+    background: linear-gradient(135deg, rgba(168,85,247,0.88) 0%, rgba(124,58,237,0.88) 100%);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(168,85,247,0.35);
+}
+/* Rating badges */
+.overlay-badge-imdb {
+    background: rgba(245,197,24,0.92); color: #000;
+    box-shadow: 0 2px 8px rgba(245,197,24,0.3);
+}
+.overlay-badge-rt {
+    background: rgba(250,60,50,0.88); color: #fff;
+    box-shadow: 0 2px 8px rgba(250,60,50,0.3);
+}
+.overlay-badge-tmdb {
+    background: rgba(1,180,228,0.88); color: #fff;
+    box-shadow: 0 2px 8px rgba(1,180,228,0.3);
+}
+/* Content rating badge */
+.overlay-badge-content-rating {
+    background: rgba(10,25,41,0.8); color: #fff;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+/* Edition type badge */
+.overlay-badge-edition {
+    background: linear-gradient(135deg, rgba(168,85,247,0.88) 0%, rgba(124,58,237,0.88) 100%);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(168,85,247,0.3);
+}
+/* Source type badge */
+.overlay-badge-source {
+    background: rgba(10,25,41,0.75); color: var(--text-secondary);
+    border: 1px solid rgba(255,255,255,0.12);
+}
+/* Hide overlay zones on hover to avoid clashing with hover info */
+.media-card:hover .overlay-zone-bl { opacity: 0; transition: opacity 0.2s; }
+
 .progress-bar {
     position: absolute; bottom: 0; left: 0; right: 0; height: 5px;
     background: rgba(255,255,255,0.15); border-radius: 0 0 var(--radius-2xl) var(--radius-2xl); overflow: hidden;

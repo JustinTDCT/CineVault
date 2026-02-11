@@ -40,9 +40,10 @@ type Server struct {
 	studioRepo     *repository.StudioRepository
 	settingsRepo   *repository.SettingsRepository
 	jobRepo        *repository.JobRepository
-	segmentRepo      *repository.SegmentRepository
-	analyticsRepo    *repository.AnalyticsRepository
-	notificationRepo *repository.NotificationRepository
+	segmentRepo       *repository.SegmentRepository
+	analyticsRepo     *repository.AnalyticsRepository
+	notificationRepo  *repository.NotificationRepository
+	displayPrefsRepo  *repository.DisplayPreferencesRepository
 	detector         *detection.Detector
 	scanner          *scanner.Scanner
 	transcoder       *stream.Transcoder
@@ -128,6 +129,7 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 		segmentRepo:      segmentRepo,
 		analyticsRepo:    analyticsRepo,
 		notificationRepo: notificationRepo,
+		displayPrefsRepo: repository.NewDisplayPreferencesRepository(database.DB),
 		detector:         det,
 		scanner:          sc,
 		transcoder:       transcoder,
@@ -397,6 +399,10 @@ func (s *Server) setupRoutes() {
 	// Playback preferences
 	s.router.HandleFunc("GET /api/v1/settings/playback", s.authMiddleware(s.handleGetPlaybackPrefs, models.RoleUser))
 	s.router.HandleFunc("PUT /api/v1/settings/playback", s.authMiddleware(s.handleUpdatePlaybackPrefs, models.RoleUser))
+
+	// Display preferences (per user — overlay badges)
+	s.router.HandleFunc("GET /api/v1/settings/display", s.authMiddleware(s.handleGetDisplayPrefs, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/settings/display", s.authMiddleware(s.handleUpdateDisplayPrefs, models.RoleUser))
 
 	// Skip preferences (per user)
 	s.router.HandleFunc("GET /api/v1/settings/skip", s.authMiddleware(s.handleGetSkipPrefs, models.RoleUser))
