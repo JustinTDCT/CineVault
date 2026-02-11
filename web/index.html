@@ -1938,7 +1938,7 @@
                         <td><button class="edition-tab-play" onclick="playMedia('${e.media_item_id}','${e.title.replace(/'/g,"\\'")}')">&#9654; Play</button></td>
                     </tr>`;
                 }).join('');
-                tc.innerHTML = `<h4 style="color:#e5e5e5;margin:0 0 14px;">Editions (${eds.length})</h4>
+                tc.innerHTML = `<h4 class="edition-tab-heading">Editions (${eds.length})</h4>
                     <table class="edition-tab-table">
                         <thead><tr><th>Edition</th><th>Runtime</th><th>Resolution</th><th>Codec</th><th>Audio</th><th>Source</th><th>DR</th><th>Size</th><th></th></tr></thead>
                         <tbody>${rows}</tbody>

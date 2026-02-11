@@ -1,6 +1,6 @@
 {
-  "version": "0.51.03",
+  "version": "0.51.04",
   "phase": 3,
   "released": "2026-02-11",
-  "notes": "Style Remove and Play buttons to match UI theme."
+  "notes": "Style Editions tab table to match UI theme."
 }
