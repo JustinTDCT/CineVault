@@ -10,9 +10,7 @@
 services:
   # ── CineVault App ──
   cinevault:
-    build:
-      context: ..
-      dockerfile: Dockerfile
+    image: ghcr.io/justintdcct/cinevault:latest
     container_name: cinevault-app
     restart: unless-stopped
     depends_on:
