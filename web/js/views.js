@@ -1,5 +1,9 @@
 // ──── Navigation ────
+let _currentNav = { view: 'home', extra: null };
+let _detailReturnNav = null;
+
 function navigate(view, extra) {
+    _currentNav = { view, extra: extra || null };
     selectionState.clear();
     closeUserDropdown();
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -31,6 +35,22 @@ function navigate(view, extra) {
         case 'wrapped': loadWrappedView(extra); break;
         case 'requests': loadContentRequestsView(); break;
         case 'livetv': loadLiveTVView(); break;
+    }
+}
+
+// Navigate back from media detail to the originating view.
+// Falls back to the item's library if no prior context exists.
+function navigateBack(libraryId) {
+    if (_detailReturnNav && _detailReturnNav.view) {
+        const r = _detailReturnNav;
+        // Special cases that don't go through navigate()
+        if (r.view === '__series') {
+            loadSeriesDetail(r.extra);
+            return;
+        }
+        navigate(r.view, r.extra);
+    } else {
+        navigate('library', libraryId);
     }
 }
 
@@ -424,6 +444,8 @@ async function removeContinue(mediaId) {
 var _detailMediaId = null;
 
 async function loadMediaDetail(id) {
+    // Save return context so Back goes to where the user came from
+    _detailReturnNav = { ..._currentNav };
     _detailMediaId = id;
     const mc = document.getElementById('mainContent');
     mc.innerHTML = '<div class="spinner"></div> Loading...';
@@ -510,7 +532,7 @@ async function loadMediaDetail(id) {
                 </div>
             </div>
         </div>
-        <button class="btn-secondary" onclick="navigate('home')">&#8592; Back</button>`;
+        <button class="btn-secondary" onclick="navigateBack('${m.library_id}')">&#8592; Back</button>`;
 
     // Load genre tags for this item
     loadMediaGenreTags(id);
@@ -3568,6 +3590,7 @@ async function showLibrarySeries() {
 }
 
 async function loadSeriesDetail(seriesId) {
+    _currentNav = { view: '__series', extra: seriesId };
     const mc = document.getElementById('mainContent');
     mc.innerHTML = '<div class="spinner"></div> Loading...';
     const data = await api('GET', '/series/' + seriesId);
