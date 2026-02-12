@@ -24,44 +24,54 @@ func NewFingerprinter(ffmpegPath, tempDir string) *Fingerprinter {
 	return &Fingerprinter{ffmpegPath: ffmpegPath, tempDir: tempDir}
 }
 
+// hashSize is the width/height of the scaled frame for perceptual hashing.
+// 8x8 = 64 bits per frame.
+const hashSize = 8
+
+// bytesPerFrame is the number of bytes each 8x8 frame hash produces (64 bits = 8 bytes).
+const bytesPerFrame = (hashSize * hashSize) / 8
+
+// numSamplePoints is the number of keyframes to extract per video.
+const numSamplePoints = 7
+
+// totalHashBytes is the fixed hash size: 7 frames × 8 bytes = 56 bytes = 112 hex chars.
+// All hashes are exactly this length so Hamming distance comparison always works.
+const totalHashBytes = numSamplePoints * bytesPerFrame // 56
+
 // samplePoints defines the percentage offsets into the video where frames are extracted.
 // Using multiple sample points increases accuracy by comparing content at different positions.
-var samplePoints = []float64{0.05, 0.15, 0.30, 0.50, 0.70, 0.85, 0.95}
-
-// hashSize is the width/height of the scaled frame for perceptual hashing.
-// 8x8 = 64 bits per frame, 7 frames = 448 bits = 56 bytes = 112 hex chars.
-const hashSize = 8
+var samplePoints = [numSamplePoints]float64{0.05, 0.15, 0.30, 0.50, 0.70, 0.85, 0.95}
 
 // ComputePHash generates a composite perceptual hash from multiple keyframes
 // sampled at percentage-based positions throughout the video.
 // Each frame is scaled to 8x8 grayscale and produces a 64-bit average hash.
-// The per-frame hashes are concatenated into a single hex string that supports
-// meaningful Hamming distance comparison for duplicate detection.
+// The per-frame hashes are placed at fixed positions in a 56-byte buffer,
+// ensuring ALL hashes are exactly 112 hex chars regardless of extraction failures.
 func (f *Fingerprinter) ComputePHash(filePath string, durationSec int) (string, error) {
-	if durationSec <= 0 {
-		// Fallback: single frame at 1 second
-		return f.computeSingleFrameHash(filePath, 1)
-	}
-
 	tmpDir, err := os.MkdirTemp(f.tempDir, "phash-*")
 	if err != nil {
 		return "", err
 	}
 	defer os.RemoveAll(tmpDir)
 
-	var allHashBytes []byte
+	// Pre-allocate fixed-size buffer (zero-filled for failed frames)
+	hashBuf := make([]byte, totalHashBytes)
 	extracted := 0
 
 	for i, pct := range samplePoints {
-		seekSec := int(float64(durationSec) * pct)
-		if seekSec <= 0 {
-			seekSec = 1
-		}
-		if seekSec >= durationSec {
-			seekSec = durationSec - 1
-		}
-		if seekSec <= 0 {
-			seekSec = 1
+		// Compute seek position
+		seekSec := 1
+		if durationSec > 0 {
+			seekSec = int(float64(durationSec) * pct)
+			if seekSec <= 0 {
+				seekSec = 1
+			}
+			if seekSec >= durationSec {
+				seekSec = durationSec - 1
+			}
+			if seekSec <= 0 {
+				seekSec = 1
+			}
 		}
 
 		framePath := filepath.Join(tmpDir, fmt.Sprintf("frame_%d.jpg", i))
@@ -76,16 +86,17 @@ func (f *Fingerprinter) ComputePHash(filePath string, durationSec int) (string, 
 		)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			log.Printf("Frame extraction at %d%% (%ds) failed for %s: %s", int(pct*100), seekSec, filepath.Base(filePath), string(output))
-			continue
+			continue // slot stays zero-filled
 		}
 
 		frameBytes, err := hashFrame(framePath)
 		if err != nil {
 			log.Printf("Hash frame at %d%% failed for %s: %v", int(pct*100), filepath.Base(filePath), err)
-			continue
+			continue // slot stays zero-filled
 		}
 
-		allHashBytes = append(allHashBytes, frameBytes...)
+		// Copy into the correct fixed position in the buffer
+		copy(hashBuf[i*bytesPerFrame:], frameBytes)
 		extracted++
 	}
 
@@ -93,38 +104,7 @@ func (f *Fingerprinter) ComputePHash(filePath string, durationSec int) (string, 
 		return "", fmt.Errorf("no frames could be extracted from %s", filepath.Base(filePath))
 	}
 
-	return hex.EncodeToString(allHashBytes), nil
-}
-
-// computeSingleFrameHash is a fallback for very short videos or when duration is unknown.
-func (f *Fingerprinter) computeSingleFrameHash(filePath string, seekSec int) (string, error) {
-	tmpDir, err := os.MkdirTemp(f.tempDir, "phash-*")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(tmpDir)
-
-	framePath := filepath.Join(tmpDir, "frame.jpg")
-
-	cmd := exec.Command(f.ffmpegPath,
-		"-ss", fmt.Sprintf("%d", seekSec),
-		"-i", filePath,
-		"-vframes", "1",
-		"-vf", fmt.Sprintf("scale=%d:%d", hashSize, hashSize),
-		"-y",
-		framePath,
-	)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("Frame extraction failed: %s", string(output))
-		return "", fmt.Errorf("extract frame: %w", err)
-	}
-
-	frameBytes, err := hashFrame(framePath)
-	if err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(frameBytes), nil
+	return hex.EncodeToString(hashBuf), nil
 }
 
 // hashFrame opens a JPEG frame and returns the packed perceptual hash bytes.

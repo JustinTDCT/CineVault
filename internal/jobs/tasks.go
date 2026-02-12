@@ -268,7 +268,23 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 		return fmt.Errorf("list phashes: %w", err)
 	}
 
+	log.Printf("Phash: comparing %d hashed items for duplicates in library %s", len(allHashed), p.LibraryID)
+
+	// Log hash length distribution for debugging
+	lengthCounts := make(map[int]int)
+	for _, item := range allHashed {
+		if item.Phash != nil {
+			lengthCounts[len(*item.Phash)]++
+		}
+	}
+	for l, c := range lengthCounts {
+		log.Printf("Phash: %d items have hash length %d chars", c, l)
+	}
+
 	dupCount := 0
+	comparisons := 0
+	skippedLen := 0
+	skippedDur := 0
 	for i := 0; i < len(allHashed); i++ {
 		for j := i + 1; j < len(allHashed); j++ {
 			if allHashed[i].Phash == nil || allHashed[j].Phash == nil {
@@ -282,13 +298,22 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 				if durA > 0 && durB > 0 {
 					ratio := durA / durB
 					if ratio < 0.95 || ratio > 1.05 {
+						skippedDur++
 						continue
 					}
 				}
 			}
 
+			// Check hash length compatibility
+			if len(*allHashed[i].Phash) != len(*allHashed[j].Phash) {
+				skippedLen++
+				continue
+			}
+
+			comparisons++
 			sim := fingerprint.Similarity(*allHashed[i].Phash, *allHashed[j].Phash)
 			if sim >= 0.90 {
+				log.Printf("Phash: DUPLICATE FOUND sim=%.3f: %q <-> %q", sim, allHashed[i].FileName, allHashed[j].FileName)
 				if allHashed[i].DuplicateStatus != "addressed" {
 					_ = h.mediaRepo.UpdateDuplicateStatus(allHashed[i].ID, "potential")
 				}
@@ -300,7 +325,8 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 		}
 	}
 
-	log.Printf("Phash: found %d potential duplicate pairs in library %s", dupCount, p.LibraryID)
+	log.Printf("Phash: %d comparisons, %d skipped (duration), %d skipped (hash length mismatch), %d duplicate pairs found in library %s",
+		comparisons, skippedDur, skippedLen, dupCount, p.LibraryID)
 	if h.notifier != nil {
 		h.notifier.Broadcast("phash:complete", map[string]interface{}{
 			"library_id":      p.LibraryID,
