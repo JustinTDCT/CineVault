@@ -1,0 +1,794 @@
+const AVATAR_PRESETS = [
+    { id: 'av-lion',    emoji: '🦁', bg: ['#c0392b','#e74c3c'] },
+    { id: 'av-fox',     emoji: '🦊', bg: ['#d35400','#e67e22'] },
+    { id: 'av-panda',   emoji: '🐼', bg: ['#2c3e50','#34495e'] },
+    { id: 'av-unicorn', emoji: '🦄', bg: ['#8e44ad','#9b59b6'] },
+    { id: 'av-owl',     emoji: '🦉', bg: ['#795548','#8d6e63'] },
+    { id: 'av-rocket',  emoji: '🚀', bg: ['#1565c0','#1e88e5'] },
+    { id: 'av-star',    emoji: '⭐', bg: ['#f9a825','#fdd835'] },
+    { id: 'av-alien',   emoji: '👽', bg: ['#2e7d32','#43a047'] },
+    { id: 'av-robot',   emoji: '🤖', bg: ['#546e7a','#78909c'] },
+    { id: 'av-ghost',   emoji: '👻', bg: ['#5c6bc0','#7986cb'] },
+    { id: 'av-ninja',   emoji: '🥷', bg: ['#1a1a2e','#16213e'] },
+    { id: 'av-dragon',  emoji: '🐉', bg: ['#b71c1c','#c62828'] },
+    { id: 'av-cat',     emoji: '🐱', bg: ['#ff6f00','#ff8f00'] },
+    { id: 'av-dog',     emoji: '🐶', bg: ['#6d4c41','#8d6e63'] },
+    { id: 'av-bear',    emoji: '🐻', bg: ['#4e342e','#6d4c41'] },
+    { id: 'av-penguin', emoji: '🐧', bg: ['#263238','#37474f'] },
+];
+
+function getAvatarById(avatarId) {
+    return AVATAR_PRESETS.find(a => a.id === avatarId);
+}
+
+function renderAvatarCircle(avatarId, name, size) {
+    const sz = size || 40;
+    const av = getAvatarById(avatarId);
+    if (av) {
+        return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:linear-gradient(135deg,${av.bg[0]},${av.bg[1]});display:flex;align-items:center;justify-content:center;font-size:${sz*0.5}px;">${av.emoji}</div>`;
+    }
+    // Fallback: gradient with initial
+    const [bg, circle] = userColor(name || '?');
+    const initial = (name || '?')[0].toUpperCase();
+    return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:radial-gradient(circle,${circle},${bg});display:flex;align-items:center;justify-content:center;font-size:${sz*0.45}px;font-weight:600;color:rgba(255,255,255,0.85);">${initial}</div>`;
+}
+
+// ──────────────────── Profile Switching (Household) ────────────────────
+
+async function openProfileSwitch() {
+    closeUserDropdown();
+    const overlay = document.getElementById('profileSwitchOverlay');
+    const grid = document.getElementById('profileSwitchGrid');
+    overlay.classList.add('active');
+
+    try {
+        const data = await api('GET', '/household/profiles');
+        const profiles = (data.success && data.data) ? data.data : [];
+
+        grid.innerHTML = profiles.map(p => {
+            const dn = p.display_name || p.username;
+            const avatarHtml = renderAvatarCircle(p.avatar_id, dn, 80);
+            const isActive = currentUser && currentUser.id === p.id;
+            let badges = '';
+            if (p.is_kids_profile) badges += '<div class="profile-switch-badge kids">Kids</div>';
+            if (p.has_pin) badges += '<div class="profile-switch-badge" style="background:rgba(0,217,255,0.1);color:#00D9FF;border:1px solid rgba(0,217,255,0.2);">&#128274;</div>';
+            return `<div class="profile-switch-user ${p.is_kids_profile ? 'kids-profile' : ''} ${isActive ? 'active' : ''}"
+                onclick="switchToProfile('${p.id}', ${p.has_pin})"
+                style="${isActive ? 'border-color:rgba(0,217,255,0.5);box-shadow:0 0 20px rgba(0,217,255,0.2);' : ''}">
+                <div class="profile-switch-avatar">${avatarHtml}</div>
+                <div class="profile-switch-name">${dn}</div>
+                ${badges}
+            </div>`;
+        }).join('');
+    } catch {
+        grid.innerHTML = '<div style="color:#5a6a7f;">Could not load profiles</div>';
+    }
+}
+
+function closeProfileSwitch() {
+    document.getElementById('profileSwitchOverlay').classList.remove('active');
+}
+
+async function switchToProfile(profileId, hasPin) {
+    // Always require PIN if profile has one, even if re-selecting current profile
+    if (hasPin) {
+        showInlinePinEntry(profileId);
+        return;
+    }
+
+    // Same profile, no PIN — just mark picked and proceed
+    if (currentUser && currentUser.id === profileId) {
+        sessionStorage.setItem('profile_picked', '1');
+        closeProfileSwitch();
+        closeHouseholdPicker();
+        loadHomeView();
+        return;
+    }
+
+    // Different profile, no PIN — switch immediately
+    try {
+        const data = await api('POST', '/household/switch', { profile_id: profileId });
+        if (data.success) {
+            localStorage.setItem('token', data.data.token);
+            localStorage.setItem('user', JSON.stringify(data.data.user));
+            currentUser = data.data.user;
+            sessionStorage.setItem('profile_picked', '1');
+            closeProfileSwitch();
+            closeHouseholdPicker();
+            document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
+            updateTopBarAvatar();
+            loadHomeView();
+            loadSidebarCounts();
+        } else {
+            toast(data.error || 'Switch failed', 'error');
+        }
+    } catch {
+        toast('Connection error', 'error');
+    }
+}
+
+// Inline PIN entry for profile switch (used in both overlays)
+let inlinePinTarget = null;
+function showInlinePinEntry(profileId) {
+    inlinePinTarget = profileId;
+    // Determine which overlay is active
+    const hpOverlay = document.getElementById('householdPickerOverlay');
+    const psOverlay = document.getElementById('profileSwitchOverlay');
+    const isHousehold = hpOverlay.classList.contains('active');
+    const container = isHousehold ? hpOverlay : psOverlay;
+
+    let pinDiv = container.querySelector('.hp-pin-overlay');
+    if (!pinDiv) {
+        pinDiv = document.createElement('div');
+        pinDiv.className = 'hp-pin-overlay';
+        container.appendChild(pinDiv);
+    }
+
+    const pLen = pinLength || 4;
+    let boxesHtml = '';
+    for (let i = 0; i < pLen; i++) boxesHtml += `<div class="hp-pin-box${i===0?' active':''}" id="hpBox${i}"></div>`;
+
+    pinDiv.innerHTML = `
+        <div class="hp-pin-title">Enter PIN</div>
+        <div class="hp-pin-boxes">${boxesHtml}</div>
+        <div class="hp-pin-error" id="hpPinError"></div>
+        <div class="hp-pin-cancel" onclick="hideInlinePinEntry()">Cancel</div>
+    `;
+    pinDiv.style.display = 'flex';
+
+    // Click anywhere on the PIN overlay to re-focus the hidden input
+    pinDiv.onclick = function(e) {
+        if (!e.target.classList.contains('hp-pin-cancel')) {
+            document.getElementById('hpPinHidden').focus();
+        }
+    };
+
+    const hi = document.getElementById('hpPinHidden');
+    hi.value = '';
+    hi.maxLength = pLen;
+    setTimeout(() => hi.focus(), 100);
+}
+
+function hideInlinePinEntry() {
+    inlinePinTarget = null;
+    document.querySelectorAll('.hp-pin-overlay').forEach(el => el.style.display = 'none');
+}
+
+document.getElementById('hpPinHidden').addEventListener('input', async function() {
+    const pLen = pinLength || 4;
+    const val = this.value.replace(/\D/g, '').substring(0, pLen);
+    this.value = val;
+    for (let i = 0; i < pLen; i++) {
+        const box = document.getElementById('hpBox' + i);
+        if (!box) continue;
+        box.textContent = i < val.length ? '\u25CF' : '';
+        box.className = 'hp-pin-box' + (i < val.length ? ' filled' : '') + (i === val.length ? ' active' : '');
+    }
+    if (val.length === pLen && inlinePinTarget) {
+        const errEl = document.getElementById('hpPinError');
+        try {
+            const data = await api('POST', '/household/switch', { profile_id: inlinePinTarget, pin: val });
+            if (data.success) {
+                localStorage.setItem('token', data.data.token);
+                localStorage.setItem('user', JSON.stringify(data.data.user));
+                currentUser = data.data.user;
+                sessionStorage.setItem('profile_picked', '1');
+                hideInlinePinEntry();
+                closeProfileSwitch();
+                closeHouseholdPicker();
+                document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
+                updateTopBarAvatar();
+                loadHomeView();
+                loadSidebarCounts();
+            } else {
+                if (errEl) errEl.textContent = data.error || 'Invalid PIN';
+                this.value = '';
+                for (let i = 0; i < pLen; i++) {
+                    const box = document.getElementById('hpBox' + i);
+                    if (box) { box.textContent = ''; box.className = 'hp-pin-box' + (i===0?' active':''); }
+                }
+            }
+        } catch {
+            if (errEl) errEl.textContent = 'Connection error';
+            this.value = '';
+        }
+    }
+});
+
+document.getElementById('hpPinHidden').addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') hideInlinePinEntry();
+});
+
+// ──────────────────── Household "Who's Watching?" Picker ────────────────────
+
+async function showHouseholdPicker() {
+    try {
+        const data = await api('GET', '/household/profiles');
+        const profiles = (data.success && data.data) ? data.data : [];
+
+        // If only one profile (master with no sub-profiles), skip picker
+        if (profiles.length <= 1) {
+            sessionStorage.setItem('profile_picked', '1');
+            loadHomeView();
+            return;
+        }
+
+        const overlay = document.getElementById('householdPickerOverlay');
+        const grid = document.getElementById('householdPickerGrid');
+        overlay.classList.add('active');
+
+        grid.innerHTML = profiles.map(p => {
+            const dn = p.display_name || p.username;
+            const avatarHtml = renderAvatarCircle(p.avatar_id, dn, 72);
+            let badges = '';
+            if (p.is_kids_profile) badges += '<div class="household-picker-badge kids">Kids</div>';
+            if (p.has_pin) badges += '<div class="household-picker-badge pin">&#128274;</div>';
+            return `<div class="household-picker-card ${p.is_kids_profile ? 'kids-profile' : ''}"
+                onclick="switchToProfile('${p.id}', ${p.has_pin})">
+                <div class="household-picker-avatar">${avatarHtml}</div>
+                <div class="household-picker-name">${dn}</div>
+                ${badges}
+            </div>`;
+        }).join('');
+    } catch {
+        // On error, skip picker and go to home
+        sessionStorage.setItem('profile_picked', '1');
+        loadHomeView();
+    }
+}
+
+function closeHouseholdPicker() {
+    document.getElementById('householdPickerOverlay').classList.remove('active');
+}
+
+// ──────────────────── Manage Profiles ────────────────────
+
+let mpProfiles = [];
+let mpEditingId = null;
+
+async function openManageProfiles() {
+    closeUserDropdown();
+    const overlay = document.getElementById('manageProfilesOverlay');
+    overlay.classList.add('active');
+    await mpLoadProfiles();
+}
+
+function closeManageProfiles() {
+    document.getElementById('manageProfilesOverlay').classList.remove('active');
+    document.getElementById('mpFormArea').innerHTML = '';
+    mpEditingId = null;
+}
+
+async function mpLoadProfiles() {
+    try {
+        const data = await api('GET', '/household/profiles');
+        mpProfiles = (data.success && data.data) ? data.data : [];
+    } catch { mpProfiles = []; }
+
+    const list = document.getElementById('mpProfileList');
+    const subProfiles = mpProfiles.filter(p => !p.is_master);
+    const addBtn = document.getElementById('mpAddBtn');
+
+    list.innerHTML = subProfiles.map(p => {
+        const dn = p.display_name || p.username;
+        const avatarHtml = renderAvatarCircle(p.avatar_id, dn, 44);
+        let meta = [];
+        if (p.is_kids_profile) meta.push('Kids');
+        if (p.max_content_rating) meta.push('Max: ' + p.max_content_rating);
+        if (p.has_pin) meta.push('PIN set');
+        return `<div class="mp-profile-item">
+            <div class="mp-profile-avatar">${avatarHtml}</div>
+            <div class="mp-profile-info">
+                <div class="mp-profile-name">${dn}</div>
+                <div class="mp-profile-meta">${meta.join(' · ') || 'No restrictions'}</div>
+            </div>
+            <div class="mp-profile-actions">
+                <button class="mp-btn-edit" onclick="mpShowEditForm('${p.id}')">Edit</button>
+                <button class="mp-btn-delete" onclick="mpDeleteProfile('${p.id}', '${dn}')">Delete</button>
+            </div>
+        </div>`;
+    }).join('');
+
+    if (subProfiles.length === 0) {
+        list.innerHTML = '<div style="color:#5a6a7f;text-align:center;padding:16px;">No sub-profiles yet</div>';
+    }
+
+    addBtn.disabled = subProfiles.length >= 5;
+    addBtn.textContent = subProfiles.length >= 5 ? 'Maximum 5 profiles reached' : '+ Add Profile';
+}
+
+function mpRenderForm(title, profile) {
+    const isEdit = !!profile;
+    const selAvatar = (profile && profile.avatar_id) || '';
+    const selKids = profile ? profile.is_kids_profile : false;
+    const selRating = (profile && profile.max_content_rating) || '';
+    const selName = (profile && profile.display_name) || '';
+
+    const avatarOptions = AVATAR_PRESETS.map(a => {
+        const selected = a.id === selAvatar ? ' selected' : '';
+        return `<div class="mp-avatar-option${selected}" 
+            style="background:linear-gradient(135deg,${a.bg[0]},${a.bg[1]})"
+            onclick="mpSelectAvatar(this, '${a.id}')" data-avatar="${a.id}">
+            ${a.emoji}
+        </div>`;
+    }).join('');
+
+    return `<div class="mp-form">
+        <div class="mp-form-title">${title}</div>
+        <div class="form-group">
+            <label>Display Name</label>
+            <input type="text" id="mpFormName" value="${selName}" placeholder="e.g. Kids, Guest">
+        </div>
+        <div class="form-group">
+            <label>Avatar</label>
+            <div class="mp-avatar-grid">${avatarOptions}</div>
+            <input type="hidden" id="mpFormAvatar" value="${selAvatar}">
+        </div>
+        <div class="mp-form-row">
+            <div class="form-group">
+                <label>Max Content Rating</label>
+                <select id="mpFormRating">
+                    <option value="" ${selRating===''?'selected':''}>Unrestricted</option>
+                    <option value="G" ${selRating==='G'?'selected':''}>G</option>
+                    <option value="PG" ${selRating==='PG'?'selected':''}>PG</option>
+                    <option value="PG-13" ${selRating==='PG-13'?'selected':''}>PG-13</option>
+                    <option value="R" ${selRating==='R'?'selected':''}>R</option>
+                    <option value="NC-17" ${selRating==='NC-17'?'selected':''}>NC-17</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>PIN (optional)</label>
+                <input type="text" id="mpFormPin" inputmode="numeric" maxlength="10" placeholder="${isEdit ? 'Leave blank to keep' : '4-digit PIN'}">
+            </div>
+        </div>
+        <div class="form-group">
+            <div class="mp-kids-toggle">
+                <input type="checkbox" id="mpFormKids" ${selKids?'checked':''}>
+                <label for="mpFormKids" style="margin:0;color:#e5e5e5;font-size:0.85rem;">Kids Profile</label>
+            </div>
+        </div>
+        <div class="mp-form-actions">
+            <button class="mp-form-btn save" onclick="mpSaveForm()">${isEdit ? 'Save Changes' : 'Create Profile'}</button>
+            <button class="mp-form-btn cancel" onclick="mpCancelForm()">Cancel</button>
+        </div>
+    </div>`;
+}
+
+function mpSelectAvatar(el, avatarId) {
+    el.closest('.mp-avatar-grid').querySelectorAll('.mp-avatar-option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    document.getElementById('mpFormAvatar').value = avatarId;
+}
+
+function mpShowAddForm() {
+    mpEditingId = null;
+    document.getElementById('mpFormArea').innerHTML = mpRenderForm('Add Profile', null);
+}
+
+function mpShowEditForm(profileId) {
+    const p = mpProfiles.find(x => x.id === profileId);
+    if (!p) return;
+    mpEditingId = profileId;
+    document.getElementById('mpFormArea').innerHTML = mpRenderForm('Edit Profile', p);
+}
+
+function mpCancelForm() {
+    mpEditingId = null;
+    document.getElementById('mpFormArea').innerHTML = '';
+}
+
+async function mpSaveForm() {
+    const name = document.getElementById('mpFormName').value.trim();
+    const avatar = document.getElementById('mpFormAvatar').value || null;
+    const rating = document.getElementById('mpFormRating').value || null;
+    const pin = document.getElementById('mpFormPin').value.trim();
+    const kids = document.getElementById('mpFormKids').checked;
+
+    if (!name) { toast('Display name is required', 'error'); return; }
+
+    if (mpEditingId) {
+        // Update existing
+        const body = {
+            display_name: name,
+            avatar_id: avatar,
+            max_content_rating: rating,
+            is_kids_profile: kids,
+        };
+        if (pin !== '') body.pin = pin;
+        const data = await api('PUT', '/household/profiles/' + mpEditingId, body);
+        if (data.success) {
+            toast('Profile updated');
+            mpCancelForm();
+            await mpLoadProfiles();
+        } else {
+            toast(data.error || 'Update failed', 'error');
+        }
+    } else {
+        // Create new
+        const body = {
+            display_name: name,
+            avatar_id: avatar,
+            max_content_rating: rating,
+            is_kids_profile: kids,
+        };
+        if (pin !== '') body.pin = pin;
+        const data = await api('POST', '/household/profiles', body);
+        if (data.success) {
+            toast('Profile created');
+            mpCancelForm();
+            await mpLoadProfiles();
+        } else {
+            toast(data.error || 'Create failed', 'error');
+        }
+    }
+}
+
+async function mpDeleteProfile(profileId, name) {
+    if (!confirm('Delete profile "' + name + '"? This cannot be undone.')) return;
+    const data = await api('DELETE', '/household/profiles/' + profileId);
+    if (data.success) {
+        toast('Profile deleted');
+        await mpLoadProfiles();
+    } else {
+        toast(data.error || 'Delete failed', 'error');
+    }
+}
+
+// ──────────────────── Kids Mode Helpers ────────────────────
+function isKidsMode() {
+    return currentUser && currentUser.is_kids_profile === true;
+}
+
+function getUserMaxRating() {
+    return (currentUser && currentUser.max_content_rating) || null;
+}
+
+// ──────────────────── Updated Home View with Recommendations ────────────────────
+// Override loadHomeView to add recommendations and kids banner
+const _origLoadHomeView = loadHomeView;
+loadHomeView = async function() {
+    const mc = document.getElementById('mainContent');
+    const kidsMode = isKidsMode();
+
+    let kidsBannerHtml = '';
+    if (kidsMode) {
+        kidsBannerHtml = `
+            <div class="kids-banner">
+                <div class="kids-banner-icon">🧒</div>
+                <div>
+                    <div class="kids-banner-text">Kids Mode Active</div>
+                    <div class="kids-banner-sub">Content is filtered to ${getUserMaxRating() || 'PG'}-rated and below</div>
+                </div>
+            </div>`;
+    }
+
+    mc.innerHTML = `
+        ${kidsBannerHtml}
+        <div class="section-header"><h2 class="section-title">Continue Watching</h2></div>
+        <div id="continueRow" class="continue-row"></div>
+        <div class="section-header"><h2 class="section-title">Recommended For You</h2></div>
+        <div id="recoRow" class="reco-row"><div class="spinner"></div></div>
+        <div id="bywRows"></div>
+        <div class="section-header"><h2 class="section-title">Recently Added</h2></div>
+        <div class="media-grid" id="recentGrid"></div>`;
+
+    // Continue Watching
+    try {
+        const cw = await api('GET', '/watch/continue');
+        const row = document.getElementById('continueRow');
+        if (cw.success && cw.data && cw.data.length > 0) {
+            row.innerHTML = cw.data.map(wh => {
+                const item = wh.media_item || {};
+                const pct = wh.duration_seconds ? Math.round(wh.progress_seconds/wh.duration_seconds*100) : 0;
+                return `<div class="media-card" onclick="playMedia('${item.id}','${item.title||''}')">
+                    <div class="media-poster">
+                        ${item.poster_path ? '<img src="'+posterSrc(item.poster_path, item.updated_at)+'">' : mediaIcon(item.media_type||'movies')}
+                        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+                        <div class="play-overlay"><div class="play-button">&#9654;</div></div>
+                    </div>
+                    <div class="media-info"><div class="media-title">${item.title||'Unknown'}</div><div class="media-meta">${Math.floor(wh.progress_seconds/60)}/${wh.duration_seconds?Math.floor(wh.duration_seconds/60):'?'} min</div></div>
+                </div>`;
+            }).join('');
+        } else row.innerHTML = '<div style="color:#5a6a7f;padding:20px;">No items in progress</div>';
+    } catch { document.getElementById('continueRow').innerHTML = ''; }
+
+    // Recommendations
+    try {
+        const reco = await api('GET', '/recommendations');
+        const recoRow = document.getElementById('recoRow');
+        if (reco.success && reco.data && reco.data.length > 0) {
+            recoRow.innerHTML = reco.data.map(item => renderMediaCard(item)).join('');
+        } else {
+            recoRow.innerHTML = '<div style="color:#5a6a7f;padding:20px;">Watch more to get personalized recommendations</div>';
+        }
+    } catch { document.getElementById('recoRow').innerHTML = '<div style="color:#5a6a7f;padding:20px;">Recommendations unavailable</div>'; }
+
+    // Because You Watched
+    try {
+        const byw = await api('GET', '/recommendations/because-you-watched');
+        const bywContainer = document.getElementById('bywRows');
+        if (byw.success && byw.data && byw.data.length > 0) {
+            bywContainer.innerHTML = byw.data.map(row => {
+                const srcTitle = row.source_item ? row.source_item.title : 'Unknown';
+                const items = row.similar_items || [];
+                return `
+                    <div class="section-header"><h2 class="section-title">Because You Watched <em>${srcTitle}</em></h2></div>
+                    <div class="reco-row">${items.map(item => renderMediaCard(item)).join('')}</div>`;
+            }).join('');
+        }
+    } catch { /* silent fail for BYW */ }
+
+    // Recently Added
+    try {
+        const libs = await api('GET', '/libraries');
+        const grid = document.getElementById('recentGrid');
+        if (libs.success && libs.data) {
+            const homepageLibs = libs.data.filter(lib => lib.include_in_homepage !== false);
+            let allItems = [];
+            for (const lib of homepageLibs.slice(0,5)) {
+                const m = await api('GET', '/libraries/'+lib.id+'/media');
+                if (m.success && m.data && m.data.items) allItems = allItems.concat(m.data.items);
+            }
+            allItems.sort((a,b) => new Date(b.added_at) - new Date(a.added_at));
+            grid.innerHTML = allItems.length > 0
+                ? allItems.slice(0,12).map(renderMediaCard).join('')
+                : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">&#128253;</div><div class="empty-state-title">No media yet</div><p>Add libraries and scan them to populate your media</p><button class="btn-primary" style="margin-top:18px;" onclick="navigate('libraries')">Manage Libraries</button></div>`;
+        }
+    } catch {}
+};
+
+// ──────────────────── Updated Profile View ────────────────────
+const _origLoadProfileView = loadProfileView;
+loadProfileView = async function() {
+    const mc = document.getElementById('mainContent');
+    mc.innerHTML = `<div class="section-header"><h2 class="section-title">Edit Profile</h2></div><div class="settings-grid" id="profileGrid"><div class="spinner"></div></div>`;
+
+    const profileData = await api('GET', '/profile');
+    if (!profileData.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Failed to load profile</div></div>'; return; }
+    const u = profileData.data;
+
+    // Get profile settings
+    const settingsData = await api('GET', '/profile/settings');
+    const settings = settingsData.success ? settingsData.data : {};
+
+    // Get PIN length setting for validation
+    let profPinLength = 4;
+    try {
+        const flSettings = await api('GET', '/auth/fast-login/settings');
+        if (flSettings.success && flSettings.data) profPinLength = parseInt(flSettings.data.fast_login_pin_length) || 4;
+    } catch(e) {}
+
+    const currentRating = settings.max_content_rating || '';
+    const isKids = settings.is_kids_profile || false;
+    const currentAvatar = settings.avatar_id || '';
+
+    // Build avatar grid HTML
+    const avatarGridHtml = AVATAR_PRESETS.map(av => {
+        const sel = (currentAvatar === av.id) ? 'selected' : '';
+        return `<div class="avatar-option ${sel}" data-avatar="${av.id}" onclick="selectAvatar('${av.id}')"
+            style="background:linear-gradient(135deg,${av.bg[0]},${av.bg[1]});">${av.emoji}</div>`;
+    }).join('');
+
+    document.getElementById('profileGrid').innerHTML = `
+        <div class="settings-card">
+            <h3>Personal Information</h3>
+            <div class="form-group"><label>Username</label><input type="text" value="${u.username || ''}" disabled style="opacity:0.6;cursor:not-allowed;"></div>
+            <div class="edit-field-row">
+                <div class="form-group"><label>First Name</label><input type="text" id="profFirstName" value="${u.first_name || ''}" placeholder="Enter first name"></div>
+                <div class="form-group"><label>Last Name</label><input type="text" id="profLastName" value="${u.last_name || ''}" placeholder="Enter last name"></div>
+            </div>
+            <div class="form-group"><label>Email</label><input type="email" id="profEmail" value="${u.email || ''}" placeholder="Enter email"></div>
+            <button class="btn-primary" onclick="saveProfile()">Save Changes</button>
+        </div>
+        <div class="settings-card">
+            <h3>Profile Avatar</h3>
+            <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:12px;">Choose an avatar for your profile</p>
+            <div class="avatar-grid" id="avatarGrid">${avatarGridHtml}</div>
+            <input type="hidden" id="profAvatar" value="${currentAvatar}">
+            <button class="btn-primary" onclick="saveProfileSettings()" style="margin-top:8px;">Save Avatar</button>
+        </div>
+        <div class="settings-card">
+            <h3>Parental Controls</h3>
+            <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:12px;">Set a maximum content rating for this profile. Content above this rating will be hidden.</p>
+            <div class="form-group">
+                <label>Maximum Content Rating</label>
+                <select class="rating-select" id="profMaxRating">
+                    <option value="" ${!currentRating ? 'selected' : ''}>No Restriction</option>
+                    <option value="G" ${currentRating === 'G' ? 'selected' : ''}>G — General Audiences</option>
+                    <option value="PG" ${currentRating === 'PG' ? 'selected' : ''}>PG — Parental Guidance</option>
+                    <option value="PG-13" ${currentRating === 'PG-13' ? 'selected' : ''}>PG-13 — Parents Strongly Cautioned</option>
+                    <option value="R" ${currentRating === 'R' ? 'selected' : ''}>R — Restricted</option>
+                    <option value="NC-17" ${currentRating === 'NC-17' ? 'selected' : ''}>NC-17 — Adults Only</option>
+                </select>
+            </div>
+            <div class="kids-toggle-container">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="profKidsMode" ${isKids ? 'checked' : ''}>
+                    <span class="toggle-slider"></span>
+                </label>
+                <div>
+                    <div style="color:#e5e5e5;font-size:0.85rem;font-weight:600;">Kids Profile</div>
+                    <div style="color:#5a6a7f;font-size:0.78rem;">Enables simplified UI and auto-sets rating to PG when turned on</div>
+                </div>
+            </div>
+            <button class="btn-primary" onclick="saveProfileSettings()" style="margin-top:8px;">Save Parental Settings</button>
+        </div>
+        <div class="settings-card">
+            <h3>Security</h3>
+            <div class="form-group">
+                <label>New Password</label>
+                <input type="password" id="profPassword" placeholder="Leave blank to keep current">
+            </div>
+            <div class="form-group">
+                <label>Confirm Password</label>
+                <input type="password" id="profPasswordConfirm" placeholder="Confirm new password">
+            </div>
+            <button class="btn-primary" onclick="saveProfilePassword()" style="margin-bottom:20px;">Change Password</button>
+            <div style="border-top:1px solid rgba(0,217,255,0.1);padding-top:16px;margin-top:4px;">
+                <h3 style="margin-bottom:12px;">Login PIN</h3>
+                <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:12px;">Set a ${profPinLength}-digit PIN for quick login. ${u.has_pin ? '<span style="color:#51cf66;">PIN is set.</span>' : '<span style="color:#5a6a7f;">No PIN set.</span>'}</p>
+                <div class="form-group">
+                    <label>New PIN (${profPinLength} digits)</label>
+                    <input type="password" id="profPin" placeholder="Enter ${profPinLength}-digit PIN" maxlength="${profPinLength}" pattern="[0-9]*" inputmode="numeric">
+                </div>
+                <button class="btn-primary" onclick="saveProfilePin(${profPinLength})">Set PIN</button>
+            </div>
+        </div>
+        <div class="settings-card full-width">
+            <h3>Overlay Badges</h3>
+            <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:16px;">Choose which badges appear on poster cards. Syncs across all your devices.</p>
+            <div id="profileOverlayToggles"><div class="spinner"></div></div>
+        </div>`;
+
+    // Load overlay prefs into the profile card
+    loadProfileOverlayToggles();
+};
+
+async function loadProfileOverlayToggles() {
+    const res = await api('GET', '/settings/display');
+    const p = res.success && res.data ? res.data.overlay_settings : {
+        resolution_hdr: true, audio_codec: true, ratings: true,
+        content_rating: false, edition_type: true, source_type: false
+    };
+    document.getElementById('profileOverlayToggles').innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">
+            <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                <span class="toggle-switch"><input type="checkbox" id="profOvResHdr" ${p.resolution_hdr?'checked':''}><span class="toggle-slider"></span></span>
+                Resolution &amp; HDR
+            </label>
+            <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                <span class="toggle-switch"><input type="checkbox" id="profOvAudio" ${p.audio_codec?'checked':''}><span class="toggle-slider"></span></span>
+                Audio Codec
+            </label>
+            <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                <span class="toggle-switch"><input type="checkbox" id="profOvRatings" ${p.ratings?'checked':''}><span class="toggle-slider"></span></span>
+                Ratings
+            </label>
+            <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                <span class="toggle-switch"><input type="checkbox" id="profOvContentRating" ${p.content_rating?'checked':''}><span class="toggle-slider"></span></span>
+                Content Rating
+            </label>
+            <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                <span class="toggle-switch"><input type="checkbox" id="profOvEdition" ${p.edition_type?'checked':''}><span class="toggle-slider"></span></span>
+                Edition Type
+            </label>
+            <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                <span class="toggle-switch"><input type="checkbox" id="profOvSource" ${p.source_type?'checked':''}><span class="toggle-slider"></span></span>
+                Source Type
+            </label>
+        </div>
+        <button class="btn-primary" onclick="saveProfileOverlayPrefs()" style="margin-top:16px;">Save Overlay Settings</button>`;
+}
+
+async function saveProfileOverlayPrefs() {
+    const settings = {
+        resolution_hdr: document.getElementById('profOvResHdr').checked,
+        audio_codec: document.getElementById('profOvAudio').checked,
+        ratings: document.getElementById('profOvRatings').checked,
+        content_rating: document.getElementById('profOvContentRating').checked,
+        edition_type: document.getElementById('profOvEdition').checked,
+        source_type: document.getElementById('profOvSource').checked,
+    };
+    const d = await api('PUT', '/settings/display', { overlay_settings: settings });
+    if (d.success) {
+        overlayPrefs = settings;
+        toast('Overlay settings saved!');
+    } else toast(d.error || 'Failed to save', 'error');
+}
+
+function selectAvatar(avatarId) {
+    document.getElementById('profAvatar').value = avatarId;
+    document.querySelectorAll('.avatar-option').forEach(el => {
+        el.classList.toggle('selected', el.dataset.avatar === avatarId);
+    });
+}
+
+async function saveProfileSettings() {
+    const maxRating = document.getElementById('profMaxRating').value;
+    const isKids = document.getElementById('profKidsMode').checked;
+    const avatarId = document.getElementById('profAvatar').value;
+
+    const body = {
+        max_content_rating: maxRating || '',
+        is_kids_profile: isKids,
+        avatar_id: avatarId || null
+    };
+
+    const d = await api('PUT', '/profile/settings', body);
+    if (d.success) {
+        toast('Profile settings updated!');
+        // Update local user data and token
+        if (d.data.user) {
+            currentUser = { ...currentUser, ...d.data.user };
+            localStorage.setItem('user', JSON.stringify(currentUser));
+        }
+        if (d.data.token) {
+            localStorage.setItem('token', d.data.token);
+        }
+        // Update avatar in top bar
+        updateTopBarAvatar();
+    } else toast(d.error || 'Failed to update settings', 'error');
+}
+
+// ──────────────────── Top Bar Avatar Update ────────────────────
+function updateTopBarAvatar() {
+    const avatarEl = document.getElementById('userAvatar');
+    if (!currentUser) return;
+    const av = currentUser.avatar_id ? getAvatarById(currentUser.avatar_id) : null;
+    if (av) {
+        avatarEl.innerHTML = av.emoji;
+        avatarEl.style.background = `linear-gradient(135deg, ${av.bg[0]}, ${av.bg[1]})`;
+        avatarEl.style.fontSize = '1.2rem';
+    } else {
+        avatarEl.textContent = currentUser.username[0].toUpperCase();
+        avatarEl.style.background = 'linear-gradient(135deg, #00D9FF 0%, #0099CC 100%)';
+        avatarEl.style.fontSize = '0.95rem';
+    }
+}
+
+// Patch checkAuth to update avatar after login
+const _origCheckAuth = checkAuth;
+checkAuth = async function() {
+    await _origCheckAuth();
+    if (currentUser) updateTopBarAvatar();
+};
+
+// Update fast login to use avatars
+const _origFastLoginShowUsers = fastLoginShowUsers;
+fastLoginShowUsers = function() {
+    const grid = document.getElementById('fastLoginGrid');
+    const pinEntry = document.getElementById('pinEntryContainer');
+    const back = document.getElementById('fastLoginBack');
+    const title = document.getElementById('fastLoginTitle');
+    const fallback = document.querySelector('.fast-login-fallback');
+    grid.style.display = 'flex';
+    pinEntry.classList.remove('active');
+    back.style.display = 'none';
+    title.textContent = 'Who\'s Watching?';
+    if (fallback) fallback.style.display = '';
+    selectedFastUser = null;
+
+    grid.innerHTML = fastLoginUsers.map(u => {
+        const dn = u.display_name || u.username;
+        const avatarHtml = renderAvatarCircle(u.avatar_id, dn, 100);
+        let badges = '';
+        if (u.has_pin) badges += '<span class="fast-login-badge pin-set">&#128274;</span>';
+        if (u.role === 'admin') badges += '<span class="fast-login-badge admin">&#128081;</span>';
+        if (u.is_kids_profile) badges += '<span class="fast-login-badge" style="background:rgba(76,175,80,0.15);color:#4caf50;border:1px solid rgba(76,175,80,0.3);">Kids</span>';
+        return `<div class="fast-login-user ${u.is_kids_profile ? 'kids-profile' : ''}" onclick="fastLoginSelectUser('${u.id}')">
+            <div class="fast-login-avatar" style="background:none;">${avatarHtml}
+            <div class="fast-login-badges" style="position:absolute;bottom:-4px;left:0;right:0;display:flex;justify-content:center;gap:4px;">${badges}</div></div>
+            <div class="fast-login-user-name">${dn}</div></div>`;
+    }).join('');
+};
+
+// ──── Sidebar Toggle (Mobile) ────
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('active');
+}
+
+// ──── Phase 7: Engagement Functions ────
+

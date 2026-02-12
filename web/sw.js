@@ -1,11 +1,22 @@
 // CineVault Service Worker — static asset caching (P11-05)
-const CACHE_NAME = 'cinevault-v1';
+const CACHE_NAME = 'cinevault-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/styles.css',
   '/settings.html',
-  '/manifest.json'
+  '/manifest.json',
+  '/js/api.js',
+  '/js/utils.js',
+  '/js/auth.js',
+  '/js/views.js',
+  '/js/sync.js',
+  '/js/music.js',
+  '/js/extras.js',
+  '/js/player.js',
+  '/js/profiles.js',
+  '/js/engagement.js',
+  '/js/init.js'
 ];
 
 // Install: cache static assets

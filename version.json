@@ -1,6 +1,6 @@
 {
-  "version": "0.63.00",
+  "version": "0.63.01",
   "phase": 15,
   "released": "2026-02-12",
-  "notes": "Phase 14+15: DLNA/Chromecast & Specialty Content — DLNA/UPnP device description XML and content directory (library folder browsing, direct play URLs), Chromecast integration (Google Cast SDK, cast button, session tracking), scene markers on seek bar (bulk creation, click-to-jump), extended performer metadata (gender, birth_place, height, weight, ethnicity, hair/eye color, measurements, aliases, URLs), per-user streaming limits (max simultaneous streams enforced in stream handler), Live TV/DVR framework (tuner devices, EPG channels/programs, DVR recordings, EPG grid UI), anime support (AniList/AniDB IDs via external_ids JSONB, absolute episode numbering), comics/eBooks reader (reading progress tracking, page navigation, font size). DB migrations 035+036."
+  "notes": "Frontend refactor: Extracted 6,639 lines of inline JavaScript from index.html into 11 modular files (api.js, utils.js, auth.js, views.js, sync.js, music.js, extras.js, player.js, profiles.js, engagement.js, init.js). index.html reduced from 7,157 to 529 lines (HTML only). Service worker updated to cache new JS files."
 }
