@@ -1,6 +1,6 @@
 {
-  "version": "1.03.00",
+  "version": "1.03.01",
   "phase": 17,
   "released": "2026-02-12",
-  "notes": "Series detail now uses library-style media card grid with full overlay badges and edition grouping. Editions of the same movie are collapsed into a single card. Remove-from-series button appears on hover."
+  "notes": "Replaced all player control icons with uniform SVG icons. Play/pause and mute buttons now dynamically swap icons to reflect state."
 }

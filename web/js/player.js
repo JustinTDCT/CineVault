@@ -254,6 +254,8 @@ async function playMediaDirect(mediaId, title) {
         startDirectPlay(mediaId, token, 0);
     }
     video.addEventListener('timeupdate', updatePlayerUI);
+    video.addEventListener('play', updatePlayPauseIcon);
+    video.addEventListener('pause', updatePlayPauseIcon);
 }
 
 function playDirect(mediaId, title) {
@@ -269,6 +271,8 @@ function playDirect(mediaId, title) {
 
     startDirectPlay(mediaId, token, 0);
     video.addEventListener('timeupdate', updatePlayerUI);
+    video.addEventListener('play', updatePlayPauseIcon);
+    video.addEventListener('pause', updatePlayPauseIcon);
 }
 
 // Direct play for native browser formats (MP4/WebM) — supports range requests & seeking
@@ -441,9 +445,17 @@ function closePlayer() {
     const overlay = document.getElementById('playerOverlay');
     const video = document.getElementById('videoPlayer');
     overlay.classList.remove('active');
+    video.removeEventListener('play', updatePlayPauseIcon);
+    video.removeEventListener('pause', updatePlayPauseIcon);
     video.pause();
     video.src = '';
     video.style.display = '';
+    // Reset play/pause icon to play
+    const ppBtn = document.getElementById('playPauseBtn');
+    if(ppBtn) ppBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+    // Reset mute icon to unmuted
+    const mBtn = document.getElementById('muteBtn');
+    if(mBtn) mBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
     destroyPlayers();
 
     // Clean up trailer iframe
@@ -486,7 +498,19 @@ function updatePlayerUI() {
     checkSegments();
 }
 
-function togglePlay() { const v=document.getElementById('videoPlayer'); v.paused?v.play():v.pause(); }
+function togglePlay() {
+    const v=document.getElementById('videoPlayer');
+    v.paused?v.play():v.pause();
+    updatePlayPauseIcon();
+}
+function updatePlayPauseIcon() {
+    const v=document.getElementById('videoPlayer');
+    const btn=document.getElementById('playPauseBtn');
+    if(!v||!btn) return;
+    btn.innerHTML = v.paused
+        ? '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+}
 
 function skipBack() {
     const video = document.getElementById('videoPlayer');
@@ -510,7 +534,19 @@ function skipForward() {
     }
 }
 
-function toggleMute() { const v=document.getElementById('videoPlayer'); v.muted=!v.muted; }
+function toggleMute() {
+    const v=document.getElementById('videoPlayer');
+    v.muted=!v.muted;
+    updateMuteIcon();
+}
+function updateMuteIcon() {
+    const v=document.getElementById('videoPlayer');
+    const btn=document.getElementById('muteBtn');
+    if(!v||!btn) return;
+    btn.innerHTML = v.muted
+        ? '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
+}
 function toggleFullscreen() { const o=document.getElementById('playerOverlay'); document.fullscreenElement?document.exitFullscreen():o.requestFullscreen(); }
 
 // ── Subtitle Track Handling ──

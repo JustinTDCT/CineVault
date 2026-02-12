@@ -1250,7 +1250,8 @@ body {
 .chapter-marker[data-tooltip]:hover::after { content: attr(data-tooltip); position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.9); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; white-space: nowrap; pointer-events: none; z-index: 10; }
 
 .player-btns { display: flex; align-items: center; gap: 18px; }
-.player-btn { background: none; border: none; color: #fff; font-size: 1.3rem; cursor: pointer; padding: 6px; transition: color 0.2s; }
+.player-btn { background: none; border: none; color: #fff; font-size: 1.3rem; cursor: pointer; padding: 6px; transition: color 0.2s; display: flex; align-items: center; justify-content: center; }
+.player-btn svg { width: 20px; height: 20px; }
 .player-btn:hover { color: var(--accent); }
 .player-time { color: #ccc; font-size: var(--text-md); }
 .player-quality-select { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: var(--radius-md); color: #fff; padding: var(--sp-1) var(--sp-3); font-size: 0.8rem; margin-left: auto; }
