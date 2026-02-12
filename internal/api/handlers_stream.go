@@ -272,8 +272,22 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Determine playback type and record stream session
+	// Enforce per-user streaming limits (P15-04)
 	userID := s.getUserID(r)
+	if userID != uuid.Nil {
+		var maxStreams int
+		s.db.QueryRow("SELECT max_simultaneous_streams FROM users WHERE id = $1", userID).Scan(&maxStreams)
+		if maxStreams > 0 {
+			var activeCount int
+			s.db.QueryRow("SELECT COUNT(*) FROM stream_sessions WHERE user_id = $1 AND ended_at IS NULL", userID).Scan(&activeCount)
+			if activeCount >= maxStreams {
+				s.respondError(w, http.StatusTooManyRequests, "maximum simultaneous streams reached")
+				return
+			}
+		}
+	}
+
+	// Determine playback type and record stream session
 	playbackType := models.PlaybackDirectPlay
 	if stream.NeedsRemux(media.FilePath) {
 		playbackType = models.PlaybackDirectStream

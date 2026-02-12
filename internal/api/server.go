@@ -566,6 +566,46 @@ func (s *Server) setupRoutes() {
 	// Lyrics (P13-03)
 	s.router.HandleFunc("GET /api/v1/media/{id}/lyrics", s.authMiddleware(s.handleGetLyrics, models.RoleUser))
 
+	// DLNA (P14-01)
+	s.router.HandleFunc("GET /api/v1/dlna/config", s.authMiddleware(s.handleDLNAConfig, models.RoleAdmin))
+	s.router.HandleFunc("PUT /api/v1/dlna/config", s.authMiddleware(s.handleUpdateDLNAConfig, models.RoleAdmin))
+	s.router.HandleFunc("GET /dlna/description.xml", s.handleDLNADescription)
+	s.router.HandleFunc("GET /dlna/content/{id}", s.handleDLNAContent)
+
+	// Chromecast (P14-02)
+	s.router.HandleFunc("POST /api/v1/cast/session", s.authMiddleware(s.handleCastSession, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/cast/sessions", s.authMiddleware(s.handleListCastSessions, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/cast/{id}", s.authMiddleware(s.handleEndCastSession, models.RoleUser))
+
+	// Scene markers (P15-02)
+	s.router.HandleFunc("GET /api/v1/media/{id}/markers", s.authMiddleware(s.handleGetMarkers, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/media/{id}/markers", s.authMiddleware(s.handleCreateMarker, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/markers/{id}", s.authMiddleware(s.handleDeleteMarker, models.RoleAdmin))
+
+	// Extended performer metadata (P15-03)
+	s.router.HandleFunc("GET /api/v1/performers/{id}/extended", s.authMiddleware(s.handleGetPerformerExtended, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/performers/{id}/extended", s.authMiddleware(s.handleUpdatePerformerExtended, models.RoleAdmin))
+
+	// Per-user streaming limits (P15-04)
+	s.router.HandleFunc("GET /api/v1/admin/users/{id}/stream-limits", s.authMiddleware(s.handleGetStreamLimits, models.RoleAdmin))
+	s.router.HandleFunc("PUT /api/v1/admin/users/{id}/stream-limits", s.authMiddleware(s.handleUpdateStreamLimits, models.RoleAdmin))
+
+	// Live TV / DVR (P15-05)
+	s.router.HandleFunc("GET /api/v1/livetv/tuners", s.authMiddleware(s.handleListTuners, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/livetv/tuners", s.authMiddleware(s.handleCreateTuner, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/livetv/tuners/{id}", s.authMiddleware(s.handleDeleteTuner, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/livetv/epg", s.authMiddleware(s.handleGetEPG, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/livetv/recordings", s.authMiddleware(s.handleScheduleRecording, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/livetv/recordings", s.authMiddleware(s.handleListRecordings, models.RoleUser))
+
+	// Anime info (P15-01)
+	s.router.HandleFunc("GET /api/v1/media/{id}/anime-info", s.authMiddleware(s.handleGetAnimeInfo, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/media/{id}/anime-info", s.authMiddleware(s.handleUpdateAnimeInfo, models.RoleAdmin))
+
+	// Comics / eBooks reading progress (P15-06)
+	s.router.HandleFunc("GET /api/v1/media/{id}/reading-progress", s.authMiddleware(s.handleGetReadingProgress, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/media/{id}/reading-progress", s.authMiddleware(s.handleUpdateReadingProgress, models.RoleUser))
+
 	// Notifications (admin only)
 	s.router.HandleFunc("GET /api/v1/notifications/channels", s.authMiddleware(s.handleListNotificationChannels, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/notifications/channels", s.authMiddleware(s.handleCreateNotificationChannel, models.RoleAdmin))
