@@ -94,12 +94,22 @@ func (s *Server) recordSession(userID uuid.UUID, tokenString string, r *http.Req
 }
 
 // isSessionValid checks if a token has an active session (not revoked).
+// If no sessions exist at all (pre-session-tracking), all valid JWTs are allowed through.
 func (s *Server) isSessionValid(tokenString string) bool {
+	// First check if any sessions exist at all — if none, we're in backwards-compatible mode
+	var total int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM user_sessions").Scan(&total); err != nil {
+		return true // table missing or query error — allow
+	}
+	if total == 0 {
+		return true // no sessions tracked yet — allow all valid JWTs
+	}
+
 	tokenHash := hashToken(tokenString)
 	var exists bool
 	err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM user_sessions WHERE token_hash = $1)", tokenHash).Scan(&exists)
 	if err != nil {
-		return true // If sessions table doesn't exist or query fails, allow (backwards compatible)
+		return true
 	}
 	return exists
 }
