@@ -202,12 +202,6 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 
 	libID, _ := uuid.Parse(p.LibraryID)
 
-	// Clear any stale phash values that are the wrong length (old MD5 or variable-length format).
-	// The current algorithm always produces exactly 112 hex chars (7 frames × 8 bytes).
-	cleared, _ := h.mediaRepo.ClearStalePhashes(libID, 112)
-	if cleared > 0 {
-		log.Printf("Phash: cleared %d stale/incompatible phash values in library %s", cleared, p.LibraryID)
-	}
 
 	items, err := h.mediaRepo.ListItemsNeedingPhash(libID)
 	if err != nil {
