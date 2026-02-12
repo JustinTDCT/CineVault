@@ -3016,3 +3016,58 @@ body.is-offline::after {
     .reader-content { padding: 16px; }
     .reader-header { flex-wrap: wrap; }
 }
+
+/* ── Stream Limits Editor ── */
+.stream-limits-editor {
+    animation: slideDown 0.2s ease;
+}
+@keyframes slideDown {
+    from { opacity: 0; max-height: 0; }
+    to { opacity: 1; max-height: 200px; }
+}
+
+/* ── 2FA Setup ── */
+.twofa-setup { text-align: center; }
+.twofa-qr {
+    display: block; margin: 12px auto; max-width: 200px; border-radius: 8px;
+    border: 2px solid rgba(0,217,255,0.2); padding: 8px; background: #fff;
+}
+.twofa-secret {
+    display: inline-block; padding: 10px 20px; background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(0,217,255,0.2); border-radius: 8px; margin: 8px 0;
+    font-family: monospace; font-size: 1rem; color: #00D9FF; letter-spacing: 2px;
+}
+
+/* ── Connected Services ── */
+.connected-service-block { min-height: 32px; }
+
+/* ── Trakt Device Code ── */
+.trakt-auth-flow { text-align: center; padding: 8px 0; }
+.trakt-device-code {
+    display: inline-block; padding: 14px 28px; background: rgba(0,0,0,0.4);
+    border: 2px solid rgba(0,217,255,0.3); border-radius: 12px;
+    font-family: monospace; font-size: 1.8rem; font-weight: 700;
+    color: #00D9FF; letter-spacing: 6px; margin: 8px 0;
+}
+
+/* ── Home Layout ── */
+.home-layout-list { display: flex; flex-direction: column; gap: 4px; }
+.home-layout-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    background: rgba(0,0,0,0.2); border: 1px solid rgba(0,217,255,0.08);
+    border-radius: 8px; transition: background 0.2s;
+}
+.home-layout-item:hover { background: rgba(0,217,255,0.06); }
+.home-layout-handle {
+    color: #5a6a7f; font-size: 1rem; cursor: grab; user-select: none;
+    padding: 0 4px; line-height: 1;
+}
+.home-layout-label { color: #e5e5e5; font-size: 0.88rem; font-weight: 500; }
+
+/* ── Settings Nav Label (admin-only) ── */
+.admin-only-label { /* inherits settings-nav-label styles */ }
+
+@media (max-width: 768px) {
+    .stream-limits-editor .settings-card { margin-left: 0 !important; }
+    .trakt-device-code { font-size: 1.3rem; letter-spacing: 4px; padding: 10px 16px; }
+}

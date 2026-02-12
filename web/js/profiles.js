@@ -638,10 +638,36 @@ loadProfileView = async function() {
             <h3>Overlay Badges</h3>
             <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:16px;">Choose which badges appear on poster cards. Syncs across all your devices.</p>
             <div id="profileOverlayToggles"><div class="spinner"></div></div>
+        </div>
+        <div class="settings-card">
+            <h3>Two-Factor Authentication</h3>
+            <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:12px;">Add an extra layer of security with a TOTP authenticator app.</p>
+            <div id="prof2FAArea"><div class="spinner"></div></div>
+        </div>
+        <div class="settings-card">
+            <h3>Connected Services</h3>
+            <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:16px;">Link external accounts to sync your activity.</p>
+            <div class="connected-service-block" id="profTraktArea"><div class="spinner"></div></div>
+            <div class="connected-service-block" id="profLastfmArea" style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(0,217,255,0.1);"><div class="spinner"></div></div>
+        </div>
+        <div class="settings-card">
+            <h3>Home Layout</h3>
+            <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:12px;">Choose which sections appear on your home screen and their order.</p>
+            <div id="profHomeLayout"><div class="spinner"></div></div>
+        </div>
+        <div class="settings-card">
+            <h3>Playback Preferences</h3>
+            <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:12px;">Set your default streaming quality and playback behavior.</p>
+            <div id="profPlaybackPrefs"><div class="spinner"></div></div>
         </div>`;
 
-    // Load overlay prefs into the profile card
+    // Load all profile sub-sections
     loadProfileOverlayToggles();
+    loadProfile2FA();
+    loadProfileTrakt();
+    loadProfileLastfm();
+    loadProfileHomeLayout();
+    loadProfilePlaybackPrefs();
 };
 
 async function loadProfileOverlayToggles() {
@@ -788,6 +814,307 @@ function toggleSidebar() {
     const overlay = document.getElementById('sidebarOverlay');
     sidebar.classList.toggle('open');
     overlay.classList.toggle('active');
+}
+
+// ──── B1: Two-Factor Authentication ────
+async function loadProfile2FA() {
+    const area = document.getElementById('prof2FAArea');
+    if (!area) return;
+    try {
+        const res = await api('GET', '/auth/2fa/status');
+        const enabled = res.success && res.data && res.data.enabled;
+        if (enabled) {
+            area.innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+                    <span class="tag tag-green" style="font-size:0.85rem;">2FA Active</span>
+                    <span style="color:#8a9bae;font-size:0.82rem;">Your account is protected with two-factor authentication.</span>
+                </div>
+                <button class="btn-danger btn-small" onclick="disable2FA()">Disable 2FA</button>`;
+        } else {
+            area.innerHTML = `
+                <p style="color:#5a6a7f;font-size:0.82rem;margin-bottom:12px;">2FA is not enabled. Set it up with an authenticator app like Google Authenticator or Authy.</p>
+                <button class="btn-primary" onclick="setup2FA()">Enable 2FA</button>`;
+        }
+    } catch {
+        area.innerHTML = '<p style="color:#5a6a7f;">Could not load 2FA status</p>';
+    }
+}
+
+async function setup2FA() {
+    const area = document.getElementById('prof2FAArea');
+    area.innerHTML = '<div class="spinner"></div> Setting up...';
+    const res = await api('POST', '/auth/2fa/setup');
+    if (!res.success) { toast(res.error || 'Failed to start 2FA setup', 'error'); loadProfile2FA(); return; }
+    const data = res.data || {};
+    area.innerHTML = `
+        <div class="twofa-setup">
+            <p style="color:#e5e5e5;margin-bottom:12px;">Scan this QR code with your authenticator app:</p>
+            ${data.qr_code_url ? `<img src="${data.qr_code_url}" alt="2FA QR Code" class="twofa-qr">` :
+              data.secret ? `<div class="twofa-secret"><code>${data.secret}</code></div><p style="color:#5a6a7f;font-size:0.78rem;">Enter this code manually in your authenticator app.</p>` : ''}
+            <div class="form-group" style="margin-top:16px;">
+                <label>Verification Code</label>
+                <input type="text" id="twofa-verify-code" placeholder="Enter 6-digit code" maxlength="6" inputmode="numeric" style="max-width:200px;">
+            </div>
+            <div style="display:flex;gap:10px;">
+                <button class="btn-primary" onclick="verify2FA()">Verify &amp; Enable</button>
+                <button class="btn-secondary" onclick="loadProfile2FA()">Cancel</button>
+            </div>
+        </div>`;
+}
+
+async function verify2FA() {
+    const code = document.getElementById('twofa-verify-code')?.value;
+    if (!code || code.length < 6) { toast('Enter a 6-digit code', 'error'); return; }
+    const res = await api('POST', '/auth/2fa/verify', { code });
+    if (res.success) { toast('2FA enabled successfully!'); loadProfile2FA(); }
+    else toast(res.error || 'Invalid code', 'error');
+}
+
+async function disable2FA() {
+    if (!confirm('Disable two-factor authentication? Your account will be less secure.')) return;
+    const res = await api('DELETE', '/auth/2fa');
+    if (res.success) { toast('2FA disabled'); loadProfile2FA(); }
+    else toast(res.error || 'Failed to disable 2FA', 'error');
+}
+
+// ──── B2: Trakt.tv Connection ────
+let traktPollTimer = null;
+
+async function loadProfileTrakt() {
+    const area = document.getElementById('profTraktArea');
+    if (!area) return;
+    try {
+        const res = await api('GET', '/trakt/status');
+        const connected = res.success && res.data && res.data.connected;
+        if (connected) {
+            area.innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <strong style="color:#e5e5e5;">Trakt.tv</strong>
+                    <span class="tag tag-green">Connected</span>
+                    <span style="color:#8a9bae;font-size:0.82rem;">${res.data.username || ''}</span>
+                    <button class="btn-danger btn-small" style="margin-left:auto;" onclick="disconnectTrakt()">Disconnect</button>
+                </div>`;
+        } else {
+            area.innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <strong style="color:#e5e5e5;">Trakt.tv</strong>
+                    <span class="tag tag-cyan" style="opacity:0.5;">Not Connected</span>
+                    <button class="btn-primary btn-small" style="margin-left:auto;" onclick="connectTrakt()">Connect</button>
+                </div>
+                <p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">Sync your watch history, ratings, and watchlist with Trakt.tv</p>`;
+        }
+    } catch {
+        area.innerHTML = '<p style="color:#5a6a7f;">Could not load Trakt status</p>';
+    }
+}
+
+async function connectTrakt() {
+    const area = document.getElementById('profTraktArea');
+    area.innerHTML = '<div class="spinner"></div> Requesting device code...';
+    const res = await api('POST', '/trakt/device-code');
+    if (!res.success) { toast(res.error || 'Failed to get device code', 'error'); loadProfileTrakt(); return; }
+    const data = res.data || {};
+    area.innerHTML = `
+        <div class="trakt-auth-flow">
+            <p style="color:#e5e5e5;margin-bottom:8px;"><strong>Step 1:</strong> Go to <a href="${data.verification_url || 'https://trakt.tv/activate'}" target="_blank" style="color:#00D9FF;">${data.verification_url || 'trakt.tv/activate'}</a></p>
+            <p style="color:#e5e5e5;margin-bottom:12px;"><strong>Step 2:</strong> Enter this code:</p>
+            <div class="trakt-device-code">${data.user_code || '----'}</div>
+            <p style="color:#5a6a7f;font-size:0.78rem;margin-top:8px;">Waiting for authorization... This will update automatically.</p>
+            <button class="btn-secondary btn-small" style="margin-top:8px;" onclick="cancelTraktAuth()">Cancel</button>
+        </div>`;
+
+    // Poll for activation
+    if (traktPollTimer) clearInterval(traktPollTimer);
+    const interval = (data.interval || 5) * 1000;
+    const deviceCode = data.device_code;
+    traktPollTimer = setInterval(async () => {
+        const poll = await api('POST', '/trakt/activate', { device_code: deviceCode });
+        if (poll.success && poll.data && poll.data.connected) {
+            clearInterval(traktPollTimer); traktPollTimer = null;
+            toast('Trakt.tv connected!');
+            loadProfileTrakt();
+        }
+    }, interval);
+}
+
+function cancelTraktAuth() {
+    if (traktPollTimer) { clearInterval(traktPollTimer); traktPollTimer = null; }
+    loadProfileTrakt();
+}
+
+async function disconnectTrakt() {
+    if (!confirm('Disconnect Trakt.tv? Scrobbling will stop.')) return;
+    const res = await api('DELETE', '/trakt/disconnect');
+    if (res.success) { toast('Trakt.tv disconnected'); loadProfileTrakt(); }
+    else toast(res.error || 'Failed to disconnect', 'error');
+}
+
+// ──── B3: Last.fm Connection ────
+async function loadProfileLastfm() {
+    const area = document.getElementById('profLastfmArea');
+    if (!area) return;
+    try {
+        const res = await api('GET', '/lastfm/status');
+        const connected = res.success && res.data && res.data.connected;
+        if (connected) {
+            area.innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <strong style="color:#e5e5e5;">Last.fm</strong>
+                    <span class="tag tag-green">Connected</span>
+                    <span style="color:#8a9bae;font-size:0.82rem;">${res.data.username || ''}</span>
+                    <button class="btn-danger btn-small" style="margin-left:auto;" onclick="disconnectLastfm()">Disconnect</button>
+                </div>`;
+        } else {
+            area.innerHTML = `
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+                    <strong style="color:#e5e5e5;">Last.fm</strong>
+                    <span class="tag tag-cyan" style="opacity:0.5;">Not Connected</span>
+                </div>
+                <p style="color:#5a6a7f;font-size:0.78rem;margin-bottom:10px;">Scrobble your music listens to Last.fm</p>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <input type="text" id="lastfmUser" placeholder="Last.fm username" style="flex:1;min-width:120px;">
+                    <input type="password" id="lastfmPass" placeholder="Last.fm password" style="flex:1;min-width:120px;">
+                    <button class="btn-primary btn-small" onclick="connectLastfm()">Connect</button>
+                </div>`;
+        }
+    } catch {
+        area.innerHTML = '<p style="color:#5a6a7f;">Could not load Last.fm status</p>';
+    }
+}
+
+async function connectLastfm() {
+    const username = document.getElementById('lastfmUser')?.value;
+    const password = document.getElementById('lastfmPass')?.value;
+    if (!username || !password) { toast('Username and password required', 'error'); return; }
+    const res = await api('POST', '/lastfm/connect', { username, password });
+    if (res.success) { toast('Last.fm connected!'); loadProfileLastfm(); }
+    else toast(res.error || 'Connection failed', 'error');
+}
+
+async function disconnectLastfm() {
+    if (!confirm('Disconnect Last.fm? Scrobbling will stop.')) return;
+    const res = await api('DELETE', '/lastfm/disconnect');
+    if (res.success) { toast('Last.fm disconnected'); loadProfileLastfm(); }
+    else toast(res.error || 'Failed to disconnect', 'error');
+}
+
+// ──── B4: Home Layout Customization ────
+const HOME_SECTIONS = [
+    { key: 'continue_watching', label: 'Continue Watching' },
+    { key: 'recommendations', label: 'Recommended For You' },
+    { key: 'because_you_watched', label: 'Because You Watched' },
+    { key: 'on_deck', label: 'On Deck' },
+    { key: 'trending', label: 'Trending' },
+    { key: 'watchlist', label: 'Watchlist' },
+    { key: 'favorites', label: 'Favorites' },
+    { key: 'recently_added', label: 'Recently Added' },
+];
+
+async function loadProfileHomeLayout() {
+    const area = document.getElementById('profHomeLayout');
+    if (!area) return;
+    try {
+        const res = await api('GET', '/settings/home-layout');
+        const layout = res.success && res.data ? res.data : {};
+        const order = layout.order || HOME_SECTIONS.map(s => s.key);
+        const hidden = layout.hidden || [];
+
+        // Merge: show sections in saved order, then any new ones
+        const ordered = [];
+        order.forEach(key => {
+            const sec = HOME_SECTIONS.find(s => s.key === key);
+            if (sec) ordered.push(sec);
+        });
+        HOME_SECTIONS.forEach(sec => {
+            if (!ordered.find(s => s.key === sec.key)) ordered.push(sec);
+        });
+
+        area.innerHTML = `
+            <div class="home-layout-list" id="homeLayoutList">
+                ${ordered.map((sec, idx) => {
+                    const isHidden = hidden.includes(sec.key);
+                    return `<div class="home-layout-item" data-key="${sec.key}">
+                        <span class="home-layout-handle" title="Drag to reorder">&#9776;</span>
+                        <span class="home-layout-label">${sec.label}</span>
+                        <label class="toggle-label" style="margin:0;margin-left:auto;">
+                            <span class="toggle-switch"><input type="checkbox" class="hl-toggle" data-key="${sec.key}" ${!isHidden?'checked':''}><span class="toggle-slider"></span></span>
+                        </label>
+                        <button class="btn-secondary btn-small" onclick="moveHomeSection('${sec.key}',-1)" ${idx===0?'disabled':''}>&uarr;</button>
+                        <button class="btn-secondary btn-small" onclick="moveHomeSection('${sec.key}',1)" ${idx===ordered.length-1?'disabled':''}>&darr;</button>
+                    </div>`;
+                }).join('')}
+            </div>
+            <button class="btn-primary" onclick="saveHomeLayout()" style="margin-top:12px;">Save Layout</button>`;
+    } catch {
+        area.innerHTML = '<p style="color:#5a6a7f;">Could not load home layout</p>';
+    }
+}
+
+function moveHomeSection(key, direction) {
+    const list = document.getElementById('homeLayoutList');
+    const items = [...list.children];
+    const idx = items.findIndex(el => el.dataset.key === key);
+    if (idx < 0) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= items.length) return;
+    if (direction < 0) list.insertBefore(items[idx], items[newIdx]);
+    else list.insertBefore(items[newIdx], items[idx]);
+    // Update button states
+    const updated = [...list.children];
+    updated.forEach((el, i) => {
+        const btns = el.querySelectorAll('button');
+        if (btns[0]) btns[0].disabled = (i === 0);
+        if (btns[1]) btns[1].disabled = (i === updated.length - 1);
+    });
+}
+
+async function saveHomeLayout() {
+    const list = document.getElementById('homeLayoutList');
+    const items = [...list.children];
+    const order = items.map(el => el.dataset.key);
+    const hidden = [];
+    items.forEach(el => {
+        const cb = el.querySelector('.hl-toggle');
+        if (cb && !cb.checked) hidden.push(el.dataset.key);
+    });
+    const d = await api('PUT', '/settings/home-layout', { order, hidden });
+    if (d.success) toast('Home layout saved!'); else toast(d.error || 'Failed to save', 'error');
+}
+
+// ──── B5: Default Streaming Quality ────
+async function loadProfilePlaybackPrefs() {
+    const area = document.getElementById('profPlaybackPrefs');
+    if (!area) return;
+    try {
+        const res = await api('GET', '/settings/playback');
+        const p = res.success ? (res.data || {}) : {};
+        area.innerHTML = `
+            <div class="form-group"><label>Default Quality</label>
+                <select id="profDefQuality">
+                    <option value="auto" ${(!p.preferred_quality||p.preferred_quality==='auto')?'selected':''}>Auto (Recommended)</option>
+                    <option value="360p" ${p.preferred_quality==='360p'?'selected':''}>360p</option>
+                    <option value="480p" ${p.preferred_quality==='480p'?'selected':''}>480p</option>
+                    <option value="720p" ${p.preferred_quality==='720p'?'selected':''}>720p</option>
+                    <option value="1080p" ${p.preferred_quality==='1080p'?'selected':''}>1080p</option>
+                    <option value="4K" ${p.preferred_quality==='4K'?'selected':''}>4K</option>
+                </select>
+            </div>
+            <div class="form-group"><label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
+                <span class="toggle-switch"><input type="checkbox" id="profAutoPlay" ${p.auto_play_next?'checked':''}><span class="toggle-slider"></span></span>
+                Auto-play next episode
+            </label></div>
+            <button class="btn-primary" onclick="saveProfilePlayback()">Save Playback Preferences</button>`;
+    } catch {
+        area.innerHTML = '<p style="color:#5a6a7f;">Could not load playback preferences</p>';
+    }
+}
+
+async function saveProfilePlayback() {
+    const d = await api('PUT', '/settings/playback', {
+        preferred_quality: document.getElementById('profDefQuality').value,
+        auto_play_next: document.getElementById('profAutoPlay').checked
+    });
+    if (d.success) toast('Playback preferences saved!'); else toast(d.error || 'Failed to save', 'error');
 }
 
 // ──── Phase 7: Engagement Functions ────

@@ -1,5 +1,5 @@
 // CineVault Service Worker — static asset caching (P11-05)
-const CACHE_NAME = 'cinevault-v2';
+const CACHE_NAME = 'cinevault-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
