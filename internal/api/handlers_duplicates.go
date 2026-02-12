@@ -170,14 +170,16 @@ func (s *Server) handleResolveDuplicate(w http.ResponseWriter, r *http.Request) 
 	mediaID, _ := uuid.Parse(req.MediaID)
 	partnerID, _ := uuid.Parse(req.PartnerID)
 
-	// Record the decision
+	// Record the decision (media_id_b is nullable when deleting a single item)
 	decision := &models.DuplicateDecision{
 		ID:       uuid.New(),
 		MediaIDA: &mediaID,
-		MediaIDB: &partnerID,
 		Action:   req.Action,
 		DecidedBy: &userID,
 		Notes:    req.Notes,
+	}
+	if partnerID != uuid.Nil {
+		decision.MediaIDB = &partnerID
 	}
 
 	insertQuery := `INSERT INTO duplicate_decisions (id, media_id_a, media_id_b, action, decided_by, notes)
