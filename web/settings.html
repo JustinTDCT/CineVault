@@ -1229,8 +1229,9 @@
         const br = item.bitrate ? (item.bitrate / 1000).toFixed(0) + ' kbps' : 'N/A';
         const fp = item.file_path || item.file_name || '';
         const sp = fp.length > 80 ? '...' + fp.slice(-77) : fp;
-        const poster = item.poster_path
-            ? '<img src="/api/v1/images/poster?path=' + encodeURIComponent(item.poster_path) + (item.updated_at ? '&t=' + new Date(item.updated_at).getTime() : '') + '">'
+        const posterUrl = item.poster_path ? item.poster_path + '?v=' + (item.updated_at ? new Date(item.updated_at).getTime() : Date.now()) : '';
+        const poster = posterUrl
+            ? '<img src="' + posterUrl + '">'
             : '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:1.5rem;color:#4a5568;">&#127910;</div>';
         const badge = similarity != null
             ? '<span class="dup-badge-match">' + Math.round(similarity * 100) + '% Similar</span>'
