@@ -438,6 +438,25 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /api/v1/analytics/library-health", s.authMiddleware(s.handleAnalyticsLibraryHealth, models.RoleAdmin))
 	s.router.HandleFunc("GET /api/v1/analytics/trends", s.authMiddleware(s.handleAnalyticsTrends, models.RoleAdmin))
 
+	// Profile stats
+	s.router.HandleFunc("GET /api/v1/profile/stats", s.authMiddleware(s.handleGetProfileStats, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/profile/wrapped/{year}", s.authMiddleware(s.handleGetWrapped, models.RoleUser))
+
+	// Discovery
+	s.router.HandleFunc("GET /api/v1/discover/trending", s.authMiddleware(s.handleGetTrending, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/discover/genre/{slug}", s.authMiddleware(s.handleGetGenreHub, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/discover/decade/{year}", s.authMiddleware(s.handleGetDecadeHub, models.RoleUser))
+
+	// Home page layout customization
+	s.router.HandleFunc("GET /api/v1/settings/home-layout", s.authMiddleware(s.handleGetHomeLayout, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/settings/home-layout", s.authMiddleware(s.handleUpdateHomeLayout, models.RoleUser))
+
+	// Content requests
+	s.router.HandleFunc("POST /api/v1/requests", s.authMiddleware(s.handleCreateContentRequest, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/requests", s.authMiddleware(s.handleListContentRequests, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/requests/mine", s.authMiddleware(s.handleGetMyContentRequests, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/requests/{id}", s.authMiddleware(s.handleResolveContentRequest, models.RoleAdmin))
+
 	// Watchlist
 	s.router.HandleFunc("GET /api/v1/watchlist", s.authMiddleware(s.handleGetWatchlist, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/watchlist/{itemId}", s.authMiddleware(s.handleAddToWatchlist, models.RoleUser))

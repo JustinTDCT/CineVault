@@ -1,6 +1,6 @@
 {
-  "version": "0.56.00",
-  "phase": 7,
+  "version": "0.57.00",
+  "phase": 9,
   "released": "2026-02-12",
-  "notes": "Phase 7: User engagement — Watchlist (add/remove/check API, home row), User ratings (5-star half-precision, community average), Favorites (toggle, home section), Playlists (CRUD, items, reorder, shuffle/repeat modes), Play queue (client-side localStorage, addNext/queue), On Deck (next unwatched episode per show), Saved filter presets (per-library or global), Shuffle play helper. DB migration 029."
+  "notes": "Phase 9: Discovery & engagement — Per-user stats page (watch time, heatmap, top genres/shows/performers), Trending section on home (7-day activity), Home page layout customization (user_home_layout table, show/hide/reorder rows), Genre hub pages (cross-library grid, sub-genre tags), Decade hub pages, Video preview on hover (FFmpeg clip extraction, 4-point WebM), Year-in-Review Wrapped (annual summary), Content request system (user submit, admin approve/deny/fulfill). DB migration 030."
 }

@@ -68,6 +68,8 @@
                         <div class="user-dropdown-item" onclick="openProfileSwitch()"><span class="ud-icon">&#128101;</span> Switch Profile</div>
                         <div class="user-dropdown-item" id="udManageProfilesItem" onclick="openManageProfiles()" style="display:none;"><span class="ud-icon">&#128100;</span> Manage Profiles</div>
                         <div class="user-dropdown-item" onclick="navigate('profile')"><span class="ud-icon">&#9998;</span> Edit Profile</div>
+                        <div class="user-dropdown-item" onclick="navigate('stats')"><span class="ud-icon">&#128202;</span> My Stats</div>
+                        <div class="user-dropdown-item" onclick="navigate('requests')"><span class="ud-icon">&#128269;</span> Content Requests</div>
                         <div class="user-dropdown-item" id="udSettingsItem" onclick="window.location.href='settings.html'" style="display:none;"><span class="ud-icon">&#9881;</span> Settings</div>
                         <div class="user-dropdown-sep"></div>
                         <div class="user-dropdown-item logout" id="udLogoutBtn"><span class="ud-icon">&#128682;</span> Logout</div>
@@ -1676,6 +1678,11 @@
             case 'admin': window.location.href = 'settings.html#admin'; break;
             case 'analytics': window.location.href = 'settings.html#analytics'; break;
             case 'profile': loadProfileView(); break;
+            case 'stats': loadStatsView(); break;
+            case 'genre': loadGenreHubView(extra); break;
+            case 'decade': loadDecadeHubView(extra); break;
+            case 'wrapped': loadWrappedView(extra); break;
+            case 'requests': loadContentRequestsView(); break;
         }
     }
 
@@ -1826,7 +1833,8 @@
         const ratingBadge = item.rating ? `<span class="hover-rating-badge">&#11088; ${item.rating.toFixed(1)}</span>` : '';
         const isSelected = selectionState.selectedIds.has(item.id);
         const sortAttr = item.sort_title ? ' data-sort-title="'+item.sort_title.replace(/"/g,'&amp;quot;')+'"' : '';
-        return `<div class="media-card${isSelected ? ' selected' : ''}" tabindex="0" data-media-id="${item.id}"${sortAttr} onclick="handleCardClick('${item.id}', event)">
+        const previewAttr = item.preview_path ? ' data-preview="'+item.preview_path+'"' : '';
+        return `<div class="media-card${isSelected ? ' selected' : ''}" tabindex="0" data-media-id="${item.id}"${sortAttr}${previewAttr} onclick="handleCardClick('${item.id}', event)">
             <div class="media-poster" style="position:relative;">
                 <div class="select-checkbox" onclick="handleCheckboxClick('${item.id}', event)">
                     <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -1842,6 +1850,32 @@
             <div class="media-info"><div class="media-title">${item.title}</div><div class="media-meta">${meta}</div></div>
         </div>`;
     }
+
+    // Video preview on hover (P9-05)
+    let previewTimer = null;
+    document.addEventListener('mouseenter', (e) => {
+        const card = e.target.closest('.media-card[data-preview]');
+        if (!card) return;
+        previewTimer = setTimeout(() => {
+            const poster = card.querySelector('.media-poster');
+            if (poster.querySelector('.preview-overlay')) return;
+            const video = document.createElement('video');
+            video.src = card.dataset.preview;
+            video.muted = true; video.autoplay = true; video.loop = true;
+            video.playsInline = true;
+            const overlay = document.createElement('div');
+            overlay.className = 'preview-overlay';
+            overlay.appendChild(video);
+            poster.appendChild(overlay);
+        }, 1000);
+    }, true);
+    document.addEventListener('mouseleave', (e) => {
+        const card = e.target.closest('.media-card[data-preview]');
+        if (!card) return;
+        clearTimeout(previewTimer);
+        const overlay = card.querySelector('.preview-overlay');
+        if (overlay) { const v = overlay.querySelector('video'); if (v) v.pause(); overlay.remove(); }
+    }, true);
 
     // ──── Skeleton Generators ────
     function skeletonCards(count) {
@@ -1943,10 +1977,11 @@
         }
 
         // Fetch engagement rows concurrently
-        const [onDeckResult, watchlistResult, favoritesResult] = await Promise.allSettled([
+        const [onDeckResult, watchlistResult, favoritesResult, trendingResult] = await Promise.allSettled([
             api('GET', '/watch/on-deck'),
             api('GET', '/watchlist'),
-            api('GET', '/favorites')
+            api('GET', '/favorites'),
+            api('GET', '/discover/trending')
         ]);
 
         // Build On Deck row
@@ -1998,12 +2033,29 @@
             }
         } catch {}
 
+        // Build Trending row
+        let trendingHTML = '';
+        try {
+            const tr = trendingResult.status === 'fulfilled' ? trendingResult.value : { success: false };
+            if (tr.success && tr.data && tr.data.length > 0) {
+                trendingHTML = `<div class="engagement-row">
+                    <div class="engagement-row-header"><span class="engagement-row-title">&#128293; Trending This Week</span><span class="engagement-row-count">${tr.data.length} items</span></div>
+                    <div class="media-grid">${tr.data.slice(0,12).map(item => `<div class="media-card" onclick="loadMediaDetail('${item.id}')">
+                        <div class="media-poster">${item.poster_path ? '<img src="'+posterSrc(item.poster_path, item.updated_at)+'">' : mediaIcon(item.media_type||'movies')}
+                            <span class="trending-badge">${item.unique_viewers} viewer${item.unique_viewers !== 1 ? 's' : ''}</span>
+                        </div>
+                        <div class="media-info"><div class="media-title">${item.title}</div><div class="media-meta">${item.year||''} ${item.rating?'&#11088; '+item.rating.toFixed(1):''}</div></div>
+                    </div>`).join('')}</div></div>`;
+            }
+        } catch {}
+
         // Render everything at once (no flicker)
         mc.innerHTML = `
             ${heroHTML}
             <div class="section-header"><h2 class="section-title">Continue Watching</h2></div>
             <div id="continueRow" class="continue-row">${cwHTML}</div>
             ${onDeckHTML}
+            ${trendingHTML}
             ${watchlistHTML}
             ${favoritesHTML}
             <div class="section-header"><h2 class="section-title">Recently Added</h2></div>
@@ -4986,6 +5038,125 @@
             document.getElementById('profPin').value = '';
             loadProfileView(); // Refresh to show updated PIN status
         } else toast(d.error || 'Failed to set PIN', 'error');
+    }
+
+    // ──── User Stats View (P9-01) ────
+    async function loadStatsView() {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = '<div class="section-header"><h2 class="section-title">My Stats</h2></div><div id="statsContainer"><div class="spinner"></div></div>';
+        const res = await api('GET', '/profile/stats');
+        if (!res.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Failed to load stats</div></div>'; return; }
+        const s = res.data;
+        const genres = (s.top_genres || []).map(g => `<span class="genre-chip">${g.name} <small>(${g.count})</small></span>`).join('');
+        const shows = (s.top_shows || []).map(sh => `<li>${sh.title} <small>(${sh.count} episodes)</small></li>`).join('');
+        const perfs = (s.top_performers || []).map(p => `<li>${p.name} <small>(${p.count})</small></li>`).join('');
+        // Build heatmap (simple text-based)
+        const heatmap = s.heatmap || [];
+        const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        let heatHTML = '<div class="stats-heatmap">';
+        for (let d = 0; d < 7; d++) {
+            heatHTML += `<div class="heatmap-row"><span class="heatmap-day">${dayNames[d]}</span>`;
+            for (let h = 0; h < 24; h++) {
+                const cell = heatmap.find(c => c.day === d && c.hour === h);
+                const count = cell ? cell.count : 0;
+                const intensity = Math.min(count / 5, 1);
+                heatHTML += `<div class="heatmap-cell" style="opacity:${0.15 + intensity * 0.85}" title="${dayNames[d]} ${h}:00 - ${count} plays"></div>`;
+            }
+            heatHTML += '</div>';
+        }
+        heatHTML += '</div>';
+        document.getElementById('statsContainer').innerHTML = `
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-value">${s.total_watch_hours || 0}</div><div class="stat-label">Hours Watched</div></div>
+                <div class="stat-card"><div class="stat-value">${s.items_watched || 0}</div><div class="stat-label">Items Completed</div></div>
+                <div class="stat-card"><div class="stat-value">${s.average_rating ? s.average_rating.toFixed(1) : '—'}</div><div class="stat-label">Avg Rating Given</div></div>
+            </div>
+            <div class="stats-section"><h3>Top Genres</h3><div class="genre-chips">${genres || '<span style="color:#5a6a7f">No data yet</span>'}</div></div>
+            <div class="stats-section"><h3>Top Shows</h3><ol class="stats-list">${shows || '<li style="color:#5a6a7f">No data yet</li>'}</ol></div>
+            <div class="stats-section"><h3>Top Performers</h3><ol class="stats-list">${perfs || '<li style="color:#5a6a7f">No data yet</li>'}</ol></div>
+            <div class="stats-section"><h3>Watch Activity Heatmap</h3>${heatHTML}</div>
+            <div style="text-align:center;margin-top:24px;"><button class="btn-secondary" onclick="navigate('wrapped','${new Date().getFullYear()}')">View ${new Date().getFullYear()} Wrapped</button></div>`;
+    }
+
+    // ──── Genre Hub View (P9-04) ────
+    async function loadGenreHubView(slug) {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+        const res = await api('GET', '/discover/genre/' + encodeURIComponent(slug));
+        if (!res.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Genre not found</div></div>'; return; }
+        const g = res.data;
+        const subGenres = (g.sub_genres || []).map(sg => `<span class="genre-chip" onclick="navigate('genre','${sg}')">${sg}</span>`).join('');
+        mc.innerHTML = `
+            <div class="genre-hub-header"><h1 class="genre-hub-title">${g.name}</h1><span class="genre-hub-count">${g.total} items</span></div>
+            ${subGenres ? '<div class="genre-sub-tags">' + subGenres + '</div>' : ''}
+            <div class="media-grid">${g.items.map(renderMediaCard).join('')}</div>`;
+    }
+
+    // ──── Decade Hub View (P9-04) ────
+    async function loadDecadeHubView(year) {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+        const res = await api('GET', '/discover/decade/' + encodeURIComponent(year));
+        if (!res.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">No items found</div></div>'; return; }
+        const d = res.data;
+        mc.innerHTML = `
+            <div class="genre-hub-header"><h1 class="genre-hub-title">The ${d.decade}</h1><span class="genre-hub-count">${d.total} items</span></div>
+            <div class="media-grid">${d.items.map(renderMediaCard).join('')}</div>`;
+    }
+
+    // ──── Year-in-Review / Wrapped (P9-06) ────
+    async function loadWrappedView(year) {
+        if (!year) year = new Date().getFullYear();
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = '<div class="spinner" style="margin:60px auto;"></div>';
+        const res = await api('GET', '/profile/wrapped/' + year);
+        if (!res.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">No data for ' + year + '</div></div>'; return; }
+        const w = res.data;
+        const topMovies = (w.top_movies || []).map(m => `<div class="wrapped-item">${m.poster_path ? '<img src="'+posterSrc(m.poster_path,'')+'" class="wrapped-poster">' : ''}<span>${m.title}</span></div>`).join('');
+        const topShows = (w.top_shows || []).map(s => `<div class="wrapped-item">${s.poster_path ? '<img src="'+posterSrc(s.poster_path,'')+'" class="wrapped-poster">' : ''}<span>${s.title} <small>(${s.episodes} eps)</small></span></div>`).join('');
+        mc.innerHTML = `
+            <div class="wrapped-container">
+                <h1 class="wrapped-title">${year} Wrapped</h1>
+                <div class="stats-grid">
+                    <div class="stat-card wrapped-card"><div class="stat-value">${w.total_hours || 0}</div><div class="stat-label">Hours Watched</div></div>
+                    <div class="stat-card wrapped-card"><div class="stat-value">${w.items_watched || 0}</div><div class="stat-label">Items Watched</div></div>
+                    <div class="stat-card wrapped-card"><div class="stat-value">${w.longest_binge_hours || 0}h</div><div class="stat-label">Longest Binge</div></div>
+                </div>
+                <div class="stats-section"><h3>Top Genres</h3><div class="genre-chips">${(w.top_genres||[]).map(g=>'<span class="genre-chip">'+g+'</span>').join('')}</div></div>
+                <div class="stats-section"><h3>Top Movies</h3><div class="wrapped-grid">${topMovies||'<span style="color:#5a6a7f">No movies watched</span>'}</div></div>
+                <div class="stats-section"><h3>Top Shows</h3><div class="wrapped-grid">${topShows||'<span style="color:#5a6a7f">No shows watched</span>'}</div></div>
+            </div>`;
+    }
+
+    // ──── Content Requests (P9-07) ────
+    async function loadContentRequestsView() {
+        const mc = document.getElementById('mainContent');
+        mc.innerHTML = '<div class="section-header"><h2 class="section-title">Content Requests</h2><button class="btn-primary btn-sm" onclick="showNewRequestDialog()">+ New Request</button></div><div id="requestsList"><div class="spinner"></div></div>';
+        const res = await api('GET', '/requests/mine');
+        if (!res.success) { document.getElementById('requestsList').innerHTML = '<div class="empty-state"><div class="empty-state-title">Failed to load</div></div>'; return; }
+        const items = res.data;
+        if (items.length === 0) {
+            document.getElementById('requestsList').innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128269;</div><div class="empty-state-title">No requests yet</div><p>Request movies or shows you would like added</p></div>';
+            return;
+        }
+        document.getElementById('requestsList').innerHTML = `<div class="requests-grid">${items.map(r => `<div class="request-card">
+            <div class="request-poster">${r.poster_url ? '<img src="'+r.poster_url+'">' : '<span style="font-size:2rem;">&#127916;</span>'}</div>
+            <div class="request-info">
+                <div class="request-title">${r.title} ${r.year ? '('+r.year+')' : ''}</div>
+                <div class="request-type">${r.media_type}</div>
+                <div class="request-status status-${r.status}">${r.status}</div>
+                ${r.admin_note ? '<div class="request-note">'+r.admin_note+'</div>' : ''}
+            </div>
+        </div>`).join('')}</div>`;
+    }
+
+    async function showNewRequestDialog() {
+        const title = prompt('Enter movie or show title:');
+        if (!title) return;
+        const mediaType = confirm('Is this a TV show? (OK = TV, Cancel = Movie)') ? 'tv' : 'movie';
+        const res = await api('POST', '/requests', { title: title, media_type: mediaType });
+        if (res.success) { toast('Request submitted!'); loadContentRequestsView(); }
+        else toast(res.error || 'Failed to submit request', 'error');
     }
 
     // ──── Settings (moved to settings.html) ────

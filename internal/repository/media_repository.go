@@ -697,6 +697,12 @@ func (r *MediaRepository) SetGeneratedPoster(id uuid.UUID, generated bool) error
 	return err
 }
 
+// UpdatePreviewPath sets the preview clip path for a media item.
+func (r *MediaRepository) UpdatePreviewPath(id uuid.UUID, previewPath string) error {
+	_, err := r.db.Exec(`UPDATE media_items SET preview_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, previewPath, id)
+	return err
+}
+
 // UpdateExternalIDs stores the external source IDs JSON for a media item.
 func (r *MediaRepository) UpdateExternalIDs(id uuid.UUID, externalIDsJSON string) error {
 	_, err := r.db.Exec(`UPDATE media_items SET external_ids = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, externalIDsJSON, id)
