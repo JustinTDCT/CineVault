@@ -366,21 +366,7 @@ async function loadSidebarCounts() {
                 }
             }
         }
-        // Show Manage section for admins and load duplicate count badge
-        if (currentUser && currentUser.role === 'admin') {
-            const manageNav = document.getElementById('manageNav');
-            if (manageNav) manageNav.style.display = '';
-            try {
-                const dupData = await api('GET', '/duplicates/count');
-                const dupBadge = document.getElementById('dupBadge');
-                if (dupData.success && dupData.data && dupData.data.count > 0 && dupBadge) {
-                    dupBadge.textContent = dupData.data.count;
-                    dupBadge.style.display = '';
-                } else if (dupBadge) {
-                    dupBadge.style.display = 'none';
-                }
-            } catch {}
-        }
+        // Duplicate count badge is now in Settings > Content > Duplicates
     } catch {}
     // Load version footer
     loadSidebarVersion();
