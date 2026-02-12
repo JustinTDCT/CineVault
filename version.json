@@ -1,6 +1,6 @@
 {
-  "version": "1.04.00",
+  "version": "1.05.00",
   "phase": 17,
   "released": "2026-02-12",
-  "notes": "Fixed duplicate detection: replaced broken MD5-based phash with true perceptual hashing using 8x8 average hash across 7 keyframes. Hamming distance comparison now works correctly. Fixed comparison being skipped when all items already hashed."
+  "notes": "Moved duplicate review to Settings Content. Redesigned UI with detailed metadata comparison."
 }
