@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -398,6 +399,7 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	updated := 0
+	var pendingContributions []metadata.BatchContributeItem
 	var lastBroadcast time.Time
 	for i, item := range items {
 		select {
@@ -612,14 +614,37 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			h.scanner.EnrichMatchedItem(item.ID, best.ExternalID, item.MediaType, item.LockedFields)
 		}
 
-		// Contribute to cache in background (all sources)
-		if cacheClient != nil {
-			go cacheClient.Contribute(best)
+		// Accumulate for batch contribute
+		if cacheClient != nil && best.ExternalID != "" {
+			tmdbID, _ := strconv.Atoi(best.ExternalID)
+			mt := "movie"
+			switch best.Source {
+			case "musicbrainz": mt = "music"
+			case "openlibrary": mt = "audiobook"
+			}
+			var genresJSON *string
+			if len(best.Genres) > 0 { data, _ := json.Marshal(best.Genres); s := string(data); genresJSON = &s }
+			ci := metadata.BatchContributeItem{TMDBID: tmdbID, MediaType: mt, Title: best.Title, Year: best.Year,
+				Description: best.Description, PosterURL: best.PosterURL, BackdropURL: best.BackdropURL,
+				Genres: genresJSON, ContentRating: best.ContentRating}
+			if best.IMDBId != "" { ci.IMDBID = &best.IMDBId }
+			pendingContributions = append(pendingContributions, ci)
+
+			// Flush every 100 items
+			if len(pendingContributions) >= 100 {
+				go cacheClient.ContributeBatch(pendingContributions)
+				pendingContributions = nil
+			}
 		}
 
 		updated++
 		// Rate-limit API calls
 		time.Sleep(300 * time.Millisecond)
+	}
+
+	// Flush remaining contributions
+	if cacheClient != nil && len(pendingContributions) > 0 {
+		go cacheClient.ContributeBatch(pendingContributions)
 	}
 
 	log.Printf("Metadata: updated %d/%d items in %q", updated, len(items), library.Name)
@@ -772,6 +797,7 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 	updated := 0
 	cleared := 0
 	generated := 0
+	var pendingRefreshContributions []metadata.BatchContributeItem
 	var lastBroadcast time.Time
 
 	for i, item := range items {
@@ -1004,9 +1030,25 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 					h.scanner.EnrichMatchedItem(item.ID, best.ExternalID, item.MediaType, item.LockedFields)
 				}
 
-				// Contribute to cache
-				if cacheClient != nil {
-					go cacheClient.Contribute(best)
+				// Accumulate for batch contribute
+				if cacheClient != nil && best.ExternalID != "" {
+					tmdbID, _ := strconv.Atoi(best.ExternalID)
+					mt := "movie"
+					switch best.Source {
+					case "musicbrainz": mt = "music"
+					case "openlibrary": mt = "audiobook"
+					}
+					var genresJSON *string
+					if len(best.Genres) > 0 { data, _ := json.Marshal(best.Genres); s := string(data); genresJSON = &s }
+					ci := metadata.BatchContributeItem{TMDBID: tmdbID, MediaType: mt, Title: best.Title, Year: best.Year,
+						Description: best.Description, PosterURL: best.PosterURL, BackdropURL: best.BackdropURL,
+						Genres: genresJSON, ContentRating: best.ContentRating}
+					if best.IMDBId != "" { ci.IMDBID = &best.IMDBId }
+					pendingRefreshContributions = append(pendingRefreshContributions, ci)
+					if len(pendingRefreshContributions) >= 100 {
+						go cacheClient.ContributeBatch(pendingRefreshContributions)
+						pendingRefreshContributions = nil
+					}
 				}
 
 				updated++
@@ -1026,6 +1068,11 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 				generated++
 			}
 		}
+	}
+
+	// Flush remaining contributions
+	if cacheClient != nil && len(pendingRefreshContributions) > 0 {
+		go cacheClient.ContributeBatch(pendingRefreshContributions)
 	}
 
 	log.Printf("Metadata refresh: cleared %d, matched %d, generated posters %d in %q",

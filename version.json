@@ -1,6 +1,6 @@
 {
-  "version": "0.54.00",
-  "phase": 5,
-  "released": "2026-02-11",
-  "notes": "Phase 3: Library scanning — fsnotify filesystem watcher, scheduled scans (1h/6h/12h/24h/weekly), extras detection (trailers, featurettes, BTS, deleted scenes), Watch Trailer button with YouTube embed, multi-episode file splitting (S01E01-E03)."
+  "version": "0.55.00",
+  "phase": 6,
+  "released": "2026-02-12",
+  "notes": "Phase 6: Cache integration — TV season/episode data from cache server with TMDB fallback, performer bio/photo enrichment from cache, movie series collection enrichment from cache (poster/description/backdrop), batch contribute (groups of 100) for metadata scrape/refresh jobs, sized image URLs (?w=) and srcset for responsive loading."
 }

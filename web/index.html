@@ -533,7 +533,8 @@
     const MEDIA_ICONS = { movies:'&#127916;', adult_movies:'&#128274;', tv_shows:'&#128250;', music:'&#127925;', music_videos:'&#127911;', home_videos:'&#127909;', other_videos:'&#128253;', images:'&#128247;', audiobooks:'&#128214;' };
     const MEDIA_LABELS = { movies:'Movies', adult_movies:'Adult Movies', tv_shows:'TV Shows', music:'Music', music_videos:'Music Videos', home_videos:'Home Videos', other_videos:'Other Videos', images:'Photos', audiobooks:'Audiobooks' };
     function mediaIcon(type) { return MEDIA_ICONS[type] || '&#128191;'; }
-    function posterSrc(path, updatedAt) { if (!path) return ''; const ts = updatedAt ? new Date(updatedAt).getTime() : Date.now(); return path + '?v=' + ts; }
+    function posterSrc(path, updatedAt, width) { if (!path) return ''; const ts = updatedAt ? new Date(updatedAt).getTime() : Date.now(); let url = path + '?v=' + ts; if (width && path.startsWith('http')) url += '&w=' + width; return url; }
+    function posterSrcset(path, updatedAt) { if (!path || !path.startsWith('http')) return ''; return posterSrc(path, updatedAt, 300) + ' 300w, ' + posterSrc(path, updatedAt, 500) + ' 500w'; }
     async function fetchOverlayPrefs() {
         try {
             const res = await api('GET', '/settings/display');

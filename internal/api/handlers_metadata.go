@@ -357,7 +357,7 @@ func (s *Server) enrichWithCredits(mediaItemID uuid.UUID, credits *metadata.TMDB
 		if member.Name == "" {
 			continue
 		}
-		performer, err := s.findOrCreatePerformer(member.Name, models.PerformerActor, member.ProfilePath)
+		performer, err := s.findOrCreatePerformer(member.Name, models.PerformerActor, member.ProfilePath, member.ID)
 		if err != nil {
 			log.Printf("Apply metadata: create performer %q failed: %v", member.Name, err)
 			continue
@@ -385,7 +385,7 @@ func (s *Server) enrichWithCredits(mediaItemID uuid.UUID, credits *metadata.TMDB
 		default:
 			continue
 		}
-		performer, err := s.findOrCreatePerformer(member.Name, perfType, member.ProfilePath)
+		performer, err := s.findOrCreatePerformer(member.Name, perfType, member.ProfilePath, member.ID)
 		if err != nil {
 			log.Printf("Apply metadata: create crew %q failed: %v", member.Name, err)
 			continue
@@ -399,20 +399,23 @@ func (s *Server) enrichWithCredits(mediaItemID uuid.UUID, credits *metadata.TMDB
 }
 
 // findOrCreatePerformer finds an existing performer by name or creates a new one with optional photo.
-func (s *Server) findOrCreatePerformer(name string, perfType models.PerformerType, profilePath string) (*models.Performer, error) {
+// tmdbPersonID is the TMDB person ID used to fetch bio/photo from cache server.
+func (s *Server) findOrCreatePerformer(name string, perfType models.PerformerType, profilePath string, tmdbPersonIDs ...int) (*models.Performer, error) {
 	existing, err := s.performerRepo.FindByName(name)
 	if err != nil {
 		return nil, err
 	}
 	if existing != nil {
 		// Download photo if missing
-		if existing.PhotoPath == nil && profilePath != "" && s.config.Paths.Preview != "" {
-			photoURL := "https://image.tmdb.org/t/p/w185" + profilePath
-			filename := "performer_" + existing.ID.String() + ".jpg"
-			if _, dlErr := metadata.DownloadPoster(photoURL, filepath.Join(s.config.Paths.Preview, "posters"), filename); dlErr == nil {
-				webPath := "/previews/posters/" + filename
-				existing.PhotoPath = &webPath
-				_ = s.performerRepo.Update(existing)
+		if existing.PhotoPath == nil && s.config.Paths.Preview != "" {
+			photoURL := s.resolvePerformerPhoto(profilePath, tmdbPersonIDs...)
+			if photoURL != "" {
+				filename := "performer_" + existing.ID.String() + ".jpg"
+				if _, dlErr := metadata.DownloadPoster(photoURL, filepath.Join(s.config.Paths.Preview, "posters"), filename); dlErr == nil {
+					webPath := "/previews/posters/" + filename
+					existing.PhotoPath = &webPath
+					_ = s.performerRepo.Update(existing)
+				}
 			}
 		}
 		return existing, nil
@@ -424,8 +427,23 @@ func (s *Server) findOrCreatePerformer(name string, perfType models.PerformerTyp
 		PerformerType: perfType,
 	}
 
-	if profilePath != "" && s.config.Paths.Preview != "" {
-		photoURL := "https://image.tmdb.org/t/p/w185" + profilePath
+	// Try cache server for bio data
+	if len(tmdbPersonIDs) > 0 && tmdbPersonIDs[0] > 0 {
+		if cacheClient := s.getCacheClient(); cacheClient != nil {
+			if cp, cpErr := cacheClient.GetPerformer(tmdbPersonIDs[0]); cpErr == nil && cp != nil {
+				if cp.Bio != nil { p.Bio = cp.Bio }
+				if cp.BirthDate != nil {
+					if t, tErr := time.Parse("2006-01-02", *cp.BirthDate); tErr == nil { p.BirthDate = &t }
+				}
+				if cp.DeathDate != nil {
+					if t, tErr := time.Parse("2006-01-02", *cp.DeathDate); tErr == nil { p.DeathDate = &t }
+				}
+			}
+		}
+	}
+
+	photoURL := s.resolvePerformerPhoto(profilePath, tmdbPersonIDs...)
+	if photoURL != "" && s.config.Paths.Preview != "" {
 		filename := "performer_" + p.ID.String() + ".jpg"
 		if _, dlErr := metadata.DownloadPoster(photoURL, filepath.Join(s.config.Paths.Preview, "posters"), filename); dlErr == nil {
 			webPath := "/previews/posters/" + filename
@@ -437,6 +455,28 @@ func (s *Server) findOrCreatePerformer(name string, perfType models.PerformerTyp
 		return nil, err
 	}
 	return p, nil
+}
+
+// resolvePerformerPhoto tries cache server photo first, falls back to TMDB profile path.
+func (s *Server) resolvePerformerPhoto(profilePath string, tmdbPersonIDs ...int) string {
+	// Try cache server for performer photo
+	if len(tmdbPersonIDs) > 0 && tmdbPersonIDs[0] > 0 {
+		if cacheClient := s.getCacheClient(); cacheClient != nil {
+			if cp, err := cacheClient.GetPerformer(tmdbPersonIDs[0]); err == nil && cp != nil {
+				if cp.PhotoPath != nil && *cp.PhotoPath != "" {
+					return metadata.CacheServerURL + "/images/" + *cp.PhotoPath
+				}
+				if cp.PhotoURL != nil && *cp.PhotoURL != "" {
+					return *cp.PhotoURL
+				}
+			}
+		}
+	}
+	// Fall back to direct TMDB
+	if profilePath != "" {
+		return "https://image.tmdb.org/t/p/w185" + profilePath
+	}
+	return ""
 }
 
 func (s *Server) handleRefreshMetadata(w http.ResponseWriter, r *http.Request) {

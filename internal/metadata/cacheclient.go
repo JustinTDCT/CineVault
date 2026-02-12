@@ -654,6 +654,252 @@ func (c *CacheClient) Contribute(match *models.MetadataMatch, extras ...Contribu
 	}
 }
 
+// ── Phase 6: Cache Integration Endpoints ──
+
+// CacheTVSeason holds season data from the cache server.
+type CacheTVSeason struct {
+	ID           string           `json:"id"`
+	SeasonNumber int              `json:"season_number"`
+	Title        *string          `json:"title,omitempty"`
+	Description  *string          `json:"description,omitempty"`
+	PosterURL    *string          `json:"poster_url,omitempty"`
+	AirDate      *string          `json:"air_date,omitempty"`
+	EpisodeCount int              `json:"episode_count"`
+	Episodes     []CacheTVEpisode `json:"episodes,omitempty"`
+}
+
+// CacheTVEpisode holds episode data from the cache server.
+type CacheTVEpisode struct {
+	ID             string   `json:"id"`
+	EpisodeNumber  int      `json:"episode_number"`
+	AbsoluteNumber *int     `json:"absolute_number,omitempty"`
+	Title          *string  `json:"title,omitempty"`
+	Description    *string  `json:"description,omitempty"`
+	AirDate        *string  `json:"air_date,omitempty"`
+	Runtime        *int     `json:"runtime,omitempty"`
+	StillURL       *string  `json:"still_url,omitempty"`
+	Rating         *float64 `json:"rating,omitempty"`
+}
+
+// CachePerformer holds performer data from the cache server.
+type CachePerformer struct {
+	ID                 string  `json:"id"`
+	TMDBID             *int    `json:"tmdb_id,omitempty"`
+	Name               string  `json:"name"`
+	PhotoURL           *string `json:"photo_url,omitempty"`
+	PhotoPath          *string `json:"photo_path,omitempty"`
+	Bio                *string `json:"bio,omitempty"`
+	BirthDate          *string `json:"birth_date,omitempty"`
+	DeathDate          *string `json:"death_date,omitempty"`
+	BirthPlace         *string `json:"birth_place,omitempty"`
+	Gender             *int    `json:"gender,omitempty"`
+	KnownForDepartment *string `json:"known_for_department,omitempty"`
+	Source             string  `json:"source"`
+}
+
+// CacheCollection holds collection data from the cache server.
+type CacheCollection struct {
+	ID           string  `json:"id"`
+	TMDBID       *int    `json:"tmdb_id,omitempty"`
+	Name         string  `json:"name"`
+	Description  *string `json:"description,omitempty"`
+	PosterURL    *string `json:"poster_url,omitempty"`
+	BackdropURL  *string `json:"backdrop_url,omitempty"`
+	MemberIDs    *string `json:"member_ids,omitempty"`
+}
+
+// GetTVSeason fetches season data from the cache server.
+func (c *CacheClient) GetTVSeason(tmdbID, seasonNumber int) (*CacheTVSeason, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/tv/%d/season/%d", c.baseURL, tmdbID, seasonNumber)
+	req, _ := http.NewRequest("GET", reqURL, nil)
+	req.Header.Set("X-API-Key", c.apiKey)
+	addInstanceVersion(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("cache tv season returned %d", resp.StatusCode)
+	}
+
+	var season CacheTVSeason
+	if err := json.NewDecoder(resp.Body).Decode(&season); err != nil {
+		return nil, err
+	}
+	return &season, nil
+}
+
+// GetTVSeasons fetches all seasons from the cache server.
+func (c *CacheClient) GetTVSeasons(tmdbID int, includeEpisodes bool) ([]CacheTVSeason, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/tv/%d/seasons", c.baseURL, tmdbID)
+	if includeEpisodes {
+		reqURL += "?include_episodes=true"
+	}
+	req, _ := http.NewRequest("GET", reqURL, nil)
+	req.Header.Set("X-API-Key", c.apiKey)
+	addInstanceVersion(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("cache tv seasons returned %d", resp.StatusCode)
+	}
+
+	var seasons []CacheTVSeason
+	if err := json.NewDecoder(resp.Body).Decode(&seasons); err != nil {
+		return nil, err
+	}
+	return seasons, nil
+}
+
+// GetPerformer fetches performer data from the cache server.
+func (c *CacheClient) GetPerformer(tmdbID int) (*CachePerformer, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/performer/%d", c.baseURL, tmdbID)
+	req, _ := http.NewRequest("GET", reqURL, nil)
+	req.Header.Set("X-API-Key", c.apiKey)
+	addInstanceVersion(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("cache performer returned %d", resp.StatusCode)
+	}
+
+	var performer CachePerformer
+	if err := json.NewDecoder(resp.Body).Decode(&performer); err != nil {
+		return nil, err
+	}
+	return &performer, nil
+}
+
+// GetCollection fetches collection data from the cache server.
+func (c *CacheClient) GetCollection(tmdbID int) (*CacheCollection, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/collection/%d", c.baseURL, tmdbID)
+	req, _ := http.NewRequest("GET", reqURL, nil)
+	req.Header.Set("X-API-Key", c.apiKey)
+	addInstanceVersion(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("cache collection returned %d", resp.StatusCode)
+	}
+
+	var coll CacheCollection
+	if err := json.NewDecoder(resp.Body).Decode(&coll); err != nil {
+		return nil, err
+	}
+	return &coll, nil
+}
+
+// BatchContributeItem matches the cache server's batch contribute item format.
+type BatchContributeItem struct {
+	TMDBID           int      `json:"tmdb_id"`
+	IMDBID           *string  `json:"imdb_id,omitempty"`
+	MediaType        string   `json:"media_type"`
+	Title            string   `json:"title"`
+	OriginalTitle    *string  `json:"original_title,omitempty"`
+	Year             *int     `json:"year,omitempty"`
+	ReleaseDate      *string  `json:"release_date,omitempty"`
+	Description      *string  `json:"description,omitempty"`
+	PosterURL        *string  `json:"poster_url,omitempty"`
+	BackdropURL      *string  `json:"backdrop_url,omitempty"`
+	Genres           *string  `json:"genres,omitempty"`
+	ContentRating    *string  `json:"content_rating,omitempty"`
+	CastCrew         *string  `json:"cast_crew,omitempty"`
+	Runtime          *int     `json:"runtime,omitempty"`
+	Tagline          *string  `json:"tagline,omitempty"`
+	OriginalLanguage *string  `json:"original_language,omitempty"`
+	Country          *string  `json:"country,omitempty"`
+	TrailerURL       *string  `json:"trailer_url,omitempty"`
+	LogoURL          *string  `json:"logo_url,omitempty"`
+	BannerURL        *string  `json:"banner_url,omitempty"`
+	TVDBID           *int     `json:"tvdb_id,omitempty"`
+	CollectionID     *int     `json:"collection_id,omitempty"`
+	CollectionName   *string  `json:"collection_name,omitempty"`
+	IMDBRating       *float64 `json:"imdb_rating,omitempty"`
+	RTCriticScore    *int     `json:"rt_critic_score,omitempty"`
+	RTAudienceScore  *int     `json:"rt_audience_score,omitempty"`
+	Keywords         *string  `json:"keywords,omitempty"`
+	FileHash         *string  `json:"file_hash,omitempty"`
+}
+
+type batchContributeRequest struct {
+	Items []BatchContributeItem `json:"items"`
+}
+
+type batchContributeResponse struct {
+	Succeeded int      `json:"succeeded"`
+	Failed    int      `json:"failed"`
+	Errors    []string `json:"errors,omitempty"`
+}
+
+// ContributeBatch sends multiple contributions in a single request.
+// Items are sent in groups of batchSize (max 100 per cache server limit).
+func (c *CacheClient) ContributeBatch(items []BatchContributeItem) (succeeded, failed int) {
+	if len(items) == 0 {
+		return 0, 0
+	}
+
+	batchSize := 100
+	for i := 0; i < len(items); i += batchSize {
+		end := i + batchSize
+		if end > len(items) {
+			end = len(items)
+		}
+
+		batch := batchContributeRequest{Items: items[i:end]}
+		bodyBytes, _ := json.Marshal(batch)
+
+		req, err := http.NewRequest("POST", c.baseURL+"/api/v1/contribute/batch", bytes.NewReader(bodyBytes))
+		if err != nil {
+			failed += end - i
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-API-Key", c.apiKey)
+		addInstanceVersion(req)
+
+		resp, err := c.client.Do(req)
+		if err != nil {
+			log.Printf("[cache-client] batch contribute failed: %v", err)
+			failed += end - i
+			continue
+		}
+
+		var batchResp batchContributeResponse
+		json.NewDecoder(resp.Body).Decode(&batchResp)
+		resp.Body.Close()
+
+		succeeded += batchResp.Succeeded
+		failed += batchResp.Failed
+	}
+
+	if succeeded > 0 {
+		log.Printf("[cache-client] batch contributed: %d succeeded, %d failed", succeeded, failed)
+	}
+	return
+}
+
+// addInstanceVersion adds the X-Instance-Version header from the app version.
+func addInstanceVersion(req *http.Request) {
+	ver := readVersion()
+	if ver != nil {
+		req.Header.Set("X-Instance-Version", *ver)
+	}
+}
+
 // ── Health Check ──
 
 // IsAvailable checks if the cache server is reachable.

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"sync/atomic"
 
 	"github.com/JustinTDCT/CineVault/internal/ffmpeg"
@@ -1366,7 +1367,7 @@ func (s *Scanner) autoCreateCollection(item *models.MediaItem, match *models.Met
 	}
 
 	if series == nil {
-		// Create a new movie series
+		// Create a new movie series — enrich from cache server if available
 		externalIDs := fmt.Sprintf(`{"tmdb_collection_id":"%s"}`, collectionIDStr)
 		series = &models.MovieSeries{
 			ID:          uuid.New(),
@@ -1374,6 +1375,34 @@ func (s *Scanner) autoCreateCollection(item *models.MediaItem, match *models.Met
 			Name:        *match.CollectionName,
 			ExternalIDs: &externalIDs,
 		}
+
+		// Try cache server for collection details (poster, description, backdrop)
+		if cacheClient := s.getCacheClient(); cacheClient != nil && *match.CollectionID > 0 {
+			if coll, collErr := cacheClient.GetCollection(*match.CollectionID); collErr == nil && coll != nil {
+				if coll.Description != nil { series.Description = coll.Description }
+				// Download poster if available
+				posterURL := ""
+				if coll.PosterURL != nil { posterURL = *coll.PosterURL }
+				if posterURL != "" && s.posterDir != "" {
+					filename := "series_" + series.ID.String() + ".jpg"
+					if _, dlErr := metadata.DownloadPoster(posterURL, filepath.Join(s.posterDir, "posters"), filename); dlErr == nil {
+						webPath := "/previews/posters/" + filename
+						series.PosterPath = &webPath
+					}
+				}
+				// Download backdrop
+				backdropURL := ""
+				if coll.BackdropURL != nil { backdropURL = *coll.BackdropURL }
+				if backdropURL != "" && s.posterDir != "" {
+					filename := "series_bg_" + series.ID.String() + ".jpg"
+					if _, dlErr := metadata.DownloadPoster(backdropURL, filepath.Join(s.posterDir, "backdrops"), filename); dlErr == nil {
+						webPath := "/previews/backdrops/" + filename
+						series.BackdropPath = &webPath
+					}
+				}
+			}
+		}
+
 		if err := s.seriesRepo.Create(series); err != nil {
 			log.Printf("Auto-collection: create failed for %q: %v", *match.CollectionName, err)
 			return
@@ -1925,7 +1954,7 @@ func (s *Scanner) enrichWithCredits(itemID uuid.UUID, credits *metadata.TMDBCred
 		if member.Name == "" {
 			continue
 		}
-		performer, err := s.findOrCreatePerformer(member.Name, models.PerformerActor, member.ProfilePath)
+		performer, err := s.findOrCreatePerformer(member.Name, models.PerformerActor, member.ProfilePath, member.ID)
 		if err != nil {
 			log.Printf("Auto-match: create performer %q failed: %v", member.Name, err)
 			continue
@@ -1953,7 +1982,7 @@ func (s *Scanner) enrichWithCredits(itemID uuid.UUID, credits *metadata.TMDBCred
 		default:
 			continue
 		}
-		performer, err := s.findOrCreatePerformer(member.Name, perfType, member.ProfilePath)
+		performer, err := s.findOrCreatePerformer(member.Name, perfType, member.ProfilePath, member.ID)
 		if err != nil {
 			log.Printf("Auto-match: create crew %q failed: %v", member.Name, err)
 			continue
@@ -1969,7 +1998,7 @@ func (s *Scanner) enrichWithCredits(itemID uuid.UUID, credits *metadata.TMDBCred
 // findOrCreatePerformer looks up an existing performer by name or creates a new one.
 // If the performer exists but has no photo, and a profilePath is available, downloads the photo.
 // Thread-safe: uses mutex to prevent duplicate creation from concurrent workers.
-func (s *Scanner) findOrCreatePerformer(name string, perfType models.PerformerType, profilePath string) (*models.Performer, error) {
+func (s *Scanner) findOrCreatePerformer(name string, perfType models.PerformerType, profilePath string, tmdbPersonIDs ...int) (*models.Performer, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1996,6 +2025,21 @@ func (s *Scanner) findOrCreatePerformer(name string, perfType models.PerformerTy
 		ID:            uuid.New(),
 		Name:          name,
 		PerformerType: perfType,
+	}
+
+	// Try cache server for bio data
+	if len(tmdbPersonIDs) > 0 && tmdbPersonIDs[0] > 0 {
+		if cacheClient := s.getCacheClient(); cacheClient != nil {
+			if cp, cpErr := cacheClient.GetPerformer(tmdbPersonIDs[0]); cpErr == nil && cp != nil {
+				if cp.Bio != nil { p.Bio = cp.Bio }
+				if cp.BirthDate != nil {
+					if t, tErr := time.Parse("2006-01-02", *cp.BirthDate); tErr == nil { p.BirthDate = &t }
+				}
+				if cp.DeathDate != nil {
+					if t, tErr := time.Parse("2006-01-02", *cp.DeathDate); tErr == nil { p.DeathDate = &t }
+				}
+			}
+		}
 	}
 
 	// Download profile photo from TMDB
@@ -2483,10 +2527,10 @@ func (s *Scanner) enrichTVShowDetails(showID uuid.UUID, tmdbExternalID string) {
 	}
 }
 
-// fetchEpisodeMetadata uses the TMDB show ID to fetch season details and apply
-// episode titles, descriptions, and still images to individual media items.
+// fetchEpisodeMetadata uses the cache server (with TMDB fallback) to fetch
+// season details and apply episode titles, descriptions, and still images.
 func (s *Scanner) fetchEpisodeMetadata(showID uuid.UUID, tmdbShowID string) {
-	// Get the TMDB scraper
+	// Get the TMDB scraper as fallback
 	var tmdb *metadata.TMDBScraper
 	for _, sc := range s.scrapers {
 		if t, ok := sc.(*metadata.TMDBScraper); ok {
@@ -2497,6 +2541,9 @@ func (s *Scanner) fetchEpisodeMetadata(showID uuid.UUID, tmdbShowID string) {
 	if tmdb == nil {
 		return
 	}
+
+	cacheClient := s.getCacheClient()
+	tmdbIDInt, _ := strconv.Atoi(tmdbShowID)
 
 	// Get all seasons for this show
 	seasons, err := s.tvRepo.ListSeasonsByShow(showID)
@@ -2513,27 +2560,59 @@ func (s *Scanner) fetchEpisodeMetadata(showID uuid.UUID, tmdbShowID string) {
 	}
 
 	for _, season := range seasons {
-		seasonData, err := tmdb.GetTVSeasonDetails(tmdbShowID, season.SeasonNumber)
-		if err != nil {
-			log.Printf("Auto-match: TMDB season %d fetch failed for show %s: %v", season.SeasonNumber, tmdbShowID, err)
-			continue
+		// Try cache server first, fall back to direct TMDB
+		var seasonName, seasonOverview, seasonPosterPath string
+		tmdbMap := make(map[int]metadata.TMDBEpisode)
+
+		if cacheClient != nil && tmdbIDInt > 0 {
+			cacheSeason, cacheErr := cacheClient.GetTVSeason(tmdbIDInt, season.SeasonNumber)
+			if cacheErr == nil && cacheSeason != nil {
+				log.Printf("Auto-match: S%02d fetched from cache server", season.SeasonNumber)
+				if cacheSeason.Title != nil { seasonName = *cacheSeason.Title }
+				if cacheSeason.Description != nil { seasonOverview = *cacheSeason.Description }
+				if cacheSeason.PosterURL != nil { seasonPosterPath = *cacheSeason.PosterURL }
+				for _, ep := range cacheSeason.Episodes {
+					tmdbEp := metadata.TMDBEpisode{EpisodeNumber: ep.EpisodeNumber}
+					if ep.Title != nil { tmdbEp.Name = *ep.Title }
+					if ep.Description != nil { tmdbEp.Overview = *ep.Description }
+					if ep.StillURL != nil { tmdbEp.StillPath = *ep.StillURL }
+					if ep.Rating != nil { tmdbEp.VoteAverage = *ep.Rating }
+					tmdbMap[ep.EpisodeNumber] = tmdbEp
+				}
+			}
+		}
+
+		// Fall back to direct TMDB if cache had no data
+		if len(tmdbMap) == 0 {
+			seasonData, tmdbErr := tmdb.GetTVSeasonDetails(tmdbShowID, season.SeasonNumber)
+			if tmdbErr != nil {
+				log.Printf("Auto-match: TMDB season %d fetch failed for show %s: %v", season.SeasonNumber, tmdbShowID, tmdbErr)
+				continue
+			}
+			seasonName = seasonData.Name
+			seasonOverview = seasonData.Overview
+			if seasonData.PosterPath != "" {
+				seasonPosterPath = "https://image.tmdb.org/t/p/w500" + seasonData.PosterPath
+			}
+			for _, ep := range seasonData.Episodes {
+				tmdbMap[ep.EpisodeNumber] = ep
+			}
 		}
 
 		// Download and save season poster
-		if seasonData.PosterPath != "" && s.posterDir != "" {
-			posterURL := "https://image.tmdb.org/t/p/w500" + seasonData.PosterPath
+		if seasonPosterPath != "" && s.posterDir != "" {
 			filename := "season_" + season.ID.String() + ".jpg"
-			if _, dlErr := metadata.DownloadPoster(posterURL, filepath.Join(s.posterDir, "posters"), filename); dlErr != nil {
+			if _, dlErr := metadata.DownloadPoster(seasonPosterPath, filepath.Join(s.posterDir, "posters"), filename); dlErr != nil {
 				log.Printf("Auto-match: season poster download failed: %v", dlErr)
 			} else {
 				webPath := "/previews/posters/" + filename
 				var title *string
-				if seasonData.Name != "" {
-					title = &seasonData.Name
+				if seasonName != "" {
+					title = &seasonName
 				}
 				var desc *string
-				if seasonData.Overview != "" {
-					desc = &seasonData.Overview
+				if seasonOverview != "" {
+					desc = &seasonOverview
 				}
 				if err := s.tvRepo.UpdateSeasonMetadata(season.ID, title, desc, &webPath); err != nil {
 					log.Printf("Auto-match: season metadata update failed: %v", err)
@@ -2541,12 +2620,6 @@ func (s *Scanner) fetchEpisodeMetadata(showID uuid.UUID, tmdbShowID string) {
 					log.Printf("Auto-match season: S%02d poster saved", season.SeasonNumber)
 				}
 			}
-		}
-
-		// Build a map of TMDB episodes by episode number
-		tmdbMap := make(map[int]metadata.TMDBEpisode)
-		for _, ep := range seasonData.Episodes {
-			tmdbMap[ep.EpisodeNumber] = ep
 		}
 
 		// Match local episodes to TMDB episodes
