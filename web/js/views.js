@@ -465,6 +465,7 @@ async function loadMediaDetail(id) {
                     <button class="btn-secondary" id="detailFavorite" onclick="toggleFavorite('${m.id}',this)">&#10084; Favorite</button>
                     <button class="btn-secondary" onclick="addToQueue('${m.id}','${m.title.replace(/'/g,"\\'")}','${(m.poster_path||'').replace(/'/g,"\\'")}')">&#9654;&#9654; Queue</button>
                     <button class="btn-secondary" onclick="musicPlayer.enqueue([{id:'${m.id}',title:'${m.title.replace(/'/g,"\\'")}',artist:'${(m.artist||'').replace(/'/g,"\\'")}',duration_seconds:${m.duration_seconds||0}}]);musicPlayer.currentIndex=musicPlayer.queue.length-1;musicPlayer.playTrack();">&#127925; Music Play</button>
+                    ${(m.media_type === 'comics' || m.media_type === 'ebooks' || (m.file_name && /\.(cbz|cbr|epub|pdf)$/i.test(m.file_name))) ? '<button class="btn-secondary" onclick="openReader(\''+m.id+'\')">&#128214; Read</button>' : ''}
                     <button class="btn-secondary" onclick="openEditModal('${m.id}')">&#9998; Edit</button>
                     <button class="btn-secondary" onclick="identifyMedia('${m.id}')">&#128270; Identify</button>
                     <button class="btn-secondary" onclick="showAddToCollectionPicker('${m.id}')">&#128218; + Collection</button>
@@ -486,6 +487,7 @@ async function loadMediaDetail(id) {
                     <button class="detail-tab" onclick="showDetailTab(this,'tags-tab','${m.id}')">Tags</button>
                     ${m.edition_count > 1 ? '<button class="detail-tab" onclick="showDetailTab(this,\'editions\',\''+m.id+'\')">Editions</button>' : ''}
                     <button class="detail-tab" onclick="showDetailTab(this,'metadata','${m.id}')">Metadata</button>
+                    <button class="detail-tab" onclick="showDetailTab(this,'chapters','${m.id}')">Chapters</button>
                     <button class="detail-tab" onclick="showDetailTab(this,'extras','${m.id}')">Extras</button>
                     <button class="detail-tab" onclick="showDetailTab(this,'segments','${m.id}')">Segments</button>
                     <button class="detail-tab" onclick="showDetailTab(this,'file','${m.id}')">File</button>
@@ -499,6 +501,10 @@ async function loadMediaDetail(id) {
                         ${m.source_type ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Source</td><td>'+m.source_type+'</td></tr>' : ''}
                         ${m.dynamic_range && m.dynamic_range !== 'SDR' ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Dynamic Range</td><td>'+m.dynamic_range+(m.hdr_format ? ' ('+m.hdr_format+')' : '')+'</td></tr>' : ''}
                         ${m.custom_notes ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Notes</td><td>'+m.custom_notes+'</td></tr>' : ''}
+                        ${m.mal_id ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">MyAnimeList</td><td><a href="https://myanimelist.net/anime/'+m.mal_id+'" target="_blank" style="color:#00D9FF;">MAL #'+m.mal_id+'</a></td></tr>' : ''}
+                        ${m.anilist_id ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">AniList</td><td><a href="https://anilist.co/anime/'+m.anilist_id+'" target="_blank" style="color:#00D9FF;">AL #'+m.anilist_id+'</a></td></tr>' : ''}
+                        ${m.anime_season ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Anime Season</td><td>'+m.anime_season+'</td></tr>' : ''}
+                        ${m.sub_or_dub ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Sub / Dub</td><td>'+m.sub_or_dub+'</td></tr>' : ''}
                         <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Added</td><td>${new Date(m.added_at).toLocaleString()}</td></tr>
                     </table>
                 </div>
@@ -560,15 +566,28 @@ async function showDetailTab(btn, tab, mediaId) {
     if (!tc) return;
     if (tab === 'tags-tab') {
         tc.innerHTML = '<div class="spinner"></div>';
-        // Fetch tags for this media item
-        const res = await api('GET', '/media/' + mediaId + '/tags');
-        if (res.success && res.data && res.data.length > 0) {
-            tc.innerHTML = '<div class="genre-tags">' + res.data.map(t =>
-                `<span class="genre-tag">${t.name}</span>`
-            ).join('') + '</div>';
+        const [tagRes, allTagsRes] = await Promise.all([
+            api('GET', '/media/' + mediaId + '/tags'),
+            api('GET', '/tags')
+        ]);
+        const assigned = (tagRes.success && tagRes.data) ? tagRes.data : [];
+        const allTags = (allTagsRes.success && allTagsRes.data) ? allTagsRes.data : [];
+        const assignedIds = new Set(assigned.map(t => t.id));
+        let html = '<div class="genre-tags" id="mediaTagsList">';
+        if (assigned.length > 0) {
+            html += assigned.map(t => `<span class="genre-tag">${t.name} <span style="cursor:pointer;margin-left:4px;opacity:0.6;" onclick="removeTagFromMedia('${mediaId}','${t.id}')">&#10005;</span></span>`).join('');
         } else {
-            tc.innerHTML = '<p style="color:#5a6a7f;">No tags assigned</p>';
+            html += '<span style="color:#5a6a7f;">No tags assigned</span>';
         }
+        html += '</div>';
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        if (isAdmin && allTags.length > 0) {
+            const available = allTags.filter(t => !assignedIds.has(t.id));
+            html += '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;"><select id="tagAssignSelect"><option value="">Add tag...</option>';
+            available.forEach(t => { html += `<option value="${t.id}">${t.name} (${t.category})</option>`; });
+            html += '</select><button class="btn-primary btn-small" onclick="addTagToMedia(\''+mediaId+'\')">+ Add</button></div>';
+        }
+        tc.innerHTML = html;
     } else if (tab === 'info') {
         loadMediaDetail(mediaId);
     } else if (tab === 'cast') {
@@ -678,6 +697,26 @@ async function showDetailTab(btn, tab, mediaId) {
             }
 
             tc.innerHTML = html;
+        }
+    } else if (tab === 'chapters') {
+        tc.innerHTML = '<div class="spinner"></div>';
+        const chapRes = await api('GET', '/media/' + mediaId + '/chapters');
+        const chapters = (chapRes.success && chapRes.data) ? chapRes.data : [];
+        if (chapters.length > 0) {
+            let html = '<table style="width:100%;font-size:0.85rem;">';
+            html += '<thead><tr><th style="text-align:left;padding:6px 12px 6px 0;color:#8a9bae;">Title</th><th style="text-align:left;padding:6px 12px;color:#8a9bae;">Start</th><th style="text-align:left;padding:6px 12px;color:#8a9bae;">End</th><th></th></tr></thead><tbody>';
+            chapters.forEach(ch => {
+                html += `<tr>
+                    <td style="padding:6px 12px 6px 0;color:#e5e5e5;">${ch.title || 'Chapter'}</td>
+                    <td style="padding:6px 12px;">${formatTime(ch.start_seconds)}</td>
+                    <td style="padding:6px 12px;">${ch.end_seconds ? formatTime(ch.end_seconds) : '-'}</td>
+                    <td style="padding:6px 0;"><button class="btn-secondary btn-small" onclick="playMedia('${mediaId}','');seekToTime(${ch.start_seconds})">&#9654; Play</button></td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            tc.innerHTML = html;
+        } else {
+            tc.innerHTML = '<p style="color:#5a6a7f;">No chapters found for this item.</p>';
         }
     } else if (tab === 'extras') {
         tc.innerHTML = '<div class="spinner"></div>';
@@ -907,6 +946,8 @@ async function loadMoreMedia() {
     }
     _gridState.loading = false;
     updateAlphaCount();
+    // Enable keyboard navigation on library grid
+    enableGridKeyNav(grid);
 }
 
 function setupScrollObserver() {
@@ -1070,6 +1111,7 @@ async function loadLibraryView(libraryId) {
         <div id="seriesArea" style="display:none;"></div>`;
 
     renderFilterChips();
+    loadFilterPresetsIntoDropdown();
     setupScrollObserver();
     loadMoreMedia();
 
@@ -1139,6 +1181,11 @@ function buildFilterToolbar(opts) {
         <button class="ft-btn" id="ftGridBtn" onclick="showLibraryGrid()" title="Grid view">&#9638; Grid</button>
         <button class="ft-btn" id="ftCollBtn" onclick="showLibraryCollections()" title="Collections view">&#128218; Collections</button>
         <button class="ft-btn" id="ftSeriesBtn" onclick="showLibrarySeries()" title="Series view">&#127910; Series</button>
+        <div class="ft-sep"></div>
+        <select class="ft-preset-select" id="ftPresetSelect" onchange="applyFilterPresetFromDropdown(this.value)">
+            <option value="">Presets...</option>
+        </select>
+        <button class="ft-btn" onclick="promptSaveFilterPreset()" title="Save current filters as preset">&#128190; Save</button>
         <button class="ft-reset" onclick="resetLibFilters()" title="Reset all filters">&#10005; Reset</button>
     </div>`;
 }
@@ -1252,6 +1299,65 @@ function resetLibFilters() {
     _gridState.filters = {};
     renderFilterChips();
     reloadLibraryGrid();
+}
+
+// ──── Filter Presets (F5) ────
+async function loadFilterPresetsIntoDropdown() {
+    const presets = await loadFilterPresets(_gridState.libraryId);
+    const sel = document.getElementById('ftPresetSelect');
+    if (!sel) return;
+    let opts = '<option value="">Presets...</option>';
+    presets.forEach(p => {
+        opts += `<option value="${p.id}">${p.name}</option>`;
+    });
+    opts += '<option value="__manage__" style="color:#ff6b6b;">Manage Presets...</option>';
+    sel.innerHTML = opts;
+}
+
+async function applyFilterPresetFromDropdown(presetId) {
+    if (!presetId) return;
+    if (presetId === '__manage__') { showManagePresets(); document.getElementById('ftPresetSelect').value = ''; return; }
+    const presets = await loadFilterPresets(_gridState.libraryId);
+    const preset = presets.find(p => p.id === presetId);
+    if (preset && preset.filters) {
+        _gridState.filters = preset.filters;
+        renderFilterChips();
+        reloadLibraryGrid();
+        toast('Preset "' + preset.name + '" applied');
+    }
+    document.getElementById('ftPresetSelect').value = '';
+}
+
+async function promptSaveFilterPreset() {
+    const name = prompt('Preset name:');
+    if (!name) return;
+    const filters = { ..._gridState.filters };
+    const ftSort = document.getElementById('ftSort');
+    const ftOrder = document.getElementById('ftOrder');
+    const ftYearFrom = document.getElementById('ftYearFrom');
+    const ftYearTo = document.getElementById('ftYearTo');
+    const ftMinRating = document.getElementById('ftMinRating');
+    if (ftSort && ftSort.value) filters._sort = ftSort.value;
+    if (ftOrder && ftOrder.value) filters._order = ftOrder.value;
+    if (ftYearFrom && ftYearFrom.value) filters._yearFrom = ftYearFrom.value;
+    if (ftYearTo && ftYearTo.value) filters._yearTo = ftYearTo.value;
+    if (ftMinRating && ftMinRating.value) filters._minRating = ftMinRating.value;
+    await saveFilterPreset(name, filters, _gridState.libraryId);
+    loadFilterPresetsIntoDropdown();
+}
+
+async function showManagePresets() {
+    const presets = await loadFilterPresets(_gridState.libraryId);
+    const mc = document.getElementById('mainContent');
+    mc.innerHTML = `<div class="section-header"><h2 class="section-title">Filter Presets</h2></div>
+        <div id="presetList">${presets.length ? presets.map(p => `
+            <div class="job-item"><strong>${p.name}</strong><span style="color:#5a6a7f;margin-left:auto;font-size:0.78rem;">${p.library_id ? 'Library-specific' : 'Global'}</span><button class="btn-danger btn-small" style="margin-left:12px;" onclick="deletePresetAndReload('${p.id}')">Delete</button></div>`).join('') : '<p style="color:#5a6a7f;">No saved presets</p>'}</div>
+        <button class="btn-secondary" style="margin-top:16px;" onclick="navigate('home')">&#8592; Back</button>`;
+}
+
+async function deletePresetAndReload(id) {
+    await deleteFilterPreset(id);
+    showManagePresets();
 }
 
 async function reloadLibraryGrid() {
@@ -1522,6 +1628,7 @@ async function loadSearchView(query) {
     const data = await api('GET', '/media/search?q=' + encodeURIComponent(query));
     const grid = document.getElementById('searchGrid');
     grid.innerHTML = (data.success && data.data && data.data.length > 0) ? data.data.map(renderMediaCard).join('') : '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-title">No results</div></div>';
+    enableGridKeyNav(grid);
 }
 
 // ──── Libraries ────
@@ -2277,6 +2384,50 @@ async function deleteCollection(id) {
     else toast(d.error, 'error');
 }
 
+async function editCollection(id) {
+    const res = await api('GET', '/collections/' + id);
+    if (!res.success) { toast('Failed to load collection', 'error'); return; }
+    const coll = res.data;
+    const mc = document.getElementById('mainContent');
+    mc.innerHTML = `<div class="section-header"><h2 class="section-title">Edit Collection</h2></div>
+        <div style="max-width:560px;">
+            <div class="form-group"><label>Name</label><input type="text" id="editCollName" value="${coll.name || ''}"></div>
+            <div class="form-group"><label>Description</label><textarea id="editCollDesc" rows="3">${coll.description || ''}</textarea></div>
+            <div class="form-group"><label>Visibility</label>
+                <select id="editCollVisibility">
+                    <option value="public" ${coll.visibility==='public'?'selected':''}>Public</option>
+                    <option value="private" ${coll.visibility==='private'?'selected':''}>Private</option>
+                    <option value="shared" ${coll.visibility==='shared'?'selected':''}>Shared</option>
+                </select>
+            </div>
+            <div class="form-group"><label>Sort Mode</label>
+                <select id="editCollSort">
+                    <option value="title" ${coll.sort_mode==='title'?'selected':''}>Title</option>
+                    <option value="year" ${coll.sort_mode==='year'?'selected':''}>Year</option>
+                    <option value="added_at" ${coll.sort_mode==='added_at'?'selected':''}>Date Added</option>
+                    <option value="custom" ${coll.sort_mode==='custom'?'selected':''}>Custom Order</option>
+                </select>
+            </div>
+            <div class="form-group"><label>Poster URL</label><input type="text" id="editCollPoster" value="${coll.poster_path || ''}" placeholder="Optional poster image"></div>
+            <button class="btn-primary" onclick="saveCollectionEdit('${id}')">Save Changes</button>
+            <button class="btn-secondary" style="margin-left:12px;" onclick="loadCollectionDetailView('${id}')">Cancel</button>
+        </div>`;
+}
+
+async function saveCollectionEdit(id) {
+    const name = document.getElementById('editCollName').value.trim();
+    if (!name) { toast('Name is required', 'error'); return; }
+    const d = await api('PUT', '/collections/' + id, {
+        name,
+        description: document.getElementById('editCollDesc').value.trim() || null,
+        visibility: document.getElementById('editCollVisibility').value,
+        sort_mode: document.getElementById('editCollSort').value,
+        poster_path: document.getElementById('editCollPoster').value.trim() || null
+    });
+    if (d.success) { toast('Collection updated!'); loadCollectionDetailView(id); }
+    else toast(d.error, 'error');
+}
+
 async function createCollectionTemplates(libraryId) {
     const r = await api('POST', '/collections/templates');
     if (r.success) {
@@ -2408,6 +2559,7 @@ async function loadCollectionDetailView(collId) {
                 <span class="tag tag-green">${coll.item_count || 0} items</span>
             </div>
             <div style="display:flex;gap:8px;margin-top:12px;">
+                <button class="btn-secondary btn-small" onclick="editCollection('${coll.id}')">&#9998; Edit</button>
                 <button class="btn-secondary btn-small" onclick="showCreateCollection('${coll.id}')">+ Sub-collection</button>
                 <button class="btn-danger btn-small" onclick="deleteCollection('${coll.id}');navigate('collections');">Delete</button>
             </div>
@@ -2523,13 +2675,72 @@ async function loadPerformerDetail(id) {
     const data=await api('GET','/performers/'+id);
     if(!data.success){mc.innerHTML='<div class="empty-state"><div class="empty-state-title">Performer not found</div></div>';return;}
     const p=data.data.performer; const media=data.data.media||[];
-    mc.innerHTML=`<div class="detail-hero"><div class="detail-poster">${p.photo_path?'<img src="'+p.photo_path+'">':'&#128100;'}</div><div class="detail-info"><h1>${p.name}</h1><div class="meta-row">${p.performer_type}${p.birth_date?' \u00b7 Born: '+new Date(p.birth_date).toLocaleDateString():''}</div>${p.bio?'<p class="description">'+p.bio+'</p>':''}<span class="tag tag-cyan">${p.media_count||0} media items</span></div></div>
+    const isAdmin = currentUser && currentUser.role === 'admin';
+    let metaRows = '';
+    if (p.birth_date) metaRows += `<tr><td style="color:#5a6a7f;padding:3px 16px 3px 0;">Born</td><td>${new Date(p.birth_date).toLocaleDateString()}</td></tr>`;
+    if (p.birth_place) metaRows += `<tr><td style="color:#5a6a7f;padding:3px 16px 3px 0;">Birthplace</td><td>${p.birth_place}</td></tr>`;
+    if (p.death_date) metaRows += `<tr><td style="color:#5a6a7f;padding:3px 16px 3px 0;">Died</td><td>${new Date(p.death_date).toLocaleDateString()}</td></tr>`;
+    if (p.aliases) metaRows += `<tr><td style="color:#5a6a7f;padding:3px 16px 3px 0;">Aliases</td><td>${p.aliases}</td></tr>`;
+    if (p.nationality) metaRows += `<tr><td style="color:#5a6a7f;padding:3px 16px 3px 0;">Nationality</td><td>${p.nationality}</td></tr>`;
+    if (p.height) metaRows += `<tr><td style="color:#5a6a7f;padding:3px 16px 3px 0;">Height</td><td>${p.height}</td></tr>`;
+    if (p.tmdb_person_id) metaRows += `<tr><td style="color:#5a6a7f;padding:3px 16px 3px 0;">TMDB</td><td><a href="https://www.themoviedb.org/person/${p.tmdb_person_id}" target="_blank" style="color:#00D9FF;">#${p.tmdb_person_id}</a></td></tr>`;
+    if (p.imdb_person_id) metaRows += `<tr><td style="color:#5a6a7f;padding:3px 16px 3px 0;">IMDB</td><td><a href="https://www.imdb.com/name/${p.imdb_person_id}/" target="_blank" style="color:#00D9FF;">${p.imdb_person_id}</a></td></tr>`;
+    const extMeta = metaRows ? `<table style="width:100%;font-size:0.85rem;margin-top:12px;">${metaRows}</table>` : '';
+    mc.innerHTML=`<div class="detail-hero"><div class="detail-poster">${p.photo_path?'<img src="'+p.photo_path+'">':'&#128100;'}</div><div class="detail-info"><h1>${p.name}</h1><div class="meta-row">${p.performer_type}${p.birth_date?' \u00b7 Born: '+new Date(p.birth_date).toLocaleDateString():''}</div>${p.bio?'<p class="description">'+p.bio+'</p>':''}<span class="tag tag-cyan">${p.media_count||0} media items</span>${extMeta}${isAdmin ? '<div style="margin-top:12px;display:flex;gap:8px;"><button class="btn-secondary btn-small" onclick="showEditPerformer(\''+id+'\')">&#9998; Edit</button><button class="btn-danger btn-small" onclick="deletePerformer(\''+id+'\')">Delete</button></div>' : ''}</div></div>
     ${media.length>0?'<h3 style="color:#00D9FF;margin-bottom:16px;">Linked Media</h3><div class="media-grid">'+media.map(renderMediaCard).join('')+'</div>':''}
     <button class="btn-secondary" onclick="loadPerformersView()">&#8592; Back</button>`;
 }
 
 function showCreatePerformer(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">Add Performer</h2></div><div style="max-width:500px;"><div class="form-group"><label>Name</label><input type="text" id="perfName"></div><div class="form-group"><label>Type</label><select id="perfType"><option value="actor">Actor</option><option value="director">Director</option><option value="producer">Producer</option><option value="musician">Musician</option><option value="narrator">Narrator</option><option value="adult_performer">Adult Performer</option><option value="other">Other</option></select></div><div class="form-group"><label>Bio</label><textarea id="perfBio" rows="3"></textarea></div><button class="btn-primary" onclick="createPerformer()">Create</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadPerformersView()">Cancel</button></div>`;}
 async function createPerformer(){const n=document.getElementById('perfName').value,t=document.getElementById('perfType').value,b=document.getElementById('perfBio').value||null;if(!n){toast('Name required','error');return;}const d=await api('POST','/performers',{name:n,performer_type:t,bio:b});if(d.success){toast('Created!');loadPerformersView();}else toast(d.error,'error');}
+
+async function deletePerformer(id) {
+    if (!confirm('Delete this performer?')) return;
+    const d = await api('DELETE', '/performers/' + id);
+    if (d.success) { toast('Performer deleted'); loadPerformersView(); }
+    else toast(d.error, 'error');
+}
+
+async function showEditPerformer(id) {
+    const res = await api('GET', '/performers/' + id);
+    if (!res.success) { toast('Failed to load performer', 'error'); return; }
+    const p = res.data.performer;
+    const mc = document.getElementById('mainContent');
+    mc.innerHTML = `<div class="section-header"><h2 class="section-title">Edit Performer</h2></div>
+        <div style="max-width:560px;">
+            <div class="form-group"><label>Name</label><input type="text" id="epName" value="${p.name || ''}"></div>
+            <div class="form-group"><label>Type</label><select id="epType"><option value="actor" ${p.performer_type==='actor'?'selected':''}>Actor</option><option value="director" ${p.performer_type==='director'?'selected':''}>Director</option><option value="producer" ${p.performer_type==='producer'?'selected':''}>Producer</option><option value="musician" ${p.performer_type==='musician'?'selected':''}>Musician</option><option value="narrator" ${p.performer_type==='narrator'?'selected':''}>Narrator</option><option value="adult_performer" ${p.performer_type==='adult_performer'?'selected':''}>Adult Performer</option><option value="other" ${p.performer_type==='other'?'selected':''}>Other</option></select></div>
+            <div class="form-group"><label>Bio</label><textarea id="epBio" rows="3">${p.bio || ''}</textarea></div>
+            <div class="form-group"><label>Photo URL</label><input type="text" id="epPhoto" value="${p.photo_path || ''}" placeholder="URL to photo"></div>
+            <div class="edit-field-row">
+                <div class="form-group"><label>Birth Date</label><input type="date" id="epBirthDate" value="${p.birth_date ? p.birth_date.substring(0,10) : ''}"></div>
+                <div class="form-group"><label>Birth Place</label><input type="text" id="epBirthPlace" value="${p.birth_place || ''}"></div>
+            </div>
+            <div class="edit-field-row">
+                <div class="form-group"><label>Nationality</label><input type="text" id="epNationality" value="${p.nationality || ''}"></div>
+                <div class="form-group"><label>Aliases</label><input type="text" id="epAliases" value="${p.aliases || ''}" placeholder="Comma-separated"></div>
+            </div>
+            <button class="btn-primary" onclick="savePerformerEdit('${id}')">Save Changes</button>
+            <button class="btn-secondary" style="margin-left:12px;" onclick="loadPerformerDetail('${id}')">Cancel</button>
+        </div>`;
+}
+
+async function savePerformerEdit(id) {
+    const name = document.getElementById('epName').value.trim();
+    if (!name) { toast('Name required', 'error'); return; }
+    const d = await api('PUT', '/performers/' + id, {
+        name,
+        performer_type: document.getElementById('epType').value,
+        bio: document.getElementById('epBio').value.trim() || null,
+        photo_path: document.getElementById('epPhoto').value.trim() || null,
+        birth_date: document.getElementById('epBirthDate').value || null,
+        birth_place: document.getElementById('epBirthPlace').value.trim() || null,
+        nationality: document.getElementById('epNationality').value.trim() || null,
+        aliases: document.getElementById('epAliases').value.trim() || null
+    });
+    if (d.success) { toast('Performer updated'); loadPerformerDetail(id); }
+    else toast(d.error, 'error');
+}
 
 // ──── Tags ────
 async function loadTagsView() {
@@ -2544,7 +2755,8 @@ async function loadTagsView() {
 
 function renderTag(tag, depth) {
     const indent = depth * 24;
-    let html = `<div class="group-card" style="margin-left:${indent}px;display:flex;justify-content:space-between;align-items:center;"><div><h4>${tag.name}</h4><span class="tag tag-${tag.category==='genre'?'purple':tag.category==='custom'?'orange':'cyan'}">${tag.category}</span><span class="tag tag-green">${tag.media_count||0} media</span></div><button class="btn-danger btn-small" onclick="deleteTag('${tag.id}')">Delete</button></div>`;
+    const isAdmin = currentUser && currentUser.role === 'admin';
+    let html = `<div class="group-card" style="margin-left:${indent}px;display:flex;justify-content:space-between;align-items:center;"><div><h4>${tag.name}</h4>${tag.description ? '<p style="color:#5a6a7f;font-size:0.78rem;margin:2px 0;">'+tag.description+'</p>' : ''}<span class="tag tag-${tag.category==='genre'?'purple':tag.category==='custom'?'orange':'cyan'}">${tag.category}</span><span class="tag tag-green">${tag.media_count||0} media</span></div><div style="display:flex;gap:6px;">${isAdmin ? '<button class="btn-secondary btn-small" onclick="showEditTag(\''+tag.id+'\',\''+tag.name.replace(/'/g,"\\'")+'\',\''+tag.category+'\',\''+(tag.description||'').replace(/'/g,"\\'")+'\')">&#9998;</button><button class="btn-danger btn-small" onclick="deleteTag(\''+tag.id+'\')">Delete</button>' : ''}</div></div>`;
     if (tag.children) tag.children.forEach(c => html += renderTag(c, depth+1));
     return html;
 }
@@ -2553,6 +2765,44 @@ function showCreateTag(){const mc=document.getElementById('mainContent');mc.inne
 async function createTag(){const n=document.getElementById('tagName').value,c=document.getElementById('tagCat').value,d=document.getElementById('tagDesc').value||null;if(!n){toast('Name required','error');return;}const r=await api('POST','/tags',{name:n,category:c,description:d});if(r.success){toast('Created!');loadTagsView();}else toast(r.error,'error');}
 async function deleteTag(id){if(!confirm('Delete?'))return;const d=await api('DELETE','/tags/'+id);if(d.success){toast('Deleted');loadTagsView();}else toast(d.error,'error');}
 
+function showEditTag(id, name, category, description) {
+    const mc = document.getElementById('mainContent');
+    mc.innerHTML = `<div class="section-header"><h2 class="section-title">Edit Tag</h2></div>
+        <div style="max-width:500px;">
+            <div class="form-group"><label>Name</label><input type="text" id="editTagName" value="${name}"></div>
+            <div class="form-group"><label>Category</label><select id="editTagCat"><option value="genre" ${category==='genre'?'selected':''}>Genre</option><option value="tag" ${category==='tag'?'selected':''}>Tag</option><option value="custom" ${category==='custom'?'selected':''}>Custom</option></select></div>
+            <div class="form-group"><label>Description</label><input type="text" id="editTagDesc" value="${description}"></div>
+            <button class="btn-primary" onclick="saveTagEdit('${id}')">Save</button>
+            <button class="btn-secondary" style="margin-left:12px;" onclick="loadTagsView()">Cancel</button>
+        </div>`;
+}
+
+async function saveTagEdit(id) {
+    const name = document.getElementById('editTagName').value.trim();
+    if (!name) { toast('Name required', 'error'); return; }
+    const d = await api('PUT', '/tags/' + id, {
+        name,
+        category: document.getElementById('editTagCat').value,
+        description: document.getElementById('editTagDesc').value.trim() || null
+    });
+    if (d.success) { toast('Tag updated'); loadTagsView(); }
+    else toast(d.error, 'error');
+}
+
+async function addTagToMedia(mediaId) {
+    const sel = document.getElementById('tagAssignSelect');
+    if (!sel || !sel.value) { toast('Select a tag first', 'error'); return; }
+    const d = await api('POST', '/media/' + mediaId + '/tags/' + sel.value);
+    if (d.success) { toast('Tag added'); showDetailTab(document.querySelector('.detail-tab.active') || document.querySelector('.detail-tab'), 'tags-tab', mediaId); }
+    else toast(d.error || 'Failed to add tag', 'error');
+}
+
+async function removeTagFromMedia(mediaId, tagId) {
+    const d = await api('DELETE', '/media/' + mediaId + '/tags/' + tagId);
+    if (d.success) { toast('Tag removed'); showDetailTab(document.querySelector('.detail-tab.active') || document.querySelector('.detail-tab'), 'tags-tab', mediaId); }
+    else toast(d.error || 'Failed to remove tag', 'error');
+}
+
 // ──── Studios ────
 async function loadStudiosView() {
     const mc=document.getElementById('mainContent'); const isAdmin=currentUser&&currentUser.role==='admin';
@@ -2560,12 +2810,54 @@ async function loadStudiosView() {
     const data=await api('GET','/studios');
     const div=document.getElementById('studiosList');
     if(data.success&&data.data&&data.data.length>0){
-        div.innerHTML=data.data.map(s=>`<div class="group-card"><div style="display:flex;justify-content:space-between;align-items:center;"><div><h4>${s.name}</h4><span class="tag tag-cyan">${s.studio_type}</span><span class="tag tag-green">${s.media_count||0} media</span></div>${isAdmin?`<button class="btn-danger btn-small" onclick="deleteStudio('${s.id}')">Delete</button>`:''}</div></div>`).join('');
+        div.innerHTML=data.data.map(s=>`<div class="group-card" style="cursor:pointer;" onclick="loadStudioDetail('${s.id}')"><div style="display:flex;justify-content:space-between;align-items:center;"><div><h4>${s.name}</h4>${s.website ? '<a href="'+s.website+'" target="_blank" style="color:#00D9FF;font-size:0.78rem;" onclick="event.stopPropagation();">'+s.website+'</a>' : ''}<div style="margin-top:4px;"><span class="tag tag-cyan">${s.studio_type}</span><span class="tag tag-green">${s.media_count||0} media</span></div></div><div style="display:flex;gap:6px;">${isAdmin?'<button class="btn-secondary btn-small" onclick="event.stopPropagation();showEditStudio(\''+s.id+'\',\''+s.name.replace(/'/g,"\\'")+'\',\''+s.studio_type+'\',\''+(s.website||'').replace(/'/g,"\\'")+'\')">&#9998;</button><button class="btn-danger btn-small" onclick="event.stopPropagation();deleteStudio(\''+s.id+'\')">Delete</button>':''}</div></div></div>`).join('');
     } else div.innerHTML='<div class="empty-state"><div class="empty-state-icon">&#127980;</div><div class="empty-state-title">No studios</div></div>';
 }
 function showCreateStudio(){const mc=document.getElementById('mainContent');mc.innerHTML=`<div class="section-header"><h2 class="section-title">Add Studio</h2></div><div style="max-width:500px;"><div class="form-group"><label>Name</label><input type="text" id="studioName"></div><div class="form-group"><label>Type</label><select id="studioType"><option value="studio">Studio</option><option value="label">Label</option><option value="publisher">Publisher</option><option value="network">Network</option><option value="distributor">Distributor</option></select></div><div class="form-group"><label>Website</label><input type="text" id="studioWeb"></div><button class="btn-primary" onclick="createStudio()">Create</button><button class="btn-secondary" style="margin-left:12px;" onclick="loadStudiosView()">Cancel</button></div>`;}
 async function createStudio(){const n=document.getElementById('studioName').value,t=document.getElementById('studioType').value,w=document.getElementById('studioWeb').value||null;if(!n){toast('Name required','error');return;}const d=await api('POST','/studios',{name:n,studio_type:t,website:w});if(d.success){toast('Created!');loadStudiosView();}else toast(d.error,'error');}
 async function deleteStudio(id){if(!confirm('Delete?'))return;const d=await api('DELETE','/studios/'+id);if(d.success){toast('Deleted');loadStudiosView();}else toast(d.error,'error');}
+
+async function loadStudioDetail(id) {
+    const mc = document.getElementById('mainContent');
+    mc.innerHTML = '<div class="spinner"></div>';
+    const data = await api('GET', '/studios/' + id);
+    if (!data.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Studio not found</div></div>'; return; }
+    const s = data.data.studio || data.data;
+    const media = data.data.media || [];
+    const isAdmin = currentUser && currentUser.role === 'admin';
+    mc.innerHTML = `<div class="detail-hero"><div class="detail-poster" style="font-size:3rem;">&#127980;</div>
+        <div class="detail-info"><h1>${s.name}</h1>
+            <div class="meta-row">${s.studio_type}${s.website ? ' &middot; <a href="'+s.website+'" target="_blank" style="color:#00D9FF;">'+s.website+'</a>' : ''}</div>
+            <span class="tag tag-cyan">${s.media_count || media.length} media items</span>
+            ${isAdmin ? '<div style="margin-top:12px;display:flex;gap:8px;"><button class="btn-secondary btn-small" onclick="showEditStudio(\''+id+'\',\''+s.name.replace(/'/g,"\\'")+'\',\''+s.studio_type+'\',\''+(s.website||'').replace(/'/g,"\\'")+'\')">&#9998; Edit</button><button class="btn-danger btn-small" onclick="deleteStudio(\''+id+'\')">Delete</button></div>' : ''}
+        </div></div>
+    ${media.length > 0 ? '<h3 style="color:#00D9FF;margin-bottom:16px;">Media</h3><div class="media-grid">' + media.map(renderMediaCard).join('') + '</div>' : ''}
+    <button class="btn-secondary" onclick="loadStudiosView()">&#8592; Back</button>`;
+}
+
+function showEditStudio(id, name, studioType, website) {
+    const mc = document.getElementById('mainContent');
+    mc.innerHTML = `<div class="section-header"><h2 class="section-title">Edit Studio</h2></div>
+        <div style="max-width:500px;">
+            <div class="form-group"><label>Name</label><input type="text" id="editStudioName" value="${name}"></div>
+            <div class="form-group"><label>Type</label><select id="editStudioType"><option value="studio" ${studioType==='studio'?'selected':''}>Studio</option><option value="label" ${studioType==='label'?'selected':''}>Label</option><option value="publisher" ${studioType==='publisher'?'selected':''}>Publisher</option><option value="network" ${studioType==='network'?'selected':''}>Network</option><option value="distributor" ${studioType==='distributor'?'selected':''}>Distributor</option></select></div>
+            <div class="form-group"><label>Website</label><input type="text" id="editStudioWeb" value="${website}" placeholder="https://..."></div>
+            <button class="btn-primary" onclick="saveStudioEdit('${id}')">Save</button>
+            <button class="btn-secondary" style="margin-left:12px;" onclick="loadStudiosView()">Cancel</button>
+        </div>`;
+}
+
+async function saveStudioEdit(id) {
+    const name = document.getElementById('editStudioName').value.trim();
+    if (!name) { toast('Name required', 'error'); return; }
+    const d = await api('PUT', '/studios/' + id, {
+        name,
+        studio_type: document.getElementById('editStudioType').value,
+        website: document.getElementById('editStudioWeb').value.trim() || null
+    });
+    if (d.success) { toast('Studio updated'); loadStudiosView(); }
+    else toast(d.error, 'error');
+}
 
 // ──── Duplicates ────
 async function loadDuplicatesView() {
@@ -2746,6 +3038,14 @@ async function openEditModal(id) {
     document.getElementById('editRating').value = m.rating != null ? m.rating : '';
     // Edition type (always shown)
     document.getElementById('editEditionType').value = m.edition_type || 'Theatrical';
+    // New fields: content rating, language, tagline, country, trailer, genres, studio
+    document.getElementById('editContentRating').value = m.content_rating || '';
+    document.getElementById('editOriginalLanguage').value = m.original_language || '';
+    document.getElementById('editTagline').value = m.tagline || '';
+    document.getElementById('editCountry').value = m.country || '';
+    document.getElementById('editTrailerUrl').value = m.trailer_url || '';
+    document.getElementById('editGenres').value = (m.genres || []).join(', ');
+    document.getElementById('editStudio').value = m.studio || '';
     // Poster and backdrop
     document.getElementById('editPosterPath').value = m.poster_path || '';
     document.getElementById('editBackdropPath').value = m.backdrop_path || '';
@@ -2843,11 +3143,22 @@ async function saveMediaEdit() {
     const ctTags = ctInput ? ctInput.split(',').map(t => t.trim()).filter(Boolean) : [];
     const customTags = JSON.stringify({ tags: ctTags });
 
+    const contentRating = document.getElementById('editContentRating').value || null;
+    const originalLanguage = document.getElementById('editOriginalLanguage').value.trim() || null;
+    const tagline = document.getElementById('editTagline').value.trim() || null;
+    const country = document.getElementById('editCountry').value.trim() || null;
+    const trailerUrl = document.getElementById('editTrailerUrl').value.trim() || null;
+    const genresInput = document.getElementById('editGenres').value.trim();
+    const genres = genresInput ? genresInput.split(',').map(g => g.trim()).filter(Boolean) : null;
+    const studio = document.getElementById('editStudio').value.trim() || null;
+
     const d = await api('PUT', '/media/' + id, {
         title, sort_title: sortTitle, original_title: originalTitle,
         description, year, release_date: releaseDate, rating,
         edition_type: editionType, poster_path: posterPath, backdrop_path: backdropPath,
-        custom_notes: customNotes, custom_tags: customTags
+        custom_notes: customNotes, custom_tags: customTags,
+        content_rating: contentRating, original_language: originalLanguage,
+        tagline, country, trailer_url: trailerUrl, genres, studio
     });
     if (d.success) {
         // Set edition parent if one was selected

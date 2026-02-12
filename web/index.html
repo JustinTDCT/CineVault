@@ -44,6 +44,14 @@
                 <div class="nav-label">Libraries</div>
             </div>
 
+            <div class="nav-section">
+                <div class="nav-label">Discover</div>
+                <div class="nav-item" data-view="collections"><span class="nav-icon">&#128218;</span><span>Collections</span></div>
+                <div class="nav-item" data-view="livetv"><span class="nav-icon">&#128250;</span><span>Live TV</span></div>
+                <div class="nav-item" data-view="requests"><span class="nav-icon">&#128172;</span><span>Requests</span></div>
+                <div class="nav-item" data-view="stats"><span class="nav-icon">&#128202;</span><span>My Stats</span></div>
+            </div>
+
             <div class="sidebar-footer" id="sidebarFooter"></div>
         </div>
 
@@ -221,6 +229,10 @@
                 </select>
                 <select class="player-quality-select" id="audioTrackSelect" onchange="changeAudioTrack(this.value)"></select>
                 <select class="player-quality-select" id="qualitySelect" onchange="changeQuality(this.value)"></select>
+                <select class="player-quality-select" id="chapterSelect" onchange="jumpToChapter(this.value)" style="display:none;">
+                    <option value="">Chapters</option>
+                </select>
+                <button class="player-btn" id="addMarkerBtn" onclick="addMarkerFromPlayer()" title="Add Scene Marker" style="display:none;">&#128205;</button>
                 <button class="player-btn" id="pipBtn" onclick="togglePiP()" title="Picture-in-Picture">&#128250;</button>
                 <button class="player-btn" id="castBtn" onclick="startCast(currentMediaId, document.getElementById('playerTitle').textContent)" title="Cast" style="display:none;">&#128225;</button>
                 <button class="player-btn" onclick="toggleFullscreen()" style="margin-left:auto;">&#9974;</button>
@@ -290,6 +302,51 @@
                     <div class="parent-search-results" id="parentSearchResults"></div>
                 </div>
                 <div id="parentCurrentInfo" style="display:none;"></div>
+            </div>
+            <div class="edit-field-row">
+                <div class="form-group">
+                    <label>Content Rating</label>
+                    <select id="editContentRating">
+                        <option value="">Not Rated</option>
+                        <option value="G">G</option>
+                        <option value="PG">PG</option>
+                        <option value="PG-13">PG-13</option>
+                        <option value="R">R</option>
+                        <option value="NC-17">NC-17</option>
+                        <option value="TV-Y">TV-Y</option>
+                        <option value="TV-Y7">TV-Y7</option>
+                        <option value="TV-G">TV-G</option>
+                        <option value="TV-PG">TV-PG</option>
+                        <option value="TV-14">TV-14</option>
+                        <option value="TV-MA">TV-MA</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Original Language</label>
+                    <input type="text" id="editOriginalLanguage" placeholder="e.g. en, ja, fr">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Tagline</label>
+                <input type="text" id="editTagline" placeholder="Movie tagline">
+            </div>
+            <div class="edit-field-row">
+                <div class="form-group">
+                    <label>Country</label>
+                    <input type="text" id="editCountry" placeholder="e.g. US, GB, JP">
+                </div>
+                <div class="form-group">
+                    <label>Trailer URL</label>
+                    <input type="text" id="editTrailerUrl" placeholder="YouTube or direct URL">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Genres <span style="color:#6b7b8d;font-weight:400;font-size:0.78rem;">(comma-separated)</span></label>
+                <input type="text" id="editGenres" placeholder="e.g. Action, Thriller, Drama">
+            </div>
+            <div class="form-group">
+                <label>Studio</label>
+                <input type="text" id="editStudio" placeholder="e.g. Warner Bros, A24">
             </div>
             <div class="edit-field-row">
                 <div class="form-group">

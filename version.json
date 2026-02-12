@@ -1,6 +1,6 @@
 {
-  "version": "0.64.00",
+  "version": "0.65.00",
   "phase": 15,
   "released": "2026-02-12",
-  "notes": "Wire all Phase 6-15 features to UI. Settings page: added DLNA, Cinema Mode, Live TV/Tuners, Webhooks, API Keys, Backup, Import sections; expanded Users with per-user streaming limits. Profile page: added 2FA setup, Trakt.tv/Last.fm connections, Home Layout customization, Playback Preferences."
+  "notes": "Comprehensive UI wiring audit: sidebar nav for Collections/LiveTV/Requests/Stats, chapters tab + player chapter selector, filter presets toolbar, collection/tag/performer/studio CRUD, eBook reader button, anime metadata fields, expanded edit modal fields, scene marker button, DASH playback fix, grid keyboard navigation."
 }

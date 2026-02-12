@@ -3067,6 +3067,14 @@ body.is-offline::after {
 /* ── Settings Nav Label (admin-only) ── */
 .admin-only-label { /* inherits settings-nav-label styles */ }
 
+/* ── Filter Preset Dropdown ── */
+.ft-preset-select {
+    background: rgba(0,0,0,0.4); border: 1px solid rgba(0,217,255,0.15);
+    color: #e5e5e5; border-radius: 6px; padding: 5px 8px; font-size: 0.78rem;
+    cursor: pointer; max-width: 140px;
+}
+.ft-preset-select:focus { border-color: rgba(0,217,255,0.4); outline: none; }
+
 @media (max-width: 768px) {
     .stream-limits-editor .settings-card { margin-left: 0 !important; }
     .trakt-device-code { font-size: 1.3rem; letter-spacing: 4px; padding: 10px 16px; }

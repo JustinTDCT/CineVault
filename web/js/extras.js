@@ -72,6 +72,22 @@ async function addMarker(mediaId) {
     loadMarkers(mediaId);
 }
 
+// Wrapper for the player's Add Marker button
+function addMarkerFromPlayer() {
+    if (typeof currentMediaId !== 'undefined' && currentMediaId) {
+        addMarker(currentMediaId);
+    } else {
+        toast('No media playing', 'error');
+    }
+}
+
+// Jump to chapter from chapter selector dropdown
+function jumpToChapter(seconds) {
+    if (!seconds) return;
+    const video = document.getElementById('videoPlayer');
+    if (video) video.currentTime = parseFloat(seconds);
+}
+
 // ──── Live TV (P15-05) ────
 async function loadLiveTVView() {
     const mc = document.getElementById('mainContent');
@@ -393,6 +409,23 @@ async function playMediaDirect(mediaId, title) {
     // Render chapter markers on seek bar
     renderChapterMarkers(currentStreamInfo);
 
+    // Populate chapter selector dropdown
+    const chapSel = document.getElementById('chapterSelect');
+    if (chapSel && currentStreamInfo && currentStreamInfo.chapters && currentStreamInfo.chapters.length > 0) {
+        let chapOpts = '<option value="">Chapters</option>';
+        currentStreamInfo.chapters.forEach(ch => {
+            chapOpts += `<option value="${ch.start_seconds}">${ch.title || 'Chapter'} (${formatTime(ch.start_seconds)})</option>`;
+        });
+        chapSel.innerHTML = chapOpts;
+        chapSel.style.display = '';
+    } else if (chapSel) {
+        chapSel.style.display = 'none';
+    }
+
+    // Show the add marker button
+    const markerBtn = document.getElementById('addMarkerBtn');
+    if (markerBtn) markerBtn.style.display = '';
+
     // Start playback — MPEGTS for non-native formats, direct for native
     if (currentStreamInfo && currentStreamInfo.needs_remux) {
         startMpegtsPlay(mediaId, token, 0);
@@ -535,7 +568,7 @@ function changeQuality(value) {
 let dashPlayer = null;
 function startDASHPlay(mediaId, token) {
     const video = document.getElementById('videoPlayer');
-    cleanupPlayers();
+    destroyPlayers();
     if (typeof dashjs !== 'undefined') {
         dashPlayer = dashjs.MediaPlayer().create();
         dashPlayer.initialize(video, '/api/v1/stream/' + mediaId + '/manifest.mpd?token=' + encodeURIComponent(token), true);
