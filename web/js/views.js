@@ -1498,25 +1498,23 @@ function renderShowCard(show) {
 async function loadShowView(showId) {
     const mc = document.getElementById('mainContent');
     mc.innerHTML = '<div class="spinner"></div> Loading...';
-    const data = await api('GET', '/tv/shows/' + showId);
+
+    // Fetch show data and missing episodes in parallel (show-specific endpoint)
+    const [data, missingData] = await Promise.all([
+        api('GET', '/tv/shows/' + showId),
+        api('GET', '/tv/shows/' + showId + '/missing-episodes')
+    ]);
     if (!data.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Show not found</div></div>'; return; }
     const show = data.data.show;
     const seasons = data.data.seasons || [];
     const totalEps = seasons.reduce((sum, s) => sum + (s.episode_count || 0), 0);
 
-    // Fetch missing episode data for the library
+    // Parse missing episode data from show-specific endpoint
     let missingMap = {}; // seasonId -> {missing_numbers, have_count, expected_count}
     let totalMissing = 0;
-    const libId = show.library_id;
-    if (libId) {
-        const missingData = await api('GET', '/libraries/' + libId + '/missing-episodes');
-        if (missingData.success && missingData.data && missingData.data.shows) {
-            const showMissing = missingData.data.shows.find(s => s.show_id === showId);
-            if (showMissing) {
-                totalMissing = showMissing.total_missing;
-                (showMissing.seasons || []).forEach(sm => { missingMap[sm.season_id] = sm; });
-            }
-        }
+    if (missingData.success && missingData.data) {
+        totalMissing = missingData.data.total_missing || 0;
+        (missingData.data.seasons || []).forEach(sm => { missingMap[sm.season_id] = sm; });
     }
 
     const missingBadge = totalMissing > 0 ? ` <span class="tag tag-warning" style="margin-left:8px;">${totalMissing} missing episode${totalMissing !== 1 ? 's' : ''}</span>` : '';

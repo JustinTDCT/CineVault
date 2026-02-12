@@ -103,6 +103,23 @@ func (s *Server) handleSeasonMissingEpisodes(w http.ResponseWriter, r *http.Requ
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: result})
 }
 
+// handleShowMissingEpisodes returns missing episodes for a single TV show (fast path).
+func (s *Server) handleShowMissingEpisodes(w http.ResponseWriter, r *http.Request) {
+	showID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid show ID")
+		return
+	}
+
+	result, err := s.tvRepo.GetShowMissingEpisodes(showID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to detect missing episodes")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: result})
+}
+
 // handleGetShow returns a single TV show by ID.
 func (s *Server) handleGetShow(w http.ResponseWriter, r *http.Request) {
 	showID, err := uuid.Parse(r.PathValue("id"))

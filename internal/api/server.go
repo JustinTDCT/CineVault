@@ -279,6 +279,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /api/v1/libraries/{id}/shows", s.authMiddleware(s.handleListLibraryShows, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/libraries/{id}/missing-episodes", s.authMiddleware(s.handleMissingEpisodes, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/tv/shows/{id}", s.authMiddleware(s.handleGetShow, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/tv/shows/{id}/missing-episodes", s.authMiddleware(s.handleShowMissingEpisodes, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/tv/shows/{id}/seasons", s.authMiddleware(s.handleListShowSeasons, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/tv/seasons/{id}/episodes", s.authMiddleware(s.handleListSeasonEpisodes, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/tv/seasons/{id}/missing", s.authMiddleware(s.handleSeasonMissingEpisodes, models.RoleUser))

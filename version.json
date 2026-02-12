@@ -1,6 +1,6 @@
 {
-  "version": "1.00.00",
-  "phase": 16,
+  "version": "1.01.00",
+  "phase": 17,
   "released": "2026-02-12",
-  "notes": "Major release: TOTP fix, security headers/CORS/rate limiting, password validation/reset/sessions, streaming pipeline (audio selection/subtitle burn-in/HDR-to-SDR/HEVC/hw decode), Telegram/Pushover/Gotify/email notifications, DLNA/SSDP/ContentDirectory/Chromecast bidirectional, full OpenAPI spec, pagination/ETag, ARIA accessibility, PWA enhancements, scanner hardening with symlink protection and concurrent processing."
+  "notes": "TV show performance: added missing indexes on media_items(tv_season_id), show-specific missing episodes endpoint, optimized library-wide missing episodes from N+1 queries to single aggregated SQL, parallelized frontend API calls."
 }
