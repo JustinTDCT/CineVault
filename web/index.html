@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dashjs@4/dist/dash.all.min.js"></script>
     <!-- Chart.js moved to settings.html with analytics -->
     <style>
         /* Page-specific overrides only — main styles in styles.css */
@@ -74,6 +75,7 @@
                         <div class="user-dropdown-item" onclick="navigate('profile')"><span class="ud-icon">&#9998;</span> Edit Profile</div>
                         <div class="user-dropdown-item" onclick="navigate('stats')"><span class="ud-icon">&#128202;</span> My Stats</div>
                         <div class="user-dropdown-item" onclick="navigate('requests')"><span class="ud-icon">&#128269;</span> Content Requests</div>
+                        <div class="user-dropdown-item" onclick="joinSyncSession()"><span class="ud-icon">&#128101;</span> Join Watch Party</div>
                         <div class="user-dropdown-item" id="udSettingsItem" onclick="window.location.href='settings.html'" style="display:none;"><span class="ud-icon">&#9881;</span> Settings</div>
                         <div class="user-dropdown-sep"></div>
                         <div class="user-dropdown-item logout" id="udLogoutBtn"><span class="ud-icon">&#128682;</span> Logout</div>
@@ -217,6 +219,7 @@
                 </select>
                 <select class="player-quality-select" id="audioTrackSelect" onchange="changeAudioTrack(this.value)"></select>
                 <select class="player-quality-select" id="qualitySelect" onchange="changeQuality(this.value)"></select>
+                <button class="player-btn" id="pipBtn" onclick="togglePiP()" title="Picture-in-Picture">&#128250;</button>
                 <button class="player-btn" onclick="toggleFullscreen()" style="margin-left:auto;">&#9974;</button>
             </div>
         </div>
@@ -976,7 +979,12 @@
                 handleTaskUpdate(msg.data);
                 break;
             case 'job:progress': break;
-            default: break;
+            default:
+                // Handle sync events (P12-01)
+                if (msg.event && msg.event.startsWith('sync:')) {
+                    handleSyncWSMessage(msg.event, msg.data);
+                }
+                break;
         }
     }
 
@@ -2115,9 +2123,12 @@
                         <button class="btn-primary" onclick="playMedia('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#9654; Play</button>
                         <button class="btn-secondary" onclick="playDirect('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#128190; Direct Play</button>
                         ${m.trailer_url ? '<button class="btn-secondary" onclick="watchTrailer(\''+m.trailer_url.replace(/'/g,"\\'")+'\',\''+m.title.replace(/'/g,"\\'")+'\')">&#127909; Trailer</button>' : ''}
+                        ${m.media_type === 'movie' ? '<button class="btn-secondary" onclick="playCinemaMode(\''+m.id+'\',\''+m.title.replace(/'/g,"\\'")+'\')">&#127910; Cinema</button>' : ''}
+                        <button class="btn-secondary" onclick="createSyncSession('${m.id}')">&#128101; Watch Together</button>
                         <button class="btn-secondary" id="detailWatchlist" onclick="toggleWatchlist('${m.id}',this)">&#128278; Watchlist</button>
                         <button class="btn-secondary" id="detailFavorite" onclick="toggleFavorite('${m.id}',this)">&#10084; Favorite</button>
                         <button class="btn-secondary" onclick="addToQueue('${m.id}','${m.title.replace(/'/g,"\\'")}','${(m.poster_path||'').replace(/'/g,"\\'")}')">&#9654;&#9654; Queue</button>
+                        <button class="btn-secondary" onclick="musicPlayer.enqueue([{id:'${m.id}',title:'${m.title.replace(/'/g,"\\'")}',artist:'${(m.artist||'').replace(/'/g,"\\'")}',duration_seconds:${m.duration_seconds||0}}]);musicPlayer.currentIndex=musicPlayer.queue.length-1;musicPlayer.playTrack();">&#127925; Music Play</button>
                         <button class="btn-secondary" onclick="openEditModal('${m.id}')">&#9998; Edit</button>
                         <button class="btn-secondary" onclick="identifyMedia('${m.id}')">&#128270; Identify</button>
                         <button class="btn-secondary" onclick="showAddToCollectionPicker('${m.id}')">&#128218; + Collection</button>
@@ -5163,6 +5174,266 @@
         else toast(res.error || 'Failed to submit request', 'error');
     }
 
+    // ──── Picture-in-Picture (P12-03) ────
+    function togglePiP() {
+        const video = document.getElementById('videoPlayer');
+        if (!video) return;
+        if (document.pictureInPictureElement) {
+            document.exitPictureInPicture().catch(() => {});
+        } else if (document.pictureInPictureEnabled && video.readyState >= 1) {
+            video.requestPictureInPicture().catch(() => {
+                toast('PiP not supported', 'error');
+            });
+        }
+    }
+
+    // ──── Watch Together / SyncPlay (P12-01) ────
+    let currentSyncSession = null;
+
+    async function createSyncSession(mediaId) {
+        const res = await api('POST', '/sync/create', { media_item_id: mediaId });
+        if (!res.success) { toast(res.error || 'Failed to create session', 'error'); return; }
+        currentSyncSession = res.data;
+        toast('Watch Together session created! Code: ' + res.data.invite_code);
+        showSyncPanel(res.data.session_id, true);
+    }
+
+    async function joinSyncSession() {
+        const code = prompt('Enter invite code:');
+        if (!code) return;
+        const res = await api('POST', '/sync/join', { invite_code: code.trim() });
+        if (!res.success) { toast(res.error || 'Failed to join session', 'error'); return; }
+        currentSyncSession = res.data;
+        toast('Joined Watch Together session!');
+        playMediaDirect(res.data.media_item_id, 'Watch Together');
+        showSyncPanel(res.data.session_id, false);
+    }
+
+    function showSyncPanel(sessionId, isHost) {
+        // Create floating sync panel
+        let panel = document.getElementById('syncPanel');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'syncPanel';
+            panel.className = 'sync-panel';
+            document.body.appendChild(panel);
+        }
+        panel.innerHTML = `
+            <div class="sync-panel-header">
+                <span>Watch Together</span>
+                <button onclick="endSyncSession('${sessionId}')" class="sync-close">&times;</button>
+            </div>
+            <div class="sync-code">Code: <strong>${currentSyncSession.invite_code || ''}</strong></div>
+            <div id="syncChat" class="sync-chat"></div>
+            <div class="sync-input-row">
+                <input type="text" id="syncChatInput" placeholder="Chat..." onkeypress="if(event.key==='Enter')sendSyncChat('${sessionId}')">
+                <button onclick="sendSyncChat('${sessionId}')">Send</button>
+            </div>`;
+        panel.style.display = 'flex';
+    }
+
+    async function sendSyncChat(sessionId) {
+        const input = document.getElementById('syncChatInput');
+        if (!input || !input.value.trim()) return;
+        await api('POST', '/sync/' + sessionId + '/chat', { message: input.value.trim() });
+        input.value = '';
+    }
+
+    async function endSyncSession(sessionId) {
+        await api('DELETE', '/sync/' + sessionId);
+        const panel = document.getElementById('syncPanel');
+        if (panel) panel.style.display = 'none';
+        currentSyncSession = null;
+    }
+
+    // Listen for sync WebSocket events
+    function handleSyncWSMessage(event, data) {
+        if (event === 'sync:action' && currentSyncSession) {
+            const video = document.getElementById('videoPlayer');
+            if (!video) return;
+            if (data.action === 'play') video.play();
+            else if (data.action === 'pause') video.pause();
+            else if (data.action === 'seek') video.currentTime = data.current_time;
+        }
+        if (event === 'sync:chat' && currentSyncSession) {
+            const chatEl = document.getElementById('syncChat');
+            if (chatEl) {
+                const msg = document.createElement('div');
+                msg.className = 'sync-chat-msg';
+                msg.innerHTML = `<strong>${data.user}</strong>: ${data.message}`;
+                chatEl.appendChild(msg);
+                chatEl.scrollTop = chatEl.scrollHeight;
+            }
+        }
+        if (event === 'sync:ended') {
+            const panel = document.getElementById('syncPanel');
+            if (panel) panel.style.display = 'none';
+            currentSyncSession = null;
+            toast('Watch Together session ended');
+        }
+    }
+
+    // ──── Cinema Mode (P12-02) ────
+    async function playCinemaMode(mediaId, title) {
+        const res = await api('GET', '/cinema/queue/' + mediaId);
+        if (!res.success || !res.data || res.data.length === 0) {
+            playMediaDirect(mediaId, title);
+            return;
+        }
+        const queue = res.data;
+        let idx = 0;
+        const overlay = document.getElementById('playerOverlay');
+        const video = document.getElementById('videoPlayer');
+
+        function playNext() {
+            if (idx >= queue.length) { closePlayer(); return; }
+            const item = queue[idx];
+            const label = item.type === 'feature' ? item.title : (item.type === 'pre_roll' ? 'Pre-Roll' : 'Trailer: ' + item.title);
+            document.getElementById('playerTitle').textContent = label;
+
+            if (item.type !== 'feature') {
+                // Show skip button for non-features
+                let skipBtn = document.getElementById('cinemaSkipBtn');
+                if (!skipBtn) {
+                    skipBtn = document.createElement('button');
+                    skipBtn.id = 'cinemaSkipBtn';
+                    skipBtn.className = 'cinema-skip-btn';
+                    skipBtn.textContent = 'Skip ▶';
+                    skipBtn.onclick = () => { idx++; playNext(); };
+                    overlay.appendChild(skipBtn);
+                }
+                skipBtn.style.display = 'block';
+            } else {
+                const skipBtn = document.getElementById('cinemaSkipBtn');
+                if (skipBtn) skipBtn.style.display = 'none';
+            }
+
+            if (item.type === 'feature') {
+                playMediaDirect(item.id, item.title);
+            } else {
+                // Play pre-roll/trailer directly
+                video.src = '/api/v1/stream/' + item.id + '/direct?token=' + encodeURIComponent(localStorage.getItem('token'));
+                video.play();
+            }
+            idx++;
+        }
+
+        overlay.classList.add('active');
+        video.onended = playNext;
+        playNext();
+    }
+
+    // ──── Music Player (P13-01) ────
+    const musicPlayer = {
+        queue: [],
+        currentIndex: -1,
+        audio: new Audio(),
+        nextAudio: new Audio(), // for gapless (P13-02)
+        isPlaying: false,
+
+        enqueue(items) { this.queue = this.queue.concat(items); this.updateUI(); },
+        playNext() { if (this.currentIndex < this.queue.length - 1) { this.currentIndex++; this.playTrack(); } },
+        playPrev() { if (this.currentIndex > 0) { this.currentIndex--; this.playTrack(); } },
+
+        async playTrack() {
+            if (this.currentIndex < 0 || this.currentIndex >= this.queue.length) return;
+            const track = this.queue[this.currentIndex];
+            const token = localStorage.getItem('token');
+            this.audio.src = '/api/v1/stream/' + track.id + '/direct?token=' + encodeURIComponent(token);
+            this.audio.play();
+            this.isPlaying = true;
+            this.updateUI();
+            this.preBufferNext();
+            this.loadLyrics(track.id);
+            // Report progress
+            api('POST', '/watch/' + track.id + '/progress', { progress_seconds: 0, duration_seconds: track.duration_seconds || 0 });
+        },
+
+        toggle() {
+            if (this.isPlaying) { this.audio.pause(); this.isPlaying = false; }
+            else { this.audio.play(); this.isPlaying = true; }
+            this.updateUI();
+        },
+
+        // Gapless playback (P13-02)
+        preBufferNext() {
+            if (this.currentIndex < this.queue.length - 1) {
+                const next = this.queue[this.currentIndex + 1];
+                const token = localStorage.getItem('token');
+                this.nextAudio.src = '/api/v1/stream/' + next.id + '/direct?token=' + encodeURIComponent(token);
+                this.nextAudio.preload = 'auto';
+            }
+        },
+
+        async loadLyrics(mediaId) {
+            const res = await api('GET', '/media/' + mediaId + '/lyrics');
+            const lyricsEl = document.getElementById('musicLyrics');
+            if (!lyricsEl) return;
+            if (res.success && res.data && res.data.content) {
+                lyricsEl.innerHTML = '<pre class="lyrics-text">' + res.data.content.replace(/</g, '&lt;') + '</pre>';
+                lyricsEl.style.display = 'block';
+            } else {
+                lyricsEl.style.display = 'none';
+            }
+        },
+
+        updateUI() {
+            let bar = document.getElementById('musicMiniPlayer');
+            if (!bar && this.queue.length > 0) {
+                bar = document.createElement('div');
+                bar.id = 'musicMiniPlayer';
+                bar.className = 'music-mini-player';
+                bar.innerHTML = `
+                    <div class="mmp-info"><span id="mmpTitle">—</span><span id="mmpArtist"></span></div>
+                    <div class="mmp-controls">
+                        <button onclick="musicPlayer.playPrev()">&#9198;</button>
+                        <button id="mmpPlayBtn" onclick="musicPlayer.toggle()">&#9654;</button>
+                        <button onclick="musicPlayer.playNext()">&#9197;</button>
+                    </div>
+                    <div class="mmp-progress"><div id="mmpProgressFill" class="mmp-progress-fill"></div></div>
+                    <div id="musicLyrics" class="music-lyrics" style="display:none;"></div>`;
+                document.body.appendChild(bar);
+            }
+            if (!bar) return;
+            bar.style.display = this.queue.length > 0 ? 'flex' : 'none';
+            const track = this.queue[this.currentIndex];
+            if (track) {
+                document.getElementById('mmpTitle').textContent = track.title || 'Unknown';
+                document.getElementById('mmpArtist').textContent = track.artist || '';
+            }
+            const btn = document.getElementById('mmpPlayBtn');
+            if (btn) btn.innerHTML = this.isPlaying ? '&#10074;&#10074;' : '&#9654;';
+        }
+    };
+
+    // Gapless crossover (P13-02)
+    musicPlayer.audio.addEventListener('ended', () => {
+        if (musicPlayer.currentIndex < musicPlayer.queue.length - 1) {
+            // Swap to pre-buffered audio
+            const oldAudio = musicPlayer.audio;
+            musicPlayer.audio = musicPlayer.nextAudio;
+            musicPlayer.nextAudio = oldAudio;
+            musicPlayer.currentIndex++;
+            musicPlayer.audio.play();
+            musicPlayer.isPlaying = true;
+            musicPlayer.preBufferNext();
+            musicPlayer.updateUI();
+            const track = musicPlayer.queue[musicPlayer.currentIndex];
+            if (track) musicPlayer.loadLyrics(track.id);
+        } else {
+            musicPlayer.isPlaying = false;
+            musicPlayer.updateUI();
+        }
+    });
+
+    // Progress bar update
+    musicPlayer.audio.addEventListener('timeupdate', () => {
+        const fill = document.getElementById('mmpProgressFill');
+        if (fill && musicPlayer.audio.duration) {
+            fill.style.width = (musicPlayer.audio.currentTime / musicPlayer.audio.duration * 100) + '%';
+        }
+    });
+
     // ──── Settings (moved to settings.html) ────
 
     // Analytics + Admin moved to settings.html
@@ -5274,6 +5545,7 @@
             mpegtsPlayer.destroy();
             mpegtsPlayer = null;
         }
+        if (dashPlayer) { dashPlayer.reset(); dashPlayer = null; }
     }
 
     async function playMedia(mediaId, title) {
@@ -5347,6 +5619,10 @@
                 currentStreamInfo.transcode_qualities.forEach(q => {
                     options += `<option value="transcode:${q}">${q} (transcode)</option>`;
                 });
+            }
+            // DASH option for Chrome/Android (P12-04)
+            if (typeof dashjs !== 'undefined') {
+                options += '<option value="dash">DASH (adaptive)</option>';
             }
         } else {
             options = '<option value="direct" selected>Original</option>';
@@ -5521,9 +5797,26 @@
             } else {
                 startDirectPlay(currentMediaId, token, 0);
             }
+        } else if (value === 'dash') {
+            startDASHPlay(currentMediaId, token);
         } else if (value.startsWith('transcode:')) {
             const quality = value.replace('transcode:', '');
             startHLSPlay(currentMediaId, quality, token);
+        }
+    }
+
+    // DASH playback (P12-04)
+    let dashPlayer = null;
+    function startDASHPlay(mediaId, token) {
+        const video = document.getElementById('videoPlayer');
+        cleanupPlayers();
+        if (typeof dashjs !== 'undefined') {
+            dashPlayer = dashjs.MediaPlayer().create();
+            dashPlayer.initialize(video, '/api/v1/stream/' + mediaId + '/manifest.mpd?token=' + encodeURIComponent(token), true);
+            currentPlayMode = 'dash';
+        } else {
+            toast('DASH.js not loaded, falling back to HLS', 'warning');
+            startHLSPlay(mediaId, '720p', token);
         }
     }
 

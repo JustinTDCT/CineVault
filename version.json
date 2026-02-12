@@ -1,6 +1,6 @@
 {
-  "version": "0.59.00",
-  "phase": 11,
+  "version": "0.61.00",
+  "phase": 13,
   "released": "2026-02-12",
-  "notes": "Phase 10+11: Integrations & Security — Trakt.tv OAuth2 device code auth with bidirectional scrobble, Last.fm scrobbling for music, Sonarr/Radarr/Lidarr webhook receiver with shared secrets, API key authentication (X-API-Key header, scoped permissions, create/revoke UI), OpenAPI 3.0 spec with Swagger UI at /api/docs, Plex/Jellyfin import tool framework, backup and restore (pg_dump, download, history), 2FA via TOTP (setup wizard, QR code, recovery codes, login validation), rate limiting with IP blocking (5 auth/min, 15min lockout), image optimization with WebP negotiation, JS module foundation (api.js, utils.js), PWA support (manifest.json, service worker, offline indicator). DB migrations 031+032."
+  "notes": "Phase 12+13: Advanced Playback & Music — Watch Together SyncPlay (WebSocket sync, invite codes, chat sidebar, host controls), Cinema mode (admin pre-roll videos, trailer queue, skip button), Picture-in-Picture (browser PiP API), DASH streaming (MPD manifests, dash.js adaptive bitrate), dedicated music player (mini-player bar, queue, gapless crossover via dual Audio elements), lyrics display (embedded/LRC, media_lyrics table). DB migrations 033+034."
 }

@@ -546,6 +546,26 @@ func (s *Server) setupRoutes() {
 	// OpenAPI spec & docs (P10-05)
 	s.router.HandleFunc("GET /api/v1/openapi.json", s.handleOpenAPISpec)
 
+	// Watch Together / SyncPlay (P12-01)
+	s.router.HandleFunc("POST /api/v1/sync/create", s.authMiddleware(s.handleSyncCreate, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/sync/join", s.authMiddleware(s.handleSyncJoin, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/sync/{id}/action", s.authMiddleware(s.handleSyncAction, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/sync/{id}/chat", s.authMiddleware(s.handleSyncChat, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/sync/{id}", s.authMiddleware(s.handleSyncInfo, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/sync/{id}", s.authMiddleware(s.handleSyncEnd, models.RoleUser))
+
+	// Cinema mode (P12-02)
+	s.router.HandleFunc("GET /api/v1/cinema/pre-rolls", s.authMiddleware(s.handleListPreRolls, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/cinema/pre-rolls", s.authMiddleware(s.handleCreatePreRoll, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/cinema/pre-rolls/{id}", s.authMiddleware(s.handleDeletePreRoll, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/cinema/queue/{mediaId}", s.authMiddleware(s.handleCinemaQueue, models.RoleUser))
+
+	// DASH streaming (P12-04)
+	s.router.HandleFunc("GET /api/v1/stream/{mediaId}/manifest.mpd", s.authMiddleware(s.handleStreamDASH, models.RoleUser))
+
+	// Lyrics (P13-03)
+	s.router.HandleFunc("GET /api/v1/media/{id}/lyrics", s.authMiddleware(s.handleGetLyrics, models.RoleUser))
+
 	// Notifications (admin only)
 	s.router.HandleFunc("GET /api/v1/notifications/channels", s.authMiddleware(s.handleListNotificationChannels, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/notifications/channels", s.authMiddleware(s.handleCreateNotificationChannel, models.RoleAdmin))
