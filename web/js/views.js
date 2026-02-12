@@ -619,7 +619,10 @@ async function showDetailTab(btn, tab, mediaId) {
                 return `<tr>
                     <td>${e.edition_type}${defBadge}</td>
                     <td>${dur}</td><td>${res}</td><td>${codec}</td><td>${audio}</td><td>${src}</td><td>${dr}</td><td>${size}</td>
-                    <td><button class="edition-tab-play" onclick="playMedia('${e.media_item_id}','${e.title.replace(/'/g,"\\'")}')">&#9654; Play</button></td>
+                    <td class="edition-tab-actions">
+                        <button class="edition-tab-edit" onclick="openEditModal('${e.media_item_id}')" title="Edit this edition">&#9998;</button>
+                        <button class="edition-tab-play" onclick="playMedia('${e.media_item_id}','${e.title.replace(/'/g,"\\'")}')">&#9654; Play</button>
+                    </td>
                 </tr>`;
             }).join('');
             tc.innerHTML = `<h4 class="edition-tab-heading">Editions (${eds.length})</h4>
