@@ -892,7 +892,8 @@ const FILTER_DEFS = [
 
 function teardownGrid() {
     if (_gridState.observer) { _gridState.observer.disconnect(); _gridState.observer = null; }
-    _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [], filters: {} };
+    if (_gridState.topObserver) { _gridState.topObserver.disconnect(); _gridState.topObserver = null; }
+    _gridState = { libraryId: null, offset: 0, startOffset: 0, total: 0, loading: false, done: false, observer: null, topObserver: null, letterIndex: [], filters: {} };
 }
 
 // Build query string from current filters
@@ -958,6 +959,61 @@ function setupScrollObserver() {
     if (sentinel) _gridState.observer.observe(sentinel);
 }
 
+function setupTopScrollObserver() {
+    _gridState.topObserver = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) loadPreviousMedia();
+    }, { root: document.getElementById('mainContent'), rootMargin: '400px' });
+    const sentinel = document.getElementById('gridTopSentinel');
+    if (sentinel) _gridState.topObserver.observe(sentinel);
+}
+
+async function loadPreviousMedia() {
+    if (_gridState.loading || _gridState.startOffset <= 0) return;
+    _gridState.loading = true;
+
+    const batchSize = 200;
+    const newStart = Math.max(0, _gridState.startOffset - batchSize);
+    const limit = _gridState.startOffset - newStart;
+
+    const m = await api('GET', '/libraries/' + _gridState.libraryId + '/media?limit=' + limit + '&offset=' + newStart + buildFilterQS());
+    const items = (m.success && m.data && m.data.items) ? m.data.items : [];
+
+    const grid = document.getElementById('libGrid');
+    if (!grid || items.length === 0) { _gridState.loading = false; return; }
+
+    const container = document.getElementById('mainContent');
+
+    // Save scroll reference — first real card currently in view
+    const firstCard = grid.querySelector('.media-card');
+    const scrollBefore = container ? container.scrollTop : 0;
+    const firstCardTopBefore = firstCard ? firstCard.getBoundingClientRect().top : 0;
+
+    // Remove existing top sentinel
+    const topSentinel = document.getElementById('gridTopSentinel');
+    if (topSentinel) topSentinel.remove();
+
+    // Prepend items
+    grid.insertAdjacentHTML('afterbegin', items.map(renderMediaCard).join(''));
+
+    // Restore scroll position so view doesn't jump
+    if (firstCard && container) {
+        const firstCardTopAfter = firstCard.getBoundingClientRect().top;
+        container.scrollTop = scrollBefore + (firstCardTopAfter - firstCardTopBefore);
+    }
+
+    _gridState.startOffset = newStart;
+
+    // Re-add top sentinel if still more to load backward
+    if (_gridState.startOffset > 0) {
+        grid.insertAdjacentHTML('afterbegin', '<div id="gridTopSentinel" class="load-more-sentinel"></div>');
+        const newTopSentinel = document.getElementById('gridTopSentinel');
+        if (newTopSentinel && _gridState.topObserver) _gridState.topObserver.observe(newTopSentinel);
+    }
+
+    _gridState.loading = false;
+    updateAlphaCount();
+}
+
 function buildAlphaJump(letterIndex) {
     const allLetters = ['#','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'];
     const indexMap = {};
@@ -973,7 +1029,7 @@ function buildAlphaJump(letterIndex) {
 
 function updateAlphaCount() {
     // Highlight the current visible letter based on scroll position
-    const grid = document.getElementById('libGrid');
+    const grid = document.getElementById('libGrid') || document.getElementById('typeGrid');
     const jump = document.getElementById('alphaJump');
     if (!grid || !jump) return;
     const cards = grid.querySelectorAll('.media-card');
@@ -1007,17 +1063,86 @@ function sortableTitleLetter(text) {
     return (first >= 'A' && first <= 'Z') ? first : '#';
 }
 
+// Build a client-side alpha-jump for views that load all items at once
+function buildClientAlphaJump(items, titleField) {
+    titleField = titleField || 'title';
+    const allLetters = ['#','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'];
+    const letterSet = new Set();
+    items.forEach(item => {
+        const title = item[titleField] || '';
+        letterSet.add(sortableTitleLetter(title));
+    });
+    return `<div class="alpha-jump" id="alphaJump">${allLetters.map(l => {
+        if (letterSet.has(l)) {
+            return `<div class="alpha-jump-letter" data-letter="${l}" onclick="jumpToClientLetter(this)">${l}</div>`;
+        }
+        return `<div class="alpha-jump-letter disabled">${l}</div>`;
+    }).join('')}</div>`;
+}
+
+// Client-side letter jump — scrolls to first card matching the letter
+function jumpToClientLetter(el) {
+    const letter = el.dataset.letter;
+    const grid = document.getElementById('libGrid') || document.getElementById('typeGrid');
+    if (!grid) return;
+
+    const cards = grid.querySelectorAll('.media-card');
+    for (const card of cards) {
+        const title = card.querySelector('.media-title');
+        if (title) {
+            const sortTitle = card.dataset.sortTitle || title.textContent;
+            if (sortableTitleLetter(sortTitle) === letter) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                break;
+            }
+        }
+    }
+
+    document.querySelectorAll('.alpha-jump-letter').forEach(l => l.classList.remove('active'));
+    el.classList.add('active');
+}
+
+// Update active letter on scroll for client-side grids
+function updateClientAlphaCount() {
+    const grid = document.getElementById('libGrid') || document.getElementById('typeGrid');
+    const jump = document.getElementById('alphaJump');
+    if (!grid || !jump) return;
+    const cards = grid.querySelectorAll('.media-card');
+    if (cards.length === 0) return;
+
+    const container = document.getElementById('mainContent');
+    const containerTop = container.getBoundingClientRect().top;
+    let activeLetter = '';
+    for (const card of cards) {
+        const rect = card.getBoundingClientRect();
+        if (rect.top >= containerTop - 50) {
+            const title = card.querySelector('.media-title');
+            if (title) {
+                const sortTitle = card.dataset.sortTitle || title.textContent;
+                activeLetter = sortableTitleLetter(sortTitle);
+            }
+            break;
+        }
+    }
+    jump.querySelectorAll('.alpha-jump-letter').forEach(el => {
+        el.classList.toggle('active', el.dataset.letter === activeLetter);
+    });
+}
+
 async function jumpToLetter(el) {
     const targetOffset = parseInt(el.dataset.offset);
     const letter = el.dataset.letter;
     const grid = document.getElementById('libGrid');
     if (!grid || !_gridState.libraryId) return;
 
-    // Plex/Jellyfin approach: jump directly to the target offset server-side.
-    // Clear the grid, reset state to the target offset, load one batch from there.
+    // Disconnect both observers
     if (_gridState.observer) _gridState.observer.disconnect();
+    if (_gridState.topObserver) { _gridState.topObserver.disconnect(); _gridState.topObserver = null; }
+
+    // Clear the grid, reset state to the target offset
     grid.innerHTML = '';
     _gridState.offset = targetOffset;
+    _gridState.startOffset = targetOffset;
     _gridState.done = false;
     _gridState.loading = false;
     await loadMoreMedia();
@@ -1026,8 +1151,14 @@ async function jumpToLetter(el) {
     const container = document.getElementById('mainContent');
     if (container) container.scrollTop = 0;
 
-    // Re-attach infinite scroll for continued browsing from this point
+    // Re-attach infinite scroll for continued browsing forward
     setupScrollObserver();
+
+    // Add top sentinel for backward scrolling if not at the beginning
+    if (_gridState.startOffset > 0) {
+        grid.insertAdjacentHTML('afterbegin', '<div id="gridTopSentinel" class="load-more-sentinel"></div>');
+        setupTopScrollObserver();
+    }
 
     document.querySelectorAll('.alpha-jump-letter').forEach(l => l.classList.remove('active'));
     el.classList.add('active');
@@ -1049,7 +1180,7 @@ async function loadMediaTypeView(mediaType) {
 
     // Multiple libraries — load all (with pagination for each)
     mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2></div>
-        <div class="media-grid" id="typeGrid"><div class="spinner"></div> Loading...</div>`;
+        <div class="media-grid-wrapper"><div class="media-grid" id="typeGrid"><div class="spinner"></div> Loading...</div></div>`;
     let items = [];
     for (const lib of matchingLibs) {
         let off = 0;
@@ -1063,9 +1194,15 @@ async function loadMediaTypeView(mediaType) {
         }
     }
     const grid = document.getElementById('typeGrid');
-    grid.innerHTML = items.length > 0
-        ? items.map(renderMediaCard).join('')
-        : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">${mediaIcon(mediaType)}</div><div class="empty-state-title">No ${label.toLowerCase()} yet</div><p>Add a ${label.toLowerCase()} library and scan it</p></div>`;
+    if (items.length > 0) {
+        grid.innerHTML = items.map(renderMediaCard).join('');
+        const wrapper = grid.closest('.media-grid-wrapper');
+        if (wrapper) wrapper.insertAdjacentHTML('beforeend', buildClientAlphaJump(items, 'title'));
+        const container = document.getElementById('mainContent');
+        if (container) container.addEventListener('scroll', () => { requestAnimationFrame(updateClientAlphaCount); });
+    } else {
+        grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">${mediaIcon(mediaType)}</div><div class="empty-state-title">No ${label.toLowerCase()} yet</div><p>Add a ${label.toLowerCase()} library and scan it</p></div>`;
+    }
 }
 
 async function loadLibraryView(libraryId) {
@@ -1078,13 +1215,19 @@ async function loadLibraryView(libraryId) {
     // TV show library with season grouping → show TV shows instead of flat episodes
     if (lib && lib.media_type === 'tv_shows' && lib.season_grouping) {
         mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2><span class="tag tag-cyan" style="margin-left:12px;">TV Shows</span></div>
-            <div class="media-grid" id="libGrid"><div class="spinner"></div> Loading...</div>`;
+            <div class="media-grid-wrapper"><div class="media-grid" id="libGrid"><div class="spinner"></div> Loading...</div></div>`;
         const data = await api('GET', '/libraries/' + libraryId + '/shows');
         const shows = (data.success && data.data) ? data.data : [];
         const grid = document.getElementById('libGrid');
-        grid.innerHTML = shows.length > 0
-            ? shows.map(renderShowCard).join('')
-            : `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">&#128250;</div><div class="empty-state-title">No TV shows yet</div><p>Scan the library to detect shows</p></div>`;
+        if (shows.length > 0) {
+            grid.innerHTML = shows.map(renderShowCard).join('');
+            const wrapper = grid.closest('.media-grid-wrapper');
+            if (wrapper) wrapper.insertAdjacentHTML('beforeend', buildClientAlphaJump(shows, 'title'));
+            const container = document.getElementById('mainContent');
+            if (container) container.addEventListener('scroll', () => { requestAnimationFrame(updateClientAlphaCount); });
+        } else {
+            grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">&#128250;</div><div class="empty-state-title">No TV shows yet</div><p>Scan the library to detect shows</p></div>`;
+        }
         return;
     }
 

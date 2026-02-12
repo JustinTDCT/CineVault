@@ -1,6 +1,6 @@
 {
-  "version": "1.01.00",
+  "version": "1.02.00",
   "phase": 17,
   "released": "2026-02-12",
-  "notes": "TV show performance: added missing indexes on media_items(tv_season_id), show-specific missing episodes endpoint, optimized library-wide missing episodes from N+1 queries to single aggregated SQL, parallelized frontend API calls."
+  "notes": "Alpha-jump letter menu now appears on all library views (TV shows, multi-library). Fixed backward scrolling after letter jump — scrolling up now loads previous items instead of hitting a dead end."
 }
