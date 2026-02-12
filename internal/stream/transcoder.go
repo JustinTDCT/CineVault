@@ -170,11 +170,25 @@ func (t *Transcoder) StartTranscode(mediaItemID, userID, filePath, quality strin
 
 	// Build video filter chain
 	var videoFilters []string
+
+	// QSV hwaccel keeps decoded frames in GPU memory; download to system
+	// memory so standard software filters (scale, subs, HDR tonemap) work.
+	// The QSV encoder re-uploads to GPU internally.
+	if strings.Contains(encoder, "qsv") {
+		videoFilters = append(videoFilters, "hwdownload", "format=nv12")
+	}
+
 	videoFilters = append(videoFilters, fmt.Sprintf("scale=%d:%d", q.Width, q.Height))
 
 	// HDR-to-SDR tone mapping
 	if opt.HDRToSDR {
-		toneMap := HDRToSDRFilter(encoder)
+		// QSV frames are downloaded to system memory above,
+		// so use software tone mapping instead of vpp_qsv.
+		filterHint := encoder
+		if strings.Contains(encoder, "qsv") {
+			filterHint = "software"
+		}
+		toneMap := HDRToSDRFilter(filterHint)
 		videoFilters = append(videoFilters, toneMap)
 	}
 
@@ -356,10 +370,10 @@ func (t *Transcoder) buildHWAccelInputArgs(encoder string) []string {
 		return []string{"-hwaccel", "cuda", "-hwaccel_output_format", "cuda"}
 	case strings.Contains(encoder, "qsv"):
 		// QSV on Linux uses VAAPI as backend; -qsv_device tells FFmpeg which
-		// render node to use.  We omit -hwaccel_output_format so decoded frames
-		// auto-download to system memory, keeping software filters (scale, subs,
-		// HDR tonemap) compatible.  The QSV encoder re-uploads internally.
-		return []string{"-hwaccel", "qsv", "-qsv_device", "/dev/dri/renderD128"}
+		// render node to use.  Decoded frames stay in QSV GPU memory and are
+		// brought to system memory by the hwdownload filter prepended to -vf
+		// in StartTranscode, so all software filters remain compatible.
+		return []string{"-hwaccel", "qsv", "-qsv_device", "/dev/dri/renderD128", "-hwaccel_output_format", "qsv"}
 	case strings.Contains(encoder, "vaapi"):
 		return []string{"-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi", "-vaapi_device", "/dev/dri/renderD128"}
 	default:

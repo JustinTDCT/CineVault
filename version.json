@@ -1,6 +1,6 @@
 {
-  "version": "1.02.01",
+  "version": "1.02.02",
   "phase": 17,
   "released": "2026-02-12",
-  "notes": "Fixed QSV hardware transcoding: added VAAPI/Intel driver packages to Docker image, fixed device initialization args, and added runtime hardware validation with graceful fallback to software encoding."
+  "notes": "Fixed QSV filter chain: QSV-decoded frames are now explicitly downloaded to system memory via hwdownload before software filters (scale, subs, HDR tonemap). HDR tone mapping uses software path when QSV frames are in CPU memory."
 }
