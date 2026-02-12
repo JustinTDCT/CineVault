@@ -30,10 +30,15 @@ var Qualities = map[string]Quality{
 }
 
 type Transcoder struct {
-	ffmpegPath string
-	outputBase string
-	mu         sync.Mutex
-	sessions   map[string]*Session
+	ffmpegPath    string
+	outputBase    string
+	mu            sync.Mutex
+	sessions      map[string]*Session
+	hwMu          sync.Mutex
+	cachedH264Enc string
+	cachedHEVCEnc string
+	h264Probed    bool
+	hevcProbed    bool
 }
 
 type Session struct {
@@ -71,15 +76,31 @@ func NewTranscoder(ffmpegPath, outputBase string) *Transcoder {
 }
 
 func (t *Transcoder) DetectHWAccel() string {
-	// Try hardware encoders in order
+	t.hwMu.Lock()
+	defer t.hwMu.Unlock()
+	if t.h264Probed {
+		return t.cachedH264Enc
+	}
+	t.h264Probed = true
+
+	// Get the encoder list once
+	cmd := exec.Command(t.ffmpegPath, "-hide_banner", "-encoders")
+	output, _ := cmd.Output()
+	encoderList := string(output)
+
 	for _, accel := range []string{"h264_nvenc", "h264_qsv", "h264_vaapi"} {
-		cmd := exec.Command(t.ffmpegPath, "-hide_banner", "-encoders")
-		output, err := cmd.Output()
-		if err == nil && strings.Contains(string(output), accel) {
+		if !strings.Contains(encoderList, accel) {
+			continue
+		}
+		if t.testEncoderAvailable(accel) {
 			log.Printf("Detected HW encoder: %s", accel)
+			t.cachedH264Enc = accel
 			return accel
 		}
+		log.Printf("Encoder %s compiled in but hardware test failed, skipping", accel)
 	}
+	log.Printf("No hardware encoder available, using libx264")
+	t.cachedH264Enc = "libx264"
 	return "libx264"
 }
 
@@ -266,15 +287,66 @@ func (t *Transcoder) StartTranscode(mediaItemID, userID, filePath, quality strin
 
 // detectHEVCEncoder probes for HEVC hardware encoders, falls back to libx265.
 func (t *Transcoder) detectHEVCEncoder() string {
+	t.hwMu.Lock()
+	defer t.hwMu.Unlock()
+	if t.hevcProbed {
+		return t.cachedHEVCEnc
+	}
+	t.hevcProbed = true
+
+	cmd := exec.Command(t.ffmpegPath, "-hide_banner", "-encoders")
+	output, _ := cmd.Output()
+	encoderList := string(output)
+
 	for _, encoder := range []string{"hevc_nvenc", "hevc_qsv", "hevc_vaapi"} {
-		cmd := exec.Command(t.ffmpegPath, "-hide_banner", "-encoders")
-		output, err := cmd.Output()
-		if err == nil && strings.Contains(string(output), encoder) {
+		if !strings.Contains(encoderList, encoder) {
+			continue
+		}
+		if t.testEncoderAvailable(encoder) {
 			log.Printf("Detected HEVC HW encoder: %s", encoder)
+			t.cachedHEVCEnc = encoder
 			return encoder
 		}
+		log.Printf("HEVC encoder %s compiled in but hardware test failed, skipping", encoder)
 	}
+	log.Printf("No HEVC hardware encoder available, using libx265")
+	t.cachedHEVCEnc = "libx265"
 	return "libx265"
+}
+
+// testEncoderAvailable verifies a hardware encoder actually works by encoding
+// a single test frame.  This catches cases where the encoder is compiled into
+// FFmpeg but the underlying hardware / driver is missing at runtime.
+func (t *Transcoder) testEncoderAvailable(encoder string) bool {
+	args := []string{"-hide_banner", "-v", "error"}
+
+	// Initialise the appropriate hardware device so FFmpeg can reach the GPU.
+	switch {
+	case strings.Contains(encoder, "qsv"):
+		args = append(args, "-init_hw_device", "qsv=hw:/dev/dri/renderD128")
+	case strings.Contains(encoder, "vaapi"):
+		args = append(args, "-init_hw_device", "vaapi=/dev/dri/renderD128")
+	}
+
+	// Minimal synthetic source – one frame, tiny resolution.
+	args = append(args,
+		"-f", "lavfi", "-i", "color=black:s=64x64:d=0.1:r=1",
+		"-frames:v", "1", "-an",
+	)
+
+	// VAAPI encoders require frames on a hw surface; upload explicitly.
+	if strings.Contains(encoder, "vaapi") {
+		args = append(args, "-vf", "format=nv12,hwupload")
+	}
+
+	args = append(args, "-c:v", encoder, "-f", "null", "-")
+
+	cmd := exec.Command(t.ffmpegPath, args...)
+	if err := cmd.Run(); err != nil {
+		log.Printf("Hardware encoder test failed for %s: %v", encoder, err)
+		return false
+	}
+	return true
 }
 
 // buildHWAccelInputArgs returns FFmpeg args for hardware-accelerated decoding.
@@ -283,7 +355,11 @@ func (t *Transcoder) buildHWAccelInputArgs(encoder string) []string {
 	case strings.Contains(encoder, "nvenc") || strings.Contains(encoder, "cuda"):
 		return []string{"-hwaccel", "cuda", "-hwaccel_output_format", "cuda"}
 	case strings.Contains(encoder, "qsv"):
-		return []string{"-hwaccel", "qsv", "-hwaccel_output_format", "qsv"}
+		// QSV on Linux uses VAAPI as backend; -qsv_device tells FFmpeg which
+		// render node to use.  We omit -hwaccel_output_format so decoded frames
+		// auto-download to system memory, keeping software filters (scale, subs,
+		// HDR tonemap) compatible.  The QSV encoder re-uploads internally.
+		return []string{"-hwaccel", "qsv", "-qsv_device", "/dev/dri/renderD128"}
 	case strings.Contains(encoder, "vaapi"):
 		return []string{"-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi", "-vaapi_device", "/dev/dri/renderD128"}
 	default:

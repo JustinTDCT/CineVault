@@ -17,7 +17,12 @@ RUN apk add --no-cache \
     ffmpeg \
     ca-certificates \
     tzdata \
-    postgresql16-client
+    postgresql16-client \
+    libva \
+    libva-utils \
+    intel-media-driver \
+    intel-media-sdk \
+    mesa-va-gallium
 
 WORKDIR /app
 

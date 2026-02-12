@@ -1,6 +1,6 @@
 {
-  "version": "1.02.00",
+  "version": "1.02.01",
   "phase": 17,
   "released": "2026-02-12",
-  "notes": "Alpha-jump letter menu now appears on all library views (TV shows, multi-library). Fixed backward scrolling after letter jump — scrolling up now loads previous items instead of hitting a dead end."
+  "notes": "Fixed QSV hardware transcoding: added VAAPI/Intel driver packages to Docker image, fixed device initialization args, and added runtime hardware validation with graceful fallback to software encoding."
 }
