@@ -3,8 +3,10 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/hibiken/asynq"
 )
@@ -20,15 +22,17 @@ const (
 )
 
 type Queue struct {
-	client *asynq.Client
-	server *asynq.Server
-	mux    *asynq.ServeMux
+	client    *asynq.Client
+	server    *asynq.Server
+	mux       *asynq.ServeMux
+	inspector *asynq.Inspector
 }
 
 func NewQueue(redisAddr string) *Queue {
-	client := asynq.NewClient(asynq.RedisClientOpt{Addr: redisAddr})
+	redisOpt := asynq.RedisClientOpt{Addr: redisAddr}
+	client := asynq.NewClient(redisOpt)
 	server := asynq.NewServer(
-		asynq.RedisClientOpt{Addr: redisAddr},
+		redisOpt,
 		asynq.Config{
 			Concurrency: 5,
 			Queues: map[string]int{
@@ -39,12 +43,25 @@ func NewQueue(redisAddr string) *Queue {
 		},
 	)
 	mux := asynq.NewServeMux()
-	return &Queue{client: client, server: server, mux: mux}
+	inspector := asynq.NewInspector(redisOpt)
+	return &Queue{client: client, server: server, mux: mux, inspector: inspector}
+}
+
+// isTaskConflict checks whether the error indicates a task ID conflict,
+// using errors.Is for unwrapped sentinel values and a string fallback.
+func isTaskConflict(err error) bool {
+	if errors.Is(err, asynq.ErrDuplicateTask) || errors.Is(err, asynq.ErrTaskIDConflict) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "task ID conflicts") || strings.Contains(msg, "duplicate task")
 }
 
 // EnqueueUnique enqueues a task with a deterministic TaskID to prevent
 // duplicate jobs for the same library/item. If a task with the same ID
 // is already pending or active, the enqueue is silently skipped.
+// If a completed/archived task with the same ID is lingering in Redis,
+// it is deleted first so the new task can be enqueued.
 func (q *Queue) EnqueueUnique(taskType string, payload interface{}, uniqueID string, opts ...asynq.Option) (string, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -53,15 +70,39 @@ func (q *Queue) EnqueueUnique(taskType string, payload interface{}, uniqueID str
 	opts = append(opts, asynq.TaskID(uniqueID))
 	task := asynq.NewTask(taskType, data, opts...)
 	info, err := q.client.Enqueue(task)
-	if err != nil {
-		// asynq.ErrDuplicateTask means the job is already queued — not an error
-		if err == asynq.ErrDuplicateTask || err == asynq.ErrTaskIDConflict {
-			log.Printf("Queue: skipping duplicate task %s (%s)", taskType, uniqueID)
-			return uniqueID, nil
-		}
+	if err == nil {
+		return info.ID, nil
+	}
+
+	if !isTaskConflict(err) {
 		return "", fmt.Errorf("enqueue: %w", err)
 	}
-	return info.ID, nil
+
+	// Task ID conflict — check if the old task is completed/archived and can be cleared
+	cleared := false
+	for _, queueName := range []string{"default", "critical", "low"} {
+		// Try deleting from completed state
+		if delErr := q.inspector.DeleteTask(queueName, uniqueID); delErr == nil {
+			log.Printf("Queue: cleared completed/archived task %s from queue %s", uniqueID, queueName)
+			cleared = true
+			break
+		}
+	}
+
+	if cleared {
+		// Retry enqueue after clearing the stale task
+		info, err = q.client.Enqueue(task)
+		if err == nil {
+			return info.ID, nil
+		}
+	}
+
+	// If we still can't enqueue, the task is likely actively running — that's OK
+	if isTaskConflict(err) {
+		log.Printf("Queue: task %s (%s) is already active, skipping", taskType, uniqueID)
+		return uniqueID, nil
+	}
+	return "", fmt.Errorf("enqueue: %w", err)
 }
 
 func (q *Queue) RegisterHandler(taskType string, handler asynq.Handler) {
@@ -89,6 +130,7 @@ func (q *Queue) Start(ctx context.Context) error {
 func (q *Queue) Stop() {
 	q.server.Shutdown()
 	q.client.Close()
+	q.inspector.Close()
 }
 
 func (q *Queue) Client() *asynq.Client {
