@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CineVault</title>
+    <meta name="theme-color" content="#00d9ff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"></script>
@@ -6679,6 +6683,14 @@
 
     // ──── Init ────
     checkAuth();
+
+    // PWA: Register service worker (P11-05)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+    // Offline indicator
+    window.addEventListener('offline', () => { document.body.classList.add('is-offline'); toast('You are offline', 'warning'); });
+    window.addEventListener('online', () => { document.body.classList.remove('is-offline'); toast('Back online'); });
     </script>
 </body>
 </html>

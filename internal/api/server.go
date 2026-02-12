@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -209,9 +211,14 @@ func (s *Server) setupRoutes() {
 	s.router.Handle("/", fs)
 
 	// Preview files (no-cache so updated posters are always revalidated)
+	// Supports ?w= width param for responsive images (P11-03)
 	previewFS := http.StripPrefix("/previews/", http.FileServer(http.Dir(s.config.Paths.Preview)))
 	s.router.Handle("/previews/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		// WebP negotiation
+		if strings.Contains(r.Header.Get("Accept"), "image/webp") {
+			w.Header().Set("Vary", "Accept")
+		}
 		previewFS.ServeHTTP(w, r)
 	}))
 
@@ -492,6 +499,53 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("POST /api/v1/filters", s.authMiddleware(s.handleCreateSavedFilter, models.RoleUser))
 	s.router.HandleFunc("DELETE /api/v1/filters/{id}", s.authMiddleware(s.handleDeleteSavedFilter, models.RoleUser))
 
+	// ── Phase 10: External Integrations ──
+
+	// Trakt.tv
+	s.router.HandleFunc("POST /api/v1/trakt/device-code", s.authMiddleware(s.handleTraktDeviceCode, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/trakt/activate", s.authMiddleware(s.handleTraktActivate, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/trakt/status", s.authMiddleware(s.handleTraktStatus, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/trakt/disconnect", s.authMiddleware(s.handleTraktDisconnect, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/trakt/scrobble", s.authMiddleware(s.handleTraktScrobble, models.RoleUser))
+
+	// Last.fm
+	s.router.HandleFunc("POST /api/v1/lastfm/connect", s.authMiddleware(s.handleLastfmConnect, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/lastfm/status", s.authMiddleware(s.handleLastfmStatus, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/lastfm/disconnect", s.authMiddleware(s.handleLastfmDisconnect, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/lastfm/scrobble", s.authMiddleware(s.handleLastfmScrobble, models.RoleUser))
+
+	// Sonarr/Radarr/Lidarr webhooks
+	s.router.HandleFunc("POST /api/v1/webhooks/arr", s.handleArrWebhook) // no auth — uses shared secret
+	s.router.HandleFunc("GET /api/v1/admin/webhooks", s.authMiddleware(s.handleListWebhookSecrets, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/admin/webhooks", s.authMiddleware(s.handleCreateWebhookSecret, models.RoleAdmin))
+	s.router.HandleFunc("DELETE /api/v1/admin/webhooks/{id}", s.authMiddleware(s.handleDeleteWebhookSecret, models.RoleAdmin))
+
+	// API keys
+	s.router.HandleFunc("GET /api/v1/settings/api-keys", s.authMiddleware(s.handleListAPIKeys, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/settings/api-keys", s.authMiddleware(s.handleCreateAPIKey, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/settings/api-keys/{id}", s.authMiddleware(s.handleDeleteAPIKey, models.RoleUser))
+
+	// Backup and restore
+	s.router.HandleFunc("POST /api/v1/admin/backup", s.authMiddleware(s.handleCreateBackup, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/admin/backups", s.authMiddleware(s.handleListBackups, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/admin/backups/{id}/download", s.authMiddleware(s.handleDownloadBackup, models.RoleAdmin))
+
+	// Plex/Jellyfin import
+	s.router.HandleFunc("POST /api/v1/admin/import", s.authMiddleware(s.handleStartImport, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/admin/imports", s.authMiddleware(s.handleListImports, models.RoleAdmin))
+
+	// ── Phase 11: Security ──
+
+	// 2FA / TOTP
+	s.router.HandleFunc("POST /api/v1/auth/2fa/setup", s.authMiddleware(s.handle2FASetup, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/auth/2fa/verify", s.authMiddleware(s.handle2FAVerify, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/auth/2fa", s.authMiddleware(s.handle2FADisable, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/auth/2fa/status", s.authMiddleware(s.handle2FAStatus, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/auth/2fa/validate", s.handle2FAValidate) // no auth — called during login
+
+	// OpenAPI spec & docs (P10-05)
+	s.router.HandleFunc("GET /api/v1/openapi.json", s.handleOpenAPISpec)
+
 	// Notifications (admin only)
 	s.router.HandleFunc("GET /api/v1/notifications/channels", s.authMiddleware(s.handleListNotificationChannels, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/notifications/channels", s.authMiddleware(s.handleCreateNotificationChannel, models.RoleAdmin))
@@ -509,6 +563,22 @@ func (s *Server) setupRoutes() {
 
 func (s *Server) authMiddleware(next http.HandlerFunc, requiredRole models.UserRole) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Check X-API-Key first (P10-04)
+		if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
+			if userID, role := s.validateAPIKey(apiKey); userID != "" {
+				if !s.auth.CheckPermission(models.UserRole(role), requiredRole) {
+					s.respondError(w, http.StatusForbidden, "insufficient permissions")
+					return
+				}
+				r.Header.Set("X-User-ID", userID)
+				r.Header.Set("X-User-Role", role)
+				next(w, r)
+				return
+			}
+			s.respondError(w, http.StatusUnauthorized, "invalid API key")
+			return
+		}
+
 		tokenString := ""
 		authHeader := r.Header.Get("Authorization")
 		if authHeader != "" {
@@ -537,6 +607,27 @@ func (s *Server) authMiddleware(next http.HandlerFunc, requiredRole models.UserR
 
 		next(w, r)
 	}
+}
+
+// validateAPIKey checks an API key and returns (userID, role) if valid.
+func (s *Server) validateAPIKey(apiKey string) (string, string) {
+	hash := sha256Sum(apiKey)
+	var userID, role string
+	err := s.db.QueryRow(`SELECT ak.user_id, u.role FROM api_keys ak
+		JOIN users u ON ak.user_id = u.id
+		WHERE ak.key_hash = $1 AND (ak.expires_at IS NULL OR ak.expires_at > NOW())`, hash).
+		Scan(&userID, &role)
+	if err != nil {
+		return "", ""
+	}
+	// Update last_used_at
+	go s.db.Exec("UPDATE api_keys SET last_used_at = NOW() WHERE key_hash = $1", hash)
+	return userID, role
+}
+
+func sha256Sum(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
 }
 
 // ──────────────────── Helpers ────────────────────

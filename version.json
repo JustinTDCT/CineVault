@@ -1,6 +1,6 @@
 {
-  "version": "0.57.00",
-  "phase": 9,
+  "version": "0.59.00",
+  "phase": 11,
   "released": "2026-02-12",
-  "notes": "Phase 9: Discovery & engagement — Per-user stats page (watch time, heatmap, top genres/shows/performers), Trending section on home (7-day activity), Home page layout customization (user_home_layout table, show/hide/reorder rows), Genre hub pages (cross-library grid, sub-genre tags), Decade hub pages, Video preview on hover (FFmpeg clip extraction, 4-point WebM), Year-in-Review Wrapped (annual summary), Content request system (user submit, admin approve/deny/fulfill). DB migration 030."
+  "notes": "Phase 10+11: Integrations & Security — Trakt.tv OAuth2 device code auth with bidirectional scrobble, Last.fm scrobbling for music, Sonarr/Radarr/Lidarr webhook receiver with shared secrets, API key authentication (X-API-Key header, scoped permissions, create/revoke UI), OpenAPI 3.0 spec with Swagger UI at /api/docs, Plex/Jellyfin import tool framework, backup and restore (pg_dump, download, history), 2FA via TOTP (setup wizard, QR code, recovery codes, login validation), rate limiting with IP blocking (5 auth/min, 15min lockout), image optimization with WebP negotiation, JS module foundation (api.js, utils.js), PWA support (manifest.json, service worker, offline indicator). DB migrations 031+032."
 }
