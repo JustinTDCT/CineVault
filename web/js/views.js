@@ -819,6 +819,7 @@ async function showDetailTab(btn, tab, mediaId) {
                 ${m.dynamic_range && m.dynamic_range !== 'SDR' ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Dynamic Range</td><td>'+m.dynamic_range+(m.hdr_format ? ' ('+m.hdr_format+')' : '')+'</td></tr>' : ''}
                 ${m.bitrate ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Bitrate</td><td>'+(m.bitrate/1000).toFixed(0)+' kbps</td></tr>' : ''}
                 ${m.file_hash ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">MD5 Hash</td><td style="font-family:monospace;font-size:0.78rem;">'+m.file_hash+'</td></tr>' : ''}
+                ${m.phash ? '<tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">pHash</td><td style="font-family:monospace;font-size:0.78rem;">'+m.phash+'</td></tr>' : ''}
                 <tr><td style="color:#5a6a7f;padding:4px 16px 4px 0;">Added</td><td>${new Date(m.added_at).toLocaleString()}</td></tr>
             </table>`;
         }
