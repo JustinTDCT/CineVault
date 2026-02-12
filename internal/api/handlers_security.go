@@ -3,7 +3,7 @@ package api
 import (
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
+	"crypto/sha1"
 	"encoding/base32"
 	"encoding/hex"
 	"encoding/json"
@@ -169,8 +169,8 @@ func generateTOTP(secret string, counter int64) string {
 		counter >>= 8
 	}
 
-	// HMAC-SHA1
-	mac := hmac.New(sha256.New, key)
+	// HMAC-SHA1 (RFC 6238 default, compatible with Google Authenticator / Authy)
+	mac := hmac.New(sha1.New, key)
 	mac.Write(msg)
 	h := mac.Sum(nil)
 
@@ -271,14 +271,29 @@ func getClientIP(r *http.Request) string {
 // splitComma already defined in handlers_media.go
 
 // rateLimitMiddleware wraps a handler with rate limiting (P11-02)
-func (s *Server) rateLimitMiddleware(next http.HandlerFunc, maxReqs int, window time.Duration) http.HandlerFunc {
+func (s *Server) rateLimitMiddleware(next http.HandlerFunc, bucket string, maxReqs int, window time.Duration) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := getClientIP(r)
-		if !s.checkRateLimit(ip, "api", maxReqs, window) {
+		if !s.checkRateLimit(ip, bucket, maxReqs, window) {
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(window.Seconds())))
 			s.respondError(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
 		}
 		next(w, r)
 	}
+}
+
+// rlAuth wraps a handler with auth-tier rate limiting (5 req/min)
+func (s *Server) rlAuth(next http.HandlerFunc) http.HandlerFunc {
+	return s.rateLimitMiddleware(next, "auth", 5, time.Minute)
+}
+
+// rlWrite wraps a handler with write-tier rate limiting (60 req/min)
+func (s *Server) rlWrite(next http.HandlerFunc) http.HandlerFunc {
+	return s.rateLimitMiddleware(next, "write", 60, time.Minute)
+}
+
+// rlRead wraps a handler with read-tier rate limiting (120 req/min)
+func (s *Server) rlRead(next http.HandlerFunc) http.HandlerFunc {
+	return s.rateLimitMiddleware(next, "read", 120, time.Minute)
 }

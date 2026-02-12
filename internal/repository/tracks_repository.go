@@ -121,6 +121,40 @@ func (r *TracksRepository) GetAudioTracksByMediaID(mediaItemID uuid.UUID) ([]mod
 	return tracks, rows.Err()
 }
 
+// GetAudioTrackByIndex returns a specific audio track by media ID and stream index.
+func (r *TracksRepository) GetAudioTrackByIndex(mediaItemID uuid.UUID, streamIndex int) (*models.MediaAudioTrack, error) {
+	query := `SELECT id, media_item_id, stream_index, language, title, codec, channels,
+		channel_layout, bitrate, sample_rate, is_default, is_commentary, created_at, updated_at
+		FROM media_audio_tracks WHERE media_item_id = $1 AND stream_index = $2`
+
+	var t models.MediaAudioTrack
+	err := r.db.QueryRow(query, mediaItemID, streamIndex).Scan(
+		&t.ID, &t.MediaItemID, &t.StreamIndex, &t.Language, &t.Title,
+		&t.Codec, &t.Channels, &t.ChannelLayout, &t.Bitrate, &t.SampleRate,
+		&t.IsDefault, &t.IsCommentary, &t.CreatedAt, &t.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// GetSubtitleByStreamIndex returns a subtitle track by media ID and stream index.
+func (r *TracksRepository) GetSubtitleByStreamIndex(mediaItemID uuid.UUID, streamIndex int) (*models.MediaSubtitle, error) {
+	query := `SELECT id, media_item_id, stream_index, language, title, format, source,
+		file_path, is_default, is_forced, is_sdh, created_at, updated_at
+		FROM media_subtitles WHERE media_item_id = $1 AND stream_index = $2`
+
+	var s models.MediaSubtitle
+	err := r.db.QueryRow(query, mediaItemID, streamIndex).Scan(
+		&s.ID, &s.MediaItemID, &s.StreamIndex, &s.Language, &s.Title,
+		&s.Format, &s.Source, &s.FilePath, &s.IsDefault, &s.IsForced,
+		&s.IsSDH, &s.CreatedAt, &s.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
 func (r *TracksRepository) DeleteAudioTracksByMediaID(mediaItemID uuid.UUID) error {
 	_, err := r.db.Exec("DELETE FROM media_audio_tracks WHERE media_item_id = $1", mediaItemID)
 	return err

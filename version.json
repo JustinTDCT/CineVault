@@ -1,6 +1,6 @@
 {
-  "version": "0.65.00",
-  "phase": 15,
+  "version": "1.00.00",
+  "phase": 16,
   "released": "2026-02-12",
-  "notes": "Comprehensive UI wiring audit: sidebar nav for Collections/LiveTV/Requests/Stats, chapters tab + player chapter selector, filter presets toolbar, collection/tag/performer/studio CRUD, eBook reader button, anime metadata fields, expanded edit modal fields, scene marker button, DASH playback fix, grid keyboard navigation."
+  "notes": "Major release: TOTP fix, security headers/CORS/rate limiting, password validation/reset/sessions, streaming pipeline (audio selection/subtitle burn-in/HDR-to-SDR/HEVC/hw decode), Telegram/Pushover/Gotify/email notifications, DLNA/SSDP/ContentDirectory/Chromecast bidirectional, full OpenAPI spec, pagination/ETag, ARIA accessibility, PWA enhancements, scanner hardening with symlink protection and concurrent processing."
 }

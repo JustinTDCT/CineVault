@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/JustinTDCT/CineVault/internal/auth"
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
 )
@@ -67,6 +68,11 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := auth.ValidatePassword(req.Password); err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	hashedPassword, err := s.auth.HashPassword(req.Password)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, "failed to hash password")
@@ -105,6 +111,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.auth.VerifyPassword(user.PasswordHash, req.Password); err != nil {
+		s.recordAuthFailure(r)
 		s.respondError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
@@ -119,6 +126,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
+
+	// Record session for token management
+	s.recordSession(user.ID, token, r)
 
 	user.PasswordHash = ""
 	s.respondJSON(w, http.StatusOK, Response{
@@ -486,6 +496,11 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.FirstName == "" || req.LastName == "" {
 		s.respondError(w, http.StatusBadRequest, "first name and last name are required")
+		return
+	}
+
+	if err := auth.ValidatePassword(req.Password); err != nil {
+		s.respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

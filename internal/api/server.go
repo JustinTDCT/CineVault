@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/JustinTDCT/CineVault/internal/auth"
@@ -227,13 +229,22 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /api/v1/status", s.handleStatus)
 	s.router.HandleFunc("GET /api/v1/setup/check", s.handleSetupCheck)
 	s.router.HandleFunc("POST /api/v1/setup", s.handleSetup)
-	s.router.HandleFunc("POST /api/v1/auth/register", s.handleRegister)
-	s.router.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
+	s.router.HandleFunc("POST /api/v1/auth/register", s.rlAuth(s.handleRegister))
+	s.router.HandleFunc("POST /api/v1/auth/login", s.rlAuth(s.handleLogin))
 
 	// Fast Login (public — no auth required)
-	s.router.HandleFunc("GET /api/v1/auth/fast-login/settings", s.handleFastLoginSettings)
-	s.router.HandleFunc("GET /api/v1/auth/fast-login/users", s.handleFastLoginUsers)
-	s.router.HandleFunc("POST /api/v1/auth/fast-login", s.handlePinLogin)
+	s.router.HandleFunc("GET /api/v1/auth/fast-login/settings", s.rlRead(s.handleFastLoginSettings))
+	s.router.HandleFunc("GET /api/v1/auth/fast-login/users", s.rlRead(s.handleFastLoginUsers))
+	s.router.HandleFunc("POST /api/v1/auth/fast-login", s.rlAuth(s.handlePinLogin))
+
+	// Password reset (admin creates token, user resets with token)
+	s.router.HandleFunc("POST /api/v1/auth/reset-token", s.authMiddleware(s.handleCreateResetToken, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/auth/reset-password", s.rlAuth(s.handleResetPassword))
+
+	// Session management
+	s.router.HandleFunc("POST /api/v1/auth/logout", s.authMiddleware(s.handleLogout, models.RoleGuest))
+	s.router.HandleFunc("GET /api/v1/auth/sessions", s.authMiddleware(s.handleListSessions, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/auth/sessions/{id}", s.authMiddleware(s.handleRevokeSession, models.RoleUser))
 
 	// WebSocket
 	s.router.HandleFunc("GET /api/v1/ws", s.handleWebSocket)
@@ -541,7 +552,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("POST /api/v1/auth/2fa/verify", s.authMiddleware(s.handle2FAVerify, models.RoleUser))
 	s.router.HandleFunc("DELETE /api/v1/auth/2fa", s.authMiddleware(s.handle2FADisable, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/auth/2fa/status", s.authMiddleware(s.handle2FAStatus, models.RoleUser))
-	s.router.HandleFunc("POST /api/v1/auth/2fa/validate", s.handle2FAValidate) // no auth — called during login
+	s.router.HandleFunc("POST /api/v1/auth/2fa/validate", s.rlAuth(s.handle2FAValidate)) // no auth — called during login
 
 	// OpenAPI spec & docs (P10-05)
 	s.router.HandleFunc("GET /api/v1/openapi.json", s.handleOpenAPISpec)
@@ -576,6 +587,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("POST /api/v1/cast/session", s.authMiddleware(s.handleCastSession, models.RoleUser))
 	s.router.HandleFunc("GET /api/v1/cast/sessions", s.authMiddleware(s.handleListCastSessions, models.RoleUser))
 	s.router.HandleFunc("DELETE /api/v1/cast/{id}", s.authMiddleware(s.handleEndCastSession, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/cast/session/{id}/command", s.authMiddleware(s.handleCastCommand, models.RoleUser))
 
 	// Scene markers (P15-02)
 	s.router.HandleFunc("GET /api/v1/media/{id}/markers", s.authMiddleware(s.handleGetMarkers, models.RoleUser))
@@ -657,6 +669,12 @@ func (s *Server) authMiddleware(next http.HandlerFunc, requiredRole models.UserR
 			return
 		}
 
+		// Check if session has been revoked (logout/admin revoke)
+		if !s.isSessionValid(tokenString) {
+			s.respondError(w, http.StatusUnauthorized, "session revoked")
+			return
+		}
+
 		if !s.auth.CheckPermission(claims.Role, requiredRole) {
 			s.respondError(w, http.StatusForbidden, "insufficient permissions")
 			return
@@ -702,11 +720,97 @@ func (s *Server) respondError(w http.ResponseWriter, statusCode int, message str
 	s.respondJSON(w, statusCode, Response{Success: false, Error: message})
 }
 
+// respondPaginated sends a JSON response with pagination headers (X-Total-Count, Link).
+func (s *Server) respondPaginated(w http.ResponseWriter, statusCode int, data interface{}, page, pageSize, total int, baseURL string) {
+	w.Header().Set("X-Total-Count", strconv.Itoa(total))
+	lastPage := (total + pageSize - 1) / pageSize
+	if lastPage < 1 {
+		lastPage = 1
+	}
+	sep := "?"
+	if strings.Contains(baseURL, "?") {
+		sep = "&"
+	}
+	pageSizeStr := strconv.Itoa(pageSize)
+	var links []string
+	links = append(links, fmt.Sprintf(`<%s%spage=1&page_size=%s>; rel="first"`, baseURL, sep, pageSizeStr))
+	links = append(links, fmt.Sprintf(`<%s%spage=%d&page_size=%s>; rel="last"`, baseURL, sep, lastPage, pageSizeStr))
+	if page < lastPage {
+		links = append(links, fmt.Sprintf(`<%s%spage=%d&page_size=%s>; rel="next"`, baseURL, sep, page+1, pageSizeStr))
+	}
+	if page > 1 {
+		links = append(links, fmt.Sprintf(`<%s%spage=%d&page_size=%s>; rel="prev"`, baseURL, sep, page-1, pageSizeStr))
+	}
+	w.Header().Set("Link", strings.Join(links, ", "))
+	s.respondJSON(w, statusCode, data)
+}
+
+// respondWithETag sends a JSON response with ETag support; returns 304 if If-None-Match matches.
+func (s *Server) respondWithETag(w http.ResponseWriter, r *http.Request, statusCode int, data interface{}) {
+	body, err := json.Marshal(data)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, "failed to marshal response")
+		return
+	}
+	h := sha256.Sum256(body)
+	etag := hex.EncodeToString(h[:])[:16]
+	quotedETag := fmt.Sprintf(`"%s"`, etag)
+	w.Header().Set("ETag", quotedETag)
+	if match := r.Header.Get("If-None-Match"); match != "" {
+		for _, v := range strings.Split(match, ",") {
+			if strings.TrimSpace(v) == quotedETag {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	w.Write(body)
+}
+
 func (s *Server) getUserID(r *http.Request) uuid.UUID {
 	id, _ := uuid.Parse(r.Header.Get("X-User-ID"))
 	return id
 }
 
 func (s *Server) Start() error {
-	return http.ListenAndServe(s.config.Server.Address(), s.router)
+	// Wrap router with global middleware: security headers → CORS → handler
+	handler := s.securityHeadersMiddleware(s.corsMiddleware(s.router))
+	return http.ListenAndServe(s.config.Server.Address(), handler)
+}
+
+// securityHeadersMiddleware adds standard security headers to all responses.
+func (s *Server) securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		w.Header().Set("X-XSS-Protection", "0")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// corsMiddleware handles CORS preflight and response headers globally.
+func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Requested-With")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+			w.Header().Set("Access-Control-Max-Age", "86400")
+			w.Header().Set("Vary", "Origin")
+		}
+
+		// Handle preflight
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

@@ -45,7 +45,14 @@ func NeedsAudioTranscode(audioCodec string) bool {
 //   MPEGTS embeds PCR (Program Clock Reference) and per-packet PTS/DTS in PES headers,
 //   guaranteeing A/V sync. Fragmented MP4's tfdt/trun atoms can cause timestamp shifts
 //   of 4-5 seconds when copying video packets from MKV containers.
-func ServeRemuxedMPEGTS(ctx context.Context, w http.ResponseWriter, ffmpegPath, filePath, audioCodec string, startSeconds float64) error {
+// RemuxOptions holds parameters for remux configuration.
+type RemuxOptions struct {
+	AudioStreamIndex int    // -1 means default (first audio), otherwise specific stream index
+	AudioCodec       string // Source audio codec for transcode decision
+	AudioChannels    int    // Source audio channel count
+}
+
+func ServeRemuxedMPEGTS(ctx context.Context, w http.ResponseWriter, ffmpegPath, filePath, audioCodec string, startSeconds float64, opts ...RemuxOptions) error {
 	args := []string{
 		"-hide_banner",
 		"-v", "error",
@@ -56,23 +63,30 @@ func ServeRemuxedMPEGTS(ctx context.Context, w http.ResponseWriter, ffmpegPath, 
 		args = append(args, "-ss", fmt.Sprintf("%.3f", startSeconds))
 	}
 
-	args = append(args,
-		"-i", filePath,
-		"-map", "0:v:0", // First video stream only
-		"-map", "0:a:0", // First audio stream only
-		"-c:v", "copy",  // Copy video as-is (no re-encoding!)
-	)
+	args = append(args, "-i", filePath)
 
-	// Audio: transcode incompatible codecs to AAC, copy compatible ones
-	if NeedsAudioTranscode(audioCodec) {
-		args = append(args,
-			"-c:a", "aac",
-			"-ac", "2",
-			"-b:a", "192k",
-		)
+	// Video stream mapping
+	args = append(args, "-map", "0:v:0")
+
+	// Audio stream mapping: use specific stream index if provided, else first audio
+	if len(opts) > 0 && opts[0].AudioStreamIndex >= 0 {
+		args = append(args, SelectAudioStream(opts[0].AudioStreamIndex)...)
+		// Use the specified audio codec and channels for transcode decision
+		if opts[0].AudioCodec != "" {
+			audioCodec = opts[0].AudioCodec
+		}
 	} else {
-		args = append(args, "-c:a", "copy")
+		args = append(args, "-map", "0:a:0")
 	}
+
+	args = append(args, "-c:v", "copy") // Copy video as-is (no re-encoding!)
+
+	// Audio: use BuildAudioTranscodeArgs for smart codec/channel handling
+	channels := 2
+	if len(opts) > 0 && opts[0].AudioChannels > 0 {
+		channels = opts[0].AudioChannels
+	}
+	args = append(args, BuildAudioTranscodeArgs(audioCodec, channels)...)
 
 	// Output: MPEG Transport Stream for proper timestamp handling
 	args = append(args,
@@ -119,7 +133,6 @@ func ServeRemuxedMPEGTS(ctx context.Context, w http.ResponseWriter, ffmpegPath, 
 	// Set headers — MPEG-TS content type, no caching, chunked transfer
 	w.Header().Set("Content-Type", "video/mp2t")
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 
 	// Pipe FFmpeg stdout directly to HTTP response

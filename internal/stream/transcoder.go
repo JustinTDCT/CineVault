@@ -46,6 +46,20 @@ type Session struct {
 	SegmentsReady int
 	StartedAt     time.Time
 	LastAccess    time.Time
+	ErrorLog      string
+}
+
+// TranscodeOptions holds optional parameters for transcoding.
+type TranscodeOptions struct {
+	AudioStreamIndex int    // Specific audio stream index (-1 for default)
+	AudioCodec       string // Source audio codec
+	AudioChannels    int    // Source audio channel count
+	SubtitleIndex    int    // Subtitle stream index for burn-in (-1 for none)
+	SubtitleFormat   string // Subtitle codec name for burn-in filter selection
+	BurnSubtitles    bool   // Whether to burn in subtitles
+	HDRToSDR         bool   // Whether to convert HDR to SDR
+	StartSeconds     float64 // Seek position (0 for beginning)
+	Codec            string  // Output codec: "h264" (default), "hevc"
 }
 
 func NewTranscoder(ffmpegPath, outputBase string) *Transcoder {
@@ -69,7 +83,7 @@ func (t *Transcoder) DetectHWAccel() string {
 	return "libx264"
 }
 
-func (t *Transcoder) StartTranscode(mediaItemID, userID, filePath, quality string) (*Session, error) {
+func (t *Transcoder) StartTranscode(mediaItemID, userID, filePath, quality string, opts ...TranscodeOptions) (*Session, error) {
 	q, ok := Qualities[quality]
 	if !ok {
 		q = Qualities["720p"]
@@ -94,28 +108,109 @@ func (t *Transcoder) StartTranscode(mediaItemID, userID, filePath, quality strin
 		return nil, fmt.Errorf("create output dir: %w", err)
 	}
 
+	// Resolve options
+	var opt TranscodeOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+
+	// Determine encoder
 	encoder := t.DetectHWAccel()
+	if opt.Codec == "hevc" {
+		encoder = t.detectHEVCEncoder()
+	}
+
+	// Build hwaccel input args for hardware decode
+	hwAccelArgs := t.buildHWAccelInputArgs(encoder)
+
 	playlistPath := filepath.Join(outputDir, "stream.m3u8")
 
-	args := []string{
-		"-nostdin",
-		"-i", filePath,
+	args := []string{"-nostdin"}
+
+	// Hardware decode (before -i)
+	args = append(args, hwAccelArgs...)
+
+	// Seek support (before -i for fast keyframe seek)
+	if opt.StartSeconds > 0 {
+		args = append(args, "-ss", fmt.Sprintf("%.3f", opt.StartSeconds))
+	}
+
+	args = append(args, "-i", filePath)
+
+	// Video stream mapping
+	args = append(args, "-map", "0:v:0")
+
+	// Audio stream mapping
+	if opt.AudioStreamIndex >= 0 {
+		args = append(args, SelectAudioStream(opt.AudioStreamIndex)...)
+	} else {
+		args = append(args, "-map", "0:a:0")
+	}
+
+	// Build video filter chain
+	var videoFilters []string
+	videoFilters = append(videoFilters, fmt.Sprintf("scale=%d:%d", q.Width, q.Height))
+
+	// HDR-to-SDR tone mapping
+	if opt.HDRToSDR {
+		toneMap := HDRToSDRFilter(encoder)
+		videoFilters = append(videoFilters, toneMap)
+	}
+
+	// Subtitle burn-in
+	if opt.BurnSubtitles && opt.SubtitleIndex >= 0 {
+		subFilter, isComplex := SubtitleBurnInFilter(filePath, opt.SubtitleIndex, opt.SubtitleFormat)
+		if isComplex {
+			// Image-based subtitles need filter_complex instead of -vf
+			args = append(args, "-filter_complex", subFilter)
+		} else {
+			videoFilters = append(videoFilters, subFilter)
+		}
+	}
+
+	args = append(args,
 		"-c:v", encoder,
-		"-vf", fmt.Sprintf("scale=%d:%d", q.Width, q.Height),
+		"-vf", strings.Join(videoFilters, ","),
 		"-b:v", q.VideoBitrate,
-		"-c:a", "aac",
-		"-b:a", q.AudioBitrate,
+	)
+
+	// Audio transcoding with smart codec/channel handling
+	channels := 2
+	audioCodec := "unknown"
+	if opt.AudioChannels > 0 {
+		channels = opt.AudioChannels
+	}
+	if opt.AudioCodec != "" {
+		audioCodec = opt.AudioCodec
+	}
+	args = append(args, BuildAudioTranscodeArgs(audioCodec, channels)...)
+
+	// HLS output — use fmp4 for HEVC (required by spec), mpegts for H.264
+	segExt := "ts"
+	hlsSegType := ""
+	if opt.Codec == "hevc" {
+		segExt = "mp4"
+		hlsSegType = "-hls_segment_type fmp4"
+	}
+
+	args = append(args,
 		"-f", "hls",
 		"-hls_time", "6",
 		"-hls_list_size", "0",
-		"-hls_segment_filename", filepath.Join(outputDir, "segment_%05d.ts"),
+		"-hls_segment_filename", filepath.Join(outputDir, fmt.Sprintf("segment_%%05d.%s", segExt)),
 		"-hls_flags", "independent_segments",
-		"-y",
-		playlistPath,
+	)
+	if hlsSegType != "" {
+		args = append(args, "-hls_segment_type", "fmp4")
 	}
+	args = append(args, "-y", playlistPath)
 
 	cmd := exec.Command(t.ffmpegPath, args...)
-	cmd.Stderr = nil
+
+	// Capture stderr for error logging
+	stderrBuf := &strings.Builder{}
+	cmd.Stderr = stderrBuf
+
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start ffmpeg: %w", err)
 	}
@@ -135,16 +230,65 @@ func (t *Transcoder) StartTranscode(mediaItemID, userID, filePath, quality strin
 	t.sessions[sessionKey] = session
 	t.mu.Unlock()
 
-	log.Printf("Transcode session started: %s (%s)", sessionKey, quality)
+	log.Printf("Transcode session started: %s (%s, encoder=%s)", sessionKey, quality, encoder)
 
-	// Wait for FFmpeg in background
+	// Wait for FFmpeg in background, capture errors and track progress
 	go func() {
 		if err := cmd.Wait(); err != nil {
-			log.Printf("FFmpeg transcode ended: %v", err)
+			errStr := stderrBuf.String()
+			if len(errStr) > 1000 {
+				errStr = errStr[len(errStr)-1000:]
+			}
+			log.Printf("FFmpeg transcode ended: %v | stderr: %s", err, errStr)
+			t.mu.Lock()
+			if s, ok := t.sessions[sessionKey]; ok {
+				s.ErrorLog = errStr
+			}
+			t.mu.Unlock()
 		}
+		// Count segments produced
+		t.mu.Lock()
+		if s, ok := t.sessions[sessionKey]; ok {
+			entries, _ := os.ReadDir(s.OutputDir)
+			count := 0
+			for _, e := range entries {
+				if strings.HasSuffix(e.Name(), ".ts") || strings.HasSuffix(e.Name(), ".mp4") {
+					count++
+				}
+			}
+			s.SegmentsReady = count
+		}
+		t.mu.Unlock()
 	}()
 
 	return session, nil
+}
+
+// detectHEVCEncoder probes for HEVC hardware encoders, falls back to libx265.
+func (t *Transcoder) detectHEVCEncoder() string {
+	for _, encoder := range []string{"hevc_nvenc", "hevc_qsv", "hevc_vaapi"} {
+		cmd := exec.Command(t.ffmpegPath, "-hide_banner", "-encoders")
+		output, err := cmd.Output()
+		if err == nil && strings.Contains(string(output), encoder) {
+			log.Printf("Detected HEVC HW encoder: %s", encoder)
+			return encoder
+		}
+	}
+	return "libx265"
+}
+
+// buildHWAccelInputArgs returns FFmpeg args for hardware-accelerated decoding.
+func (t *Transcoder) buildHWAccelInputArgs(encoder string) []string {
+	switch {
+	case strings.Contains(encoder, "nvenc") || strings.Contains(encoder, "cuda"):
+		return []string{"-hwaccel", "cuda", "-hwaccel_output_format", "cuda"}
+	case strings.Contains(encoder, "qsv"):
+		return []string{"-hwaccel", "qsv", "-hwaccel_output_format", "qsv"}
+	case strings.Contains(encoder, "vaapi"):
+		return []string{"-hwaccel", "vaapi", "-hwaccel_output_format", "vaapi", "-vaapi_device", "/dev/dri/renderD128"}
+	default:
+		return nil
+	}
 }
 
 // Note: HLS-based remux (StartRemux) has been removed.

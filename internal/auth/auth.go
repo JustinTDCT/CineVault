@@ -3,15 +3,18 @@ package auth
 import (
 	"errors"
 	"time"
+	"unicode"
+
+	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/JustinTDCT/CineVault/internal/models"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidToken       = errors.New("invalid token")
+	ErrWeakPassword       = errors.New("password must be at least 8 characters with uppercase, lowercase, and a digit")
 )
 
 type Claims struct {
@@ -32,6 +35,28 @@ func NewAuth(secret string, expiresIn string) (*Auth, error) {
 		return nil, err
 	}
 	return &Auth{jwtSecret: []byte(secret), expiresIn: duration}, nil
+}
+
+// ValidatePassword checks password complexity: min 8 chars, upper, lower, digit.
+func ValidatePassword(password string) error {
+	if len(password) < 8 {
+		return ErrWeakPassword
+	}
+	var hasUpper, hasLower, hasDigit bool
+	for _, c := range password {
+		switch {
+		case unicode.IsUpper(c):
+			hasUpper = true
+		case unicode.IsLower(c):
+			hasLower = true
+		case unicode.IsDigit(c):
+			hasDigit = true
+		}
+	}
+	if !hasUpper || !hasLower || !hasDigit {
+		return ErrWeakPassword
+	}
+	return nil
 }
 
 func (a *Auth) HashPassword(password string) (string, error) {

@@ -48,7 +48,6 @@ func (s *Server) handleStreamMaster(w http.ResponseWriter, r *http.Request) {
 	playlist := s.transcoder.GenerateMasterPlaylist(mediaID.String(), media.FilePath, qualities)
 
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(playlist))
 }
@@ -183,7 +182,44 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 		}
 
 		userID := s.getUserID(r)
-		sess, err := s.transcoder.StartTranscode(mediaID, userID.String(), media.FilePath, quality)
+
+		// Build transcode options from query params
+		tcOpts := stream.TranscodeOptions{AudioStreamIndex: -1, SubtitleIndex: -1}
+		if audioParam := r.URL.Query().Get("audio"); audioParam != "" {
+			if idx, err := strconv.Atoi(audioParam); err == nil {
+				tcOpts.AudioStreamIndex = idx
+				if s.tracksRepo != nil {
+					if track, err := s.tracksRepo.GetAudioTrackByIndex(mid, idx); err == nil {
+						tcOpts.AudioCodec = track.Codec
+						tcOpts.AudioChannels = track.Channels
+					}
+				}
+			}
+		}
+		if subParam := r.URL.Query().Get("subtitle"); subParam != "" {
+			if idx, err := strconv.Atoi(subParam); err == nil {
+				tcOpts.SubtitleIndex = idx
+				tcOpts.BurnSubtitles = r.URL.Query().Get("burn") == "true"
+				if s.tracksRepo != nil {
+					if sub, err := s.tracksRepo.GetSubtitleByStreamIndex(mid, idx); err == nil {
+						tcOpts.SubtitleFormat = sub.Format
+					}
+				}
+			}
+		}
+		if r.URL.Query().Get("hdr") == "false" {
+			tcOpts.HDRToSDR = true
+		}
+		if startParam := r.URL.Query().Get("start"); startParam != "" {
+			if parsed, err := strconv.ParseFloat(startParam, 64); err == nil {
+				tcOpts.StartSeconds = parsed
+			}
+		}
+		if r.URL.Query().Get("codec") == "hevc" {
+			tcOpts.Codec = "hevc"
+		}
+
+		sess, err := s.transcoder.StartTranscode(mediaID, userID.String(), media.FilePath, quality, tcOpts)
 		if err != nil {
 			s.respondError(w, http.StatusInternalServerError, "transcode failed: "+err.Error())
 			return
@@ -225,7 +261,6 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 		http.ServeFile(w, r, playlistPath)
 		return
 	}
@@ -241,7 +276,6 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.Header().Set("Content-Type", "video/mp2t")
 	}
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	http.ServeFile(w, r, segPath)
 }
 
@@ -318,7 +352,23 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 		if media.AudioCodec != nil {
 			audioCodec = *media.AudioCodec
 		}
-		if err := stream.ServeRemuxedMPEGTS(r.Context(), w, s.config.FFmpeg.FFmpegPath, media.FilePath, audioCodec, startSeconds); err != nil {
+
+		// Parse optional audio track selection
+		remuxOpts := stream.RemuxOptions{AudioStreamIndex: -1, AudioCodec: audioCodec}
+		if audioParam := r.URL.Query().Get("audio"); audioParam != "" {
+			if idx, err := strconv.Atoi(audioParam); err == nil && idx >= 0 {
+				remuxOpts.AudioStreamIndex = idx
+				// Look up the selected audio track's codec and channels
+				if s.tracksRepo != nil {
+					if track, err := s.tracksRepo.GetAudioTrackByIndex(mediaID, idx); err == nil {
+						remuxOpts.AudioCodec = track.Codec
+						remuxOpts.AudioChannels = track.Channels
+					}
+				}
+			}
+		}
+
+		if err := stream.ServeRemuxedMPEGTS(r.Context(), w, s.config.FFmpeg.FFmpegPath, media.FilePath, audioCodec, startSeconds, remuxOpts); err != nil {
 			if r.Context().Err() == nil {
 				s.respondError(w, http.StatusInternalServerError, "remux failed: "+err.Error())
 			}
@@ -362,7 +412,6 @@ func (s *Server) handleStreamSubtitle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 
 	if sub.Source == models.SubtitleSourceExternal && sub.FilePath != nil {

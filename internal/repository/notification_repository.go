@@ -204,3 +204,61 @@ func (r *NotificationRepository) StreamErrorCount(minutes int) (int, error) {
 	err := r.db.QueryRow(`SELECT COUNT(*) FROM stream_sessions WHERE started_at >= $1 AND is_active = false AND duration_seconds < 10`, since).Scan(&count)
 	return count, err
 }
+
+// ── User Notification Preferences ──
+
+// NotificationPreference represents a user's preference for an event type and channel.
+type NotificationPreference struct {
+	UserID    uuid.UUID
+	EventType string
+	ChannelID uuid.UUID
+	Enabled   bool
+}
+
+// GetPreferencesForEvent returns all enabled user preferences for a given event type.
+func (r *NotificationRepository) GetPreferencesForEvent(eventType string) ([]NotificationPreference, error) {
+	rows, err := r.db.Query(`SELECT user_id, event_type, channel_id, enabled
+		FROM user_notification_preferences WHERE event_type = $1 AND enabled = TRUE`, eventType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var prefs []NotificationPreference
+	for rows.Next() {
+		var p NotificationPreference
+		if err := rows.Scan(&p.UserID, &p.EventType, &p.ChannelID, &p.Enabled); err != nil {
+			return nil, err
+		}
+		prefs = append(prefs, p)
+	}
+	return prefs, rows.Err()
+}
+
+// SetPreference creates or updates a user notification preference.
+func (r *NotificationRepository) SetPreference(userID uuid.UUID, eventType string, channelID uuid.UUID, enabled bool) error {
+	_, err := r.db.Exec(`INSERT INTO user_notification_preferences (user_id, event_type, channel_id, enabled)
+		VALUES ($1, $2, $3, $4) ON CONFLICT (user_id, event_type, channel_id)
+		DO UPDATE SET enabled = $4`, userID, eventType, channelID, enabled)
+	return err
+}
+
+// GetUserPreferences returns all notification preferences for a user.
+func (r *NotificationRepository) GetUserPreferences(userID uuid.UUID) ([]NotificationPreference, error) {
+	rows, err := r.db.Query(`SELECT user_id, event_type, channel_id, enabled
+		FROM user_notification_preferences WHERE user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var prefs []NotificationPreference
+	for rows.Next() {
+		var p NotificationPreference
+		if err := rows.Scan(&p.UserID, &p.EventType, &p.ChannelID, &p.Enabled); err != nil {
+			return nil, err
+		}
+		prefs = append(prefs, p)
+	}
+	return prefs, rows.Err()
+}

@@ -8,6 +8,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/previews/icon-192.png">
     <link rel="stylesheet" href="/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
     <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"></script>
@@ -21,7 +22,7 @@
 </head>
 <body>
     <!-- Sidebar Toggle (Mobile) -->
-    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">&#9776;</button>
+    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
     <!-- Login Intro Video -->
     <div class="intro-overlay" id="introOverlay">
@@ -32,7 +33,7 @@
 
     <div class="app-container">
         <!-- Sidebar -->
-        <div class="sidebar" id="sidebar">
+        <div class="sidebar" id="sidebar" role="navigation" aria-label="Main navigation">
             <div class="logo">CineVault</div>
 
             <div class="nav-section">
@@ -59,7 +60,7 @@
         <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
             <div class="top-bar">
                 <div class="search-box">
-                    <input type="text" placeholder="Search your media..." id="searchInput">
+                    <input type="text" placeholder="Search your media..." id="searchInput" aria-label="Search your media">
                 </div>
                 <div class="user-menu">
                     <div class="task-indicator" id="taskIndicator" style="display:none;">
@@ -92,14 +93,14 @@
                     </div>
                 </div>
             </div>
-            <div class="main-content" id="mainContent"></div>
+            <div class="main-content" id="mainContent" role="main" aria-label="Main content"></div>
         </div>
     </div>
 
     <!-- Setup Wizard (first run) -->
-    <div class="setup-overlay" id="setupOverlay">
+    <div class="setup-overlay" id="setupOverlay" role="dialog" aria-modal="true" aria-labelledby="setupOverlayTitle">
         <div class="setup-card">
-            <div class="setup-logo">CineVault Setup</div>
+            <div class="setup-logo" id="setupOverlayTitle">CineVault Setup</div>
             <div class="setup-subtitle">Create your admin account to get started</div>
             <div id="setupMessage"></div>
             <form id="setupForm">
@@ -136,9 +137,9 @@
     </div>
 
     <!-- Login Modal (standard) -->
-    <div class="modal" id="loginModal">
+    <div class="modal" id="loginModal" role="dialog" aria-modal="true" aria-labelledby="loginModalTitle">
         <div class="modal-content">
-            <h2 class="modal-title">Welcome to CineVault</h2>
+            <h2 class="modal-title" id="loginModalTitle">Welcome to CineVault</h2>
             <div id="authMessage"></div>
             <form id="loginForm">
                 <div class="form-group"><label>Username</label><input type="text" id="loginUsername" required></div>
@@ -194,7 +195,7 @@
     <!-- Manage Profiles Modal -->
     <div class="manage-profiles-overlay" id="manageProfilesOverlay">
         <div class="manage-profiles-card">
-            <div class="manage-profiles-close" onclick="closeManageProfiles()">&times;</div>
+            <div class="manage-profiles-close" onclick="closeManageProfiles()" role="button" tabindex="0" aria-label="Close">&times;</div>
             <div class="manage-profiles-title">Manage Profiles</div>
             <div id="mpProfileList"></div>
             <button class="mp-add-btn" id="mpAddBtn" onclick="mpShowAddForm()">+ Add Profile</button>
@@ -203,13 +204,13 @@
     </div>
 
     <!-- Video Player Overlay -->
-    <div class="video-player-overlay" id="playerOverlay">
+    <div class="video-player-overlay" id="playerOverlay" role="dialog" aria-modal="true" aria-label="Media player">
         <div class="player-top-bar">
             <span class="player-title" id="playerTitle"></span>
-            <button class="player-close" onclick="closePlayer()">&#10005;</button>
+            <button class="player-close" onclick="closePlayer()" aria-label="Close player">&#10005;</button>
         </div>
         <video id="videoPlayer"></video>
-        <div class="skip-segment-btn" id="skipSegmentBtn" onclick="skipCurrentSegment()" style="display:none;">
+        <div class="skip-segment-btn" id="skipSegmentBtn" onclick="skipCurrentSegment()" style="display:none;" aria-label="Skip segment">
             <span id="skipSegmentLabel">Skip Intro</span>
             <span class="skip-arrow">&#9654;&#9654;</span>
         </div>
@@ -219,11 +220,11 @@
                 <div class="player-chapters" id="playerChapters"></div>
             </div>
             <div class="player-btns">
-                <button class="player-btn" onclick="togglePlay()">&#9654;&#10074;&#10074;</button>
-                <button class="player-btn" onclick="skipBack()">&#9194;</button>
-                <button class="player-btn" onclick="skipForward()">&#9193;</button>
+                <button class="player-btn" onclick="togglePlay()" aria-label="Play / Pause">&#9654;&#10074;&#10074;</button>
+                <button class="player-btn" onclick="skipBack()" aria-label="Skip back">&#9194;</button>
+                <button class="player-btn" onclick="skipForward()" aria-label="Skip forward">&#9193;</button>
                 <span class="player-time" id="playerTime">0:00 / 0:00</span>
-                <button class="player-btn" onclick="toggleMute()">&#128266;</button>
+                <button class="player-btn" onclick="toggleMute()" aria-label="Mute / Unmute">&#128266;</button>
                 <select class="player-quality-select" id="subtitleSelect" onchange="changeSubtitle(this.value)">
                     <option value="off">Subtitles Off</option>
                 </select>
@@ -232,18 +233,18 @@
                 <select class="player-quality-select" id="chapterSelect" onchange="jumpToChapter(this.value)" style="display:none;">
                     <option value="">Chapters</option>
                 </select>
-                <button class="player-btn" id="addMarkerBtn" onclick="addMarkerFromPlayer()" title="Add Scene Marker" style="display:none;">&#128205;</button>
-                <button class="player-btn" id="pipBtn" onclick="togglePiP()" title="Picture-in-Picture">&#128250;</button>
-                <button class="player-btn" id="castBtn" onclick="startCast(currentMediaId, document.getElementById('playerTitle').textContent)" title="Cast" style="display:none;">&#128225;</button>
-                <button class="player-btn" onclick="toggleFullscreen()" style="margin-left:auto;">&#9974;</button>
+                <button class="player-btn" id="addMarkerBtn" onclick="addMarkerFromPlayer()" title="Add Scene Marker" style="display:none;" aria-label="Add scene marker">&#128205;</button>
+                <button class="player-btn" id="pipBtn" onclick="togglePiP()" title="Picture-in-Picture" aria-label="Picture-in-Picture">&#128250;</button>
+                <button class="player-btn" id="castBtn" onclick="startCast(currentMediaId, document.getElementById('playerTitle').textContent)" title="Cast" style="display:none;" aria-label="Cast to device">&#128225;</button>
+                <button class="player-btn" onclick="toggleFullscreen()" style="margin-left:auto;" aria-label="Fullscreen">&#9974;</button>
             </div>
         </div>
     </div>
 
     <!-- Edit Media Modal -->
-    <div class="edit-modal-overlay" id="editMediaOverlay">
+    <div class="edit-modal-overlay" id="editMediaOverlay" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
         <div class="edit-modal">
-            <div class="edit-modal-title">Edit Media Item</div>
+            <div class="edit-modal-title" id="editModalTitle">Edit Media Item</div>
             <input type="hidden" id="editMediaId">
             <div class="form-group">
                 <label>Title *</label>
@@ -451,9 +452,9 @@
     </div>
 
     <!-- Edition Picker Modal -->
-    <div class="edition-picker-overlay" id="editionPickerOverlay">
+    <div class="edition-picker-overlay" id="editionPickerOverlay" role="dialog" aria-modal="true" aria-labelledby="editionPickerTitle">
         <div class="edition-picker">
-            <div class="edition-picker-title">Select Edition to Play</div>
+            <div class="edition-picker-title" id="editionPickerTitle">Select Edition to Play</div>
             <div id="editionPickerList"></div>
             <div style="display:flex;justify-content:flex-end;margin-top:20px;">
                 <button class="btn-secondary" onclick="closeEditionPicker()">Cancel</button>

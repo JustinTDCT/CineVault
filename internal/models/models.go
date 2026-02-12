@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -985,14 +986,25 @@ type DailyStat struct {
 // ──────────────────── Notification Channels ────────────────────
 
 type NotificationChannel struct {
-	ID          uuid.UUID `json:"id" db:"id"`
-	Name        string    `json:"name" db:"name"`
-	ChannelType string    `json:"channel_type" db:"channel_type"`
-	WebhookURL  string    `json:"webhook_url" db:"webhook_url"`
-	IsEnabled   bool      `json:"is_enabled" db:"is_enabled"`
-	Events      string    `json:"events" db:"events"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	ID          uuid.UUID         `json:"id" db:"id"`
+	Name        string            `json:"name" db:"name"`
+	ChannelType string            `json:"channel_type" db:"channel_type"`
+	WebhookURL  string            `json:"webhook_url" db:"webhook_url"`
+	IsEnabled   bool              `json:"is_enabled" db:"is_enabled"`
+	Events      string            `json:"events" db:"events"`
+	Config      *json.RawMessage  `json:"config,omitempty" db:"config"`
+	CreatedAt   time.Time         `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at" db:"updated_at"`
+}
+
+// GetConfig returns the channel config as a string map.
+func (c *NotificationChannel) GetConfig() map[string]string {
+	result := make(map[string]string)
+	if c.Config == nil {
+		return result
+	}
+	json.Unmarshal(*c.Config, &result)
+	return result
 }
 
 // ──────────────────── Alert Rules ────────────────────

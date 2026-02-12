@@ -14,24 +14,25 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/jobs"
 	"github.com/JustinTDCT/CineVault/internal/notifications"
 	"github.com/JustinTDCT/CineVault/internal/scheduler"
+	"github.com/JustinTDCT/CineVault/internal/version"
 	"github.com/JustinTDCT/CineVault/internal/watcher"
 	"github.com/google/uuid"
 )
 
-const banner = `
+const bannerArt = `
    _____ _            __      __          _ _   
   / ____(_)           \ \    / /         | | |  
  | |     _ _ __   ___  \ \  / /_ _ _   _| | |_ 
  | |    | | '_ \ / _ \  \ \/ / _' | | | | | __|
  | |____| | | | |  __/   \  / (_| | |_| | | |_ 
   \_____|_|_| |_|\___|    \/ \__,_|\__,_|_|\__|
-                                                
-  Self-Hosted Media Server - Phase 3
-  Version 0.47.0
 `
 
 func main() {
-	fmt.Println(banner)
+	v := version.Get()
+	fmt.Println(bannerArt)
+	fmt.Printf("  Self-Hosted Media Server - Phase %d\n", v.Phase)
+	fmt.Printf("  Version %s\n\n", v.Version)
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)

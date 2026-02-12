@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 	"sync/atomic"
+	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/ffmpeg"
 	"github.com/JustinTDCT/CineVault/internal/metadata"
@@ -49,6 +50,13 @@ type Scanner struct {
 	scanShowsByFolder map[string]*models.TVShow
 	// mu protects concurrent access during parallel enrichment
 	mu sync.Mutex
+}
+
+// scanFile holds path info for the concurrent processing queue.
+type scanFile struct {
+	path string
+	name string
+	size int64
 }
 
 // Extension sets per media type
@@ -142,7 +150,6 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 		totalFiles = s.countEligibleFiles(library.MediaType, scanPaths)
 		log.Printf("Scan: pre-count found %d eligible files", totalFiles)
 	}
-	processed := 0
 
 	// Determine if metadata should be retrieved for this library
 	shouldRetrieveMetadata := library.RetrieveMetadata
@@ -151,10 +158,74 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 		shouldRetrieveMetadata = false
 	}
 
+	// Atomic counters for concurrent processing (8C)
+	var filesFound, filesSkipped, filesAdded int64
+	var errorsMu sync.Mutex
+	var scanErrors []string
+
 	for _, scanPath := range scanPaths {
 		log.Printf("Scanning folder: %s", scanPath)
-		err := filepath.Walk(scanPath, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
+
+		// 8B: Network mount timeout — prevent hung NFS/SMB from blocking
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		statDone := make(chan struct{})
+		var statErr error
+		go func() {
+			_, statErr = os.Stat(scanPath)
+			close(statDone)
+		}()
+		select {
+		case <-ctx.Done():
+			cancel()
+			log.Printf("Mount timeout: %s (skipping, possible hung NFS/SMB)", scanPath)
+			errorsMu.Lock()
+			scanErrors = append(scanErrors, fmt.Sprintf("mount timeout for %s", scanPath))
+			errorsMu.Unlock()
+			continue
+		case <-statDone:
+			cancel()
+			if statErr != nil {
+				errorsMu.Lock()
+				scanErrors = append(scanErrors, fmt.Sprintf("stat failed for %s: %v", scanPath, statErr))
+				errorsMu.Unlock()
+				continue
+			}
+		}
+
+		// 8A: Symlink cycle protection
+		visitedDirs := make(map[string]bool)
+
+		// 8C: Buffered channel and worker pool
+		const numWorkers = 8
+		fileCh := make(chan scanFile, numWorkers*4)
+		var wg sync.WaitGroup
+
+		for w := 0; w < numWorkers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for f := range fileCh {
+					s.processScanFile(library, scanPath, f, shouldRetrieveMetadata,
+						&filesFound, &filesSkipped, &filesAdded, &errorsMu, &scanErrors,
+						onProgress, totalFiles)
+				}
+			}()
+		}
+
+		// WalkDir: collect files, symlink check for dirs
+		err := filepath.WalkDir(scanPath, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				realPath, eerr := filepath.EvalSymlinks(path)
+				if eerr != nil {
+					return nil
+				}
+				if visitedDirs[realPath] {
+					return filepath.SkipDir
+				}
+				visitedDirs[realPath] = true
 				return nil
 			}
 
@@ -163,274 +234,36 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				return nil
 			}
 
-			// Detect extras/samples/trailers (trailers, featurettes, BTS, deleted scenes, etc.)
+			info, ierr := d.Info()
+			if ierr != nil {
+				return nil
+			}
+
 			extraType := IsExtraFile(path, info.Size())
 			if extraType == "sample" {
 				log.Printf("Skipping sample file: %s", info.Name())
 				return nil
 			}
 
-			result.FilesFound++
-			processed++
-
-			// Report progress
-			if onProgress != nil {
-				onProgress(processed, totalFiles, info.Name())
-			}
-
-			// Check if file already scanned
-			existing, err := s.mediaRepo.GetByFilePath(path)
-			if err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("db check failed for %s: %v", path, err))
-				return nil
-			}
-			if existing != nil {
-				// Backfill: generate screenshot poster for existing items that don't have one
-				if existing.PosterPath == nil && s.isProbeableType(library.MediaType) {
-					s.generateScreenshotPoster(existing)
-				}
-				result.FilesSkipped++
-				return nil
-			}
-
-			// Parse filename based on media type to pre-fill metadata
-			parsed := s.parseFilename(info.Name(), library.MediaType)
-
-			// ── NFO sidecar support (Kodi/Jellyfin-compatible) ──
-			var nfoData *metadata.NFOData
-			if library.NFOImport {
-				// Try full XML NFO parsing first
-				nfoPath := metadata.FindNFOFile(path, library.MediaType)
-				if nfoPath != "" {
-					switch library.MediaType {
-					case models.MediaTypeMovies, models.MediaTypeAdultMovies:
-						nfoData, _ = metadata.ReadMovieNFO(nfoPath)
-					case models.MediaTypeTVShows:
-						nfoData, _ = metadata.ReadEpisodeNFO(nfoPath)
-					}
-					if nfoData != nil {
-						log.Printf("NFO import: parsed %s for %s", nfoPath, info.Name())
-						// Apply NFO data to parsed filename for matching
-						if nfoData.GetIMDBID() != "" {
-							parsed.IMDBID = nfoData.GetIMDBID()
-						}
-						if nfoData.GetTMDBID() != "" {
-							parsed.TMDBID = nfoData.GetTMDBID()
-						}
-						if nfoData.GetTVDBID() != "" {
-							parsed.TVDBID = nfoData.GetTVDBID()
-						}
-					}
-				}
-			}
-
-			// Fallback: legacy NFO IMDB ID extraction (always active)
-			if parsed.IMDBID == "" {
-				nfoIMDB := ReadNFOIMDBID(path)
-				if nfoIMDB != "" {
-					parsed.IMDBID = nfoIMDB
-					log.Printf("NFO sidecar: found %s for %s", nfoIMDB, info.Name())
-				}
-			}
-
-			// Create media item with parsed metadata
-			item := &models.MediaItem{
-				ID:          uuid.New(),
-				LibraryID:   library.ID,
-				MediaType:   library.MediaType,
-				FilePath:    path,
-				FileName:    info.Name(),
-				FileSize:    info.Size(),
-				Title:       parsed.Title,
-				Year:        parsed.Year,
-				EditionType: parsed.Edition,
-			}
-
-			// Tag extras (trailers, featurettes, behind-the-scenes, deleted-scenes, interviews)
-			if extraType != "" {
-				item.ExtraType = &extraType
-			}
-
-			// Pre-fill resolution/container/source from filename (ffprobe will override if available)
-			if parsed.Resolution != "" {
-				item.Resolution = &parsed.Resolution
-			}
-			if parsed.Container != "" {
-				item.Container = &parsed.Container
-			}
-			// Persist source type from filename parser (e.g. "bluray", "web", "hdtv")
-			if parsed.Source != "" {
-				item.SourceType = &parsed.Source
-			}
-			// Pre-fill music disc/track numbers
-			if parsed.DiscNumber != nil {
-				item.DiscNumber = parsed.DiscNumber
-			}
-			if parsed.TrackNumber != nil {
-				item.TrackNumber = parsed.TrackNumber
-			}
-			// Set sort position for multi-part files (part number determines play order)
-			if parsed.PartNumber != nil {
-				item.SortPosition = *parsed.PartNumber
-			}
-
-			// Probe with ffprobe for video/audio types (overrides filename-parsed values)
-			var probeResult *ffmpeg.ProbeResult
-			if s.isProbeableType(library.MediaType) {
-				probe, probeErr := s.ffprobe.Probe(path)
-				if probeErr != nil {
-					log.Printf("ffprobe failed for %s: %v", path, probeErr)
-					result.Errors = append(result.Errors, fmt.Sprintf("probe failed: %s", path))
-				} else {
-					probeResult = probe
-					s.applyProbeData(item, probe)
-				}
-			}
-
-			// Handle TV show hierarchy (only when season grouping is enabled)
-			if library.MediaType == models.MediaTypeTVShows && library.SeasonGrouping {
-				if err := s.handleTVHierarchy(library, item, path, scanPath); err != nil {
-					log.Printf("TV hierarchy error for %s: %v", path, err)
-				}
-			}
-
-			// Handle music hierarchy: find/create artist and album from parsed filename
-			if (library.MediaType == models.MediaTypeMusic || library.MediaType == models.MediaTypeMusicVideos) && parsed.Artist != "" {
-				if err := s.handleMusicHierarchy(library, item, parsed); err != nil {
-					log.Printf("Music hierarchy error for %s: %v", path, err)
-				}
-			}
-
-			// Persist
-			if err := s.mediaRepo.Create(item); err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("insert failed %s: %v", path, err))
-				return nil
-			}
-
-			// ── Link extras to parent media item ──
-			if item.ExtraType != nil {
-				// Walk up directories to find a non-extras parent directory
-				parentDir := filepath.Dir(filepath.Dir(path))
-				parent, _ := s.mediaRepo.FindParentByDirectory(library.ID, parentDir)
-				if parent != nil {
-					item.ParentMediaID = &parent.ID
-					s.mediaRepo.UpdateParentMediaID(item.ID, parent.ID)
-				}
-			}
-
-			// ── Extract and store subtitle tracks, audio tracks, and chapters ──
-			if probeResult != nil && s.tracksRepo != nil {
-				s.extractAndStoreTracks(item.ID, path, probeResult)
-			}
-
-			// Track multi-part files for post-scan sister grouping
-			if parsed.PartNumber != nil && parsed.BaseTitle != "" {
-				dir := filepath.Dir(path)
-				key := dir + "|" + parsed.BaseTitle
-				s.pendingMultiParts[key] = append(s.pendingMultiParts[key], multiPartEntry{
-					ItemID:     item.ID,
-					PartNumber: *parsed.PartNumber,
-				})
-			}
-
-			// If TV with season grouping, increment season episode count
-			if library.SeasonGrouping && item.TVSeasonID != nil {
-				_ = s.tvRepo.IncrementEpisodeCount(*item.TVSeasonID)
-			}
-
-			// ── Multi-episode file detection ──
-			// If the file covers a range (S01E01-E03), create additional items for E02, E03
-			if library.MediaType == models.MediaTypeTVShows && parsed.EpisodeEnd > 0 && parsed.Episode > 0 && parsed.EpisodeEnd > parsed.Episode {
-				for epNum := parsed.Episode + 1; epNum <= parsed.EpisodeEnd; epNum++ {
-					extraEp := &models.MediaItem{
-						ID:          uuid.New(),
-						LibraryID:   library.ID,
-						MediaType:   library.MediaType,
-						FilePath:    path,
-						FileName:    info.Name(),
-						FileSize:    info.Size(),
-						Title:       parsed.Title,
-						Year:        parsed.Year,
-						TVShowID:    item.TVShowID,
-						TVSeasonID:  item.TVSeasonID,
-					}
-					epn := epNum
-					extraEp.EpisodeNumber = &epn
-					if item.DurationSeconds != nil {
-						// Estimate duration per episode by dividing total
-						totalEps := parsed.EpisodeEnd - parsed.Episode + 1
-						epDur := *item.DurationSeconds / totalEps
-						extraEp.DurationSeconds = &epDur
-					}
-					if err := s.mediaRepo.Create(extraEp); err != nil {
-						log.Printf("Multi-episode: failed to create ep %d item: %v", epNum, err)
-					} else {
-						if library.SeasonGrouping && extraEp.TVSeasonID != nil {
-							_ = s.tvRepo.IncrementEpisodeCount(*extraEp.TVSeasonID)
-						}
-					}
-				}
-			}
-
-			// ── Local artwork detection (Plex/Jellyfin-style) ──
-			if library.PreferLocalArtwork {
-				localArt := DetectLocalArtwork(path, library.MediaType)
-				if localArt.PosterPath != "" && item.PosterPath == nil {
-					item.PosterPath = &localArt.PosterPath
-					log.Printf("Local artwork: using poster %s for %s", localArt.PosterPath, info.Name())
-				}
-				if localArt.BackdropPath != "" && item.BackdropPath == nil {
-					item.BackdropPath = &localArt.BackdropPath
-				}
-				if localArt.LogoPath != "" {
-					item.LogoPath = &localArt.LogoPath
-				}
-			}
-
-			// ── Apply full NFO metadata if available and has full data ──
-			if nfoData != nil && nfoData.HasFullMetadata() && nfoData.LockData {
-				// NFO has complete data + lockdata=true: use as-is, skip external fetch
-				s.applyNFOData(item, nfoData)
-				item.MetadataLocked = true
-				log.Printf("NFO import: applied full metadata for %s (locked)", info.Name())
-				if err := s.mediaRepo.UpdateMetadata(item.ID, item.Title, item.Year,
-					item.Description, item.Rating, item.PosterPath, item.ContentRating); err != nil {
-					log.Printf("NFO import: metadata update failed for %s: %v", item.ID, err)
-				}
-				// Link genres from NFO
-				if s.tagRepo != nil && len(nfoData.Genres) > 0 {
-					s.linkGenreTags(item.ID, nfoData.Genres)
-				}
-			} else if shouldRetrieveMetadata && item.ExtraType == nil {
-				// Auto-populate metadata from external sources (if enabled, skip extras)
-				s.autoPopulateMetadata(library, item, parsed)
-			}
-
-			// ── Write NFO export if enabled ──
-			if library.NFOExport && item.Description != nil {
-				nfoExportPath := strings.TrimSuffix(path, filepath.Ext(path)) + ".nfo"
-				switch library.MediaType {
-				case models.MediaTypeMovies, models.MediaTypeAdultMovies:
-					if err := metadata.WriteMovieNFO(item, nil, nil, nil, nfoExportPath); err != nil {
-						log.Printf("NFO export: write failed for %s: %v", info.Name(), err)
-					}
-				}
-			}
-
-			// For items without metadata retrieval (or that didn't get a poster),
-			// extract a screenshot from the video to use as the poster image.
-			if item.PosterPath == nil && s.isProbeableType(library.MediaType) {
-				s.generateScreenshotPoster(item)
-			}
-
-			result.FilesAdded++
+			fileCh <- scanFile{path: path, name: info.Name(), size: info.Size()}
 			return nil
 		})
 
+		close(fileCh)
+		wg.Wait()
+
 		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("walk error for %s: %v", scanPath, err))
+			errorsMu.Lock()
+			scanErrors = append(scanErrors, fmt.Sprintf("walk error for %s: %v", scanPath, err))
+			errorsMu.Unlock()
 		}
 	}
+
+	// Copy atomic counters to result
+	result.FilesFound = int(filesFound)
+	result.FilesSkipped = int(filesSkipped)
+	result.FilesAdded = int(filesAdded)
+	result.Errors = scanErrors
 
 	// Post-scan: group multi-part files (CD-x, DISC-x, PART-x) into sister groups
 	if len(s.pendingMultiParts) > 0 {
@@ -457,6 +290,242 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 	s.scanShowsByFolder = make(map[string]*models.TVShow)
 
 	return result, nil
+}
+
+// processScanFile handles a single file: DB check, ffprobe, metadata, persist.
+// Used by concurrent workers; updates counters via atomics and mutex.
+func (s *Scanner) processScanFile(library *models.Library, scanPath string, f scanFile,
+	shouldRetrieveMetadata bool,
+	filesFound, filesSkipped, filesAdded *int64,
+	errorsMu *sync.Mutex, errors *[]string,
+	onProgress ProgressFunc, totalFiles int,
+) {
+	path, name, size := f.path, f.name, f.size
+
+	atomic.AddInt64(filesFound, 1)
+	if onProgress != nil {
+		onProgress(int(atomic.LoadInt64(filesFound)), totalFiles, name)
+	}
+
+	existing, err := s.mediaRepo.GetByFilePath(path)
+	if err != nil {
+		errorsMu.Lock()
+		*errors = append(*errors, fmt.Sprintf("db check failed for %s: %v", path, err))
+		errorsMu.Unlock()
+		return
+	}
+	if existing != nil {
+		if existing.PosterPath == nil && s.isProbeableType(library.MediaType) {
+			s.generateScreenshotPoster(existing)
+		}
+		atomic.AddInt64(filesSkipped, 1)
+		return
+	}
+
+	parsed := s.parseFilename(name, library.MediaType)
+	extraType := IsExtraFile(path, size)
+
+	var nfoData *metadata.NFOData
+	if library.NFOImport {
+		nfoPath := metadata.FindNFOFile(path, library.MediaType)
+		if nfoPath != "" {
+			switch library.MediaType {
+			case models.MediaTypeMovies, models.MediaTypeAdultMovies:
+				nfoData, _ = metadata.ReadMovieNFO(nfoPath)
+			case models.MediaTypeTVShows:
+				nfoData, _ = metadata.ReadEpisodeNFO(nfoPath)
+			}
+			if nfoData != nil {
+				log.Printf("NFO import: parsed %s for %s", nfoPath, name)
+				if nfoData.GetIMDBID() != "" {
+					parsed.IMDBID = nfoData.GetIMDBID()
+				}
+				if nfoData.GetTMDBID() != "" {
+					parsed.TMDBID = nfoData.GetTMDBID()
+				}
+				if nfoData.GetTVDBID() != "" {
+					parsed.TVDBID = nfoData.GetTVDBID()
+				}
+			}
+		}
+	}
+	if parsed.IMDBID == "" {
+		nfoIMDB := ReadNFOIMDBID(path)
+		if nfoIMDB != "" {
+			parsed.IMDBID = nfoIMDB
+			log.Printf("NFO sidecar: found %s for %s", nfoIMDB, name)
+		}
+	}
+
+	item := &models.MediaItem{
+		ID:          uuid.New(),
+		LibraryID:   library.ID,
+		MediaType:   library.MediaType,
+		FilePath:    path,
+		FileName:    name,
+		FileSize:    size,
+		Title:       parsed.Title,
+		Year:        parsed.Year,
+		EditionType: parsed.Edition,
+	}
+	if extraType != "" {
+		item.ExtraType = &extraType
+	}
+	if parsed.Resolution != "" {
+		item.Resolution = &parsed.Resolution
+	}
+	if parsed.Container != "" {
+		item.Container = &parsed.Container
+	}
+	if parsed.Source != "" {
+		item.SourceType = &parsed.Source
+	}
+	if parsed.DiscNumber != nil {
+		item.DiscNumber = parsed.DiscNumber
+	}
+	if parsed.TrackNumber != nil {
+		item.TrackNumber = parsed.TrackNumber
+	}
+	if parsed.PartNumber != nil {
+		item.SortPosition = *parsed.PartNumber
+	}
+
+	var probeResult *ffmpeg.ProbeResult
+	if s.isProbeableType(library.MediaType) {
+		probe, probeErr := s.ffprobe.Probe(path)
+		if probeErr != nil {
+			log.Printf("ffprobe failed for %s: %v", path, probeErr)
+			errorsMu.Lock()
+			*errors = append(*errors, fmt.Sprintf("probe failed: %s", path))
+			errorsMu.Unlock()
+		} else {
+			probeResult = probe
+			s.applyProbeData(item, probe)
+		}
+	}
+
+	if library.MediaType == models.MediaTypeTVShows && library.SeasonGrouping {
+		if err := s.handleTVHierarchy(library, item, path, scanPath); err != nil {
+			log.Printf("TV hierarchy error for %s: %v", path, err)
+		}
+	}
+
+	if (library.MediaType == models.MediaTypeMusic || library.MediaType == models.MediaTypeMusicVideos) && parsed.Artist != "" {
+		if err := s.handleMusicHierarchy(library, item, parsed); err != nil {
+			log.Printf("Music hierarchy error for %s: %v", path, err)
+		}
+	}
+
+	if err := s.mediaRepo.Create(item); err != nil {
+		errorsMu.Lock()
+		*errors = append(*errors, fmt.Sprintf("insert failed %s: %v", path, err))
+		errorsMu.Unlock()
+		return
+	}
+
+	if item.ExtraType != nil {
+		parentDir := filepath.Dir(filepath.Dir(path))
+		parent, _ := s.mediaRepo.FindParentByDirectory(library.ID, parentDir)
+		if parent != nil {
+			item.ParentMediaID = &parent.ID
+			s.mediaRepo.UpdateParentMediaID(item.ID, parent.ID)
+		}
+	}
+
+	if probeResult != nil && s.tracksRepo != nil {
+		s.extractAndStoreTracks(item.ID, path, probeResult)
+	}
+
+	if parsed.PartNumber != nil && parsed.BaseTitle != "" {
+		dir := filepath.Dir(path)
+		key := dir + "|" + parsed.BaseTitle
+		s.mu.Lock()
+		s.pendingMultiParts[key] = append(s.pendingMultiParts[key], multiPartEntry{
+			ItemID:     item.ID,
+			PartNumber: *parsed.PartNumber,
+		})
+		s.mu.Unlock()
+	}
+
+	if library.SeasonGrouping && item.TVSeasonID != nil {
+		_ = s.tvRepo.IncrementEpisodeCount(*item.TVSeasonID)
+	}
+
+	if library.MediaType == models.MediaTypeTVShows && parsed.EpisodeEnd > 0 && parsed.Episode > 0 && parsed.EpisodeEnd > parsed.Episode {
+		for epNum := parsed.Episode + 1; epNum <= parsed.EpisodeEnd; epNum++ {
+			extraEp := &models.MediaItem{
+				ID:          uuid.New(),
+				LibraryID:   library.ID,
+				MediaType:   library.MediaType,
+				FilePath:    path,
+				FileName:    name,
+				FileSize:    size,
+				Title:       parsed.Title,
+				Year:        parsed.Year,
+				TVShowID:    item.TVShowID,
+				TVSeasonID:  item.TVSeasonID,
+			}
+			epn := epNum
+			extraEp.EpisodeNumber = &epn
+			if item.DurationSeconds != nil {
+				totalEps := parsed.EpisodeEnd - parsed.Episode + 1
+				epDur := *item.DurationSeconds / totalEps
+				extraEp.DurationSeconds = &epDur
+			}
+			if err := s.mediaRepo.Create(extraEp); err != nil {
+				log.Printf("Multi-episode: failed to create ep %d item: %v", epNum, err)
+			} else {
+				if library.SeasonGrouping && extraEp.TVSeasonID != nil {
+					_ = s.tvRepo.IncrementEpisodeCount(*extraEp.TVSeasonID)
+				}
+			}
+		}
+	}
+
+	if library.PreferLocalArtwork {
+		localArt := DetectLocalArtwork(path, library.MediaType)
+		if localArt.PosterPath != "" && item.PosterPath == nil {
+			item.PosterPath = &localArt.PosterPath
+			log.Printf("Local artwork: using poster %s for %s", localArt.PosterPath, name)
+		}
+		if localArt.BackdropPath != "" && item.BackdropPath == nil {
+			item.BackdropPath = &localArt.BackdropPath
+		}
+		if localArt.LogoPath != "" {
+			item.LogoPath = &localArt.LogoPath
+		}
+	}
+
+	if nfoData != nil && nfoData.HasFullMetadata() && nfoData.LockData {
+		s.applyNFOData(item, nfoData)
+		item.MetadataLocked = true
+		log.Printf("NFO import: applied full metadata for %s (locked)", name)
+		if err := s.mediaRepo.UpdateMetadata(item.ID, item.Title, item.Year,
+			item.Description, item.Rating, item.PosterPath, item.ContentRating); err != nil {
+			log.Printf("NFO import: metadata update failed for %s: %v", item.ID, err)
+		}
+		if s.tagRepo != nil && len(nfoData.Genres) > 0 {
+			s.linkGenreTags(item.ID, nfoData.Genres)
+		}
+	} else if shouldRetrieveMetadata && item.ExtraType == nil {
+		s.autoPopulateMetadata(library, item, parsed)
+	}
+
+	if library.NFOExport && item.Description != nil {
+		nfoExportPath := strings.TrimSuffix(path, filepath.Ext(path)) + ".nfo"
+		switch library.MediaType {
+		case models.MediaTypeMovies, models.MediaTypeAdultMovies:
+			if err := metadata.WriteMovieNFO(item, nil, nil, nil, nfoExportPath); err != nil {
+				log.Printf("NFO export: write failed for %s: %v", name, err)
+			}
+		}
+	}
+
+	if item.PosterPath == nil && s.isProbeableType(library.MediaType) {
+		s.generateScreenshotPoster(item)
+	}
+
+	atomic.AddInt64(filesAdded, 1)
 }
 
 // reEnrichExistingItems finds items in the library that were previously TMDB-matched

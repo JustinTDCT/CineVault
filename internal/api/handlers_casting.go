@@ -249,5 +249,39 @@ func (s *Server) handleEndCastSession(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, Response{Success: true})
 }
 
+// PUT /api/v1/cast/session/{id}/command — Remote control Chromecast session
+func (s *Server) handleCastCommand(w http.ResponseWriter, r *http.Request) {
+	sessionID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid session id")
+		return
+	}
+
+	var req struct {
+		Command string  `json:"command"` // play, pause, seek, volume, stop
+		Value   float64 `json:"value"`   // seek seconds or volume 0-1
+	}
+	if json.NewDecoder(r.Body).Decode(&req) != nil || req.Command == "" {
+		s.respondError(w, http.StatusBadRequest, "command required")
+		return
+	}
+
+	// Update the session state based on command
+	switch req.Command {
+	case "play":
+		s.db.Exec("UPDATE cast_sessions SET state = 'playing', updated_at = NOW() WHERE id = $1", sessionID)
+	case "pause":
+		s.db.Exec("UPDATE cast_sessions SET state = 'paused', updated_at = NOW() WHERE id = $1", sessionID)
+	case "seek":
+		s.db.Exec("UPDATE cast_sessions SET current_time = $2, updated_at = NOW() WHERE id = $1", sessionID, req.Value)
+	case "volume":
+		// Volume is client-side only, just acknowledge
+	case "stop":
+		s.db.Exec("UPDATE cast_sessions SET state = 'stopped', updated_at = NOW() WHERE id = $1", sessionID)
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true})
+}
+
 // Suppress unused import
 var _ = models.RoleUser

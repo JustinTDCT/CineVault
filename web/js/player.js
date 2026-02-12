@@ -230,6 +230,23 @@ async function playMediaDirect(mediaId, title) {
     // Render chapter markers on seek bar
     renderChapterMarkers(currentStreamInfo);
 
+    // Populate chapter selector dropdown
+    const chapSel = document.getElementById('chapterSelect');
+    if (chapSel && currentStreamInfo && currentStreamInfo.chapters && currentStreamInfo.chapters.length > 0) {
+        let chapOpts = '<option value="">Chapters</option>';
+        currentStreamInfo.chapters.forEach(ch => {
+            chapOpts += `<option value="${ch.start_seconds}">${ch.title || 'Chapter'} (${formatTime(ch.start_seconds)})</option>`;
+        });
+        chapSel.innerHTML = chapOpts;
+        chapSel.style.display = '';
+    } else if (chapSel) {
+        chapSel.style.display = 'none';
+    }
+
+    // Show the add marker button
+    const markerBtn = document.getElementById('addMarkerBtn');
+    if (markerBtn) markerBtn.style.display = '';
+
     // Start playback — MPEGTS for non-native formats, direct for native
     if (currentStreamInfo && currentStreamInfo.needs_remux) {
         startMpegtsPlay(mediaId, token, 0);
@@ -282,6 +299,10 @@ function startMpegtsPlay(mediaId, token, startSec) {
     let url = `/api/v1/stream/${mediaId}/direct?token=${encodeURIComponent(token)}`;
     if (seekOffset > 0) {
         url += `&start=${seekOffset.toFixed(1)}`;
+    }
+    // Pass selected audio track if set
+    if (currentStreamInfo && currentStreamInfo.selectedAudioTrack !== undefined) {
+        url += `&audio=${currentStreamInfo.selectedAudioTrack}`;
     }
 
     mpegtsPlayer = mpegts.createPlayer({
@@ -372,7 +393,7 @@ function changeQuality(value) {
 let dashPlayer = null;
 function startDASHPlay(mediaId, token) {
     const video = document.getElementById('videoPlayer');
-    cleanupPlayers();
+    destroyPlayers();
     if (typeof dashjs !== 'undefined') {
         dashPlayer = dashjs.MediaPlayer().create();
         dashPlayer.initialize(video, '/api/v1/stream/' + mediaId + '/manifest.mpd?token=' + encodeURIComponent(token), true);
@@ -534,13 +555,18 @@ async function changeSubtitle(subtitleId) {
 // ── Audio Track Selection ──
 
 function changeAudioTrack(streamIndex) {
-    // Audio track selection currently applies when playback is restarted
-    // For MPEGTS/transcode modes, we could restart with a different audio map
-    // For now, store the preference
     if (currentStreamInfo) {
         currentStreamInfo.selectedAudioTrack = parseInt(streamIndex);
     }
-    toast('Audio track will apply on next playback start', 'info');
+    // Restart stream with new audio track
+    const token = localStorage.getItem('token');
+    if (currentPlayMode === 'mpegts') {
+        const currentTime = document.getElementById('videoPlayer').currentTime + seekOffset;
+        startMpegtsPlay(currentMediaId, token, currentTime);
+    } else if (currentPlayMode === 'hls') {
+        // HLS transcode: audio selection handled server-side on next segment request
+        toast('Audio track will apply on next transcode start', 'info');
+    }
 }
 
 // ── Chapter Markers ──
