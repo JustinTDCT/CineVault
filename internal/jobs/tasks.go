@@ -205,12 +205,6 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 	if err != nil {
 		return fmt.Errorf("list items needing phash: %w", err)
 	}
-	if len(items) == 0 {
-		log.Printf("Phash: no items need hashing in library %s", p.LibraryID)
-		return nil
-	}
-
-	log.Printf("Phash: computing phash for %d items in library %s", len(items), p.LibraryID)
 
 	if h.notifier != nil {
 		h.notifier.Broadcast("task:update", map[string]interface{}{
@@ -220,47 +214,53 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 	}
 
 	computed := 0
-	var lastTaskBroadcast time.Time
-	for i, item := range items {
-		select {
-		case <-ctx.Done():
-			log.Printf("Phash: cancelled after %d/%d items", computed, len(items))
-			return ctx.Err()
-		default:
-		}
+	if len(items) > 0 {
+		log.Printf("Phash: computing phash for %d items in library %s", len(items), p.LibraryID)
 
-		// Use the item's actual duration for multi-point sampling
-		dur := 0
-		if item.DurationSeconds != nil {
-			dur = *item.DurationSeconds
-		}
-		phash, err := h.fingerprinter.ComputePHash(item.FilePath, dur)
-		if err != nil {
-			log.Printf("Phash: failed for %s: %v", item.FileName, err)
-			continue
-		}
-		if err := h.mediaRepo.UpdatePhash(item.ID, phash); err != nil {
-			log.Printf("Phash: failed to store for %s: %v", item.FileName, err)
-			continue
-		}
-		computed++
+		var lastTaskBroadcast time.Time
+		for i, item := range items {
+			select {
+			case <-ctx.Done():
+				log.Printf("Phash: cancelled after %d/%d items", computed, len(items))
+				return ctx.Err()
+			default:
+			}
 
-		// Broadcast task progress (throttled to every 500ms, plus always on last item)
-		if h.notifier != nil {
-			now := time.Now()
-			if now.Sub(lastTaskBroadcast) >= 500*time.Millisecond || i == len(items)-1 {
-				lastTaskBroadcast = now
-				pct := int(float64(i+1) / float64(len(items)) * 100)
-				desc := fmt.Sprintf("Analyzing duplicates · %s (%d/%d)", item.FileName, i+1, len(items))
-				h.notifier.Broadcast("task:update", map[string]interface{}{
-					"task_id": taskID, "task_type": TaskPhashLibrary,
-					"status": "running", "progress": pct, "description": desc,
-				})
+			// Use the item's actual duration for multi-point sampling
+			dur := 0
+			if item.DurationSeconds != nil {
+				dur = *item.DurationSeconds
+			}
+			phash, err := h.fingerprinter.ComputePHash(item.FilePath, dur)
+			if err != nil {
+				log.Printf("Phash: failed for %s: %v", item.FileName, err)
+				continue
+			}
+			if err := h.mediaRepo.UpdatePhash(item.ID, phash); err != nil {
+				log.Printf("Phash: failed to store for %s: %v", item.FileName, err)
+				continue
+			}
+			computed++
+
+			// Broadcast task progress (throttled to every 500ms, plus always on last item)
+			if h.notifier != nil {
+				now := time.Now()
+				if now.Sub(lastTaskBroadcast) >= 500*time.Millisecond || i == len(items)-1 {
+					lastTaskBroadcast = now
+					pct := int(float64(i+1) / float64(len(items)) * 100)
+					desc := fmt.Sprintf("Analyzing duplicates · %s (%d/%d)", item.FileName, i+1, len(items))
+					h.notifier.Broadcast("task:update", map[string]interface{}{
+						"task_id": taskID, "task_type": TaskPhashLibrary,
+						"status": "running", "progress": pct, "description": desc,
+					})
+				}
 			}
 		}
+	} else {
+		log.Printf("Phash: all items already hashed in library %s, proceeding to comparison", p.LibraryID)
 	}
 
-	log.Printf("Phash: computed %d/%d hashes, checking for potential duplicates", computed, len(items))
+	log.Printf("Phash: computed %d new hashes, checking for potential duplicates", computed)
 
 	// Check all phash items in the library for potential duplicates
 	allHashed, err := h.mediaRepo.ListPhashesInLibrary(libID)

@@ -2,6 +2,7 @@ package fingerprint
 
 import (
 	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"image"
 	"image/color"
@@ -27,9 +28,15 @@ func NewFingerprinter(ffmpegPath, tempDir string) *Fingerprinter {
 // Using multiple sample points increases accuracy by comparing content at different positions.
 var samplePoints = []float64{0.05, 0.15, 0.30, 0.50, 0.70, 0.85, 0.95}
 
+// hashSize is the width/height of the scaled frame for perceptual hashing.
+// 8x8 = 64 bits per frame, 7 frames = 448 bits = 56 bytes = 112 hex chars.
+const hashSize = 8
+
 // ComputePHash generates a composite perceptual hash from multiple keyframes
 // sampled at percentage-based positions throughout the video.
-// The durationSec parameter is the total duration of the video in seconds.
+// Each frame is scaled to 8x8 grayscale and produces a 64-bit average hash.
+// The per-frame hashes are concatenated into a single hex string that supports
+// meaningful Hamming distance comparison for duplicate detection.
 func (f *Fingerprinter) ComputePHash(filePath string, durationSec int) (string, error) {
 	if durationSec <= 0 {
 		// Fallback: single frame at 1 second
@@ -42,7 +49,7 @@ func (f *Fingerprinter) ComputePHash(filePath string, durationSec int) (string, 
 	}
 	defer os.RemoveAll(tmpDir)
 
-	var allHashBits []byte
+	var allHashBytes []byte
 	extracted := 0
 
 	for i, pct := range samplePoints {
@@ -50,7 +57,6 @@ func (f *Fingerprinter) ComputePHash(filePath string, durationSec int) (string, 
 		if seekSec <= 0 {
 			seekSec = 1
 		}
-		// Don't seek past the end
 		if seekSec >= durationSec {
 			seekSec = durationSec - 1
 		}
@@ -64,7 +70,7 @@ func (f *Fingerprinter) ComputePHash(filePath string, durationSec int) (string, 
 			"-ss", fmt.Sprintf("%d", seekSec),
 			"-i", filePath,
 			"-vframes", "1",
-			"-vf", "scale=32:32",
+			"-vf", fmt.Sprintf("scale=%d:%d", hashSize, hashSize),
 			"-y",
 			framePath,
 		)
@@ -73,13 +79,13 @@ func (f *Fingerprinter) ComputePHash(filePath string, durationSec int) (string, 
 			continue
 		}
 
-		bits, err := hashFrame(framePath)
+		frameBytes, err := hashFrame(framePath)
 		if err != nil {
 			log.Printf("Hash frame at %d%% failed for %s: %v", int(pct*100), filepath.Base(filePath), err)
 			continue
 		}
 
-		allHashBits = append(allHashBits, bits...)
+		allHashBytes = append(allHashBytes, frameBytes...)
 		extracted++
 	}
 
@@ -87,9 +93,7 @@ func (f *Fingerprinter) ComputePHash(filePath string, durationSec int) (string, 
 		return "", fmt.Errorf("no frames could be extracted from %s", filepath.Base(filePath))
 	}
 
-	// Produce a single composite hash from all sampled frame bits
-	hash := md5.Sum(allHashBits)
-	return fmt.Sprintf("%x", hash), nil
+	return hex.EncodeToString(allHashBytes), nil
 }
 
 // computeSingleFrameHash is a fallback for very short videos or when duration is unknown.
@@ -106,7 +110,7 @@ func (f *Fingerprinter) computeSingleFrameHash(filePath string, seekSec int) (st
 		"-ss", fmt.Sprintf("%d", seekSec),
 		"-i", filePath,
 		"-vframes", "1",
-		"-vf", "scale=32:32",
+		"-vf", fmt.Sprintf("scale=%d:%d", hashSize, hashSize),
 		"-y",
 		framePath,
 	)
@@ -115,16 +119,17 @@ func (f *Fingerprinter) computeSingleFrameHash(filePath string, seekSec int) (st
 		return "", fmt.Errorf("extract frame: %w", err)
 	}
 
-	bits, err := hashFrame(framePath)
+	frameBytes, err := hashFrame(framePath)
 	if err != nil {
 		return "", err
 	}
 
-	hash := md5.Sum(bits)
-	return fmt.Sprintf("%x", hash), nil
+	return hex.EncodeToString(frameBytes), nil
 }
 
-// hashFrame opens a JPEG frame and returns the binary hash bits (1/0 per pixel vs average).
+// hashFrame opens a JPEG frame and returns the packed perceptual hash bytes.
+// It computes an average hash (aHash): each pixel above the mean is 1, below is 0.
+// For an 8x8 frame, this produces 64 bits = 8 bytes.
 func hashFrame(framePath string) ([]byte, error) {
 	file, err := os.Open(framePath)
 	if err != nil {
@@ -138,12 +143,13 @@ func hashFrame(framePath string) ([]byte, error) {
 	}
 
 	bounds := img.Bounds()
-	pixels := make([]float64, 32*32)
-	for y := 0; y < 32; y++ {
-		for x := 0; x < 32; x++ {
+	totalPixels := hashSize * hashSize
+	pixels := make([]float64, totalPixels)
+	for y := 0; y < hashSize; y++ {
+		for x := 0; x < hashSize; x++ {
 			r, g, b, _ := img.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA()
 			gray := float64(color.GrayModel.Convert(color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), 255}).(color.Gray).Y)
-			pixels[y*32+x] = gray
+			pixels[y*hashSize+x] = gray
 		}
 	}
 
@@ -153,16 +159,16 @@ func hashFrame(framePath string) ([]byte, error) {
 	}
 	avg := sum / float64(len(pixels))
 
-	var hashBits []byte
-	for _, v := range pixels {
+	// Pack bits into bytes: 8 pixels per byte, MSB first
+	numBytes := (totalPixels + 7) / 8
+	hashBytes := make([]byte, numBytes)
+	for i, v := range pixels {
 		if v > avg {
-			hashBits = append(hashBits, '1')
-		} else {
-			hashBits = append(hashBits, '0')
+			hashBytes[i/8] |= 1 << (7 - uint(i%8))
 		}
 	}
 
-	return hashBits, nil
+	return hashBytes, nil
 }
 
 // ComputeAudioFingerprint uses fpcalc (Chromaprint) if available, falls back to FFmpeg spectral
