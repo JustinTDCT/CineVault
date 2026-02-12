@@ -38,6 +38,8 @@ services:
       PREVIEW_PATH: /previews
       THUMBNAIL_PATH: /thumbnails
       MEDIA_PATH: /media
+    devices:
+      - /dev/dri:/dev/dri
     volumes:
       - ${MEDIA_HOST_PATH:-/mnt/user/media}:/media:ro
       - /mnt/user/appdata/cinevault/previews:/previews
