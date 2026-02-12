@@ -213,7 +213,7 @@ function renderMediaCard(item) {
                 <div class="hover-title">${item.title}</div>
                 <div class="hover-meta">${ratingBadge}<span>${hoverMeta}</span></div>
             </div>
-            <div class="play-overlay"><div class="play-button">&#9654;</div></div>
+            <div class="play-overlay" onclick="event.stopPropagation();playMedia('${item.id}','${(item.title||'').replace(/'/g,"\\'")}')"><div class="play-button">&#9654;</div></div>
         </div>
         <div class="media-info"><div class="media-title">${item.title}</div><div class="media-meta">${meta}</div></div>
     </div>`;
