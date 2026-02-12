@@ -1,0 +1,80 @@
+# CineVault – Unraid Docker Compose
+# Place this in Docker Compose Manager or run from the repo clone.
+# Does NOT replace docker-compose.yml (dev/standard use).
+#
+# Volumes use explicit Unraid host paths under /mnt/user/appdata/cinevault
+# so they're visible in the Unraid UI and backed up with normal appdata tools.
+#
+# Media path defaults to /mnt/user/media – override via MEDIA_HOST_PATH in .env
+
+services:
+  # ── CineVault App ──
+  cinevault:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cinevault-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-cinevault}
+      DB_PASSWORD: ${DB_PASSWORD:-cinevault_dev_pass}
+      DB_NAME: ${DB_NAME:-cinevault}
+      DB_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      FFMPEG_PATH: /usr/bin/ffmpeg
+      FFPROBE_PATH: /usr/bin/ffprobe
+      PREVIEW_PATH: /previews
+      THUMBNAIL_PATH: /thumbnails
+      MEDIA_PATH: /media
+    volumes:
+      - ${MEDIA_HOST_PATH:-/mnt/user/media}:/media:ro
+      - /mnt/user/appdata/cinevault/previews:/previews
+      - /mnt/user/appdata/cinevault/thumbnails:/thumbnails
+
+  # ── PostgreSQL ──
+  postgres:
+    image: postgres:16-alpine
+    container_name: cinevault-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-cinevault}
+      POSTGRES_USER: ${DB_USER:-cinevault}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cinevault_dev_pass}
+    ports:
+      - "${DB_EXPOSE_PORT:-5432}:5432"
+    volumes:
+      - /mnt/user/appdata/cinevault/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-cinevault}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis ──
+  redis:
+    image: redis:7-alpine
+    container_name: cinevault-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_EXPOSE_PORT:-6379}:6379"
+    volumes:
+      - /mnt/user/appdata/cinevault/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
