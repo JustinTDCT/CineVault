@@ -685,6 +685,17 @@ func (r *MediaRepository) UpdatePhash(id uuid.UUID, phash string) error {
 	return err
 }
 
+// ClearStalePhashes nullifies phash values that don't match the expected length,
+// indicating they were computed with an old/incompatible algorithm.
+func (r *MediaRepository) ClearStalePhashes(libraryID uuid.UUID, expectedLen int) (int64, error) {
+	res, err := r.db.Exec(`UPDATE media_items SET phash = NULL
+		WHERE library_id = $1 AND phash IS NOT NULL AND LENGTH(phash) != $2`, libraryID, expectedLen)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // UpdatePosterPath sets the poster image path for a media item.
 func (r *MediaRepository) UpdatePosterPath(id uuid.UUID, posterPath string) error {
 	_, err := r.db.Exec(`UPDATE media_items SET poster_path = $1, generated_poster = false, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, posterPath, id)
