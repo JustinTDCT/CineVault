@@ -1,6 +1,6 @@
 {
-  "version": "1.02.02",
+  "version": "1.03.00",
   "phase": 17,
   "released": "2026-02-12",
-  "notes": "Fixed QSV filter chain: QSV-decoded frames are now explicitly downloaded to system memory via hwdownload before software filters (scale, subs, HDR tonemap). HDR tone mapping uses software path when QSV frames are in CPU memory."
+  "notes": "Series detail now uses library-style media card grid with full overlay badges and edition grouping. Editions of the same movie are collapsed into a single card. Remove-from-series button appears on hover."
 }

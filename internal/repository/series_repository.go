@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
@@ -153,6 +154,70 @@ func (r *SeriesRepository) ListItems(seriesID uuid.UUID) ([]models.MovieSeriesIt
 			&item.Title, &item.Year, &item.PosterPath); err != nil {
 			return nil, err
 		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// ListItemsRich returns full MediaItem data for each series member, with
+// edition grouping applied (non-default edition children are excluded).
+// Each returned item carries SeriesItemID and SeriesOrder for the frontend.
+func (r *SeriesRepository) ListItemsRich(seriesID uuid.UUID) ([]*models.MediaItem, error) {
+	// Use the standard media column list prefixed with "m."
+	cols := strings.Split(mediaColumns, ",")
+	for i, c := range cols {
+		cols[i] = "m." + strings.TrimSpace(c)
+	}
+	mCols := strings.Join(cols, ", ")
+
+	query := fmt.Sprintf(`
+		SELECT %s, si.id AS series_item_id, si.sort_order
+		FROM movie_series_items si
+		JOIN media_items m ON m.id = si.media_item_id
+		WHERE si.series_id = $1
+		  AND NOT EXISTS (
+		      SELECT 1 FROM edition_items ei
+		      WHERE ei.media_item_id = m.id AND ei.is_default = false
+		  )
+		ORDER BY si.sort_order`, mCols)
+
+	rows, err := r.db.Query(query, seriesID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []*models.MediaItem
+	for rows.Next() {
+		item := &models.MediaItem{}
+		var siID uuid.UUID
+		var sortOrder int
+		err := rows.Scan(
+			&item.ID, &item.LibraryID, &item.MediaType, &item.FilePath, &item.FileName,
+			&item.FileSize, &item.FileHash, &item.Title, &item.SortTitle, &item.OriginalTitle,
+			&item.Description, &item.Tagline, &item.Year, &item.ReleaseDate,
+			&item.DurationSeconds, &item.Rating, &item.Resolution, &item.Width, &item.Height,
+			&item.Codec, &item.Container, &item.Bitrate, &item.Framerate,
+			&item.AudioCodec, &item.AudioChannels, &item.AudioFormat,
+			&item.OriginalLanguage, &item.Country, &item.TrailerURL,
+			&item.PosterPath, &item.ThumbnailPath, &item.BackdropPath, &item.LogoPath,
+			&item.TVShowID, &item.TVSeasonID, &item.EpisodeNumber,
+			&item.ArtistID, &item.AlbumID, &item.TrackNumber, &item.DiscNumber,
+			&item.AuthorID, &item.BookID, &item.ChapterNumber,
+			&item.ImageGalleryID, &item.SisterGroupID,
+			&item.IMDBRating, &item.RTRating, &item.AudienceScore,
+			&item.EditionType, &item.ContentRating, &item.SortPosition, &item.ExternalIDs, &item.GeneratedPoster,
+			&item.SourceType, &item.HDRFormat, &item.DynamicRange, &item.CustomNotes, &item.CustomTags,
+			&item.MetadataLocked, &item.LockedFields, &item.DuplicateStatus,
+			&item.ParentMediaID, &item.ExtraType, &item.AddedAt, &item.UpdatedAt,
+			// Extra series-specific columns
+			&siID, &sortOrder,
+		)
+		if err != nil {
+			return nil, err
+		}
+		item.SeriesItemID = &siID
+		item.SeriesOrder = &sortOrder
 		items = append(items, item)
 	}
 	return items, rows.Err()

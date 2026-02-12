@@ -63,7 +63,26 @@ func (s *Server) handleGetSeries(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, http.StatusNotFound, "series not found")
 		return
 	}
-	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: series})
+
+	// Build rich items: full MediaItem data with edition grouping
+	richItems, err := s.seriesRepo.ListItemsRich(id)
+	if err == nil && len(richItems) > 0 {
+		_ = s.mediaRepo.PopulateEditionCounts(richItems)
+	}
+
+	// Return both lightweight items (backward compat) and rich_items for the grid
+	out := map[string]interface{}{
+		"id":          series.ID,
+		"library_id":  series.LibraryID,
+		"name":        series.Name,
+		"poster_path": series.PosterPath,
+		"created_at":  series.CreatedAt,
+		"updated_at":  series.UpdatedAt,
+		"item_count":  series.ItemCount,
+		"items":       series.Items,
+		"rich_items":  richItems,
+	}
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: out})
 }
 
 func (s *Server) handleUpdateSeries(w http.ResponseWriter, r *http.Request) {

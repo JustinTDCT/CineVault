@@ -3573,28 +3573,32 @@ async function loadSeriesDetail(seriesId) {
     const data = await api('GET', '/series/' + seriesId);
     if (!data.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Series not found</div></div>'; return; }
     const s = data.data;
-    const items = s.items || [];
+    const richItems = s.rich_items || [];
+    const count = richItems.length || (s.items || []).length;
+
+    // Build media card grid from rich items (edition-grouped, full badges)
+    let gridHTML = '';
+    if (richItems.length > 0) {
+        gridHTML = '<div class="media-grid">' + richItems.map(item => {
+            const card = renderMediaCard(item);
+            // Inject remove-from-series overlay button into the poster area
+            const siId = item.series_item_id || '';
+            const removeBtn = `<button class="smi-remove-overlay" onclick="event.stopPropagation();removeFromSeries('${s.id}','${siId}')" title="Remove from series">&#10005;</button>`;
+            return card.replace('<div class="play-overlay">', removeBtn + '<div class="play-overlay">');
+        }).join('') + '</div>';
+    } else {
+        gridHTML = '<div class="empty-state"><p>No movies in this series yet</p></div>';
+    }
 
     mc.innerHTML = `
         <div class="series-detail-header">
             <h2>${s.name}</h2>
-            <span class="tag tag-cyan">${items.length} movie${items.length !== 1 ? 's' : ''}</span>
+            <span class="tag tag-cyan">${count} movie${count !== 1 ? 's' : ''}</span>
             <div class="series-detail-actions">
                 <button class="btn-danger" onclick="deleteSeries('${s.id}')">&#128465; Delete Series</button>
             </div>
         </div>
-        <div class="series-movie-list" id="seriesMovieList">
-            ${items.length === 0 ? '<div class="empty-state"><p>No movies in this series yet</p></div>' :
-            items.map(item => `<div class="series-movie-item" onclick="loadMediaDetail('${item.media_item_id}')">
-                <div class="smi-order">${item.sort_order}</div>
-                <div class="smi-poster">${item.poster_path ? '<img src="'+posterSrc(item.poster_path, '')+'">' : '&#127910;'}</div>
-                <div class="smi-info">
-                    <div class="smi-title">${item.title}</div>
-                    <div class="smi-year">${item.year || ''}</div>
-                </div>
-                <button class="smi-remove" onclick="event.stopPropagation();removeFromSeries('${s.id}','${item.id}')" title="Remove from series">&#10005;</button>
-            </div>`).join('')}
-        </div>
+        ${gridHTML}
         <button class="btn-secondary" style="margin-top:20px;" onclick="navigate('library','${s.library_id}')">&#8592; Back to Library</button>`;
 }
 
