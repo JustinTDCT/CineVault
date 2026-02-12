@@ -2030,6 +2030,8 @@ video::cue { background: rgba(0,0,0,0.7); color: #fff; font-size: 1.1rem; line-h
 .dup-item-label { min-width:100px; text-align:right; }
 .dup-badge-source { display:inline-block; padding:3px 10px; border-radius:var(--radius-lg); font-size:0.75rem; font-weight:600; background:rgba(0,217,255,0.15); color:var(--accent); border:1px solid rgba(0,217,255,0.2); }
 .dup-badge-match { display:inline-block; padding:3px 10px; border-radius:var(--radius-lg); font-size:0.75rem; font-weight:600; background:rgba(255,149,0,0.15); color:#ff9500; border:1px solid rgba(255,149,0,0.2); }
+.dup-item-delete { background:none; border:none; color:var(--text-muted); font-size:1.1rem; cursor:pointer; padding:4px 8px; border-radius:var(--radius-md); transition:all var(--transition); min-width:32px; }
+.dup-item-delete:hover { color:#ff6b6b; background:rgba(255,107,107,0.12); }
 .dup-group-actions { display:flex; gap:var(--sp-2); padding:var(--sp-3) var(--sp-5); background:rgba(0,0,0,0.15); border-top:1px solid var(--border-subtle); }
 
 /* ══════════════════════════════════════

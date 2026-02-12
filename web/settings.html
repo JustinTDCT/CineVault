@@ -1238,6 +1238,7 @@
             : '<span class="dup-badge-source">Source</span>';
 
         return '<div class="dup-item-row">' +
+            '<button class="dup-item-delete" title="Delete this file" onclick="settingsDupDeleteOne(\'' + item.id + '\')">&#128465;</button>' +
             '<div class="dup-item-poster">' + poster + '</div>' +
             '<div class="dup-item-details">' +
                 '<div class="dup-item-title">' + (item.title || item.file_name) + (item.year ? ' <span style="color:#8a9bae;">(' + item.year + ')</span>' : '') + '</div>' +
@@ -1272,7 +1273,6 @@
             '<div class="dup-group-actions">' +
                 '<button class="btn-secondary btn-small" onclick="settingsDupEdit(\'' + item.id + '\',\'' + pid + '\')">&#9998; Edit</button>' +
                 '<button class="btn-secondary btn-small" onclick="settingsDupMerge(\'' + item.id + '\',\'' + pid + '\',\'' + st + '\',\'' + pt + '\')">&#128191; Merge as Edition</button>' +
-                '<button class="btn-danger btn-small" onclick="settingsDupDelete(\'' + item.id + '\',\'' + pid + '\')">&#128465; Delete</button>' +
                 '<button class="btn-secondary btn-small" onclick="settingsDupIgnore(\'' + item.id + '\',\'' + pid + '\')">&#128683; Ignore</button>' +
             '</div>' +
         '</div>';
@@ -1283,10 +1283,10 @@
         if (d.success) { toast('Marked as ignored'); loadDuplicatesSection(); } else toast(d.error, 'error');
     }
 
-    async function settingsDupDelete(itemId, partnerId) {
+    async function settingsDupDeleteOne(itemId) {
         if (!confirm('Delete this item from the database?')) return;
         const deleteFile = confirm('Also delete the file from disk? (Cannot be undone)');
-        const d = await api('POST', '/duplicates/resolve', { media_id: itemId, partner_id: partnerId, action: 'deleted', delete_file: deleteFile });
+        const d = await api('POST', '/duplicates/resolve', { media_id: itemId, partner_id: '', action: 'deleted', delete_file: deleteFile });
         if (d.success) { toast('Item deleted'); loadDuplicatesSection(); } else toast(d.error, 'error');
     }
 
