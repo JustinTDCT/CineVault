@@ -94,6 +94,19 @@
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
 
+    <!-- Delete Confirm Dialog -->
+    <div class="dup-delete-overlay" id="dupDeleteOverlay" onclick="if(event.target===this)closeDupDeleteDialog()">
+        <div class="dup-delete-dialog">
+            <h3>Delete Duplicate</h3>
+            <p>How would you like to remove this item?</p>
+            <div class="dup-delete-options">
+                <button class="btn-secondary" onclick="closeDupDeleteDialog()">Cancel</button>
+                <button class="btn-primary" onclick="confirmDupDelete(false)">Remove from DB</button>
+                <button class="btn-danger" onclick="confirmDupDelete(true)">Remove &amp; Delete from Disk</button>
+            </div>
+        </div>
+    </div>
+
     <script>
     const API = '/api/v1';
     let currentUser = null;
@@ -1283,11 +1296,23 @@
         if (d.success) { toast('Marked as ignored'); loadDuplicatesSection(); } else toast(d.error, 'error');
     }
 
-    async function settingsDupDeleteOne(itemId) {
-        if (!confirm('Delete this item from the database?')) return;
-        const deleteFile = confirm('Also delete the file from disk? (Cannot be undone)');
+    function settingsDupDeleteOne(itemId) {
+        const overlay = document.getElementById('dupDeleteOverlay');
+        overlay.dataset.itemId = itemId;
+        overlay.classList.add('active');
+    }
+
+    function closeDupDeleteDialog() {
+        document.getElementById('dupDeleteOverlay').classList.remove('active');
+    }
+
+    async function confirmDupDelete(deleteFile) {
+        const overlay = document.getElementById('dupDeleteOverlay');
+        const itemId = overlay.dataset.itemId;
+        closeDupDeleteDialog();
         const d = await api('POST', '/duplicates/resolve', { media_id: itemId, partner_id: '', action: 'deleted', delete_file: deleteFile });
-        if (d.success) { toast('Item deleted'); loadDuplicatesSection(); } else toast(d.error, 'error');
+        if (d.success) { toast(deleteFile ? 'Removed from DB and deleted from disk' : 'Removed from database'); loadDuplicatesSection(); }
+        else toast(d.error, 'error');
     }
 
     function settingsDupEdit(itemId, partnerId) {
