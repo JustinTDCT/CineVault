@@ -366,15 +366,21 @@ async function loadSidebarCounts() {
                 }
             }
         }
-        // Load duplicate count badge
-        try {
-            const dupData = await api('GET', '/duplicates/count');
-            if (dupData.success && dupData.data && dupData.data.count > 0) {
+        // Show Manage section for admins and load duplicate count badge
+        if (currentUser && currentUser.role === 'admin') {
+            const manageNav = document.getElementById('manageNav');
+            if (manageNav) manageNav.style.display = '';
+            try {
+                const dupData = await api('GET', '/duplicates/count');
                 const dupBadge = document.getElementById('dupBadge');
-                if (dupBadge) { dupBadge.textContent = dupData.data.count; dupBadge.style.display = ''; }
-            }
-        } catch {}
-        // Admin features moved to Settings page (Analytics under Content, Admin under Access)
+                if (dupData.success && dupData.data && dupData.data.count > 0 && dupBadge) {
+                    dupBadge.textContent = dupData.data.count;
+                    dupBadge.style.display = '';
+                } else if (dupBadge) {
+                    dupBadge.style.display = 'none';
+                }
+            } catch {}
+        }
     } catch {}
     // Load version footer
     loadSidebarVersion();
