@@ -438,6 +438,41 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /api/v1/analytics/library-health", s.authMiddleware(s.handleAnalyticsLibraryHealth, models.RoleAdmin))
 	s.router.HandleFunc("GET /api/v1/analytics/trends", s.authMiddleware(s.handleAnalyticsTrends, models.RoleAdmin))
 
+	// Watchlist
+	s.router.HandleFunc("GET /api/v1/watchlist", s.authMiddleware(s.handleGetWatchlist, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/watchlist/{itemId}", s.authMiddleware(s.handleAddToWatchlist, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/watchlist/{itemId}", s.authMiddleware(s.handleRemoveFromWatchlist, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/watchlist/{itemId}/check", s.authMiddleware(s.handleCheckWatchlist, models.RoleUser))
+
+	// User ratings
+	s.router.HandleFunc("POST /api/v1/media/{id}/rating", s.authMiddleware(s.handleRateMedia, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/media/{id}/rating", s.authMiddleware(s.handleDeleteRating, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/media/{id}/rating", s.authMiddleware(s.handleGetUserRating, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/media/{id}/community-rating", s.authMiddleware(s.handleGetCommunityRating, models.RoleUser))
+
+	// Favorites
+	s.router.HandleFunc("POST /api/v1/favorites/{itemId}", s.authMiddleware(s.handleToggleFavorite, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/favorites/{itemId}/check", s.authMiddleware(s.handleCheckFavorite, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/favorites", s.authMiddleware(s.handleGetFavorites, models.RoleUser))
+
+	// Playlists
+	s.router.HandleFunc("GET /api/v1/playlists", s.authMiddleware(s.handleListPlaylists, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/playlists", s.authMiddleware(s.handleCreatePlaylist, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/playlists/{id}", s.authMiddleware(s.handleUpdatePlaylist, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/playlists/{id}", s.authMiddleware(s.handleDeletePlaylist, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/playlists/{id}/items", s.authMiddleware(s.handleGetPlaylistItems, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/playlists/{id}/items", s.authMiddleware(s.handleAddPlaylistItem, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/playlists/{id}/items/{itemId}", s.authMiddleware(s.handleRemovePlaylistItem, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/playlists/{id}/reorder", s.authMiddleware(s.handleReorderPlaylistItems, models.RoleUser))
+
+	// On Deck
+	s.router.HandleFunc("GET /api/v1/watch/on-deck", s.authMiddleware(s.handleOnDeck, models.RoleUser))
+
+	// Saved filter presets
+	s.router.HandleFunc("GET /api/v1/filters", s.authMiddleware(s.handleListSavedFilters, models.RoleUser))
+	s.router.HandleFunc("POST /api/v1/filters", s.authMiddleware(s.handleCreateSavedFilter, models.RoleUser))
+	s.router.HandleFunc("DELETE /api/v1/filters/{id}", s.authMiddleware(s.handleDeleteSavedFilter, models.RoleUser))
+
 	// Notifications (admin only)
 	s.router.HandleFunc("GET /api/v1/notifications/channels", s.authMiddleware(s.handleListNotificationChannels, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/notifications/channels", s.authMiddleware(s.handleCreateNotificationChannel, models.RoleAdmin))

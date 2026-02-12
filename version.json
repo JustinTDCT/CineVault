@@ -1,6 +1,6 @@
 {
-  "version": "0.55.00",
-  "phase": 6,
+  "version": "0.56.00",
+  "phase": 7,
   "released": "2026-02-12",
-  "notes": "Phase 6: Cache integration — TV season/episode data from cache server with TMDB fallback, performer bio/photo enrichment from cache, movie series collection enrichment from cache (poster/description/backdrop), batch contribute (groups of 100) for metadata scrape/refresh jobs, sized image URLs (?w=) and srcset for responsive loading."
+  "notes": "Phase 7: User engagement — Watchlist (add/remove/check API, home row), User ratings (5-star half-precision, community average), Favorites (toggle, home section), Playlists (CRUD, items, reorder, shuffle/repeat modes), Play queue (client-side localStorage, addNext/queue), On Deck (next unwatched episode per show), Saved filter presets (per-library or global), Shuffle play helper. DB migration 029."
 }

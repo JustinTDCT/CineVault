@@ -2622,6 +2622,125 @@ video::cue { background: rgba(0,0,0,0.7); color: #fff; font-size: 1.1rem; line-h
 .extras-title { color: var(--text-primary); font-size: 0.85rem; flex: 1; }
 .extras-duration { color: var(--text-muted); font-size: 0.8rem; }
 
+/* ── Phase 7: Engagement UI ── */
+
+/* Bookmark / favorite icons on cards */
+.card-action-btn {
+    position: absolute; top: 8px; z-index: 3; width: 30px; height: 30px;
+    border-radius: 50%; border: none; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; font-size: 0.85rem;
+    background: rgba(0,0,0,0.65); color: var(--text-muted); transition: all 0.2s;
+    opacity: 0; pointer-events: none;
+}
+.card:hover .card-action-btn { opacity: 1; pointer-events: auto; }
+.card-action-btn:hover { background: rgba(0,0,0,0.85); color: var(--accent); }
+.card-action-btn.active { color: var(--accent); opacity: 1; pointer-events: auto; }
+.card-bookmark { right: 8px; }
+.card-favorite { right: 44px; }
+
+/* Star rating widget */
+.star-rating { display: inline-flex; gap: 2px; direction: rtl; cursor: pointer; }
+.star-rating input { display: none; }
+.star-rating label {
+    font-size: 1.4rem; color: var(--text-muted); cursor: pointer;
+    transition: color 0.15s;
+}
+.star-rating label:hover, .star-rating label:hover ~ label,
+.star-rating input:checked ~ label { color: #f5c518; }
+.star-rating-value { color: var(--text-muted); font-size: 0.8rem; margin-left: 6px; }
+
+/* Community rating badge */
+.community-rating {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(0,217,255,0.08); border-radius: 6px;
+    padding: 4px 10px; font-size: 0.8rem; color: var(--text-secondary);
+}
+.community-rating .avg { color: var(--accent); font-weight: 600; }
+
+/* Watchlist/Favorites row on home page */
+.engagement-row { margin: 20px 0; }
+.engagement-row-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+}
+.engagement-row-title { font-size: 1.1rem; font-weight: 600; color: var(--text-primary); }
+.engagement-row-count { font-size: 0.8rem; color: var(--text-muted); }
+
+/* Playlist card */
+.playlist-card {
+    background: var(--surface-primary); border-radius: 10px;
+    padding: 16px; cursor: pointer; transition: background 0.2s;
+    border: 1px solid var(--border-subtle);
+}
+.playlist-card:hover { background: var(--surface-hover); }
+.playlist-name { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.playlist-meta { font-size: 0.8rem; color: var(--text-muted); }
+
+/* Queue sidebar panel */
+.queue-panel {
+    position: fixed; right: 0; top: 0; bottom: 0; width: 380px;
+    background: var(--surface-primary); border-left: 1px solid var(--border-subtle);
+    z-index: 1050; transform: translateX(100%); transition: transform 0.3s ease;
+    display: flex; flex-direction: column;
+}
+.queue-panel.open { transform: translateX(0); }
+.queue-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid var(--border-subtle);
+}
+.queue-title { font-size: 1rem; font-weight: 600; color: var(--text-primary); }
+.queue-items { flex: 1; overflow-y: auto; padding: 8px 0; }
+.queue-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 20px; cursor: pointer; transition: background 0.2s;
+}
+.queue-item:hover { background: var(--surface-hover); }
+.queue-item.active { background: rgba(0,217,255,0.08); }
+.queue-item-poster { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; }
+.queue-item-info { flex: 1; min-width: 0; }
+.queue-item-title { font-size: 0.85rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.queue-item-sub { font-size: 0.75rem; color: var(--text-muted); }
+.queue-item-drag { color: var(--text-muted); cursor: grab; font-size: 1rem; }
+
+/* Filter preset bar */
+.filter-presets { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.filter-preset-chip {
+    padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; cursor: pointer;
+    background: var(--surface-primary); color: var(--text-secondary);
+    border: 1px solid var(--border-subtle); transition: all 0.2s;
+}
+.filter-preset-chip:hover { border-color: var(--accent); color: var(--accent); }
+.filter-preset-chip.active { background: rgba(0,217,255,0.12); border-color: var(--accent); color: var(--accent); }
+.filter-save-btn {
+    padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; cursor: pointer;
+    background: transparent; color: var(--text-muted); border: 1px dashed var(--border-subtle);
+    transition: all 0.2s;
+}
+.filter-save-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* On Deck cards */
+.on-deck-card {
+    background: var(--surface-primary); border-radius: 10px; overflow: hidden;
+    cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid var(--border-subtle); width: 300px; flex-shrink: 0;
+}
+.on-deck-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
+.on-deck-thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+.on-deck-info { padding: 10px 14px; }
+.on-deck-show { font-size: 0.75rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+.on-deck-ep { font-size: 0.85rem; color: var(--text-primary); margin-top: 2px; }
+.on-deck-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+
+/* Shuffle button */
+.shuffle-btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+    border-radius: 8px; border: 1px solid var(--border-subtle); cursor: pointer;
+    background: transparent; color: var(--text-secondary); font-size: 0.85rem;
+    transition: all 0.2s;
+}
+.shuffle-btn:hover { border-color: var(--accent); color: var(--accent); }
+.shuffle-btn i { font-size: 0.9rem; }
+
 /* Responsive adjustments for bulk action bar */
 @media (max-width: 768px) {
     .bulk-action-bar { left: 0; padding: 10px 14px; flex-wrap: wrap; gap: 8px; }

@@ -1942,11 +1942,70 @@
             recentHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">&#128253;</div><div class="empty-state-title">No media yet</div><p>Add libraries and scan them to populate your media</p><button class="btn-primary" style="margin-top:18px;" onclick="navigate('libraries')">Manage Libraries</button></div>`;
         }
 
+        // Fetch engagement rows concurrently
+        const [onDeckResult, watchlistResult, favoritesResult] = await Promise.allSettled([
+            api('GET', '/watch/on-deck'),
+            api('GET', '/watchlist'),
+            api('GET', '/favorites')
+        ]);
+
+        // Build On Deck row
+        let onDeckHTML = '';
+        try {
+            const od = onDeckResult.status === 'fulfilled' ? onDeckResult.value : { success: false };
+            if (od.success && od.data && od.data.length > 0) {
+                onDeckHTML = `<div class="engagement-row">
+                    <div class="engagement-row-header"><span class="engagement-row-title">On Deck</span><span class="engagement-row-count">${od.data.length} shows</span></div>
+                    <div class="continue-row">${od.data.map(d => `<div class="on-deck-card" onclick="playMedia('${d.episode_id}','${(d.episode_title||'').replace(/'/g,"\\'")}')">
+                        <img class="on-deck-thumb" src="${posterSrc(d.episode_poster||d.show_poster,'')}" onerror="this.style.display='none'">
+                        <div class="on-deck-info">
+                            <div class="on-deck-show">${d.show_title}</div>
+                            <div class="on-deck-ep">S${String(d.season_number||0).padStart(2,'0')}E${String(d.episode_number||0).padStart(2,'0')} · ${d.episode_title||'Episode'}</div>
+                            ${d.duration ? '<div class="on-deck-meta">'+Math.round(d.duration/60)+' min</div>' : ''}
+                        </div>
+                    </div>`).join('')}</div></div>`;
+            }
+        } catch {}
+
+        // Build Watchlist row
+        let watchlistHTML = '';
+        try {
+            const wl = watchlistResult.status === 'fulfilled' ? watchlistResult.value : { success: false };
+            if (wl.success && wl.data && wl.data.length > 0) {
+                watchlistHTML = `<div class="engagement-row">
+                    <div class="engagement-row-header"><span class="engagement-row-title">My Watchlist</span><span class="engagement-row-count">${wl.data.length} items</span></div>
+                    <div class="media-grid">${wl.data.slice(0,12).map(item => `<div class="media-card" onclick="loadMediaDetail('${item.media_item_id||item.tv_show_id||item.edition_group_id}')">
+                        <div class="media-poster">${item.poster_path ? '<img src="'+posterSrc(item.poster_path,'')+'">' : '<span style="font-size:2rem;">&#128278;</span>'}</div>
+                        <div class="media-info"><div class="media-title">${item.title}</div></div>
+                    </div>`).join('')}</div></div>`;
+            }
+        } catch {}
+
+        // Build Favorites row
+        let favoritesHTML = '';
+        try {
+            const fv = favoritesResult.status === 'fulfilled' ? favoritesResult.value : { success: false };
+            if (fv.success && fv.data && fv.data.length > 0) {
+                const mediaFavs = fv.data.filter(f => f.item_type === 'media' || f.item_type === 'show');
+                if (mediaFavs.length > 0) {
+                    favoritesHTML = `<div class="engagement-row">
+                    <div class="engagement-row-header"><span class="engagement-row-title">Favorites</span><span class="engagement-row-count">${mediaFavs.length} items</span></div>
+                    <div class="media-grid">${mediaFavs.slice(0,12).map(item => `<div class="media-card" onclick="loadMediaDetail('${item.media_item_id||item.tv_show_id}')">
+                        <div class="media-poster">${item.poster_path ? '<img src="'+posterSrc(item.poster_path,'')+'">' : '<span style="font-size:2rem;">&#10084;</span>'}</div>
+                        <div class="media-info"><div class="media-title">${item.title}</div></div>
+                    </div>`).join('')}</div></div>`;
+                }
+            }
+        } catch {}
+
         // Render everything at once (no flicker)
         mc.innerHTML = `
             ${heroHTML}
             <div class="section-header"><h2 class="section-title">Continue Watching</h2></div>
             <div id="continueRow" class="continue-row">${cwHTML}</div>
+            ${onDeckHTML}
+            ${watchlistHTML}
+            ${favoritesHTML}
             <div class="section-header"><h2 class="section-title">Recently Added</h2></div>
             <div class="media-grid" id="recentGrid">${recentHTML}</div>`;
 
@@ -2000,10 +2059,14 @@
                         <button class="btn-primary" onclick="playMedia('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#9654; Play</button>
                         <button class="btn-secondary" onclick="playDirect('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#128190; Direct Play</button>
                         ${m.trailer_url ? '<button class="btn-secondary" onclick="watchTrailer(\''+m.trailer_url.replace(/'/g,"\\'")+'\',\''+m.title.replace(/'/g,"\\'")+'\')">&#127909; Trailer</button>' : ''}
+                        <button class="btn-secondary" id="detailWatchlist" onclick="toggleWatchlist('${m.id}',this)">&#128278; Watchlist</button>
+                        <button class="btn-secondary" id="detailFavorite" onclick="toggleFavorite('${m.id}',this)">&#10084; Favorite</button>
+                        <button class="btn-secondary" onclick="addToQueue('${m.id}','${m.title.replace(/'/g,"\\'")}','${(m.poster_path||'').replace(/'/g,"\\'")}')">&#9654;&#9654; Queue</button>
                         <button class="btn-secondary" onclick="openEditModal('${m.id}')">&#9998; Edit</button>
                         <button class="btn-secondary" onclick="identifyMedia('${m.id}')">&#128270; Identify</button>
                         <button class="btn-secondary" onclick="showAddToCollectionPicker('${m.id}')">&#128218; + Collection</button>
                     </div>
+                    <div id="detailUserRating" style="margin-top:8px;"></div>
                     <div style="margin-bottom:10px;">
                         ${m.metadata_locked ? '<span class="lock-badge locked">&#128274; Metadata Locked</span>' : ''}
                         <span class="tag tag-cyan">${MEDIA_LABELS[m.media_type]||m.media_type}</span>
@@ -2042,6 +2105,31 @@
 
         // Load genre tags for this item
         loadMediaGenreTags(id);
+
+        // Load engagement state (watchlist, favorite, user rating, community rating)
+        (async () => {
+            const [wlCheck, favCheck, ratingData, communityData] = await Promise.allSettled([
+                api('GET', '/watchlist/' + id + '/check'),
+                api('GET', '/favorites/' + id + '/check'),
+                api('GET', '/media/' + id + '/rating'),
+                api('GET', '/media/' + id + '/community-rating')
+            ]);
+            const wlBtn = document.getElementById('detailWatchlist');
+            if (wlBtn && wlCheck.status === 'fulfilled' && wlCheck.value.success && wlCheck.value.data && wlCheck.value.data.in_watchlist) wlBtn.classList.add('active');
+            const favBtn = document.getElementById('detailFavorite');
+            if (favBtn && favCheck.status === 'fulfilled' && favCheck.value.success && favCheck.value.data && favCheck.value.data.favorited) favBtn.classList.add('active');
+            const ratingEl = document.getElementById('detailUserRating');
+            if (ratingEl) {
+                const ur = ratingData.status === 'fulfilled' ? ratingData.value : null;
+                const currentRating = (ur && ur.success && ur.data && ur.data.rating != null) ? ur.data.rating : null;
+                let html = buildStarRating(id, currentRating);
+                const cr = communityData.status === 'fulfilled' ? communityData.value : null;
+                if (cr && cr.success && cr.data && cr.data.count > 0) {
+                    html += ` <span class="community-rating"><span class="avg">${cr.data.average.toFixed(1)}</span> (${cr.data.count} ${cr.data.count===1?'vote':'votes'})</span>`;
+                }
+                ratingEl.innerHTML = html;
+            }
+        })();
     }
 
     async function loadMediaGenreTags(mediaId) {
@@ -6287,6 +6375,96 @@
         const overlay = document.getElementById('sidebarOverlay');
         sidebar.classList.toggle('open');
         overlay.classList.toggle('active');
+    }
+
+    // ──── Phase 7: Engagement Functions ────
+
+    async function toggleWatchlist(itemId, btn) {
+        const check = await api('GET', '/watchlist/' + itemId + '/check');
+        if (check.success && check.data && check.data.in_watchlist) {
+            const d = await api('DELETE', '/watchlist/' + itemId);
+            if (d.success) { toast('Removed from Watchlist'); if (btn) btn.classList.remove('active'); }
+        } else {
+            const d = await api('POST', '/watchlist/' + itemId);
+            if (d.success) { toast('Added to Watchlist'); if (btn) btn.classList.add('active'); }
+        }
+    }
+
+    async function toggleFavorite(itemId, btn) {
+        const d = await api('POST', '/favorites/' + itemId);
+        if (d.success && d.data) {
+            if (d.data.favorited) { toast('Added to Favorites'); if (btn) btn.classList.add('active'); }
+            else { toast('Removed from Favorites'); if (btn) btn.classList.remove('active'); }
+        }
+    }
+
+    async function rateMedia(mediaId, rating) {
+        const d = await api('POST', '/media/' + mediaId + '/rating', { rating });
+        if (d.success) toast('Rating saved');
+    }
+
+    async function deleteRating(mediaId) {
+        const d = await api('DELETE', '/media/' + mediaId + '/rating');
+        if (d.success) toast('Rating removed');
+    }
+
+    // Star rating widget builder
+    function buildStarRating(mediaId, currentRating) {
+        const stars = [10,9,8,7,6,5,4,3,2,1].map(v => {
+            const half = v % 2 !== 0;
+            const label = half ? '&#9734;' : '&#11088;';
+            const checked = currentRating && Math.round(currentRating*2)/2 >= v/2 ? ' checked' : '';
+            return `<input type="radio" name="star-${mediaId}" id="star-${mediaId}-${v}" value="${v/2}"${checked} onchange="rateMedia('${mediaId}',${v/2})"><label for="star-${mediaId}-${v}" title="${v/2}">${v%2===0?'&#9733;':'&#9734;'}</label>`;
+        });
+        return `<div class="star-rating">${stars.join('')}</div>${currentRating ? '<span class="star-rating-value">'+currentRating.toFixed(1)+'</span>' : ''}`;
+    }
+
+    // Play queue (Up Next) — client-side with localStorage
+    const playQueue = {
+        _key: 'cv_play_queue',
+        _items: null,
+        _currentIdx: 0,
+        get items() { if (!this._items) { try { this._items = JSON.parse(localStorage.getItem(this._key)) || []; } catch { this._items = []; } } return this._items; },
+        save() { localStorage.setItem(this._key, JSON.stringify(this._items)); },
+        add(item) { this.items.push(item); this.save(); },
+        addNext(item) { this.items.splice(this._currentIdx + 1, 0, item); this.save(); },
+        remove(idx) { this.items.splice(idx, 1); this.save(); },
+        clear() { this._items = []; this.save(); },
+        reorder(fromIdx, toIdx) { const [item] = this.items.splice(fromIdx, 1); this.items.splice(toIdx, 0, item); this.save(); },
+        next() { if (this._currentIdx < this.items.length - 1) { this._currentIdx++; return this.items[this._currentIdx]; } return null; },
+        current() { return this.items[this._currentIdx] || null; }
+    };
+
+    function addToQueue(mediaId, title, posterPath) { playQueue.add({ id: mediaId, title, poster_path: posterPath }); toast('Added to queue'); }
+    function playNext(mediaId, title, posterPath) { playQueue.addNext({ id: mediaId, title, poster_path: posterPath }); toast('Playing next'); }
+
+    // Shuffle play helper
+    function shufflePlay(items) {
+        playQueue.clear();
+        const shuffled = [...items].sort(() => Math.random() - 0.5);
+        shuffled.forEach(i => playQueue.add(i));
+        if (shuffled.length > 0) playMedia(shuffled[0].id, shuffled[0].title);
+    }
+
+    // Saved filter presets
+    async function loadFilterPresets(libraryId) {
+        const url = libraryId ? '/filters?library_id=' + libraryId : '/filters';
+        const d = await api('GET', url);
+        return (d.success && d.data) ? d.data : [];
+    }
+
+    async function saveFilterPreset(name, filters, libraryId) {
+        const body = { name, filters };
+        if (libraryId) body.library_id = libraryId;
+        const d = await api('POST', '/filters', body);
+        if (d.success) toast('Filter preset saved');
+        return d;
+    }
+
+    async function deleteFilterPreset(id) {
+        const d = await api('DELETE', '/filters/' + id);
+        if (d.success) toast('Filter preset deleted');
+        return d;
     }
 
     // ──── Keyboard Navigation for Media Grids ────
