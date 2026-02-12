@@ -10,7 +10,7 @@
 services:
   # ── CineVault App ──
   cinevault:
-    image: ghcr.io/justintdcct/cinevault:latest
+    image: ghcr.io/justintdct/cinevault:latest
     container_name: cinevault-app
     restart: unless-stopped
     depends_on:
