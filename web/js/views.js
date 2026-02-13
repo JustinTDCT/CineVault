@@ -228,6 +228,7 @@ function renderMediaCard(item) {
 // Video preview on hover (P9-05)
 let previewTimer = null;
 document.addEventListener('mouseenter', (e) => {
+    if (!e.target || !e.target.closest) return;
     const card = e.target.closest('.media-card[data-preview]');
     if (!card) return;
     previewTimer = setTimeout(() => {
@@ -244,6 +245,7 @@ document.addEventListener('mouseenter', (e) => {
     }, 1000);
 }, true);
 document.addEventListener('mouseleave', (e) => {
+    if (!e.target || !e.target.closest) return;
     const card = e.target.closest('.media-card[data-preview]');
     if (!card) return;
     clearTimeout(previewTimer);
