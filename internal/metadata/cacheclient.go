@@ -803,6 +803,142 @@ func (c *CacheClient) GetCollection(tmdbID int) (*CacheCollection, error) {
 	return &coll, nil
 }
 
+// ── Edition Metadata ──
+
+// CacheEdition holds edition-specific metadata from the cache server.
+type CacheEdition struct {
+	ID                 string  `json:"id"`
+	TMDBID             int     `json:"tmdb_id"`
+	EditionType        string  `json:"edition_type"`
+	EditionTitle       *string `json:"edition_title,omitempty"`
+	Overview           *string `json:"overview,omitempty"`
+	Tagline            *string `json:"tagline,omitempty"`
+	Runtime            *int    `json:"runtime,omitempty"`
+	TheatricalRuntime  *int    `json:"theatrical_runtime,omitempty"`
+	AdditionalRuntime  *int    `json:"additional_runtime,omitempty"`
+	EditionReleaseYear *int    `json:"edition_release_year,omitempty"`
+	NewContentSummary  *string `json:"new_content_summary,omitempty"`
+	AddedScenes        *string `json:"added_scenes,omitempty"`
+	Differences        *string `json:"differences,omitempty"`
+	CanonStatus        *string `json:"canon_status,omitempty"`
+	PopularityNotes    *string `json:"popularity_notes,omitempty"`
+	Keywords           *string `json:"keywords,omitempty"`
+	Source             string  `json:"source"`
+}
+
+type cacheEditionEnrichRequest struct {
+	TMDBID      int    `json:"tmdb_id"`
+	Title       string `json:"title"`
+	Year        *int   `json:"year,omitempty"`
+	EditionType string `json:"edition_type"`
+}
+
+type cacheEditionResponse struct {
+	Hit     bool          `json:"hit"`
+	Edition *CacheEdition `json:"edition,omitempty"`
+	Source  string        `json:"source"`
+}
+
+// FetchEditionMetadata requests edition-specific metadata from the cache server.
+// If not cached, the cache server will generate it via OpenAI and cache it for future use.
+func (c *CacheClient) FetchEditionMetadata(tmdbID int, title string, year *int, editionType string) (*CacheEdition, error) {
+	reqBody := cacheEditionEnrichRequest{
+		TMDBID:      tmdbID,
+		Title:       title,
+		Year:        year,
+		EditionType: editionType,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal edition request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.baseURL+"/api/v1/edition/enrich", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("create edition request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", c.apiKey)
+	addInstanceVersion(req)
+
+	// Edition enrichment can take longer (OpenAI call), use extended timeout
+	editionClient := &http.Client{Timeout: 90 * time.Second}
+	resp, err := editionClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("edition request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("edition enrich returned %d", resp.StatusCode)
+	}
+
+	var edResp cacheEditionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&edResp); err != nil {
+		return nil, fmt.Errorf("decode edition response: %w", err)
+	}
+
+	if edResp.Edition == nil {
+		return nil, fmt.Errorf("no edition data returned")
+	}
+
+	log.Printf("[cache-client] edition metadata: %s — %s (source: %s)", title, editionType, edResp.Source)
+	return edResp.Edition, nil
+}
+
+// GetEdition fetches cached edition metadata without triggering enrichment.
+func (c *CacheClient) GetEdition(tmdbID int, editionType string) (*CacheEdition, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/edition/%d/%s", c.baseURL, tmdbID, editionType)
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-API-Key", c.apiKey)
+	addInstanceVersion(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("edition returned %d", resp.StatusCode)
+	}
+
+	var edition CacheEdition
+	if err := json.NewDecoder(resp.Body).Decode(&edition); err != nil {
+		return nil, err
+	}
+	return &edition, nil
+}
+
+// ListEditions fetches all cached editions for a TMDB ID.
+func (c *CacheClient) ListEditions(tmdbID int) ([]CacheEdition, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/editions/%d", c.baseURL, tmdbID)
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-API-Key", c.apiKey)
+	addInstanceVersion(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("editions list returned %d", resp.StatusCode)
+	}
+
+	var editions []CacheEdition
+	if err := json.NewDecoder(resp.Body).Decode(&editions); err != nil {
+		return nil, err
+	}
+	return editions, nil
+}
+
 // BatchContributeItem matches the cache server's batch contribute item format.
 type BatchContributeItem struct {
 	TMDBID           int      `json:"tmdb_id"`
