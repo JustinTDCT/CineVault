@@ -41,7 +41,7 @@ services:
     devices:
       - /dev/dri:/dev/dri
     volumes:
-      - ${MEDIA_HOST_PATH:-/mnt/user/media}:/media:ro
+      - ${MEDIA_HOST_PATH:-/mnt/user/media}:/media:rw
       - /mnt/user/appdata/cinevault/previews:/previews
       - /mnt/user/appdata/cinevault/thumbnails:/thumbnails
 
