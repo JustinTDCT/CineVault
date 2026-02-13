@@ -1,6 +1,6 @@
 {
-  "version": "1.05.00",
+  "version": "1.06.00",
   "phase": 17,
-  "released": "2026-02-12",
-  "notes": "Moved duplicate review to Settings Content. Redesigned UI with detailed metadata comparison."
+  "released": "2026-02-13",
+  "notes": "Added multi-select bulk actions (ignore/delete) for duplicate management in settings."
 }

@@ -1200,16 +1200,38 @@
     }
 
     // ──── Duplicates Section ────
+    let dupSelectMode = false;
+    let dupSelectedGroups = new Map(); // groupIndex -> { mediaId, partnerId }
+    let dupGroupsData = [];
+
     async function loadDuplicatesSection() {
+        dupSelectMode = false;
+        dupSelectedGroups = new Map();
+        dupGroupsData = [];
+
         const mc = document.getElementById('settingsContent');
         mc.innerHTML = '<div class="section-header"><h2 class="section-title">Duplicates</h2>' +
             '<button class="btn-secondary btn-small" onclick="clearStaleDuplicates(this)">Clear Resolved</button></div>' +
             '<p class="section-desc">Review media items flagged as potential duplicates via perceptual hash comparison.</p>' +
-            '<div id="dupList"><div class="spinner"></div></div>';
+            '<div id="dupSelectBar" class="dup-select-bar" style="display:none;">' +
+                '<label class="dup-select-toggle"><input type="checkbox" id="dupSelectAll" onchange="dupToggleSelectAll(this.checked)"> Select All</label>' +
+                '<span class="dup-select-count" id="dupSelectCount">0 selected</span>' +
+            '</div>' +
+            '<div id="dupList"><div class="spinner"></div></div>' +
+            '<div class="dup-bulk-bar" id="dupBulkBar">' +
+                '<span class="bulk-count" id="dupBulkCount">0 selected</span>' +
+                '<div class="bulk-sep"></div>' +
+                '<div class="bulk-actions">' +
+                    '<button class="btn-secondary btn-small" onclick="dupBulkIgnore()">&#128683; Ignore Selected</button>' +
+                    '<button class="btn-danger btn-small" onclick="dupBulkDelete()">&#128465; Delete Selected</button>' +
+                    '<button class="btn-secondary btn-small" onclick="dupClearSelection()">Clear</button>' +
+                '</div>' +
+            '</div>';
         const data = await api('GET', '/duplicates');
         const div = document.getElementById('dupList');
         if (!data.success) { div.innerHTML = '<p style="color:#ff6b6b;">Failed to load duplicates</p>'; return; }
         const groups = data.data && data.data.groups ? data.data.groups : [];
+        dupGroupsData = groups;
         if (groups.length === 0) {
             div.innerHTML = '<div style="padding:40px 0;text-align:center;">' +
                 '<div style="font-size:3rem;margin-bottom:12px;">&#9989;</div>' +
@@ -1217,7 +1239,11 @@
                 '<p style="color:#8a9bae;">Run pHash analysis from a library context menu to detect duplicates.</p></div>';
             return;
         }
-        div.innerHTML = groups.map(g => renderDupGroup(g)).join('');
+        // Show select bar when there are multiple groups
+        if (groups.length > 1) {
+            document.getElementById('dupSelectBar').style.display = 'flex';
+        }
+        div.innerHTML = groups.map((g, i) => renderDupGroup(g, i)).join('');
     }
 
     function fmtDupDur(sec) {
@@ -1271,7 +1297,7 @@
         '</div>';
     }
 
-    function renderDupGroup(g) {
+    function renderDupGroup(g, idx) {
         const item = g.item;
         const matches = g.matches || [];
         const best = matches.length > 0 ? matches[0] : null;
@@ -1279,10 +1305,15 @@
         const pt = best ? (best.item.title || '').replace(/'/g, "\\'") : '';
         const st = (item.title || '').replace(/'/g, "\\'");
 
-        return '<div class="dup-group-card">' +
-            '<div class="dup-group-items">' +
-                renderDupItemRow(item, null) +
-                matches.map(m => renderDupItemRow(m.item, m.similarity)).join('') +
+        return '<div class="dup-group-card" id="dupGroup' + idx + '" data-idx="' + idx + '">' +
+            '<div class="dup-group-row">' +
+                '<div class="dup-group-check">' +
+                    '<input type="checkbox" data-idx="' + idx + '" onchange="dupToggleGroup(' + idx + ', this.checked)" onclick="event.stopPropagation()">' +
+                '</div>' +
+                '<div class="dup-group-items">' +
+                    renderDupItemRow(item, null) +
+                    matches.map(m => renderDupItemRow(m.item, m.similarity)).join('') +
+                '</div>' +
             '</div>' +
             '<div class="dup-group-actions">' +
                 '<button class="btn-secondary btn-small" onclick="settingsDupEdit(\'' + item.id + '\',\'' + pid + '\')">&#9998; Edit</button>' +
@@ -1290,6 +1321,74 @@
                 '<button class="btn-secondary btn-small" onclick="settingsDupIgnore(\'' + item.id + '\',\'' + pid + '\')">&#128683; Ignore</button>' +
             '</div>' +
         '</div>';
+    }
+
+    // ──── Multi-Select Helpers ────
+    function dupToggleGroup(idx, checked) {
+        const card = document.getElementById('dupGroup' + idx);
+        const g = dupGroupsData[idx];
+        if (!g) return;
+        const best = g.matches && g.matches.length > 0 ? g.matches[0] : null;
+        if (checked) {
+            dupSelectedGroups.set(idx, { mediaId: g.item.id, partnerId: best ? best.item.id : '' });
+            card.classList.add('selected');
+        } else {
+            dupSelectedGroups.delete(idx);
+            card.classList.remove('selected');
+        }
+        dupUpdateSelectionUI();
+    }
+
+    function dupToggleSelectAll(checked) {
+        dupGroupsData.forEach((g, i) => {
+            const cb = document.querySelector('#dupGroup' + i + ' .dup-group-check input');
+            if (cb) cb.checked = checked;
+            dupToggleGroup(i, checked);
+        });
+    }
+
+    function dupClearSelection() {
+        dupSelectedGroups.clear();
+        document.querySelectorAll('.dup-group-card').forEach(card => card.classList.remove('selected'));
+        document.querySelectorAll('.dup-group-check input').forEach(cb => cb.checked = false);
+        const sa = document.getElementById('dupSelectAll');
+        if (sa) sa.checked = false;
+        dupUpdateSelectionUI();
+    }
+
+    function dupUpdateSelectionUI() {
+        const count = dupSelectedGroups.size;
+        const countEl = document.getElementById('dupSelectCount');
+        const bulkBar = document.getElementById('dupBulkBar');
+        const bulkCount = document.getElementById('dupBulkCount');
+        if (countEl) countEl.textContent = count + ' selected';
+        if (bulkCount) bulkCount.textContent = count + ' selected';
+        if (bulkBar) bulkBar.classList.toggle('visible', count > 0);
+        // Update select-all checkbox state
+        const sa = document.getElementById('dupSelectAll');
+        if (sa) sa.checked = count > 0 && count === dupGroupsData.length;
+    }
+
+    async function dupBulkIgnore() {
+        if (dupSelectedGroups.size === 0) return;
+        const items = [];
+        dupSelectedGroups.forEach(v => items.push({ media_id: v.mediaId, partner_id: v.partnerId }));
+        const d = await api('POST', '/duplicates/resolve-bulk', { items, action: 'ignored' });
+        if (d.success) {
+            toast('Ignored ' + (d.data.processed || 0) + ' duplicate groups');
+            loadDuplicatesSection();
+        } else {
+            toast(d.error || 'Failed', 'error');
+        }
+    }
+
+    function dupBulkDelete() {
+        if (dupSelectedGroups.size === 0) return;
+        const overlay = document.getElementById('dupDeleteOverlay');
+        overlay.dataset.bulkMode = 'true';
+        overlay.querySelector('h3').textContent = 'Delete ' + dupSelectedGroups.size + ' Duplicates';
+        overlay.querySelector('p').textContent = 'How would you like to remove these ' + dupSelectedGroups.size + ' items?';
+        overlay.classList.add('active');
     }
 
     async function settingsDupIgnore(itemId, partnerId) {
@@ -1300,20 +1399,42 @@
     function settingsDupDeleteOne(itemId) {
         const overlay = document.getElementById('dupDeleteOverlay');
         overlay.dataset.itemId = itemId;
+        overlay.dataset.bulkMode = 'false';
+        overlay.querySelector('h3').textContent = 'Delete Duplicate';
+        overlay.querySelector('p').textContent = 'How would you like to remove this item?';
         overlay.classList.add('active');
     }
 
     function closeDupDeleteDialog() {
-        document.getElementById('dupDeleteOverlay').classList.remove('active');
+        const overlay = document.getElementById('dupDeleteOverlay');
+        overlay.classList.remove('active');
+        overlay.dataset.bulkMode = 'false';
     }
 
     async function confirmDupDelete(deleteFile) {
         const overlay = document.getElementById('dupDeleteOverlay');
-        const itemId = overlay.dataset.itemId;
+        const bulkMode = overlay.dataset.bulkMode === 'true';
         closeDupDeleteDialog();
-        const d = await api('POST', '/duplicates/resolve', { media_id: itemId, partner_id: '', action: 'deleted', delete_file: deleteFile });
-        if (d.success) { toast(deleteFile ? 'Removed from DB and deleted from disk' : 'Removed from database'); loadDuplicatesSection(); }
-        else toast(d.error, 'error');
+
+        if (bulkMode) {
+            // Bulk delete
+            const items = [];
+            dupSelectedGroups.forEach(v => items.push({ media_id: v.mediaId, partner_id: v.partnerId }));
+            const d = await api('POST', '/duplicates/resolve-bulk', { items, action: 'deleted', delete_file: deleteFile });
+            if (d.success) {
+                const msg = deleteFile ? 'Deleted ' + (d.data.processed || 0) + ' items from DB and disk' : 'Removed ' + (d.data.processed || 0) + ' items from DB';
+                toast(msg);
+                loadDuplicatesSection();
+            } else {
+                toast(d.error || 'Failed', 'error');
+            }
+        } else {
+            // Single delete
+            const itemId = overlay.dataset.itemId;
+            const d = await api('POST', '/duplicates/resolve', { media_id: itemId, partner_id: '', action: 'deleted', delete_file: deleteFile });
+            if (d.success) { toast(deleteFile ? 'Removed from DB and deleted from disk' : 'Removed from database'); loadDuplicatesSection(); }
+            else toast(d.error, 'error');
+        }
     }
 
     function settingsDupEdit(itemId, partnerId) {

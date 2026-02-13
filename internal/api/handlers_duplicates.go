@@ -344,6 +344,95 @@ func (s *Server) handleGetDuplicateCount(w http.ResponseWriter, r *http.Request)
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]int{"count": count}})
 }
 
+// handleBulkResolveDuplicates resolves multiple duplicate groups in a single request.
+func (s *Server) handleBulkResolveDuplicates(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Items []struct {
+			MediaID    string `json:"media_id"`
+			PartnerID  string `json:"partner_id"`
+		} `json:"items"`
+		Action     models.DuplicateAction `json:"action"`
+		DeleteFile bool                   `json:"delete_file"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(req.Items) == 0 {
+		s.respondError(w, http.StatusBadRequest, "no items provided")
+		return
+	}
+	if req.Action != models.DuplicateIgnored && req.Action != models.DuplicateDeleted {
+		s.respondError(w, http.StatusBadRequest, "bulk action only supports 'ignored' and 'deleted'")
+		return
+	}
+
+	userID := s.getUserID(r)
+	var processed, failed int
+
+	for _, entry := range req.Items {
+		mediaID, _ := uuid.Parse(entry.MediaID)
+		partnerID, _ := uuid.Parse(entry.PartnerID)
+		if mediaID == uuid.Nil {
+			failed++
+			continue
+		}
+
+		// Record the decision
+		decision := &models.DuplicateDecision{
+			ID:        uuid.New(),
+			MediaIDA:  &mediaID,
+			Action:    req.Action,
+			DecidedBy: &userID,
+		}
+		if partnerID != uuid.Nil {
+			decision.MediaIDB = &partnerID
+		}
+
+		_, err := s.db.DB.Exec(`INSERT INTO duplicate_decisions (id, media_id_a, media_id_b, action, decided_by, notes)
+			VALUES ($1, $2, $3, $4, $5, $6)`,
+			decision.ID, decision.MediaIDA, decision.MediaIDB, decision.Action, decision.DecidedBy, nil)
+		if err != nil {
+			log.Printf("Bulk resolve: failed to record decision for %s: %v", mediaID, err)
+			failed++
+			continue
+		}
+
+		switch req.Action {
+		case models.DuplicateIgnored:
+			_ = s.mediaRepo.UpdateDuplicateStatus(mediaID, "addressed")
+			if partnerID != uuid.Nil {
+				_ = s.mediaRepo.UpdateDuplicateStatus(partnerID, "addressed")
+			}
+			processed++
+
+		case models.DuplicateDeleted:
+			item, err := s.mediaRepo.GetByID(mediaID)
+			if err != nil || item == nil {
+				failed++
+				continue
+			}
+			if req.DeleteFile {
+				if err := os.Remove(item.FilePath); err != nil {
+					log.Printf("Bulk delete: failed to remove file %s: %v", item.FilePath, err)
+					failed++
+					continue
+				}
+			}
+			_ = s.mediaRepo.Delete(mediaID)
+			if partnerID != uuid.Nil {
+				_ = s.mediaRepo.UpdateDuplicateStatus(partnerID, "none")
+			}
+			processed++
+		}
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]int{
+		"processed": processed,
+		"failed":    failed,
+	}})
+}
+
 // handleClearStaleDuplicates resets duplicate_status to 'none' for items whose
 // matches no longer exist (deleted or resolved). Avoids a full library rescan.
 func (s *Server) handleClearStaleDuplicates(w http.ResponseWriter, r *http.Request) {

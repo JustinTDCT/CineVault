@@ -2040,6 +2040,27 @@ video::cue { background: rgba(0,0,0,0.7); color: #fff; font-size: 1.1rem; line-h
 .dup-delete-dialog p { color:var(--text-secondary); margin:0 0 20px; font-size:0.9rem; }
 .dup-delete-options { display:flex; gap:var(--sp-3); justify-content:center; flex-wrap:wrap; }
 
+/* Duplicate Multi-Select */
+.dup-select-bar { display:flex; align-items:center; gap:var(--sp-4); padding:var(--sp-3) var(--sp-5); margin-bottom:var(--sp-4); background:var(--surface-card); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); }
+.dup-select-toggle { display:flex; align-items:center; gap:var(--sp-2); cursor:pointer; user-select:none; color:var(--text-secondary); font-size:var(--text-sm); font-weight:500; transition:color var(--transition); }
+.dup-select-toggle:hover { color:var(--text-primary); }
+.dup-select-toggle input[type="checkbox"] { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
+.dup-select-count { font-size:var(--text-sm); color:var(--text-muted); margin-left:auto; }
+.dup-bulk-actions { display:none; align-items:center; gap:var(--sp-2); }
+.dup-bulk-actions.visible { display:flex; }
+.dup-group-card.selected { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent), 0 4px 16px rgba(0,217,255,0.12); }
+.dup-group-check { display:flex; align-items:center; justify-content:center; padding:0 var(--sp-2) 0 var(--sp-4); }
+.dup-group-check input[type="checkbox"] { width:18px; height:18px; accent-color:var(--accent); cursor:pointer; }
+.dup-group-items { flex-direction:column; flex:1; min-width:0; }
+.dup-group-row { display:flex; align-items:stretch; }
+
+/* Bulk action bar - floating */
+.dup-bulk-bar { position:sticky; bottom:16px; z-index:50; display:none; align-items:center; gap:var(--sp-4); padding:var(--sp-3) var(--sp-5); background:linear-gradient(135deg, rgba(13,27,42,0.97) 0%, rgba(20,35,55,0.97) 100%); border:1px solid var(--accent); border-radius:var(--radius-xl); box-shadow:0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,217,255,0.15); backdrop-filter:blur(16px); margin-top:var(--sp-4); }
+.dup-bulk-bar.visible { display:flex; }
+.dup-bulk-bar .bulk-count { font-size:var(--text-sm); font-weight:600; color:var(--accent); white-space:nowrap; }
+.dup-bulk-bar .bulk-sep { width:1px; height:24px; background:var(--border-subtle); }
+.dup-bulk-bar .bulk-actions { display:flex; gap:var(--sp-2); margin-left:auto; }
+
 /* ══════════════════════════════════════
    29. Group Cards / Library Info
    ══════════════════════════════════════ */
