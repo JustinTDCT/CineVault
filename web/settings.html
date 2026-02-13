@@ -1202,7 +1202,8 @@
     // ──── Duplicates Section ────
     async function loadDuplicatesSection() {
         const mc = document.getElementById('settingsContent');
-        mc.innerHTML = '<div class="section-header"><h2 class="section-title">Duplicates</h2></div>' +
+        mc.innerHTML = '<div class="section-header"><h2 class="section-title">Duplicates</h2>' +
+            '<button class="btn-secondary btn-small" onclick="clearStaleDuplicates(this)">Clear Resolved</button></div>' +
             '<p class="section-desc">Review media items flagged as potential duplicates via perceptual hash comparison.</p>' +
             '<div id="dupList"><div class="spinner"></div></div>';
         const data = await api('GET', '/duplicates');
@@ -1321,6 +1322,20 @@
 
     function settingsDupMerge(itemA, itemB, titleA, titleB) {
         window.location.href = '/?mergeA=' + itemA + '&mergeB=' + itemB;
+    }
+
+    async function clearStaleDuplicates(btn) {
+        btn.disabled = true;
+        btn.textContent = 'Clearing...';
+        const d = await api('POST', '/duplicates/clear-stale');
+        if (d.success) {
+            toast('Cleared ' + (d.data.cleared || 0) + ' stale duplicate flags');
+            loadDuplicatesSection();
+        } else {
+            toast(d.error || 'Failed', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Clear Resolved';
+        }
     }
 
     // ──── Analytics Section ────

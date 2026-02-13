@@ -226,9 +226,9 @@ func (s *Server) handleResolveDuplicate(w http.ResponseWriter, r *http.Request) 
 			log.Printf("Duplicate delete: successfully removed file: %s", item.FilePath)
 		}
 		_ = s.mediaRepo.Delete(mediaID)
-		// Mark partner as addressed
+		// Reset partner back to none since its match was deleted
 		if partnerID != uuid.Nil {
-			_ = s.mediaRepo.UpdateDuplicateStatus(partnerID, "addressed")
+			_ = s.mediaRepo.UpdateDuplicateStatus(partnerID, "none")
 		}
 
 	case models.DuplicateIgnored:
@@ -342,4 +342,25 @@ func (s *Server) handleGetDuplicateCount(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]int{"count": count}})
+}
+
+// handleClearStaleDuplicates resets duplicate_status to 'none' for items whose
+// matches no longer exist (deleted or resolved). Avoids a full library rescan.
+func (s *Server) handleClearStaleDuplicates(w http.ResponseWriter, r *http.Request) {
+	result, err := s.db.DB.Exec(`UPDATE media_items SET duplicate_status = 'none'
+		WHERE duplicate_status != 'none'
+		AND id NOT IN (
+			SELECT DISTINCT m1.id FROM media_items m1
+			JOIN media_items m2 ON m1.library_id = m2.library_id
+				AND m1.id != m2.id
+				AND m1.phash IS NOT NULL AND m2.phash IS NOT NULL
+				AND m1.duplicate_status != 'none' AND m2.duplicate_status != 'none'
+		)`)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	count, _ := result.RowsAffected()
+	log.Printf("Cleared %d stale duplicate flags", count)
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]int64{"cleared": count}})
 }

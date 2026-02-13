@@ -411,6 +411,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /api/v1/duplicates", s.authMiddleware(s.handleListDuplicates, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/duplicates/resolve", s.authMiddleware(s.handleResolveDuplicate, models.RoleAdmin))
 	s.router.HandleFunc("GET /api/v1/duplicates/count", s.authMiddleware(s.handleGetDuplicateCount, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/duplicates/clear-stale", s.authMiddleware(s.handleClearStaleDuplicates, models.RoleAdmin))
 	s.router.HandleFunc("GET /api/v1/media/{id}/duplicates", s.authMiddleware(s.handleGetMediaDuplicates, models.RoleAdmin))
 
 	// Sort order
