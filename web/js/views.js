@@ -627,6 +627,7 @@ async function showDetailTab(btn, tab, mediaId) {
     } else if (tab === 'editions') {
         tc.innerHTML = '<div class="spinner"></div>';
         const edRes = await api('GET', '/media/' + mediaId + '/editions');
+        let html = '';
         if (edRes.success && edRes.data.has_editions && edRes.data.editions && edRes.data.editions.length > 0) {
             const eds = edRes.data.editions;
             const rows = eds.map(e => {
@@ -647,14 +648,40 @@ async function showDetailTab(btn, tab, mediaId) {
                     </td>
                 </tr>`;
             }).join('');
-            tc.innerHTML = `<h4 class="edition-tab-heading">Editions (${eds.length})</h4>
+            html += `<h4 class="edition-tab-heading">Your Editions (${eds.length})</h4>
                 <table class="edition-tab-table">
                     <thead><tr><th>Edition</th><th>Runtime</th><th>Resolution</th><th>Codec</th><th>Audio</th><th>Source</th><th>DR</th><th>Size</th><th></th></tr></thead>
                     <tbody>${rows}</tbody>
                 </table>`;
         } else {
-            tc.innerHTML = '<p style="color:#5a6a7f;">No editions found</p>';
+            html += '<p style="color:#5a6a7f;">No local editions found for this item.</p>';
         }
+        // Cache server AI-discovered editions
+        if (edRes.success && edRes.data.cache_editions && edRes.data.cache_editions.length > 0) {
+            const ce = edRes.data.cache_editions;
+            html += `<div class="cache-editions-section">
+                <h4 class="edition-tab-heading">Known Editions <span class="cache-editions-badge">AI</span></h4>
+                <p class="cache-editions-note">These editions are known to exist for this title, discovered via AI metadata enrichment.</p>
+                <div class="cache-editions-grid">`;
+            for (const ed of ce) {
+                const runtime = ed.runtime ? ed.runtime + ' min' : '';
+                const extra = ed.additional_runtime ? ' (+' + ed.additional_runtime + ' min)' : '';
+                const year = ed.edition_release_year ? ' (' + ed.edition_release_year + ')' : '';
+                const overview = ed.overview || '';
+                const contentSummary = ed.new_content_summary || '';
+                html += `<div class="cache-edition-card">
+                    <div class="cache-edition-header">
+                        <span class="cache-edition-type">${escapeHtml(ed.edition_type)}</span>
+                        ${runtime ? `<span class="cache-edition-runtime">${runtime}${extra}</span>` : ''}
+                        ${year ? `<span class="cache-edition-year">${year}</span>` : ''}
+                    </div>
+                    ${overview ? `<div class="cache-edition-overview">${escapeHtml(overview)}</div>` : ''}
+                    ${contentSummary ? `<div class="cache-edition-content"><strong>New content:</strong> ${escapeHtml(contentSummary)}</div>` : ''}
+                </div>`;
+            }
+            html += '</div></div>';
+        }
+        tc.innerHTML = html;
     } else if (tab === 'metadata') {
         tc.innerHTML = '<div class="spinner"></div>';
         const data = await api('GET', '/media/' + mediaId);

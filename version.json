@@ -1,6 +1,6 @@
 {
-  "version": "1.07.00",
+  "version": "1.08.00",
   "phase": 17,
   "released": "2026-02-13",
-  "notes": "Wired cache server edition metadata into media editions endpoint; lookup results now include available editions discovered by AI."
+  "notes": "Editions tab now displays AI-discovered known editions from cache server with type, runtime, overview, and content summary."
 }
