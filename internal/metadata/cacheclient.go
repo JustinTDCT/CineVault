@@ -84,11 +84,18 @@ type cacheEntry struct {
 	Keywords        *string  `json:"keywords,omitempty"`
 }
 
+type cacheEditionSummary struct {
+	EditionType  string  `json:"edition_type"`
+	EditionTitle *string `json:"edition_title,omitempty"`
+	Source       string  `json:"source"`
+}
+
 type cacheLookupResponse struct {
-	Hit        bool        `json:"hit"`
-	Confidence float64     `json:"confidence"`
-	Entry      *cacheEntry `json:"entry,omitempty"`
-	Source     string      `json:"source"`
+	Hit               bool                  `json:"hit"`
+	Confidence        float64               `json:"confidence"`
+	Entry             *cacheEntry           `json:"entry,omitempty"`
+	Source            string                `json:"source"`
+	AvailableEditions []cacheEditionSummary `json:"available_editions,omitempty"`
 }
 
 type cacheContributeRequest struct {
@@ -158,6 +165,16 @@ type CacheLookupResult struct {
 
 	// Keywords from TMDB (for mood tagging)
 	Keywords []string
+
+	// AvailableEditions lists known alternate editions (AI-discovered)
+	AvailableEditions []EditionSummary
+}
+
+// EditionSummary is a lightweight reference to a known edition from the cache server.
+type EditionSummary struct {
+	EditionType  string  `json:"edition_type"`
+	EditionTitle *string `json:"edition_title,omitempty"`
+	Source       string  `json:"source"` // "openai"
 }
 
 // ── Lookup ──
@@ -319,6 +336,19 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 
 	// Build external IDs JSON for storage
 	result.ExternalIDsJSON = buildExternalIDsJSON(entry, true)
+
+	// Pass through available editions (AI-discovered)
+	if len(lookupResp.AvailableEditions) > 0 {
+		editions := make([]EditionSummary, 0, len(lookupResp.AvailableEditions))
+		for _, ae := range lookupResp.AvailableEditions {
+			editions = append(editions, EditionSummary{
+				EditionType:  ae.EditionType,
+				EditionTitle: ae.EditionTitle,
+				Source:       ae.Source,
+			})
+		}
+		result.AvailableEditions = editions
+	}
 
 	return result
 }

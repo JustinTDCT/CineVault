@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
 	"github.com/google/uuid"
@@ -113,6 +114,7 @@ func (s *Server) handleAddEditionItem(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetMediaEditions returns all editions for the edition group containing the given media item.
+// Also includes cache server edition metadata (AI-discovered) when available.
 func (s *Server) handleGetMediaEditions(w http.ResponseWriter, r *http.Request) {
 	mediaID, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
@@ -126,11 +128,28 @@ func (s *Server) handleGetMediaEditions(w http.ResponseWriter, r *http.Request) 
 		s.respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	// Fetch cache server edition metadata if we have a TMDB ID
+	var cacheEditions interface{}
+	if tmdbID := s.extractTMDBIDForMedia(mediaID); tmdbID > 0 {
+		if cacheClient := s.getCacheClient(); cacheClient != nil {
+			editions, err := cacheClient.ListEditions(tmdbID)
+			if err == nil && len(editions) > 0 {
+				cacheEditions = editions
+			}
+		}
+	}
+
 	if groupID == nil {
-		s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{
+		data := map[string]interface{}{
 			"has_editions": false,
 			"editions":     []interface{}{},
-		}})
+		}
+		if cacheEditions != nil {
+			data["cache_editions"] = cacheEditions
+			data["cache_editions_source"] = "ai"
+		}
+		s.respondJSON(w, http.StatusOK, Response{Success: true, Data: data})
 		return
 	}
 
@@ -141,11 +160,39 @@ func (s *Server) handleGetMediaEditions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{
-		"has_editions":    true,
+	data := map[string]interface{}{
+		"has_editions":     true,
 		"edition_group_id": groupID,
-		"editions":        editions,
-	}})
+		"editions":         editions,
+	}
+	if cacheEditions != nil {
+		data["cache_editions"] = cacheEditions
+		data["cache_editions_source"] = "ai"
+	}
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: data})
+}
+
+// extractTMDBIDForMedia reads a media item's external_ids JSON and extracts the TMDB ID.
+func (s *Server) extractTMDBIDForMedia(mediaID uuid.UUID) int {
+	media, err := s.mediaRepo.GetByID(mediaID)
+	if err != nil || media == nil || media.ExternalIDs == nil {
+		return 0
+	}
+	var externalIDs map[string]interface{}
+	if err := json.Unmarshal([]byte(*media.ExternalIDs), &externalIDs); err != nil {
+		return 0
+	}
+	if tmdbVal, ok := externalIDs["tmdb_id"]; ok {
+		switch v := tmdbVal.(type) {
+		case string:
+			if id, err := strconv.Atoi(v); err == nil {
+				return id
+			}
+		case float64:
+			return int(v)
+		}
+	}
+	return 0
 }
 
 func (s *Server) handleRemoveEditionItem(w http.ResponseWriter, r *http.Request) {

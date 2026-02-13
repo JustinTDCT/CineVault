@@ -1,6 +1,6 @@
 {
-  "version": "1.06.00",
+  "version": "1.07.00",
   "phase": 17,
   "released": "2026-02-13",
-  "notes": "Added multi-select bulk actions (ignore/delete) for duplicate management in settings."
+  "notes": "Wired cache server edition metadata into media editions endpoint; lookup results now include available editions discovered by AI."
 }
