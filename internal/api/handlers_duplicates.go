@@ -212,10 +212,18 @@ func (s *Server) handleResolveDuplicate(w http.ResponseWriter, r *http.Request) 
 	case models.DuplicateDeleted:
 		// Delete the media item (optionally the file)
 		item, err := s.mediaRepo.GetByID(mediaID)
-		if err == nil && item != nil && req.DeleteFile {
+		if err != nil || item == nil {
+			s.respondError(w, http.StatusNotFound, "media item not found")
+			return
+		}
+		if req.DeleteFile {
+			log.Printf("Duplicate delete: attempting to remove file: %s", item.FilePath)
 			if err := os.Remove(item.FilePath); err != nil {
 				log.Printf("Failed to delete file %s: %v", item.FilePath, err)
+				s.respondError(w, http.StatusInternalServerError, "Failed to delete file from disk: "+err.Error())
+				return
 			}
+			log.Printf("Duplicate delete: successfully removed file: %s", item.FilePath)
 		}
 		_ = s.mediaRepo.Delete(mediaID)
 		// Mark partner as addressed
