@@ -80,20 +80,18 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 
 	var allMatches []*models.MetadataMatch
 
-	// ── Try cache server first if enabled ──
-	usedCache := false
+	// ── Cache server is the sole metadata source when enabled ──
 	cacheClient := s.getCacheClient()
 	if cacheClient != nil {
 		result := cacheClient.Lookup(query, fileYear, media.MediaType)
 		if result != nil && result.Match != nil {
 			allMatches = append(allMatches, result.Match)
-			usedCache = true
 			log.Printf("Identify: cache hit for %q → %q (confidence=%.2f)", query, result.Match.Title, result.Confidence)
 		}
-	}
-
-	// ── Fall back to direct scrapers if cache is not enabled or returned no results ──
-	if !usedCache {
+		// Cache enabled = sole source. No fallback to direct scrapers.
+		// The cache server itself fetches from TMDB/OMDb on miss.
+	} else {
+		// Cache disabled — use direct scrapers
 		scrapers := metadata.ScrapersForMediaType(s.scrapers, media.MediaType)
 		if len(scrapers) == 0 {
 			scrapers = s.scrapers
@@ -211,39 +209,53 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 	imdbID := req.IMDBId
 	var cacheResult *metadata.CacheLookupResult
 
-	// Try cache server first for supplementary data
+	// ── Supplementary data: cache server is sole source when enabled ──
 	cacheClient := s.getCacheClient()
-	if cacheClient != nil && req.ExternalID != "" {
+	if cacheClient != nil {
+		// Cache enabled — use cache server exclusively for all supplementary data
 		cacheResult = cacheClient.Lookup(req.Title, req.Year, media.MediaType)
 		if cacheResult != nil && cacheResult.Match != nil {
-			// Use IMDB ID from cache if not provided
 			if imdbID == "" && cacheResult.Match.IMDBId != "" {
 				imdbID = cacheResult.Match.IMDBId
 			}
-			// Apply ratings from cache
 			if cacheResult.Ratings != nil {
-				if dbErr := s.mediaRepo.UpdateRatings(mediaID, cacheResult.Ratings.IMDBRating, cacheResult.Ratings.RTScore, cacheResult.Ratings.AudienceScore); dbErr != nil {
-					log.Printf("Apply metadata: cache ratings update failed for %s: %v", mediaID, dbErr)
-				}
+				_ = s.mediaRepo.UpdateRatings(mediaID, cacheResult.Ratings.IMDBRating, cacheResult.Ratings.RTScore, cacheResult.Ratings.AudienceScore)
 			}
-			// Apply cast/crew from cache
 			if cacheResult.CastCrewJSON != nil && *cacheResult.CastCrewJSON != "" {
 				credits := metadata.ParseCacheCredits(*cacheResult.CastCrewJSON)
 				if credits != nil {
 					s.enrichWithCredits(mediaID, credits)
 				}
 			}
-			// Apply genres from cache if not already provided
 			if len(req.Genres) == 0 && len(cacheResult.Genres) > 0 {
 				s.linkGenreTags(mediaID, cacheResult.Genres)
 			}
-			log.Printf("Apply metadata: used cache for supplementary data on %q", req.Title)
+			// Store all unified metadata fields from cache
+			if cacheResult.MetacriticScore != nil {
+				_ = s.mediaRepo.UpdateMetacriticScore(mediaID, *cacheResult.MetacriticScore)
+			}
+			if cacheResult.ContentRatingsJSON != nil {
+				_ = s.mediaRepo.UpdateContentRatingsJSON(mediaID, *cacheResult.ContentRatingsJSON)
+			}
+			if cacheResult.ContentRatingsAll != nil {
+				resolved := metadata.ResolveContentRating(*cacheResult.ContentRatingsAll, "US")
+				if resolved != "" {
+					_ = s.mediaRepo.UpdateContentRating(mediaID, resolved)
+				}
+			}
+			if cacheResult.TaglinesJSON != nil {
+				_ = s.mediaRepo.UpdateField(mediaID, "taglines_json", *cacheResult.TaglinesJSON)
+			}
+			if cacheResult.TrailersJSON != nil {
+				_ = s.mediaRepo.UpdateField(mediaID, "trailers_json", *cacheResult.TrailersJSON)
+			}
+			if cacheResult.DescriptionsJSON != nil {
+				_ = s.mediaRepo.UpdateField(mediaID, "descriptions_json", *cacheResult.DescriptionsJSON)
+			}
+			log.Printf("Apply metadata: used cache for all supplementary data on %q", req.Title)
 		}
-	}
-
-	// Fall back to direct APIs if cache didn't provide what we need
-	if cacheResult == nil || cacheResult.Match == nil {
-		// Fetch IMDB ID from TMDB details if not available
+	} else {
+		// Cache disabled — fall back to direct APIs
 		if imdbID == "" && req.Source == "tmdb" && req.ExternalID != "" {
 			for _, sc := range s.scrapers {
 				if t, ok := sc.(*metadata.TMDBScraper); ok {
@@ -258,8 +270,6 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-
-		// Fetch OMDb ratings
 		if imdbID != "" {
 			omdbKey, keyErr := s.settingsRepo.Get("omdb_api_key")
 			if keyErr == nil && omdbKey != "" {
@@ -267,14 +277,10 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 				if omdbErr != nil {
 					log.Printf("Apply metadata: OMDb fetch failed for %s: %v", imdbID, omdbErr)
 				} else {
-					if dbErr := s.mediaRepo.UpdateRatings(mediaID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore); dbErr != nil {
-						log.Printf("Apply metadata: ratings update failed for %s: %v", mediaID, dbErr)
-					}
+					_ = s.mediaRepo.UpdateRatings(mediaID, ratings.IMDBRating, ratings.RTScore, ratings.AudienceScore)
 				}
 			}
 		}
-
-		// Fetch cast/crew from TMDB credits
 		if req.Source == "tmdb" && req.ExternalID != "" {
 			for _, sc := range s.scrapers {
 				if t, ok := sc.(*metadata.TMDBScraper); ok {
@@ -285,9 +291,7 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 					} else {
 						credits, credErr = t.GetMovieCredits(req.ExternalID)
 					}
-					if credErr != nil {
-						log.Printf("Apply metadata: TMDB credits failed for %s: %v", req.ExternalID, credErr)
-					} else if credits != nil {
+					if credErr == nil && credits != nil {
 						s.enrichWithCredits(mediaID, credits)
 					}
 					break
@@ -747,4 +751,103 @@ func (s *Server) handleUpdateSystemSettings(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	s.respondJSON(w, http.StatusOK, Response{Success: true})
+}
+
+// ──────────────────── Artwork Picker ────────────────────
+
+// handleGetMediaArtwork returns all available poster/backdrop/logo URLs for a media item
+// by looking up the item's TMDB ID in the cache server.
+func (s *Server) handleGetMediaArtwork(w http.ResponseWriter, r *http.Request) {
+	mediaID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media ID")
+		return
+	}
+
+	media, err := s.mediaRepo.GetByID(mediaID)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "media item not found")
+		return
+	}
+
+	cacheClient := s.getCacheClient()
+	if cacheClient == nil {
+		s.respondError(w, http.StatusServiceUnavailable, "cache server not enabled")
+		return
+	}
+
+	result := cacheClient.Lookup(media.Title, media.Year, media.MediaType)
+	if result == nil || result.Match == nil {
+		s.respondError(w, http.StatusNotFound, "no cache data found")
+		return
+	}
+
+	type artworkResponse struct {
+		Posters   []string `json:"posters"`
+		Backdrops []string `json:"backdrops"`
+		Logos     []string `json:"logos"`
+	}
+
+	resp := artworkResponse{
+		Posters:   result.AllPosterURLs,
+		Backdrops: result.AllBackdropURLs,
+		Logos:     result.AllLogoURLs,
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: resp})
+}
+
+// handleSetMediaArtwork downloads a chosen artwork URL and sets it as the media item's poster or backdrop.
+func (s *Server) handleSetMediaArtwork(w http.ResponseWriter, r *http.Request) {
+	mediaID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media ID")
+		return
+	}
+
+	var req struct {
+		Type string `json:"type"` // "poster" or "backdrop"
+		URL  string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" || (req.Type != "poster" && req.Type != "backdrop") {
+		s.respondError(w, http.StatusBadRequest, "provide type (poster|backdrop) and url")
+		return
+	}
+
+	if s.config.Paths.Preview == "" {
+		s.respondError(w, http.StatusInternalServerError, "preview path not configured")
+		return
+	}
+
+	var subdir, suffix string
+	if req.Type == "poster" {
+		subdir = "posters"
+		suffix = ".jpg"
+	} else {
+		subdir = "backdrops"
+		suffix = "_backdrop.jpg"
+	}
+
+	filename := mediaID.String() + suffix
+	dir := filepath.Join(s.config.Paths.Preview, subdir)
+
+	_, dlErr := metadata.DownloadPoster(req.URL, dir, filename)
+	if dlErr != nil {
+		s.respondError(w, http.StatusInternalServerError, "download failed: "+dlErr.Error())
+		return
+	}
+
+	webPath := "/previews/" + subdir + "/" + filename
+	var updateErr error
+	if req.Type == "poster" {
+		updateErr = s.mediaRepo.UpdatePosterPath(mediaID, webPath)
+	} else {
+		updateErr = s.mediaRepo.UpdateBackdropPath(mediaID, webPath)
+	}
+	if updateErr != nil {
+		s.respondError(w, http.StatusInternalServerError, updateErr.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]string{"path": webPath}})
 }

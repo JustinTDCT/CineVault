@@ -1160,7 +1160,7 @@
         document.getElementById('metadataGrid').innerHTML = `
             <div class="settings-card full-width">
                 <h3>Metadata Cache Server</h3>
-                <p style="color:#8a9bae;margin-bottom:16px;">Speed up metadata lookups by using the CineVault cache server. When enabled, cached results are used first; if the cache is unavailable, CineVault falls back to direct TMDB/OMDb API calls automatically.</p>
+                <p style="color:#8a9bae;margin-bottom:16px;">The cache server becomes the sole metadata source when enabled. All lookups, ratings, artwork, and editions come from the cache server, which aggregates data from TMDB, OMDb, Fanart.tv, TVDB, and AniList. Disable to use direct API calls instead.</p>
                 <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;">
                     <label class="toggle-label" style="margin-bottom:0;">
                         <span class="toggle-switch"><input type="checkbox" id="setCacheEnabled" ${cacheEnabled?'checked':''}><span class="toggle-slider"></span></span>

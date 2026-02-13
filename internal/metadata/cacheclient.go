@@ -78,16 +78,37 @@ type cacheEntry struct {
 	IMDBRating      *float64 `json:"imdb_rating,omitempty"`
 	RTCriticScore   *int     `json:"rt_critic_score,omitempty"`
 	RTAudienceScore *int     `json:"rt_audience_score,omitempty"`
+	MetacriticScore *int     `json:"metacritic_score,omitempty"`
 	OMDbEnriched    bool     `json:"omdb_enriched"`
 	FanartEnriched  bool     `json:"fanart_enriched"`
 	// Keywords from TMDB
-	Keywords        *string  `json:"keywords,omitempty"`
+	Keywords *string `json:"keywords,omitempty"`
+	// Extended ratings and certifications
+	ContentRatings *string `json:"content_ratings,omitempty"` // {"US":"PG-13","GB":"12A"}
+	// Multi-source field arrays (JSON)
+	Taglines          *string `json:"taglines,omitempty"`              // [{"source":"tmdb","text":"..."}]
+	ContentRatingsAll *string `json:"content_ratings_multi,omitempty"` // [{"source":"tmdb","country":"US","rating":"PG-13"}]
+	Trailers          *string `json:"trailers,omitempty"`              // [{"source":"tmdb","url":"...","name":"..."}]
+	Runtimes          *string `json:"runtimes,omitempty"`              // [{"source":"tmdb","minutes":137}]
+	FieldSources      *string `json:"field_sources,omitempty"`         // {"title":"tmdb","description":"tvdb"}
+	// Cache server local image paths
+	PosterPath  *string `json:"poster_path,omitempty"`
+	BackdropPath *string `json:"backdrop_path,omitempty"`
+	// Enrichment flags
+	EditionsDiscovered  bool `json:"editions_discovered"`
+	AllSourcesScraped   bool `json:"all_sources_scraped"`
+	PostersDownloaded   bool `json:"posters_downloaded"`
+	BackdropsDownloaded bool `json:"backdrops_downloaded"`
 }
 
 type cacheEditionSummary struct {
-	EditionType  string  `json:"edition_type"`
-	EditionTitle *string `json:"edition_title,omitempty"`
-	Source       string  `json:"source"`
+	EditionType        string  `json:"edition_type"`
+	EditionTitle       *string `json:"edition_title,omitempty"`
+	Source             string  `json:"source"`
+	KnownResolutions   *string `json:"known_resolutions,omitempty"`   // JSON: ["4K","1080p"]
+	ContentRating      *string `json:"content_rating,omitempty"`
+	Verified           bool    `json:"verified"`
+	VerificationSource *string `json:"verification_source,omitempty"`
 }
 
 type cacheLookupResponse struct {
@@ -168,13 +189,44 @@ type CacheLookupResult struct {
 
 	// AvailableEditions lists known alternate editions (AI-discovered)
 	AvailableEditions []EditionSummary
+
+	// ── New unified metadata fields ──
+
+	// Metacritic score from OMDb
+	MetacriticScore *int
+
+	// Multi-country content ratings (raw JSON for storage)
+	ContentRatingsJSON *string // {"US":"PG-13","GB":"12A"}
+	ContentRatingsAll  *string // [{"source":"tmdb","country":"US","rating":"PG-13"}]
+
+	// Multi-source field arrays (raw JSON for storage)
+	TaglinesJSON     *string // [{"source":"tmdb","text":"..."}]
+	TrailersJSON     *string // [{"source":"tmdb","url":"...","name":"..."}]
+	DescriptionsJSON *string // [{"source":"tmdb","text":"..."}]
+
+	// All artwork URLs from all sources
+	AllPosterURLs   []string
+	AllBackdropURLs []string
+	AllLogoURLs     []string
+
+	// Cache server local image paths (for proxied serving)
+	CacheServerPosterPath   *string
+	CacheServerBackdropPath *string
+
+	// Enrichment status flags
+	EditionsDiscovered bool
+	AllSourcesScraped  bool
 }
 
 // EditionSummary is a lightweight reference to a known edition from the cache server.
 type EditionSummary struct {
-	EditionType  string  `json:"edition_type"`
-	EditionTitle *string `json:"edition_title,omitempty"`
-	Source       string  `json:"source"` // "openai"
+	EditionType        string   `json:"edition_type"`
+	EditionTitle       *string  `json:"edition_title,omitempty"`
+	Source             string   `json:"source"` // "openai"
+	KnownResolutions   []string `json:"known_resolutions,omitempty"`
+	ContentRating      *string  `json:"content_rating,omitempty"`
+	Verified           bool     `json:"verified"`
+	VerificationSource *string  `json:"verification_source,omitempty"`
 }
 
 // ── Lookup ──
@@ -334,18 +386,71 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 		}
 	}
 
+	// Metacritic score
+	result.MetacriticScore = entry.MetacriticScore
+
 	// Build external IDs JSON for storage
 	result.ExternalIDsJSON = buildExternalIDsJSON(entry, true)
 
-	// Pass through available editions (AI-discovered)
+	// ── New unified metadata fields ──
+
+	// Multi-country content ratings
+	result.ContentRatingsJSON = entry.ContentRatings
+	result.ContentRatingsAll = entry.ContentRatingsAll
+
+	// Multi-source arrays (raw JSON pass-through for storage)
+	result.TaglinesJSON = entry.Taglines
+	result.TrailersJSON = entry.Trailers
+	result.DescriptionsJSON = entry.Descriptions
+
+	// Enrichment status
+	result.EditionsDiscovered = entry.EditionsDiscovered
+	result.AllSourcesScraped = entry.AllSourcesScraped
+
+	// Parse artwork URL arrays from JSON
+	if entry.PosterURLs != nil && *entry.PosterURLs != "" {
+		var urls []string
+		if err := json.Unmarshal([]byte(*entry.PosterURLs), &urls); err == nil {
+			result.AllPosterURLs = urls
+		}
+	}
+	if entry.BackdropURLs != nil && *entry.BackdropURLs != "" {
+		var urls []string
+		if err := json.Unmarshal([]byte(*entry.BackdropURLs), &urls); err == nil {
+			result.AllBackdropURLs = urls
+		}
+	}
+	if entry.LogoURLs != nil && *entry.LogoURLs != "" {
+		var urls []string
+		if err := json.Unmarshal([]byte(*entry.LogoURLs), &urls); err == nil {
+			result.AllLogoURLs = urls
+		}
+	}
+
+	// Cache server local image paths
+	result.CacheServerPosterPath = entry.PosterPath
+	result.CacheServerBackdropPath = entry.BackdropPath
+
+	// Pass through available editions (AI-discovered) with enriched fields
 	if len(lookupResp.AvailableEditions) > 0 {
 		editions := make([]EditionSummary, 0, len(lookupResp.AvailableEditions))
 		for _, ae := range lookupResp.AvailableEditions {
-			editions = append(editions, EditionSummary{
-				EditionType:  ae.EditionType,
-				EditionTitle: ae.EditionTitle,
-				Source:       ae.Source,
-			})
+			es := EditionSummary{
+				EditionType:        ae.EditionType,
+				EditionTitle:       ae.EditionTitle,
+				Source:             ae.Source,
+				ContentRating:      ae.ContentRating,
+				Verified:           ae.Verified,
+				VerificationSource: ae.VerificationSource,
+			}
+			// Parse known resolutions from JSON string
+			if ae.KnownResolutions != nil && *ae.KnownResolutions != "" {
+				var resolutions []string
+				if err := json.Unmarshal([]byte(*ae.KnownResolutions), &resolutions); err == nil {
+					es.KnownResolutions = resolutions
+				}
+			}
+			editions = append(editions, es)
 		}
 		result.AvailableEditions = editions
 	}
@@ -851,9 +956,13 @@ type CacheEdition struct {
 	AddedScenes        *string `json:"added_scenes,omitempty"`
 	Differences        *string `json:"differences,omitempty"`
 	CanonStatus        *string `json:"canon_status,omitempty"`
-	PopularityNotes    *string `json:"popularity_notes,omitempty"`
-	Keywords           *string `json:"keywords,omitempty"`
-	Source             string  `json:"source"`
+	PopularityNotes    *string  `json:"popularity_notes,omitempty"`
+	Keywords           *string  `json:"keywords,omitempty"`
+	Source             string   `json:"source"`
+	KnownResolutions   *string  `json:"known_resolutions,omitempty"` // JSON: ["4K","1080p"]
+	ContentRating      *string  `json:"content_rating,omitempty"`
+	Verified           bool     `json:"verified"`
+	VerificationSource *string  `json:"verification_source,omitempty"`
 }
 
 type cacheEditionEnrichRequest struct {
@@ -1182,4 +1291,52 @@ func EnsureRegistered(settingsRepo *repository.SettingsRepository) *CacheClient 
 	_ = settingsRepo.Set("cache_server_url", CacheServerURL)
 
 	return NewCacheClient(CacheServerURL, key)
+}
+
+// ── Content Rating Resolution ──
+
+// countryRatingEntry represents a single content rating from a specific source/country.
+type countryRatingEntry struct {
+	Source  string `json:"source"`
+	Country string `json:"country"`
+	Rating  string `json:"rating"`
+}
+
+// ResolveContentRating parses the multi-country ratings JSON and returns
+// the rating for the preferred country. Falls back to US, then first available.
+func ResolveContentRating(ratingsJSON string, preferredCountry string) string {
+	var ratings []countryRatingEntry
+	if err := json.Unmarshal([]byte(ratingsJSON), &ratings); err != nil || len(ratings) == 0 {
+		return ""
+	}
+
+	// Look for preferred country first
+	for _, r := range ratings {
+		if r.Country == preferredCountry && r.Rating != "" {
+			return r.Rating
+		}
+	}
+	// Fall back to US
+	if preferredCountry != "US" {
+		for _, r := range ratings {
+			if r.Country == "US" && r.Rating != "" {
+				return r.Rating
+			}
+		}
+	}
+	// Fall back to first available
+	for _, r := range ratings {
+		if r.Rating != "" {
+			return r.Rating
+		}
+	}
+	return ""
+}
+
+// CacheImageURL builds a full URL for a cache server local image path.
+func CacheImageURL(basePath string) string {
+	if basePath == "" {
+		return ""
+	}
+	return CacheServerURL + "/images/" + basePath
 }

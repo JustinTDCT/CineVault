@@ -326,6 +326,18 @@ function mpRenderForm(title, profile) {
         </div>
         <div class="mp-form-row">
             <div class="form-group">
+                <label>Rating Country</label>
+                <select id="mpFormRatingCountry" onchange="updateFormRatingOptions()">
+                    <option value="US" selected>US (MPAA)</option>
+                    <option value="GB">UK (BBFC)</option>
+                    <option value="CA">Canada</option>
+                    <option value="AU">Australia</option>
+                    <option value="DE">Germany</option>
+                    <option value="FR">France</option>
+                    <option value="JP">Japan</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label>Max Content Rating</label>
                 <select id="mpFormRating">
                     <option value="" ${selRating===''?'selected':''}>Unrestricted</option>
@@ -589,7 +601,19 @@ loadProfileView = async function() {
         </div>
         <div class="settings-card">
             <h3>Parental Controls</h3>
-            <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:12px;">Set a maximum content rating for this profile. Content above this rating will be hidden.</p>
+            <p style="color:#8a9bae;font-size:0.82rem;margin-bottom:12px;">Set a maximum content rating for this profile. Content above this rating will be hidden. Select a country to use that country's rating system.</p>
+            <div class="form-group">
+                <label>Rating Country</label>
+                <select class="rating-select" id="profRatingCountry" onchange="updateRatingOptions()">
+                    <option value="US" selected>United States (MPAA)</option>
+                    <option value="GB">United Kingdom (BBFC)</option>
+                    <option value="CA">Canada</option>
+                    <option value="AU">Australia</option>
+                    <option value="DE">Germany (FSK)</option>
+                    <option value="FR">France</option>
+                    <option value="JP">Japan</option>
+                </select>
+            </div>
             <div class="form-group">
                 <label>Maximum Content Rating</label>
                 <select class="rating-select" id="profMaxRating">
@@ -1115,6 +1139,90 @@ async function saveProfilePlayback() {
         auto_play_next: document.getElementById('profAutoPlay').checked
     });
     if (d.success) toast('Playback preferences saved!'); else toast(d.error || 'Failed to save', 'error');
+}
+
+// ──── Country-aware Content Rating System ────
+
+const COUNTRY_RATINGS = {
+    US: [
+        {value:'G', label:'G — General Audiences'},
+        {value:'PG', label:'PG — Parental Guidance'},
+        {value:'PG-13', label:'PG-13 — Parents Strongly Cautioned'},
+        {value:'R', label:'R — Restricted'},
+        {value:'NC-17', label:'NC-17 — Adults Only'}
+    ],
+    GB: [
+        {value:'U', label:'U — Universal'},
+        {value:'PG', label:'PG — Parental Guidance'},
+        {value:'12A', label:'12A — 12 Accompanied'},
+        {value:'15', label:'15 — Fifteen'},
+        {value:'18', label:'18 — Adults Only'}
+    ],
+    CA: [
+        {value:'G', label:'G — General'},
+        {value:'PG', label:'PG — Parental Guidance'},
+        {value:'14A', label:'14A — 14 Accompaniment'},
+        {value:'18A', label:'18A — 18 Accompaniment'},
+        {value:'R', label:'R — Restricted'}
+    ],
+    AU: [
+        {value:'G', label:'G — General'},
+        {value:'PG', label:'PG — Parental Guidance'},
+        {value:'M', label:'M — Mature'},
+        {value:'MA15+', label:'MA15+ — Mature Accompanied'},
+        {value:'R18+', label:'R18+ — Restricted'}
+    ],
+    DE: [
+        {value:'FSK 0', label:'FSK 0 — No restriction'},
+        {value:'FSK 6', label:'FSK 6 — Ages 6+'},
+        {value:'FSK 12', label:'FSK 12 — Ages 12+'},
+        {value:'FSK 16', label:'FSK 16 — Ages 16+'},
+        {value:'FSK 18', label:'FSK 18 — Adults Only'}
+    ],
+    FR: [
+        {value:'U', label:'U — Tous publics'},
+        {value:'-12', label:'-12 — Restricted 12'},
+        {value:'-16', label:'-16 — Restricted 16'},
+        {value:'-18', label:'-18 — Restricted 18'}
+    ],
+    JP: [
+        {value:'G', label:'G — General'},
+        {value:'PG12', label:'PG12 — Parental Guidance 12'},
+        {value:'R15+', label:'R15+ — Ages 15+'},
+        {value:'R18+', label:'R18+ — Adults Only'}
+    ]
+};
+
+function updateRatingOptions() {
+    const country = document.getElementById('profRatingCountry')?.value || 'US';
+    const sel = document.getElementById('profMaxRating');
+    if (!sel) return;
+    const current = sel.value;
+    const ratings = COUNTRY_RATINGS[country] || COUNTRY_RATINGS.US;
+    sel.innerHTML = '<option value="">No Restriction</option>';
+    ratings.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r.value;
+        opt.textContent = r.label;
+        if (r.value === current) opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
+
+function updateFormRatingOptions() {
+    const country = document.getElementById('mpFormRatingCountry')?.value || 'US';
+    const sel = document.getElementById('mpFormRating');
+    if (!sel) return;
+    const current = sel.value;
+    const ratings = COUNTRY_RATINGS[country] || COUNTRY_RATINGS.US;
+    sel.innerHTML = '<option value="">Unrestricted</option>';
+    ratings.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r.value;
+        opt.textContent = r.label;
+        if (r.value === current) opt.selected = true;
+        sel.appendChild(opt);
+    });
 }
 
 // ──── Phase 7: Engagement Functions ────

@@ -551,10 +551,33 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 					}
 					updated++
 				}
+				// Store unified metadata fields from cache
+				if result.MetacriticScore != nil {
+					_ = h.mediaRepo.UpdateMetacriticScore(item.ID, *result.MetacriticScore)
+				}
+				if result.ContentRatingsJSON != nil {
+					_ = h.mediaRepo.UpdateContentRatingsJSON(item.ID, *result.ContentRatingsJSON)
+				}
+				if result.ContentRatingsAll != nil {
+					resolved := metadata.ResolveContentRating(*result.ContentRatingsAll, "US")
+					if resolved != "" && !item.IsFieldLocked("content_rating") {
+						_ = h.mediaRepo.UpdateContentRating(item.ID, resolved)
+					}
+				}
+				if result.TaglinesJSON != nil {
+					_ = h.mediaRepo.UpdateField(item.ID, "taglines_json", *result.TaglinesJSON)
+				}
+				if result.TrailersJSON != nil {
+					_ = h.mediaRepo.UpdateField(item.ID, "trailers_json", *result.TrailersJSON)
+				}
+				if result.DescriptionsJSON != nil {
+					_ = h.mediaRepo.UpdateField(item.ID, "descriptions_json", *result.DescriptionsJSON)
+				}
 				// No delay needed for cache hits — it's our own server
 				continue
 			}
-			// Cache miss – fall through to direct TMDB
+			// Cache enabled = sole source. No fallback to direct scrapers.
+			continue
 		}
 
 		best := metadata.FindBestMatch(h.scrapers, query, item.MediaType, yearHint)

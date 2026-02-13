@@ -458,14 +458,31 @@ async function loadMediaDetail(id) {
 
     // Build ratings row
     let ratingsHTML = '';
-    const hasAnyRating = m.rating || m.imdb_rating || m.rt_rating != null || m.audience_score != null;
+    const hasAnyRating = m.rating || m.imdb_rating || m.rt_rating != null || m.audience_score != null || m.metacritic_score;
     if (hasAnyRating) {
         ratingsHTML = '<div class="ratings-row">';
         if (m.rating) ratingsHTML += `<div class="rating-badge rating-tmdb"><span class="rating-icon">&#11088;</span><span class="rating-value">${m.rating.toFixed(1)}</span><span class="rating-label">TMDB</span></div>`;
         if (m.imdb_rating) ratingsHTML += `<div class="rating-badge rating-imdb"><span class="rating-icon">&#127902;</span><span class="rating-value">${m.imdb_rating.toFixed(1)}</span><span class="rating-label">IMDb</span></div>`;
         if (m.rt_rating != null) ratingsHTML += `<div class="rating-badge rating-rt"><span class="rating-icon">&#127813;</span><span class="rating-value">${m.rt_rating}%</span><span class="rating-label">Rotten Tomatoes</span></div>`;
         if (m.audience_score != null) ratingsHTML += `<div class="rating-badge rating-audience"><span class="rating-icon">&#128101;</span><span class="rating-value">${m.audience_score}%</span><span class="rating-label">Audience</span></div>`;
+        if (m.metacritic_score) ratingsHTML += `<div class="rating-badge" style="border-color:rgba(255,204,0,0.3);"><span class="rating-icon">&#127942;</span><span class="rating-value">${m.metacritic_score}</span><span class="rating-label">Metacritic</span></div>`;
         ratingsHTML += '</div>';
+    }
+
+    // Multi-country content ratings display
+    let countryRatingsHTML = '';
+    if (m.content_ratings_json) {
+        try {
+            const cr = JSON.parse(m.content_ratings_json);
+            const entries = Object.entries(cr);
+            if (entries.length > 0) {
+                countryRatingsHTML = '<div class="multi-rating-row">';
+                entries.forEach(([country, rating]) => {
+                    countryRatingsHTML += `<span class="rating-country-badge"><span class="country-code">${country}</span> ${rating}</span>`;
+                });
+                countryRatingsHTML += '</div>';
+            }
+        } catch(e) {}
     }
 
     mc.innerHTML = `
@@ -477,6 +494,7 @@ async function loadMediaDetail(id) {
                 ${m.description ? '<p class="description">'+m.description+'</p>' : ''}
                 <div id="detailGenreTags" class="genre-tags"></div>
                 ${ratingsHTML}
+                ${countryRatingsHTML}
                 <div class="detail-actions">
                     <button class="btn-primary" onclick="playMedia('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#9654; Play</button>
                     <button class="btn-secondary" onclick="playDirect('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#128190; Direct Play</button>
@@ -490,6 +508,8 @@ async function loadMediaDetail(id) {
                     ${(m.media_type === 'comics' || m.media_type === 'ebooks' || (m.file_name && /\.(cbz|cbr|epub|pdf)$/i.test(m.file_name))) ? '<button class="btn-secondary" onclick="openReader(\''+m.id+'\')">&#128214; Read</button>' : ''}
                     <button class="btn-secondary" onclick="openEditModal('${m.id}')">&#9998; Edit</button>
                     <button class="btn-secondary" onclick="identifyMedia('${m.id}')">&#128270; Identify</button>
+                    <button class="btn-secondary" onclick="openArtworkPicker('${m.id}','poster')">&#128444; Poster</button>
+                    <button class="btn-secondary" onclick="openArtworkPicker('${m.id}','backdrop')">&#127756; Backdrop</button>
                     <button class="btn-secondary" onclick="showAddToCollectionPicker('${m.id}')">&#128218; + Collection</button>
                 </div>
                 <div id="detailUserRating" style="margin-top:8px;"></div>
@@ -669,12 +689,31 @@ async function showDetailTab(btn, tab, mediaId) {
                 const year = ed.edition_release_year ? ' (' + ed.edition_release_year + ')' : '';
                 const overview = ed.overview || '';
                 const contentSummary = ed.new_content_summary || '';
+                // Resolution badges
+                let resBadges = '';
+                if (ed.known_resolutions) {
+                    let resolutions = ed.known_resolutions;
+                    if (typeof resolutions === 'string') { try { resolutions = JSON.parse(resolutions); } catch(e) { resolutions = []; } }
+                    if (Array.isArray(resolutions)) {
+                        resolutions.forEach(r => {
+                            const cls = r.toLowerCase().includes('4k') || r.toLowerCase().includes('uhd') ? 'res-4k' :
+                                        r.toLowerCase().includes('1080') ? 'res-1080p' :
+                                        r.toLowerCase().includes('720') ? 'res-720p' : 'res-default';
+                            resBadges += `<span class="edition-resolution-badge ${cls}">${escapeHtml(r)}</span>`;
+                        });
+                    }
+                }
+                // Content rating badge
+                const ratingBadge = ed.content_rating ? `<span class="edition-content-rating">${escapeHtml(ed.content_rating)}</span>` : '';
+                // Verified badge
+                const verifiedBadge = ed.verified ? `<span class="edition-verified" title="${ed.verification_source ? escapeHtml(ed.verification_source) : 'Verified'}">Verified</span>` : '';
                 html += `<div class="cache-edition-card">
                     <div class="cache-edition-header">
                         <span class="cache-edition-type">${escapeHtml(ed.edition_type)}</span>
                         ${runtime ? `<span class="cache-edition-runtime">${runtime}${extra}</span>` : ''}
                         ${year ? `<span class="cache-edition-year">${year}</span>` : ''}
                     </div>
+                    ${resBadges || ratingBadge || verifiedBadge ? `<div style="margin:6px 0;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">${resBadges}${ratingBadge}${verifiedBadge}</div>` : ''}
                     ${overview ? `<div class="cache-edition-overview">${escapeHtml(overview)}</div>` : ''}
                     ${contentSummary ? `<div class="cache-edition-content"><strong>New content:</strong> ${escapeHtml(contentSummary)}</div>` : ''}
                 </div>`;
@@ -730,6 +769,48 @@ async function showDetailTab(btn, tab, mediaId) {
             html += '</div>';
 
             // Technical metadata section
+            // ── Unified Cache Data Section ──
+            let cacheSection = '';
+
+            // Metacritic score
+            if (m.metacritic_score) {
+                const mcColor = m.metacritic_score >= 75 ? '#4ade80' : m.metacritic_score >= 50 ? '#fbbf24' : '#ef4444';
+                cacheSection += `<tr><td class="metadata-tech-label">Metacritic</td><td class="metadata-tech-value"><span style="color:${mcColor};font-weight:600;">${m.metacritic_score}/100</span></td></tr>`;
+            }
+
+            // Multi-country content ratings
+            if (m.content_ratings_json) {
+                try {
+                    const cr = JSON.parse(m.content_ratings_json);
+                    let badges = '<div class="multi-rating-row">';
+                    Object.entries(cr).forEach(([country, rating]) => {
+                        badges += `<span class="rating-country-badge"><span class="country-code">${country}</span> ${rating}</span>`;
+                    });
+                    badges += '</div>';
+                    cacheSection += `<tr><td class="metadata-tech-label">Content Ratings</td><td class="metadata-tech-value">${badges}</td></tr>`;
+                } catch(e) {}
+            }
+
+            // Trailers
+            if (m.trailers_json) {
+                try {
+                    const trailers = JSON.parse(m.trailers_json);
+                    if (Array.isArray(trailers) && trailers.length > 0) {
+                        let tLinks = trailers.slice(0,5).map(t =>
+                            `<a href="${t.url}" target="_blank" style="color:#00D9FF;text-decoration:none;margin-right:8px;">${escapeHtml(t.name || 'Trailer')} <span style="color:#5a6a7f;">(${t.source || ''})</span></a>`
+                        ).join('<br>');
+                        cacheSection += `<tr><td class="metadata-tech-label">Trailers</td><td class="metadata-tech-value">${tLinks}</td></tr>`;
+                    }
+                } catch(e) {}
+            }
+
+            if (cacheSection) {
+                html += '<div class="metadata-tab-section">';
+                html += '<h4 class="metadata-tab-heading">Extended Metadata</h4>';
+                html += '<table class="metadata-tech-table">' + cacheSection + '</table>';
+                html += '</div>';
+            }
+
             const techRows = [];
             if (m.source_type) techRows.push({k:'Source', v:m.source_type});
             if (m.dynamic_range && m.dynamic_range !== 'SDR') techRows.push({k:'Dynamic Range', v:m.dynamic_range + (m.hdr_format ? ' ('+m.hdr_format+')' : '')});
@@ -4018,5 +4099,75 @@ async function showNewRequestDialog() {
     const res = await api('POST', '/requests', { title: title, media_type: mediaType });
     if (res.success) { toast('Request submitted!'); loadContentRequestsView(); }
     else toast(res.error || 'Failed to submit request', 'error');
+}
+
+// ──────────────────── Artwork Picker ────────────────────
+
+async function openArtworkPicker(mediaId, type) {
+    const res = await api('GET', `/media/${mediaId}/artwork`);
+    if (!res.success || !res.data) {
+        toast(res.error || 'No artwork available from cache server', 'error');
+        return;
+    }
+    const urls = type === 'poster' ? (res.data.posters || []) :
+                 type === 'backdrop' ? (res.data.backdrops || []) : (res.data.logos || []);
+    if (urls.length === 0) {
+        toast(`No ${type} images available`, 'error');
+        return;
+    }
+    showArtworkPickerModal(mediaId, type, urls);
+}
+
+function showArtworkPickerModal(mediaId, type, urls) {
+    let existing = document.getElementById('artworkPickerOverlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'artworkPickerOverlay';
+    overlay.className = 'artwork-picker-overlay';
+
+    const label = type.charAt(0).toUpperCase() + type.slice(1);
+    let grid = '';
+    urls.forEach((url, i) => {
+        grid += `<div class="artwork-thumb" data-idx="${i}" onclick="selectArtwork(this,'${mediaId}','${type}','${url.replace(/'/g,"\\'")}')">
+            <img src="${url}" loading="lazy" alt="${label} ${i+1}">
+            <span class="artwork-source">${extractArtworkSource(url)}</span>
+        </div>`;
+    });
+
+    overlay.innerHTML = `
+        <div class="artwork-picker-modal">
+            <div class="artwork-picker-header">
+                <h2>Choose ${label} (${urls.length} available)</h2>
+                <button class="artwork-picker-close" onclick="this.closest('.artwork-picker-overlay').remove()">&times;</button>
+            </div>
+            <div class="artwork-picker-grid">${grid}</div>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) overlay.remove();
+    });
+}
+
+function extractArtworkSource(url) {
+    if (url.includes('tmdb.org') || url.includes('themoviedb.org')) return 'TMDB';
+    if (url.includes('fanart.tv')) return 'Fanart.tv';
+    if (url.includes('thetvdb.com')) return 'TVDB';
+    if (url.includes('anilist')) return 'AniList';
+    return 'Source';
+}
+
+async function selectArtwork(el, mediaId, type, url) {
+    document.querySelectorAll('.artwork-thumb.selected').forEach(t => t.classList.remove('selected'));
+    el.classList.add('selected');
+    const res = await api('PUT', `/media/${mediaId}/artwork`, { type: type, url: url });
+    if (res.success) {
+        toast(`${type.charAt(0).toUpperCase()+type.slice(1)} updated!`);
+        const overlay = document.getElementById('artworkPickerOverlay');
+        if (overlay) overlay.remove();
+        showMediaDetail(mediaId);
+    } else {
+        toast(res.error || 'Failed to update artwork', 'error');
+    }
 }
 

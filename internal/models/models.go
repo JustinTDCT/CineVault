@@ -219,6 +219,12 @@ type MediaItem struct {
 	DynamicRange     string          `json:"dynamic_range" db:"dynamic_range"`
 	// Keywords from TMDB (JSON array of strings)
 	Keywords         *string         `json:"keywords,omitempty" db:"keywords"`
+	// Unified cache server metadata
+	MetacriticScore    *int    `json:"metacritic_score,omitempty" db:"metacritic_score"`
+	ContentRatingsJSON *string `json:"content_ratings_json,omitempty" db:"content_ratings_json"`
+	TaglinesJSON       *string `json:"taglines_json,omitempty" db:"taglines_json"`
+	TrailersJSON       *string `json:"trailers_json,omitempty" db:"trailers_json"`
+	DescriptionsJSON   *string `json:"descriptions_json,omitempty" db:"descriptions_json"`
 	// Power-user annotation fields
 	CustomNotes      *string         `json:"custom_notes,omitempty" db:"custom_notes"`
 	CustomTags       *string         `json:"custom_tags,omitempty" db:"custom_tags"`

@@ -617,7 +617,7 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 		return
 	}
 
-	// ── Try cache server first ──
+	// ── Cache server is sole source when enabled ──
 	cacheClient := s.getCacheClient()
 	if cacheClient != nil {
 		result := cacheClient.Lookup(searchQuery, item.Year, item.MediaType)
@@ -700,8 +700,14 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 			if result.Match.CollectionID != nil && result.Match.CollectionName != nil {
 				s.autoCreateCollection(item, result.Match)
 			}
+
+			// Store unified metadata fields from cache
+			s.storeUnifiedCacheFields(item.ID, result)
 			return
 		}
+		// Cache enabled = sole source. No fallback.
+		log.Printf("Re-enrich: cache miss for %q (no fallback, cache is sole source)", searchQuery)
+		return
 	}
 
 	match := metadata.FindBestMatch(s.scrapers, searchQuery, item.MediaType, item.Year)
@@ -1670,7 +1676,7 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		}
 	}
 
-	// ── Try cache server first ──
+	// ── Cache server is sole source when enabled ──
 	cacheClient := s.getCacheClient()
 	if cacheClient != nil {
 		result := cacheClient.Lookup(searchQuery, item.Year, item.MediaType)
@@ -1680,7 +1686,9 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 			s.applyCacheResult(item, result)
 			return
 		}
-		// Cache miss or unreachable – fall through to direct TMDB
+		// Cache enabled = sole source. No fallback to direct scrapers.
+		log.Printf("Auto-match: cache miss for %q (no fallback, cache is sole source)", searchQuery)
+		return
 	}
 
 	match := metadata.FindBestMatch(s.scrapers, searchQuery, item.MediaType, item.Year)
@@ -1851,6 +1859,34 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 	// Auto-create movie collection from cache data
 	if match.CollectionID != nil && match.CollectionName != nil {
 		s.autoCreateCollection(item, match)
+	}
+
+	// Store all unified metadata fields from cache
+	s.storeUnifiedCacheFields(item.ID, result)
+}
+
+// storeUnifiedCacheFields persists new metadata fields from the unified cache response.
+func (s *Scanner) storeUnifiedCacheFields(itemID uuid.UUID, result *metadata.CacheLookupResult) {
+	if result.MetacriticScore != nil {
+		_ = s.mediaRepo.UpdateMetacriticScore(itemID, *result.MetacriticScore)
+	}
+	if result.ContentRatingsJSON != nil {
+		_ = s.mediaRepo.UpdateContentRatingsJSON(itemID, *result.ContentRatingsJSON)
+	}
+	if result.ContentRatingsAll != nil {
+		resolved := metadata.ResolveContentRating(*result.ContentRatingsAll, "US")
+		if resolved != "" {
+			_ = s.mediaRepo.UpdateContentRating(itemID, resolved)
+		}
+	}
+	if result.TaglinesJSON != nil {
+		_ = s.mediaRepo.UpdateField(itemID, "taglines_json", *result.TaglinesJSON)
+	}
+	if result.TrailersJSON != nil {
+		_ = s.mediaRepo.UpdateField(itemID, "trailers_json", *result.TrailersJSON)
+	}
+	if result.DescriptionsJSON != nil {
+		_ = s.mediaRepo.UpdateField(itemID, "descriptions_json", *result.DescriptionsJSON)
 	}
 }
 

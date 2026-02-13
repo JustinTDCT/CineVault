@@ -301,6 +301,8 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /api/v1/media/search", s.authMiddleware(s.handleSearchMedia, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/media/{id}/identify", s.authMiddleware(s.handleIdentifyMedia, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/media/{id}/apply-meta", s.authMiddleware(s.handleApplyMetadata, models.RoleAdmin))
+	s.router.HandleFunc("GET /api/v1/media/{id}/artwork", s.authMiddleware(s.handleGetMediaArtwork, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/media/{id}/artwork", s.authMiddleware(s.handleSetMediaArtwork, models.RoleAdmin))
 	s.router.HandleFunc("GET /api/v1/media/{id}/locked-fields", s.authMiddleware(s.handleGetLockedFields, models.RoleUser))
 	s.router.HandleFunc("PUT /api/v1/media/{id}/locked-fields", s.authMiddleware(s.handleUpdateLockedFields, models.RoleAdmin))
 

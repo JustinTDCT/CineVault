@@ -60,7 +60,9 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	image_gallery_id, sister_group_id, phash, audio_fingerprint,
 	imdb_rating, rt_rating, audience_score,
 	edition_type, content_rating, sort_position, external_ids, generated_poster,
-	source_type, hdr_format, dynamic_range, custom_notes, custom_tags,
+	source_type, hdr_format, dynamic_range, keywords,
+	metacritic_score, content_ratings_json, taglines_json, trailers_json, descriptions_json,
+	custom_notes, custom_tags,
 	metadata_locked, locked_fields, duplicate_status, parent_media_id, extra_type,
 	added_at, updated_at`
 
@@ -90,7 +92,9 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.ImageGalleryID, &item.SisterGroupID, &item.Phash, &item.AudioFingerprint,
 		&item.IMDBRating, &item.RTRating, &item.AudienceScore,
 		&item.EditionType, &item.ContentRating, &item.SortPosition, &item.ExternalIDs, &item.GeneratedPoster,
-		&item.SourceType, &item.HDRFormat, &item.DynamicRange, &item.CustomNotes, &item.CustomTags,
+		&item.SourceType, &item.HDRFormat, &item.DynamicRange, &item.Keywords,
+		&item.MetacriticScore, &item.ContentRatingsJSON, &item.TaglinesJSON, &item.TrailersJSON, &item.DescriptionsJSON,
+		&item.CustomNotes, &item.CustomTags,
 		&item.MetadataLocked, &item.LockedFields, &item.DuplicateStatus,
 		&item.ParentMediaID, &item.ExtraType, &item.AddedAt, &item.UpdatedAt,
 	)
@@ -702,6 +706,12 @@ func (r *MediaRepository) UpdatePosterPath(id uuid.UUID, posterPath string) erro
 	return err
 }
 
+// UpdateBackdropPath sets the backdrop image path for a media item.
+func (r *MediaRepository) UpdateBackdropPath(id uuid.UUID, backdropPath string) error {
+	_, err := r.db.Exec(`UPDATE media_items SET backdrop_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, backdropPath, id)
+	return err
+}
+
 // SetGeneratedPoster marks a media item's poster as generated from a video screenshot.
 func (r *MediaRepository) SetGeneratedPoster(id uuid.UUID, generated bool) error {
 	_, err := r.db.Exec(`UPDATE media_items SET generated_poster = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, generated, id)
@@ -723,6 +733,32 @@ func (r *MediaRepository) UpdateExternalIDs(id uuid.UUID, externalIDsJSON string
 // UpdateContentRating sets the content rating (e.g. PG-13, R) for a media item.
 func (r *MediaRepository) UpdateContentRating(id uuid.UUID, contentRating string) error {
 	_, err := r.db.Exec(`UPDATE media_items SET content_rating = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, contentRating, id)
+	return err
+}
+
+// UpdateMetacriticScore sets the Metacritic score for a media item.
+func (r *MediaRepository) UpdateMetacriticScore(id uuid.UUID, score int) error {
+	_, err := r.db.Exec(`UPDATE media_items SET metacritic_score = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, score, id)
+	return err
+}
+
+// UpdateContentRatingsJSON stores the full multi-country content ratings JSON.
+func (r *MediaRepository) UpdateContentRatingsJSON(id uuid.UUID, ratingsJSON string) error {
+	_, err := r.db.Exec(`UPDATE media_items SET content_ratings_json = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, ratingsJSON, id)
+	return err
+}
+
+// UpdateField updates a single TEXT column by name (whitelist-checked).
+func (r *MediaRepository) UpdateField(id uuid.UUID, field, value string) error {
+	allowed := map[string]bool{
+		"taglines_json": true, "trailers_json": true, "descriptions_json": true,
+		"content_ratings_json": true, "keywords": true,
+	}
+	if !allowed[field] {
+		return fmt.Errorf("field %q not allowed in UpdateField", field)
+	}
+	query := fmt.Sprintf(`UPDATE media_items SET %s = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, field)
+	_, err := r.db.Exec(query, value, id)
 	return err
 }
 
