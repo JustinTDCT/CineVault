@@ -15,7 +15,19 @@ function headers() { return { 'Authorization': 'Bearer ' + localStorage.getItem(
 async function api(method, path, body) {
     const opts = { method, headers: headers() };
     if (body) opts.body = JSON.stringify(body);
-    try { const res = await fetch(API + path, opts); return res.json(); } catch(e) { return { success: false, error: e.message }; }
+    try {
+        const res = await fetch(API + path, opts);
+        if (res.status === 401 && path !== '/auth/login') {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            sessionStorage.removeItem('profile_picked');
+            currentUser = null;
+            if (ws) { ws.close(); ws = null; }
+            checkAuth();
+            return { success: false, error: 'Session expired' };
+        }
+        return res.json();
+    } catch(e) { return { success: false, error: e.message }; }
 }
 
 function toast(msg, type='success') {
