@@ -469,7 +469,7 @@ func (s *Server) resolvePerformerPhoto(profilePath string, tmdbPersonIDs ...int)
 		if cacheClient := s.getCacheClient(); cacheClient != nil {
 			if cp, err := cacheClient.GetPerformer(tmdbPersonIDs[0]); err == nil && cp != nil {
 				if cp.PhotoPath != nil && *cp.PhotoPath != "" {
-					return metadata.CacheServerURL + "/images/" + *cp.PhotoPath
+					return metadata.CacheImageURL(*cp.PhotoPath)
 				}
 				if cp.PhotoURL != nil && *cp.PhotoURL != "" {
 					return *cp.PhotoURL

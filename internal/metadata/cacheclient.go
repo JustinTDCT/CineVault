@@ -1225,8 +1225,11 @@ func (c *CacheClient) IsAvailable() bool {
 
 // ── Registration ──
 
-// CacheServerURL is the hardcoded cache server address.
+// CacheServerURL is the default cache server address (used for registration and fallback).
 const CacheServerURL = "http://cache.cine-vault.tv:8090"
+
+// resolvedCacheURL holds the active cache server URL (set by EnsureRegistered from DB).
+var resolvedCacheURL = CacheServerURL
 
 type cacheRegisterRequest struct {
 	Name      string  `json:"name"`
@@ -1278,7 +1281,7 @@ func Register() (string, error) {
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Post(CacheServerURL+"/api/v1/register", "application/json", bytes.NewReader(bodyBytes))
+	resp, err := client.Post(resolvedCacheURL+"/api/v1/register", "application/json", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return "", fmt.Errorf("cache server unreachable: %w", err)
 	}
@@ -1305,9 +1308,17 @@ func Register() (string, error) {
 // If not, it registers with the cache server and stores the key.
 // Returns a ready-to-use CacheClient, or nil if registration fails.
 func EnsureRegistered(settingsRepo *repository.SettingsRepository) *CacheClient {
+	// Use DB-stored URL if available, otherwise fall back to hardcoded constant
+	serverURL := CacheServerURL
+	if dbURL, _ := settingsRepo.Get("cache_server_url"); dbURL != "" {
+		serverURL = dbURL
+	}
+	resolvedCacheURL = serverURL
+	log.Printf("[cache-client] using cache server URL: %s", serverURL)
+
 	apiKey, _ := settingsRepo.Get("cache_server_api_key")
 	if apiKey != "" {
-		return NewCacheClient(CacheServerURL, apiKey)
+		return NewCacheClient(serverURL, apiKey)
 	}
 
 	// No key yet — register
@@ -1324,9 +1335,9 @@ func EnsureRegistered(settingsRepo *repository.SettingsRepository) *CacheClient 
 	}
 
 	// Also store the URL for consistency
-	_ = settingsRepo.Set("cache_server_url", CacheServerURL)
+	_ = settingsRepo.Set("cache_server_url", serverURL)
 
-	return NewCacheClient(CacheServerURL, key)
+	return NewCacheClient(serverURL, key)
 }
 
 // ── Content Rating Resolution ──
@@ -1374,5 +1385,5 @@ func CacheImageURL(basePath string) string {
 	if basePath == "" {
 		return ""
 	}
-	return CacheServerURL + "/images/" + basePath
+	return resolvedCacheURL + "/images/" + basePath
 }
