@@ -498,9 +498,10 @@ async function loadMediaDetail(id) {
             <div class="detail-poster">${m.poster_path ? '<img src="'+posterSrc(m.poster_path, m.updated_at)+'">' : mediaIcon(m.media_type)}</div>
             <div class="detail-info">
                 <h1>${m.title}</h1>
+                ${(m.edition_type && m.edition_type !== 'Theatrical' && m.edition_type !== 'Standard' && m.edition_type !== '' && m.edition_type !== 'unknown') ? '<span class="edition-appendix-badge">'+m.edition_type+' Edition</span>' : ''}
                 <div class="meta-row">${meta}</div>
                 ${m.description ? '<p class="description">'+m.description+'</p>' : ''}
-                ${(m.edition_type && m.edition_type !== 'Theatrical' && m.edition_type !== 'Standard' && m.edition_type !== '' && m.edition_type !== 'unknown') ? '<div class="edition-appendix"><span class="edition-appendix-badge">'+m.edition_type+' Edition</span><div id="editionAppendixDetails" class="edition-appendix-details"></div></div>' : ''}
+                <div id="editionAppendixDetails" class="edition-appendix-details"></div>
                 <div id="detailGenreTags" class="genre-tags"></div>
                 ${ratingsHTML}
                 ${countryRatingsHTML}
