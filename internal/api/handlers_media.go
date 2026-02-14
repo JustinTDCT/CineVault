@@ -261,6 +261,9 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enrich items with edition group info (edition_count, edition_group_id)
+	_ = s.mediaRepo.PopulateEditionCounts(media)
+
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: media})
 }
 
