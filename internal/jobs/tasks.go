@@ -53,19 +53,20 @@ type DetectSegmentsPayload struct {
 // ──────── Handlers ────────
 
 type ScanHandler struct {
-	scanner  *scanner.Scanner
-	libRepo  *repository.LibraryRepository
-	jobRepo  *repository.JobRepository
-	queue    *Queue
-	notifier EventNotifier
+	scanner      *scanner.Scanner
+	libRepo      *repository.LibraryRepository
+	jobRepo      *repository.JobRepository
+	settingsRepo *repository.SettingsRepository
+	queue        *Queue
+	notifier     EventNotifier
 }
 
 type EventNotifier interface {
 	Broadcast(event string, data interface{})
 }
 
-func NewScanHandler(sc *scanner.Scanner, libRepo *repository.LibraryRepository, jobRepo *repository.JobRepository, queue *Queue, notifier EventNotifier) *ScanHandler {
-	return &ScanHandler{scanner: sc, libRepo: libRepo, jobRepo: jobRepo, queue: queue, notifier: notifier}
+func NewScanHandler(sc *scanner.Scanner, libRepo *repository.LibraryRepository, jobRepo *repository.JobRepository, settingsRepo *repository.SettingsRepository, queue *Queue, notifier EventNotifier) *ScanHandler {
+	return &ScanHandler{scanner: sc, libRepo: libRepo, jobRepo: jobRepo, settingsRepo: settingsRepo, queue: queue, notifier: notifier}
 }
 
 func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
@@ -147,13 +148,24 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	}
 
 	// Trigger phash computation as a follow-up background job (deduplicated by library ID)
+	// Only enqueue if the Find Duplicates setting is enabled (default: on)
 	if h.queue != nil {
-		uniqueID := "phash:" + p.LibraryID
-		if _, err := h.queue.EnqueueUnique(TaskPhashLibrary, PhashLibraryPayload{LibraryID: p.LibraryID}, uniqueID,
-			asynq.Timeout(6*time.Hour), asynq.Retention(1*time.Hour)); err != nil {
-			log.Printf("Job: failed to enqueue phash job for library %s: %v", p.LibraryID, err)
+		dupEnabled := true
+		if h.settingsRepo != nil {
+			if val, err := h.settingsRepo.Get("find_duplicates_enabled"); err == nil && val == "false" {
+				dupEnabled = false
+			}
+		}
+		if dupEnabled {
+			uniqueID := "phash:" + p.LibraryID
+			if _, err := h.queue.EnqueueUnique(TaskPhashLibrary, PhashLibraryPayload{LibraryID: p.LibraryID}, uniqueID,
+				asynq.Timeout(6*time.Hour), asynq.Retention(1*time.Hour)); err != nil {
+				log.Printf("Job: failed to enqueue phash job for library %s: %v", p.LibraryID, err)
+			} else {
+				log.Printf("Job: enqueued phash computation for library %s", p.LibraryID)
+			}
 		} else {
-			log.Printf("Job: enqueued phash computation for library %s", p.LibraryID)
+			log.Printf("Job: skipping phash computation for library %s (Find Duplicates disabled)", p.LibraryID)
 		}
 	}
 
@@ -182,13 +194,14 @@ func (h *FingerprintHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 // ──────── Phash Library Handler ────────
 
 type PhashLibraryHandler struct {
-	mediaRepo    *repository.MediaRepository
+	mediaRepo     *repository.MediaRepository
+	settingsRepo  *repository.SettingsRepository
 	fingerprinter *fingerprint.Fingerprinter
-	notifier     EventNotifier
+	notifier      EventNotifier
 }
 
-func NewPhashLibraryHandler(mediaRepo *repository.MediaRepository, fp *fingerprint.Fingerprinter, notifier EventNotifier) *PhashLibraryHandler {
-	return &PhashLibraryHandler{mediaRepo: mediaRepo, fingerprinter: fp, notifier: notifier}
+func NewPhashLibraryHandler(mediaRepo *repository.MediaRepository, settingsRepo *repository.SettingsRepository, fp *fingerprint.Fingerprinter, notifier EventNotifier) *PhashLibraryHandler {
+	return &PhashLibraryHandler{mediaRepo: mediaRepo, settingsRepo: settingsRepo, fingerprinter: fp, notifier: notifier}
 }
 
 func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
@@ -197,11 +210,18 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 		return fmt.Errorf("unmarshal: %w", err)
 	}
 
+	// Check if Find Duplicates is enabled (default: on)
+	if h.settingsRepo != nil {
+		if val, err := h.settingsRepo.Get("find_duplicates_enabled"); err == nil && val == "false" {
+			log.Printf("Phash: skipping phash computation for library %s (Find Duplicates disabled)", p.LibraryID)
+			return nil
+		}
+	}
+
 	taskID := "phash:" + p.LibraryID
 	taskDesc := "Analyzing duplicates"
 
 	libID, _ := uuid.Parse(p.LibraryID)
-
 
 	items, err := h.mediaRepo.ListItemsNeedingPhash(libID)
 	if err != nil {
@@ -1398,9 +1418,9 @@ func RegisterHandlers(q *Queue, sc *scanner.Scanner, libRepo *repository.Library
 	scrapers []metadata.Scraper, settingsRepo *repository.SettingsRepository, cfg *config.Config,
 	det *detection.Detector, segRepo *repository.SegmentRepository) {
 
-	q.RegisterHandler(TaskScanLibrary, NewScanHandler(sc, libRepo, jobRepo, q, notifier))
+	q.RegisterHandler(TaskScanLibrary, NewScanHandler(sc, libRepo, jobRepo, settingsRepo, q, notifier))
 	q.RegisterHandler(TaskFingerprint, NewFingerprintHandler(mediaRepo))
-	q.RegisterHandler(TaskPhashLibrary, NewPhashLibraryHandler(mediaRepo, fp, notifier))
+	q.RegisterHandler(TaskPhashLibrary, NewPhashLibraryHandler(mediaRepo, settingsRepo, fp, notifier))
 	q.RegisterHandler(TaskGeneratePreview, NewPreviewHandler())
 	q.RegisterHandler(TaskMetadataScrape, NewMetadataScrapeHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))
 	q.RegisterHandler(TaskMetadataRefresh, NewMetadataRefreshHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))

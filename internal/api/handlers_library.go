@@ -421,6 +421,12 @@ func (s *Server) handleScanLibrary(w http.ResponseWriter, r *http.Request) {
 
 // handlePhashLibrary enqueues a perceptual hash computation job for a library.
 func (s *Server) handlePhashLibrary(w http.ResponseWriter, r *http.Request) {
+	// Check if Find Duplicates is enabled (default: on)
+	if val, err := s.settingsRepo.Get("find_duplicates_enabled"); err == nil && val == "false" {
+		s.respondError(w, http.StatusBadRequest, "Find Duplicates is disabled in settings")
+		return
+	}
+
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		s.respondError(w, http.StatusBadRequest, "invalid library id")

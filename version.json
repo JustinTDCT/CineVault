@@ -1,6 +1,6 @@
 {
-  "version": "1.10.02",
+  "version": "1.11.02",
   "phase": 18,
   "released": "2026-02-14",
-  "notes": "Editions tab redesign: View button, edition appendix with AI metadata under description, simplified Known Editions list, search results enriched with edition counts."
+  "notes": "Added Find Duplicates toggle in Content > Duplicates settings to enable/disable automatic phash gathering after library scans."
 }

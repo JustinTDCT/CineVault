@@ -1213,6 +1213,17 @@
         mc.innerHTML = '<div class="section-header"><h2 class="section-title">Duplicates</h2>' +
             '<button class="btn-secondary btn-small" onclick="clearStaleDuplicates(this)">Clear Resolved</button></div>' +
             '<p class="section-desc">Review media items flagged as potential duplicates via perceptual hash comparison.</p>' +
+            '<div class="settings-card full-width" style="margin-bottom:20px;">' +
+                '<div class="form-group" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">' +
+                    '<div>' +
+                        '<label class="toggle-label" style="margin-bottom:0;">' +
+                            '<span class="toggle-switch"><input type="checkbox" id="setFindDuplicates" onchange="saveFindDuplicatesSetting(this.checked)"><span class="toggle-slider"></span></span>' +
+                            'Find Duplicates' +
+                        '</label>' +
+                        '<p style="color:#8a9bae;font-size:0.8rem;margin:4px 0 0 0;">When enabled, perceptual hash analysis runs automatically after library scans to detect duplicate media.</p>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
             '<div id="dupSelectBar" class="dup-select-bar">' +
                 '<label class="dup-select-toggle"><input type="checkbox" id="dupSelectAll" onchange="dupToggleSelectAll(this.checked)"> Select All</label>' +
                 '<span class="dup-select-count" id="dupSelectCount">0 selected</span>' +
@@ -1227,6 +1238,15 @@
                     '<button class="btn-secondary btn-small" onclick="dupClearSelection()">Clear</button>' +
                 '</div>' +
             '</div>';
+
+        // Load the Find Duplicates toggle state from system settings
+        const sysSett = await api('GET', '/settings/system');
+        if (sysSett.success) {
+            const dupEnabled = sysSett.data.find_duplicates_enabled !== 'false';
+            const cb = document.getElementById('setFindDuplicates');
+            if (cb) cb.checked = dupEnabled;
+        }
+
         const data = await api('GET', '/duplicates');
         const div = document.getElementById('dupList');
         if (!data.success) { div.innerHTML = '<p style="color:#ff6b6b;">Failed to load duplicates</p>'; return; }
@@ -1248,6 +1268,12 @@
             });
         });
         div.innerHTML = groups.map((g, i) => renderDupGroup(g, i)).join('');
+    }
+
+    async function saveFindDuplicatesSetting(enabled) {
+        const d = await api('PUT', '/settings/system', { find_duplicates_enabled: enabled ? 'true' : 'false' });
+        if (d.success) toast(enabled ? 'Find Duplicates enabled' : 'Find Duplicates disabled');
+        else toast(d.error || 'Failed to save setting', 'error');
     }
 
     function fmtDupDur(sec) {
