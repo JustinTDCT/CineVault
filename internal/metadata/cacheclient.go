@@ -407,25 +407,10 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 	result.EditionsDiscovered = entry.EditionsDiscovered
 	result.AllSourcesScraped = entry.AllSourcesScraped
 
-	// Parse artwork URL arrays from JSON
-	if entry.PosterURLs != nil && *entry.PosterURLs != "" {
-		var urls []string
-		if err := json.Unmarshal([]byte(*entry.PosterURLs), &urls); err == nil {
-			result.AllPosterURLs = urls
-		}
-	}
-	if entry.BackdropURLs != nil && *entry.BackdropURLs != "" {
-		var urls []string
-		if err := json.Unmarshal([]byte(*entry.BackdropURLs), &urls); err == nil {
-			result.AllBackdropURLs = urls
-		}
-	}
-	if entry.LogoURLs != nil && *entry.LogoURLs != "" {
-		var urls []string
-		if err := json.Unmarshal([]byte(*entry.LogoURLs), &urls); err == nil {
-			result.AllLogoURLs = urls
-		}
-	}
+	// Parse artwork URL arrays from JSON — cache server sends objects with source/url/path
+	result.AllPosterURLs = parseArtworkURLArray(entry.PosterURLs)
+	result.AllBackdropURLs = parseArtworkURLArray(entry.BackdropURLs)
+	result.AllLogoURLs = parseArtworkURLArray(entry.LogoURLs)
 
 	// Cache server local image paths
 	result.CacheServerPosterPath = entry.PosterPath
@@ -1386,4 +1371,41 @@ func CacheImageURL(basePath string) string {
 		return ""
 	}
 	return resolvedCacheURL + "/images/" + basePath
+}
+
+// artworkEntry represents one item in the cache server's poster_urls/backdrop_urls arrays.
+type artworkEntry struct {
+	Source string `json:"source"`
+	URL    string `json:"url"`
+	Path   string `json:"path"`
+}
+
+// parseArtworkURLArray parses the JSON artwork array from the cache server.
+// It prefers the local cached path (via /images/) when available, otherwise falls back to the original URL.
+func parseArtworkURLArray(raw *string) []string {
+	if raw == nil || *raw == "" || *raw == "null" {
+		return nil
+	}
+
+	// Try parsing as array of objects (current cache server format)
+	var entries []artworkEntry
+	if err := json.Unmarshal([]byte(*raw), &entries); err == nil && len(entries) > 0 {
+		urls := make([]string, 0, len(entries))
+		for _, e := range entries {
+			if e.Path != "" {
+				urls = append(urls, CacheImageURL(e.Path))
+			} else if e.URL != "" {
+				urls = append(urls, e.URL)
+			}
+		}
+		return urls
+	}
+
+	// Fall back to plain string array (legacy format)
+	var plain []string
+	if err := json.Unmarshal([]byte(*raw), &plain); err == nil {
+		return plain
+	}
+
+	return nil
 }

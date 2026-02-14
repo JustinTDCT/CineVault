@@ -779,9 +779,13 @@ func (s *Server) handleGetMediaArtwork(w http.ResponseWriter, r *http.Request) {
 
 	result := cacheClient.Lookup(media.Title, media.Year, media.MediaType)
 	if result == nil || result.Match == nil {
+		log.Printf("[artwork] lookup miss for %q (year=%v type=%s)", media.Title, media.Year, media.MediaType)
 		s.respondError(w, http.StatusNotFound, "no cache data found")
 		return
 	}
+
+	log.Printf("[artwork] %q → posters=%d backdrops=%d logos=%d",
+		media.Title, len(result.AllPosterURLs), len(result.AllBackdropURLs), len(result.AllLogoURLs))
 
 	type artworkResponse struct {
 		Posters   []string `json:"posters"`
