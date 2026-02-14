@@ -121,8 +121,8 @@ func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepos
 	}
 }
 
-// ProgressFunc reports scan progress: current processed count, total eligible files, current filename.
-type ProgressFunc func(current, total int, filename string)
+// ProgressFunc reports scan progress: current processed count, total eligible files, files added so far, current filename.
+type ProgressFunc func(current, total, added int, filename string)
 
 func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFunc) (*models.ScanResult, error) {
 	result := &models.ScanResult{}
@@ -304,7 +304,7 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 
 	atomic.AddInt64(filesFound, 1)
 	if onProgress != nil {
-		onProgress(int(atomic.LoadInt64(filesFound)), totalFiles, name)
+		onProgress(int(atomic.LoadInt64(filesFound)), totalFiles, int(atomic.LoadInt64(filesAdded)), name)
 	}
 
 	existing, err := s.mediaRepo.GetByFilePath(path)
@@ -604,7 +604,7 @@ func (s *Scanner) reEnrichExistingItems(library *models.Library, onProgress Prog
 	total := len(enrichItems)
 	log.Printf("Re-enrich: %d items need OMDb ratings or cast enrichment (using 5 workers)", total)
 	if onProgress != nil {
-		onProgress(0, total, "Enriching metadata...")
+		onProgress(0, total, 0, "Enriching metadata...")
 	}
 
 	// Concurrent worker pool
@@ -621,7 +621,7 @@ func (s *Scanner) reEnrichExistingItems(library *models.Library, onProgress Prog
 				s.enrichItemFast(item, tmdbScraper, omdbKey)
 				cur := atomic.AddInt64(&processed, 1)
 				if onProgress != nil && (cur%10 == 0 || int(cur) == total) {
-					onProgress(int(cur), total, item.Title)
+					onProgress(int(cur), total, 0, item.Title)
 				}
 			}
 		}()

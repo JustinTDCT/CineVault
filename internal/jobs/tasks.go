@@ -97,7 +97,7 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	var progressFn scanner.ProgressFunc
 	if h.notifier != nil {
 		var lastBroadcast time.Time
-		progressFn = func(current, total int, filename string) {
+		progressFn = func(current, total, added int, filename string) {
 			now := time.Now()
 			// Throttle: broadcast at most every 500ms, plus always on last item
 			if now.Sub(lastBroadcast) >= 500*time.Millisecond || current == total {
@@ -107,10 +107,11 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 					pct = int(float64(current) / float64(total) * 100)
 				}
 				h.notifier.Broadcast("scan:progress", map[string]interface{}{
-					"library_id": p.LibraryID,
-					"current":    current,
-					"total":      total,
-					"filename":   filename,
+					"library_id":  p.LibraryID,
+					"current":     current,
+					"total":       total,
+					"files_added": added,
+					"filename":    filename,
 				})
 				// Build descriptive status: "Scanning Movies · filename.mp4 (5/120)"
 				desc := fmt.Sprintf("Scanning %s · %s (%d/%d)", library.Name, filename, current, total)

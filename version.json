@@ -1,6 +1,6 @@
 {
-  "version": "1.12.02",
+  "version": "1.13.02",
   "phase": 18,
   "released": "2026-02-14",
-  "notes": "Added Create Previews and Create Timeline Thumbnails toggles in Playback > Video settings with disk space warning. Preview clips and sprite sheets generated during library scans when enabled."
+  "notes": "Live library grid updates during scans. New items appear in real-time as they are discovered, with a final reload on scan completion for correct sort order and counts."
 }

@@ -1111,6 +1111,46 @@ async function loadMoreMedia() {
     enableGridKeyNav(grid);
 }
 
+// ──── Live scan: append newly added items to the grid ────
+let _appendingNewItems = false;
+async function appendNewScanItems(libraryId, newCount) {
+    if (_appendingNewItems || !libraryId || newCount <= 0) return;
+    if (_gridState.libraryId !== libraryId) return;
+    const grid = document.getElementById('libGrid');
+    if (!grid) return;
+
+    _appendingNewItems = true;
+    try {
+        // Fetch the most recently added items, sorted by added_at desc
+        const m = await api('GET', '/libraries/' + libraryId + '/media?sort=added_at&order=desc&limit=' + Math.min(newCount, 50));
+        const items = (m.success && m.data && m.data.items) ? m.data.items : [];
+        if (items.length === 0) return;
+
+        // Filter out items already in the grid
+        const newItems = items.filter(item => !grid.querySelector('[data-media-id="' + item.id + '"]'));
+        if (newItems.length === 0) return;
+
+        // Insert before the sentinel (or append at end)
+        const sentinel = document.getElementById('gridSentinel');
+        const html = newItems.map(renderMediaCard).join('');
+        if (sentinel) {
+            sentinel.insertAdjacentHTML('beforebegin', html);
+        } else {
+            grid.insertAdjacentHTML('beforeend', html);
+        }
+
+        // Update the item count display
+        _gridState.total += newItems.length;
+        _gridState.offset += newItems.length;
+        const countEl = document.getElementById('libItemCount');
+        if (countEl) countEl.textContent = _gridState.total.toLocaleString() + ' items';
+    } catch (e) {
+        // Silently ignore fetch errors during scan
+    } finally {
+        _appendingNewItems = false;
+    }
+}
+
 function setupScrollObserver() {
     _gridState.observer = new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting) loadMoreMedia();

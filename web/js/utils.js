@@ -370,12 +370,16 @@ function connectWS() {
     };
 }
 
+// ──── Live scan tracking for incremental grid updates ────
+const _scanTracker = {};  // { [libraryId]: { lastAdded: 0, lastFetchTime: 0 } }
+
 function handleWSEvent(msg) {
     switch(msg.event) {
         case 'scan:start': {
             toast('Scanning: ' + (msg.data?.name || ''), 'success');
             const libId = msg.data?.library_id;
             if (libId) {
+                _scanTracker[libId] = { lastAdded: 0, lastFetchTime: 0 };
                 const prog = document.getElementById('scan-progress-' + libId);
                 if (prog) prog.classList.add('active');
                 const btn = document.getElementById('scan-btn-' + libId);
@@ -388,6 +392,7 @@ function handleWSEvent(msg) {
             if (!libId) break;
             const current = msg.data.current || 0;
             const total = msg.data.total || 0;
+            const filesAdded = msg.data.files_added || 0;
             const filename = msg.data.filename || '';
             const pct = total > 0 ? Math.round((current / total) * 100) : 0;
             const fill = document.getElementById('scan-fill-' + libId);
@@ -398,6 +403,24 @@ function handleWSEvent(msg) {
             if (countEl) countEl.textContent = current + ' / ' + total + ' (' + pct + '%)';
             const prog = document.getElementById('scan-progress-' + libId);
             if (prog && !prog.classList.contains('active')) prog.classList.add('active');
+
+            // Live grid update: if user is viewing this library and new items were added
+            if (typeof _gridState !== 'undefined' && _gridState.libraryId === libId && filesAdded > 0) {
+                const tracker = _scanTracker[libId] || { lastAdded: 0, lastFetchTime: 0 };
+                const now = Date.now();
+                if (filesAdded > tracker.lastAdded && (now - tracker.lastFetchTime) >= 2000) {
+                    tracker.lastFetchTime = now;
+                    const prevAdded = tracker.lastAdded;
+                    tracker.lastAdded = filesAdded;
+                    _scanTracker[libId] = tracker;
+                    if (typeof appendNewScanItems === 'function') {
+                        appendNewScanItems(libId, filesAdded - prevAdded);
+                    }
+                } else if (filesAdded > tracker.lastAdded) {
+                    tracker.lastAdded = filesAdded;
+                    _scanTracker[libId] = tracker;
+                }
+            }
             break;
         }
         case 'scan:complete': {
@@ -406,6 +429,7 @@ function handleWSEvent(msg) {
             loadSidebarCounts();
             const libId = msg.data?.library_id;
             if (libId) {
+                delete _scanTracker[libId];
                 const fill = document.getElementById('scan-fill-' + libId);
                 if (fill) fill.style.width = '100%';
                 const btn = document.getElementById('scan-btn-' + libId);
@@ -416,6 +440,10 @@ function handleWSEvent(msg) {
                     if (fill) fill.style.width = '0%';
                 }, 3000);
                 loadLibrariesView();
+                // Reload the grid if the user is viewing this library for final sort/count
+                if (typeof _gridState !== 'undefined' && _gridState.libraryId === libId) {
+                    if (typeof reloadLibraryGrid === 'function') reloadLibraryGrid();
+                }
             }
             break;
         }
