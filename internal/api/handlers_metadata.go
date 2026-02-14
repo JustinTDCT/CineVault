@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -828,6 +829,25 @@ func (s *Server) handleSetMediaArtwork(w http.ResponseWriter, r *http.Request) {
 		suffix = "_backdrop.jpg"
 	}
 
+	// Delete old local image before downloading the new one
+	media, _ := s.mediaRepo.GetByID(mediaID)
+	if media != nil {
+		var oldPath string
+		if req.Type == "poster" && media.PosterPath != nil {
+			oldPath = *media.PosterPath
+		} else if req.Type == "backdrop" && media.BackdropPath != nil {
+			oldPath = *media.BackdropPath
+		}
+		if oldPath != "" && strings.HasPrefix(oldPath, "/previews/") {
+			diskPath := filepath.Join(s.config.Paths.Preview, strings.TrimPrefix(oldPath, "/previews/"))
+			if err := os.Remove(diskPath); err != nil && !os.IsNotExist(err) {
+				log.Printf("[artwork] failed to remove old %s: %v", diskPath, err)
+			} else if err == nil {
+				log.Printf("[artwork] removed old %s image: %s", req.Type, diskPath)
+			}
+		}
+	}
+
 	filename := mediaID.String() + suffix
 	dir := filepath.Join(s.config.Paths.Preview, subdir)
 
@@ -850,4 +870,166 @@ func (s *Server) handleSetMediaArtwork(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]string{"path": webPath}})
+}
+
+// ──────────────────── Collection Artwork Picker ────────────────────
+
+// handleGetCollectionArtwork returns all available poster/backdrop URLs for a collection
+// by looking up the collection's TMDB ID in the cache server.
+func (s *Server) handleGetCollectionArtwork(w http.ResponseWriter, r *http.Request) {
+	collID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid collection ID")
+		return
+	}
+
+	coll, err := s.collectionRepo.GetByID(collID)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "collection not found")
+		return
+	}
+
+	cacheClient := s.getCacheClient()
+	if cacheClient == nil {
+		s.respondError(w, http.StatusServiceUnavailable, "cache server not enabled")
+		return
+	}
+
+	// Find the TMDB collection ID linked to this local collection
+	tmdbID := s.findCollectionTMDBID(coll)
+	if tmdbID == 0 {
+		s.respondError(w, http.StatusNotFound, "no TMDB collection linked")
+		return
+	}
+
+	artwork, err := cacheClient.GetCollectionArtwork(tmdbID)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "no artwork found: "+err.Error())
+		return
+	}
+
+	// Convert to URL-only arrays for the picker UI (use cache image URL if path available, otherwise raw URL)
+	type artworkResponse struct {
+		Posters   []string `json:"posters"`
+		Backdrops []string `json:"backdrops"`
+	}
+	resp := artworkResponse{}
+	for _, p := range artwork.Posters {
+		if p.Path != "" {
+			resp.Posters = append(resp.Posters, metadata.CacheImageURL(p.Path))
+		} else if p.URL != "" {
+			resp.Posters = append(resp.Posters, p.URL)
+		}
+	}
+	for _, b := range artwork.Backdrops {
+		if b.Path != "" {
+			resp.Backdrops = append(resp.Backdrops, metadata.CacheImageURL(b.Path))
+		} else if b.URL != "" {
+			resp.Backdrops = append(resp.Backdrops, b.URL)
+		}
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: resp})
+}
+
+// handleSetCollectionArtwork downloads a chosen artwork URL and sets it as the collection's poster or backdrop.
+func (s *Server) handleSetCollectionArtwork(w http.ResponseWriter, r *http.Request) {
+	collID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid collection ID")
+		return
+	}
+
+	var req struct {
+		Type string `json:"type"` // "poster" or "backdrop"
+		URL  string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" || (req.Type != "poster" && req.Type != "backdrop") {
+		s.respondError(w, http.StatusBadRequest, "provide type (poster|backdrop) and url")
+		return
+	}
+
+	if s.config.Paths.Preview == "" {
+		s.respondError(w, http.StatusInternalServerError, "preview path not configured")
+		return
+	}
+
+	coll, err := s.collectionRepo.GetByID(collID)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "collection not found")
+		return
+	}
+
+	// Delete old local image
+	if req.Type == "poster" && coll.PosterPath != nil {
+		oldPath := *coll.PosterPath
+		if strings.HasPrefix(oldPath, "/previews/") {
+			diskPath := filepath.Join(s.config.Paths.Preview, strings.TrimPrefix(oldPath, "/previews/"))
+			if err := os.Remove(diskPath); err != nil && !os.IsNotExist(err) {
+				log.Printf("[artwork] failed to remove old collection %s: %v", diskPath, err)
+			} else if err == nil {
+				log.Printf("[artwork] removed old collection %s image: %s", req.Type, diskPath)
+			}
+		}
+	}
+
+	var subdir, suffix string
+	if req.Type == "poster" {
+		subdir = "posters"
+		suffix = "_coll.jpg"
+	} else {
+		subdir = "backdrops"
+		suffix = "_coll_backdrop.jpg"
+	}
+
+	filename := collID.String() + suffix
+	dir := filepath.Join(s.config.Paths.Preview, subdir)
+
+	_, dlErr := metadata.DownloadPoster(req.URL, dir, filename)
+	if dlErr != nil {
+		s.respondError(w, http.StatusInternalServerError, "download failed: "+dlErr.Error())
+		return
+	}
+
+	webPath := "/previews/" + subdir + "/" + filename
+	if req.Type == "poster" {
+		coll.PosterPath = &webPath
+		if err := s.collectionRepo.Update(coll); err != nil {
+			s.respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	// Note: backdrop_path not currently on client Collection model; poster is the primary use case
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: map[string]string{"path": webPath}})
+}
+
+// findCollectionTMDBID looks up the TMDB collection ID for a local collection.
+// It checks collection items via cache server lookup to find the TMDB collection.
+func (s *Server) findCollectionTMDBID(coll *models.Collection) int {
+	cacheClient := s.getCacheClient()
+	if cacheClient == nil {
+		return 0
+	}
+
+	// Get collection items and look up the first movie's TMDB collection
+	items, err := s.collectionRepo.ListItems(coll.ID, "manual")
+	if err != nil || len(items) == 0 {
+		return 0
+	}
+
+	for _, item := range items {
+		if item.MediaItemID == nil {
+			continue
+		}
+		media, err := s.mediaRepo.GetByID(*item.MediaItemID)
+		if err != nil || media == nil || media.MediaType != models.MediaTypeMovies {
+			continue
+		}
+		result := cacheClient.Lookup(media.Title, media.Year, media.MediaType)
+		if result != nil && result.Match != nil && result.Match.CollectionID != nil && *result.Match.CollectionID > 0 {
+			return *result.Match.CollectionID
+		}
+	}
+	return 0
 }

@@ -938,6 +938,42 @@ func (c *CacheClient) GetCollection(tmdbID int) (*CacheCollection, error) {
 	return &coll, nil
 }
 
+// CollectionArtwork holds poster and backdrop artwork items for a collection.
+type CollectionArtwork struct {
+	Posters   []CollectionArtworkItem `json:"posters"`
+	Backdrops []CollectionArtworkItem `json:"backdrops"`
+}
+
+// CollectionArtworkItem holds a single artwork entry with source and URL/path.
+type CollectionArtworkItem struct {
+	Source string `json:"source"`
+	URL    string `json:"url,omitempty"`
+	Path   string `json:"path,omitempty"`
+}
+
+// GetCollectionArtwork fetches all artwork variants for a collection from the cache server.
+func (c *CacheClient) GetCollectionArtwork(tmdbID int) (*CollectionArtwork, error) {
+	reqURL := fmt.Sprintf("%s/api/v1/collection/%d/artwork", c.baseURL, tmdbID)
+	req, _ := http.NewRequest("GET", reqURL, nil)
+	req.Header.Set("X-API-Key", c.apiKey)
+	addInstanceVersion(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("cache collection artwork returned %d", resp.StatusCode)
+	}
+
+	var artwork CollectionArtwork
+	if err := json.NewDecoder(resp.Body).Decode(&artwork); err != nil {
+		return nil, err
+	}
+	return &artwork, nil
+}
+
 // ── Edition Metadata ──
 
 // CacheEdition holds edition-specific metadata from the cache server.

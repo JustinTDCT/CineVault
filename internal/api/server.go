@@ -356,6 +356,8 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("POST /api/v1/collections/{id}/items", s.authMiddleware(s.handleAddCollectionItem, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/collections/{id}/items/bulk", s.authMiddleware(s.handleBulkAddCollectionItems, models.RoleUser))
 	s.router.HandleFunc("DELETE /api/v1/collections/{id}/items/{itemId}", s.authMiddleware(s.handleRemoveCollectionItem, models.RoleUser))
+	s.router.HandleFunc("GET /api/v1/collections/{id}/artwork", s.authMiddleware(s.handleGetCollectionArtwork, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/collections/{id}/artwork", s.authMiddleware(s.handleSetCollectionArtwork, models.RoleAdmin))
 	s.router.HandleFunc("DELETE /api/v1/collections/{id}", s.authMiddleware(s.handleDeleteCollection, models.RoleUser))
 
 	// Movie Series

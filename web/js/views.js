@@ -2841,8 +2841,10 @@ async function loadCollectionDetailView(collId) {
                 <span class="tag tag-cyan">${coll.visibility}</span>
                 <span class="tag tag-green">${coll.item_count || 0} items</span>
             </div>
-            <div style="display:flex;gap:8px;margin-top:12px;">
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
                 <button class="btn-secondary btn-small" onclick="editCollection('${coll.id}')">&#9998; Edit</button>
+                <button class="btn-secondary btn-small" onclick="openCollectionArtworkPicker('${coll.id}','poster')">&#128444; Poster</button>
+                <button class="btn-secondary btn-small" onclick="openCollectionArtworkPicker('${coll.id}','backdrop')">&#127756; Backdrop</button>
                 <button class="btn-secondary btn-small" onclick="showCreateCollection('${coll.id}')">+ Sub-collection</button>
                 <button class="btn-danger btn-small" onclick="deleteCollection('${coll.id}');navigate('collections');">Delete</button>
             </div>
@@ -4179,3 +4181,63 @@ async function selectArtwork(el, mediaId, type, url) {
     }
 }
 
+// ──────────────────── Collection Artwork Picker ────────────────────
+
+async function openCollectionArtworkPicker(collId, type) {
+    const res = await api('GET', `/collections/${collId}/artwork`);
+    if (!res.success || !res.data) {
+        toast(res.error || 'No artwork available from cache server', 'error');
+        return;
+    }
+    const urls = type === 'poster' ? (res.data.posters || []) : (res.data.backdrops || []);
+    if (urls.length === 0) {
+        toast(`No ${type} images available`, 'error');
+        return;
+    }
+    showCollectionArtworkPickerModal(collId, type, urls);
+}
+
+function showCollectionArtworkPickerModal(collId, type, urls) {
+    let existing = document.getElementById('artworkPickerOverlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'artworkPickerOverlay';
+    overlay.className = 'artwork-picker-overlay';
+
+    const label = type.charAt(0).toUpperCase() + type.slice(1);
+    let grid = '';
+    urls.forEach((url, i) => {
+        grid += `<div class="artwork-thumb" data-idx="${i}" onclick="selectCollectionArtwork(this,'${collId}','${type}','${url.replace(/'/g,"\\'")}')">
+            <img src="${url}" loading="lazy" alt="${label} ${i+1}">
+            <span class="artwork-source">${extractArtworkSource(url)}</span>
+        </div>`;
+    });
+
+    overlay.innerHTML = `
+        <div class="artwork-picker-modal">
+            <div class="artwork-picker-header">
+                <h2>Choose Collection ${label} (${urls.length} available)</h2>
+                <button class="artwork-picker-close" onclick="this.closest('.artwork-picker-overlay').remove()">&times;</button>
+            </div>
+            <div class="artwork-picker-grid">${grid}</div>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) overlay.remove();
+    });
+}
+
+async function selectCollectionArtwork(el, collId, type, url) {
+    document.querySelectorAll('.artwork-thumb.selected').forEach(t => t.classList.remove('selected'));
+    el.classList.add('selected');
+    const res = await api('PUT', `/collections/${collId}/artwork`, { type: type, url: url });
+    if (res.success) {
+        toast(`Collection ${type.charAt(0).toUpperCase()+type.slice(1)} updated!`);
+        const overlay = document.getElementById('artworkPickerOverlay');
+        if (overlay) overlay.remove();
+        loadCollectionDetailView(collId);
+    } else {
+        toast(res.error || 'Failed to update collection artwork', 'error');
+    }
+}
