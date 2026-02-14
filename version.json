@@ -1,6 +1,6 @@
 {
-  "version": "1.13.02",
+  "version": "1.14.02",
   "phase": 18,
   "released": "2026-02-14",
-  "notes": "Live library grid updates during scans. New items appear in real-time as they are discovered, with a final reload on scan completion for correct sort order and counts."
+  "notes": "Phased scan pipeline: preview clips and timeline thumbnails now run as separate background jobs after the core scan completes, so items appear in the library immediately."
 }

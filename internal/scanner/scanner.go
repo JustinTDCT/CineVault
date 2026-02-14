@@ -318,19 +318,6 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 		if existing.PosterPath == nil && s.isProbeableType(library.MediaType) {
 			s.generateScreenshotPoster(existing)
 		}
-		// Generate preview/thumbnails for existing items that don't have them yet
-		if s.isProbeableType(library.MediaType) && s.settingsRepo != nil {
-			if val, _ := s.settingsRepo.Get("create_previews_enabled"); val != "false" {
-				if existing.PreviewPath == nil {
-					s.GeneratePreviewClip(existing)
-				}
-			}
-			if val, _ := s.settingsRepo.Get("create_timeline_thumbnails_enabled"); val != "false" {
-				if existing.SpritePath == nil {
-					s.GenerateTimelineThumbnails(existing)
-				}
-			}
-		}
 		atomic.AddInt64(filesSkipped, 1)
 		return
 	}
@@ -536,20 +523,6 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 
 	if item.PosterPath == nil && s.isProbeableType(library.MediaType) {
 		s.generateScreenshotPoster(item)
-	}
-
-	// Generate preview clip and timeline thumbnails if enabled (default: on)
-	if s.isProbeableType(library.MediaType) && s.settingsRepo != nil {
-		if val, _ := s.settingsRepo.Get("create_previews_enabled"); val != "false" {
-			if item.PreviewPath == nil {
-				s.GeneratePreviewClip(item)
-			}
-		}
-		if val, _ := s.settingsRepo.Get("create_timeline_thumbnails_enabled"); val != "false" {
-			if item.SpritePath == nil {
-				s.GenerateTimelineThumbnails(item)
-			}
-		}
 	}
 
 	atomic.AddInt64(filesAdded, 1)

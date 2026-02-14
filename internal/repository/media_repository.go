@@ -910,6 +910,55 @@ func (r *MediaRepository) ListItemsNeedingPhash(libraryID uuid.UUID) ([]*models.
 	return items, rows.Err()
 }
 
+// ListItemsNeedingSprites returns video items in a library that have no sprite_path.
+func (r *MediaRepository) ListItemsNeedingSprites(libraryID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + `
+		FROM media_items
+		WHERE library_id = $1
+		  AND (sprite_path IS NULL OR sprite_path = '')
+		  AND media_type IN ('movies','adult_movies','tv_shows','music_videos','home_videos','other_videos')
+		ORDER BY added_at`
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// ListItemsNeedingPreviews returns video items in a library that have no preview_path and duration >= 30s.
+func (r *MediaRepository) ListItemsNeedingPreviews(libraryID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + `
+		FROM media_items
+		WHERE library_id = $1
+		  AND (preview_path IS NULL OR preview_path = '')
+		  AND duration_seconds >= 30
+		  AND media_type IN ('movies','adult_movies','tv_shows','music_videos','home_videos','other_videos')
+		ORDER BY added_at`
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 // ListPhashesInLibrary returns all items in a library that have a phash.
 func (r *MediaRepository) ListPhashesInLibrary(libraryID uuid.UUID) ([]*models.MediaItem, error) {
 	query := `SELECT ` + mediaColumns + `

@@ -15,6 +15,8 @@ const (
 	TaskScanLibrary      = "scan:library"
 	TaskFingerprint      = "fingerprint:media"
 	TaskPhashLibrary     = "phash:library"
+	TaskSpritesLibrary   = "sprites:library"
+	TaskPreviewsLibrary  = "previews:library"
 	TaskGeneratePreview  = "preview:generate"
 	TaskMetadataScrape   = "metadata:scrape"
 	TaskMetadataRefresh  = "metadata:refresh"

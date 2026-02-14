@@ -41,6 +41,14 @@ type PhashLibraryPayload struct {
 	LibraryID string `json:"library_id"`
 }
 
+type SpritesLibraryPayload struct {
+	LibraryID string `json:"library_id"`
+}
+
+type PreviewsLibraryPayload struct {
+	LibraryID string `json:"library_id"`
+}
+
 type MetadataPayload struct {
 	MediaItemID string `json:"media_item_id"`
 	Source      string `json:"source"`
@@ -167,6 +175,40 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 			}
 		} else {
 			log.Printf("Job: skipping phash computation for library %s (Find Duplicates disabled)", p.LibraryID)
+		}
+
+		// Enqueue timeline thumbnail generation as a follow-up background job
+		spritesEnabled := true
+		if h.settingsRepo != nil {
+			if val, err := h.settingsRepo.Get("create_timeline_thumbnails_enabled"); err == nil && val == "false" {
+				spritesEnabled = false
+			}
+		}
+		if spritesEnabled {
+			uniqueID := "sprites:" + p.LibraryID
+			if _, err := h.queue.EnqueueUnique(TaskSpritesLibrary, SpritesLibraryPayload{LibraryID: p.LibraryID}, uniqueID,
+				asynq.Timeout(12*time.Hour), asynq.Retention(1*time.Hour)); err != nil {
+				log.Printf("Job: failed to enqueue sprites job for library %s: %v", p.LibraryID, err)
+			} else {
+				log.Printf("Job: enqueued timeline thumbnails for library %s", p.LibraryID)
+			}
+		}
+
+		// Enqueue preview clip generation as a follow-up background job
+		previewsEnabled := true
+		if h.settingsRepo != nil {
+			if val, err := h.settingsRepo.Get("create_previews_enabled"); err == nil && val == "false" {
+				previewsEnabled = false
+			}
+		}
+		if previewsEnabled {
+			uniqueID := "previews:" + p.LibraryID
+			if _, err := h.queue.EnqueueUnique(TaskPreviewsLibrary, PreviewsLibraryPayload{LibraryID: p.LibraryID}, uniqueID,
+				asynq.Timeout(12*time.Hour), asynq.Retention(1*time.Hour)); err != nil {
+				log.Printf("Job: failed to enqueue previews job for library %s: %v", p.LibraryID, err)
+			} else {
+				log.Printf("Job: enqueued preview clips for library %s", p.LibraryID)
+			}
 		}
 	}
 
@@ -378,6 +420,172 @@ func (h *PreviewHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 		return err
 	}
 	log.Printf("Job: generating preview for %s", p.MediaItemID)
+	return nil
+}
+
+// ──────── Sprites Library Handler ────────
+
+type SpritesLibraryHandler struct {
+	mediaRepo    *repository.MediaRepository
+	settingsRepo *repository.SettingsRepository
+	sc           *scanner.Scanner
+	notifier     EventNotifier
+}
+
+func NewSpritesLibraryHandler(mediaRepo *repository.MediaRepository, settingsRepo *repository.SettingsRepository, sc *scanner.Scanner, notifier EventNotifier) *SpritesLibraryHandler {
+	return &SpritesLibraryHandler{mediaRepo: mediaRepo, settingsRepo: settingsRepo, sc: sc, notifier: notifier}
+}
+
+func (h *SpritesLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
+	var p SpritesLibraryPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return fmt.Errorf("unmarshal: %w", err)
+	}
+
+	if h.settingsRepo != nil {
+		if val, err := h.settingsRepo.Get("create_timeline_thumbnails_enabled"); err == nil && val == "false" {
+			log.Printf("Sprites: skipping for library %s (Timeline Thumbnails disabled)", p.LibraryID)
+			return nil
+		}
+	}
+
+	taskID := "sprites:" + p.LibraryID
+	taskDesc := "Generating timeline thumbnails"
+	libID, _ := uuid.Parse(p.LibraryID)
+
+	items, err := h.mediaRepo.ListItemsNeedingSprites(libID)
+	if err != nil {
+		return fmt.Errorf("list items needing sprites: %w", err)
+	}
+
+	if len(items) == 0 {
+		log.Printf("Sprites: no items need timeline thumbnails in library %s", p.LibraryID)
+		return nil
+	}
+
+	log.Printf("Sprites: generating timeline thumbnails for %d items in library %s", len(items), p.LibraryID)
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskSpritesLibrary,
+			"status": "running", "progress": 0, "description": taskDesc,
+		})
+	}
+
+	var lastTaskBroadcast time.Time
+	for i, item := range items {
+		select {
+		case <-ctx.Done():
+			log.Printf("Sprites: cancelled after %d/%d items", i, len(items))
+			return ctx.Err()
+		default:
+		}
+
+		h.sc.GenerateTimelineThumbnails(item)
+
+		if h.notifier != nil {
+			now := time.Now()
+			if now.Sub(lastTaskBroadcast) >= 500*time.Millisecond || i == len(items)-1 {
+				lastTaskBroadcast = now
+				pct := int(float64(i+1) / float64(len(items)) * 100)
+				desc := fmt.Sprintf("Timeline thumbnails · %s (%d/%d)", item.FileName, i+1, len(items))
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskSpritesLibrary,
+					"status": "running", "progress": pct, "description": desc,
+				})
+			}
+		}
+	}
+
+	log.Printf("Sprites: completed %d timeline thumbnails for library %s", len(items), p.LibraryID)
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskSpritesLibrary,
+			"status": "complete", "progress": 100, "description": taskDesc,
+		})
+	}
+	return nil
+}
+
+// ──────── Previews Library Handler ────────
+
+type PreviewsLibraryHandler struct {
+	mediaRepo    *repository.MediaRepository
+	settingsRepo *repository.SettingsRepository
+	sc           *scanner.Scanner
+	notifier     EventNotifier
+}
+
+func NewPreviewsLibraryHandler(mediaRepo *repository.MediaRepository, settingsRepo *repository.SettingsRepository, sc *scanner.Scanner, notifier EventNotifier) *PreviewsLibraryHandler {
+	return &PreviewsLibraryHandler{mediaRepo: mediaRepo, settingsRepo: settingsRepo, sc: sc, notifier: notifier}
+}
+
+func (h *PreviewsLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
+	var p PreviewsLibraryPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return fmt.Errorf("unmarshal: %w", err)
+	}
+
+	if h.settingsRepo != nil {
+		if val, err := h.settingsRepo.Get("create_previews_enabled"); err == nil && val == "false" {
+			log.Printf("Previews: skipping for library %s (Create Previews disabled)", p.LibraryID)
+			return nil
+		}
+	}
+
+	taskID := "previews:" + p.LibraryID
+	taskDesc := "Generating preview clips"
+	libID, _ := uuid.Parse(p.LibraryID)
+
+	items, err := h.mediaRepo.ListItemsNeedingPreviews(libID)
+	if err != nil {
+		return fmt.Errorf("list items needing previews: %w", err)
+	}
+
+	if len(items) == 0 {
+		log.Printf("Previews: no items need preview clips in library %s", p.LibraryID)
+		return nil
+	}
+
+	log.Printf("Previews: generating preview clips for %d items in library %s", len(items), p.LibraryID)
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskPreviewsLibrary,
+			"status": "running", "progress": 0, "description": taskDesc,
+		})
+	}
+
+	var lastTaskBroadcast time.Time
+	for i, item := range items {
+		select {
+		case <-ctx.Done():
+			log.Printf("Previews: cancelled after %d/%d items", i, len(items))
+			return ctx.Err()
+		default:
+		}
+
+		h.sc.GeneratePreviewClip(item)
+
+		if h.notifier != nil {
+			now := time.Now()
+			if now.Sub(lastTaskBroadcast) >= 500*time.Millisecond || i == len(items)-1 {
+				lastTaskBroadcast = now
+				pct := int(float64(i+1) / float64(len(items)) * 100)
+				desc := fmt.Sprintf("Preview clips · %s (%d/%d)", item.FileName, i+1, len(items))
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskPreviewsLibrary,
+					"status": "running", "progress": pct, "description": desc,
+				})
+			}
+		}
+	}
+
+	log.Printf("Previews: completed %d preview clips for library %s", len(items), p.LibraryID)
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskPreviewsLibrary,
+			"status": "complete", "progress": 100, "description": taskDesc,
+		})
+	}
 	return nil
 }
 
@@ -1422,6 +1630,8 @@ func RegisterHandlers(q *Queue, sc *scanner.Scanner, libRepo *repository.Library
 	q.RegisterHandler(TaskScanLibrary, NewScanHandler(sc, libRepo, jobRepo, settingsRepo, q, notifier))
 	q.RegisterHandler(TaskFingerprint, NewFingerprintHandler(mediaRepo))
 	q.RegisterHandler(TaskPhashLibrary, NewPhashLibraryHandler(mediaRepo, settingsRepo, fp, notifier))
+	q.RegisterHandler(TaskSpritesLibrary, NewSpritesLibraryHandler(mediaRepo, settingsRepo, sc, notifier))
+	q.RegisterHandler(TaskPreviewsLibrary, NewPreviewsLibraryHandler(mediaRepo, settingsRepo, sc, notifier))
 	q.RegisterHandler(TaskGeneratePreview, NewPreviewHandler())
 	q.RegisterHandler(TaskMetadataScrape, NewMetadataScrapeHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))
 	q.RegisterHandler(TaskMetadataRefresh, NewMetadataRefreshHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))
