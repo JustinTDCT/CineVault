@@ -505,7 +505,6 @@ async function loadMediaDetail(id) {
                 ${countryRatingsHTML}
                 <div class="detail-actions">
                     <button class="btn-primary" onclick="playMedia('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#9654; Play</button>
-                    <button class="btn-secondary" onclick="playDirect('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#128190; Direct Play</button>
                     ${m.trailer_url ? '<button class="btn-secondary" onclick="watchTrailer(\''+m.trailer_url.replace(/'/g,"\\'")+'\',\''+m.title.replace(/'/g,"\\'")+'\')">&#127909; Trailer</button>' : ''}
                     ${m.media_type === 'movie' ? '<button class="btn-secondary" onclick="playCinemaMode(\''+m.id+'\',\''+m.title.replace(/'/g,"\\'")+'\')">&#127910; Cinema</button>' : ''}
                     <button class="btn-secondary" onclick="createSyncSession('${m.id}')">&#128101; Watch Together</button>
@@ -515,9 +514,6 @@ async function loadMediaDetail(id) {
                     <button class="btn-secondary" onclick="musicPlayer.enqueue([{id:'${m.id}',title:'${m.title.replace(/'/g,"\\'")}',artist:'${(m.artist||'').replace(/'/g,"\\'")}',duration_seconds:${m.duration_seconds||0}}]);musicPlayer.currentIndex=musicPlayer.queue.length-1;musicPlayer.playTrack();">&#127925; Music Play</button>
                     ${(m.media_type === 'comics' || m.media_type === 'ebooks' || (m.file_name && /\.(cbz|cbr|epub|pdf)$/i.test(m.file_name))) ? '<button class="btn-secondary" onclick="openReader(\''+m.id+'\')">&#128214; Read</button>' : ''}
                     <button class="btn-secondary" onclick="openEditModal('${m.id}')">&#9998; Edit</button>
-                    <button class="btn-secondary" onclick="identifyMedia('${m.id}')">&#128270; Identify</button>
-                    <button class="btn-secondary" onclick="openArtworkPicker('${m.id}','poster')">&#128444; Poster</button>
-                    <button class="btn-secondary" onclick="openArtworkPicker('${m.id}','backdrop')">&#127756; Backdrop</button>
                     <button class="btn-secondary" onclick="showAddToCollectionPicker('${m.id}')">&#128218; + Collection</button>
                 </div>
                 <div id="detailUserRating" style="margin-top:8px;"></div>
@@ -4120,6 +4116,13 @@ function browseArtworkFromEdit(type) {
     const modal = document.getElementById('editModal');
     if (modal) modal.style.display = 'none';
     openArtworkPicker(mediaId, type);
+}
+
+function identifyFromEdit() {
+    const mediaId = document.getElementById('editMediaId').value;
+    if (!mediaId) { toast('No media item loaded', 'error'); return; }
+    closeEditModal();
+    identifyMedia(mediaId);
 }
 
 async function openArtworkPicker(mediaId, type) {
