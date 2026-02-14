@@ -1,6 +1,6 @@
 {
-  "version": "1.14.02",
+  "version": "1.15.02",
   "phase": 18,
   "released": "2026-02-14",
-  "notes": "Phased scan pipeline: preview clips and timeline thumbnails now run as separate background jobs after the core scan completes, so items appear in the library immediately."
+  "notes": "StashApp-style animated WebP previews: hover 3s to see animated preview, play button stays accessible, no more video overlay flickering."
 }

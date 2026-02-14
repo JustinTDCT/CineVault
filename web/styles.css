@@ -3010,14 +3010,9 @@ body.is-offline::after {
     font-size: 0.78rem; font-weight: 600; z-index: 10000; pointer-events: none;
 }
 
-/* Video preview on hover */
-.preview-overlay {
-    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-    z-index: 4; border-radius: 8px; overflow: hidden;
-}
-.preview-overlay video {
-    width: 100%; height: 100%; object-fit: cover;
-}
+/* Animated WebP preview state (StashApp-style hover) */
+/* No overlay elements needed -- poster img src swaps to animated WebP. */
+/* Play overlay remains visible via existing .media-card:hover .play-overlay rule. */
 
 /* ── Phase 12: Watch Together / SyncPlay ── */
 .sync-panel {

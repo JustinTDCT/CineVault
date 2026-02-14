@@ -979,8 +979,9 @@ func (s *Scanner) generateScreenshotPoster(item *models.MediaItem) {
 	log.Printf("Screenshot: generated poster for %s at %ds", item.FileName, seekSec)
 }
 
-// GeneratePreviewClip extracts 3-4 short clips from a video and concatenates into a WebM preview.
-// Stores in /previews/previews/{id}.webm. Updates media_items.preview_path.
+// GeneratePreviewClip creates an animated WebP from still frames sampled across the video.
+// Extracts ~16 frames at even intervals, encodes as a looping animated WebP for card hover.
+// Stores in /previews/previews/{id}.webp. Updates media_items.preview_path.
 func (s *Scanner) GeneratePreviewClip(item *models.MediaItem) {
 	if s.ffmpegPath == "" || s.posterDir == "" || item.DurationSeconds == nil || *item.DurationSeconds < 30 {
 		return
@@ -990,59 +991,42 @@ func (s *Scanner) GeneratePreviewClip(item *models.MediaItem) {
 	os.MkdirAll(previewDir, 0755)
 
 	duration := *item.DurationSeconds
-	// Pick 4 points: 15%, 35%, 55%, 75% of the video
-	points := []int{duration * 15 / 100, duration * 35 / 100, duration * 55 / 100, duration * 75 / 100}
-	clipDuration := 3 // seconds per clip
-
-	// Extract individual clips
-	var clipFiles []string
-	for i, pt := range points {
-		clipFile := filepath.Join(previewDir, fmt.Sprintf("%s_clip%d.webm", item.ID.String(), i))
-		cmd := exec.Command(s.ffmpegPath,
-			"-ss", fmt.Sprintf("%d", pt),
-			"-i", item.FilePath,
-			"-t", fmt.Sprintf("%d", clipDuration),
-			"-c:v", "libvpx-vp9", "-b:v", "500k",
-			"-vf", "scale=480:-2",
-			"-an", "-y", clipFile,
-		)
-		if _, err := cmd.CombinedOutput(); err != nil {
-			continue
-		}
-		clipFiles = append(clipFiles, clipFile)
+	// ~16 frames evenly spaced, skipping first/last 5%
+	numFrames := 16
+	interval := float64(duration) * 0.9 / float64(numFrames)
+	if interval < 1 {
+		interval = 1
 	}
+	startOffset := float64(duration) * 0.05
 
-	if len(clipFiles) < 2 {
-		// Clean up
-		for _, f := range clipFiles { os.Remove(f) }
+	outFile := filepath.Join(previewDir, item.ID.String()+".webp")
+	// Use fps filter to extract frames at the computed interval, starting from 5% in
+	cmd := exec.Command(s.ffmpegPath,
+		"-ss", fmt.Sprintf("%.1f", startOffset),
+		"-i", item.FilePath,
+		"-t", fmt.Sprintf("%.1f", float64(duration)*0.9),
+		"-vf", fmt.Sprintf("fps=1/%.2f,scale=320:-1", interval),
+		"-vcodec", "libwebp",
+		"-lossless", "0",
+		"-compression_level", "4",
+		"-q:v", "65",
+		"-loop", "0",
+		"-an",
+		"-vsync", "vfr",
+		"-y", outFile,
+	)
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("Preview: animated WebP failed for %s: %v (%s)", item.FileName, err, string(output))
 		return
 	}
 
-	// Build concat file
-	concatFile := filepath.Join(previewDir, item.ID.String()+"_concat.txt")
-	var concatContent string
-	for _, f := range clipFiles {
-		concatContent += fmt.Sprintf("file '%s'\n", f)
+	webPath := "/previews/previews/" + item.ID.String() + ".webp"
+	if err := s.mediaRepo.UpdatePreviewPath(item.ID, webPath); err != nil {
+		log.Printf("Preview: failed to store path for %s: %v", item.FileName, err)
+		return
 	}
-	os.WriteFile(concatFile, []byte(concatContent), 0644)
-
-	// Concatenate
-	outFile := filepath.Join(previewDir, item.ID.String()+".webm")
-	cmd := exec.Command(s.ffmpegPath,
-		"-f", "concat", "-safe", "0", "-i", concatFile,
-		"-c", "copy", "-y", outFile,
-	)
-	if _, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("Preview: concat failed for %s: %v", item.FileName, err)
-	} else {
-		webPath := "/previews/previews/" + item.ID.String() + ".webm"
-		s.mediaRepo.UpdatePreviewPath(item.ID, webPath)
-		log.Printf("Preview: generated clip for %s (%d clips, %ds each)", item.FileName, len(clipFiles), clipDuration)
-	}
-
-	// Clean up temp files
-	for _, f := range clipFiles { os.Remove(f) }
-	os.Remove(concatFile)
+	log.Printf("Preview: generated animated WebP for %s (%d frames, %.1fs interval)", item.FileName, numFrames, interval)
 }
 
 // GenerateTimelineThumbnails creates a sprite sheet of thumbnails for scrubber hover preview.

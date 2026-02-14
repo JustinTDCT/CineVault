@@ -225,32 +225,33 @@ function renderMediaCard(item) {
     </div>`;
 }
 
-// Video preview on hover (P9-05)
+// Animated WebP preview on hover (StashApp-style)
+// After 3s hover, swaps poster img src to animated WebP; restores on mouse leave.
+// Play button and all overlays remain accessible throughout.
 let previewTimer = null;
 document.addEventListener('mouseenter', (e) => {
     if (!e.target || !e.target.closest) return;
     const card = e.target.closest('.media-card[data-preview]');
     if (!card) return;
     previewTimer = setTimeout(() => {
-        const poster = card.querySelector('.media-poster');
-        if (poster.querySelector('.preview-overlay')) return;
-        const video = document.createElement('video');
-        video.src = card.dataset.preview;
-        video.muted = true; video.autoplay = true; video.loop = true;
-        video.playsInline = true;
-        const overlay = document.createElement('div');
-        overlay.className = 'preview-overlay';
-        overlay.appendChild(video);
-        poster.appendChild(overlay);
-    }, 1000);
+        const img = card.querySelector('.media-poster img');
+        if (!img || card.classList.contains('previewing')) return;
+        card.dataset.originalSrc = img.src;
+        img.src = card.dataset.preview;
+        card.classList.add('previewing');
+    }, 3000);
 }, true);
 document.addEventListener('mouseleave', (e) => {
     if (!e.target || !e.target.closest) return;
     const card = e.target.closest('.media-card[data-preview]');
     if (!card) return;
     clearTimeout(previewTimer);
-    const overlay = card.querySelector('.preview-overlay');
-    if (overlay) { const v = overlay.querySelector('video'); if (v) v.pause(); overlay.remove(); }
+    if (card.classList.contains('previewing')) {
+        const img = card.querySelector('.media-poster img');
+        if (img && card.dataset.originalSrc) img.src = card.dataset.originalSrc;
+        card.classList.remove('previewing');
+        delete card.dataset.originalSrc;
+    }
 }, true);
 
 // ──── Skeleton Generators ────
