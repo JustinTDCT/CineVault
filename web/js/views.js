@@ -500,7 +500,7 @@ async function loadMediaDetail(id) {
                 <h1>${m.title}</h1>
                 <div class="meta-row">${meta}</div>
                 ${m.description ? '<p class="description">'+m.description+'</p>' : ''}
-                ${(m.edition_type && m.edition_type !== 'Theatrical' && m.edition_type !== 'Standard' && m.edition_type !== '' && m.edition_type !== 'unknown') ? '<div class="edition-appendix"><span class="edition-appendix-badge">'+m.edition_type+' Edition</span></div>' : ''}
+                ${(m.edition_type && m.edition_type !== 'Theatrical' && m.edition_type !== 'Standard' && m.edition_type !== '' && m.edition_type !== 'unknown') ? '<div class="edition-appendix"><span class="edition-appendix-badge">'+m.edition_type+' Edition</span><div id="editionAppendixDetails" class="edition-appendix-details"></div></div>' : ''}
                 <div id="detailGenreTags" class="genre-tags"></div>
                 ${ratingsHTML}
                 ${countryRatingsHTML}
@@ -586,6 +586,31 @@ async function loadMediaDetail(id) {
             ratingEl.innerHTML = html;
         }
     })();
+
+    // Load edition appendix details from cache server if this is a non-standard edition
+    if (m.edition_type && m.edition_type !== 'Theatrical' && m.edition_type !== 'Standard' && m.edition_type !== '' && m.edition_type !== 'unknown') {
+        loadEditionAppendix(id, m.edition_type);
+    }
+}
+
+async function loadEditionAppendix(mediaId, editionType) {
+    const container = document.getElementById('editionAppendixDetails');
+    if (!container) return;
+    try {
+        const edRes = await api('GET', '/media/' + mediaId + '/editions');
+        if (!edRes.success || !edRes.data.cache_editions || edRes.data.cache_editions.length === 0) return;
+        // Find matching cache edition by type (case-insensitive)
+        const et = editionType.toLowerCase().trim();
+        const match = edRes.data.cache_editions.find(ce => {
+            const ct = (ce.edition_type || '').toLowerCase().trim();
+            return ct === et || ct.includes(et) || et.includes(ct);
+        });
+        if (!match) return;
+        let parts = [];
+        if (match.overview) parts.push('<p class="edition-appendix-overview">' + escapeHtml(match.overview) + '</p>');
+        if (match.new_content_summary) parts.push('<p class="edition-appendix-content"><strong>New content:</strong> ' + escapeHtml(match.new_content_summary) + '</p>');
+        if (parts.length > 0) container.innerHTML = parts.join('');
+    } catch(e) {}
 }
 
 async function loadMediaGenreTags(mediaId) {
