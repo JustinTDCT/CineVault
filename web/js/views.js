@@ -4113,6 +4113,15 @@ async function showNewRequestDialog() {
 
 // ──────────────────── Artwork Picker ────────────────────
 
+function browseArtworkFromEdit(type) {
+    const mediaId = document.getElementById('editMediaId').value;
+    if (!mediaId) { toast('No media item loaded', 'error'); return; }
+    // Close the edit modal first
+    const modal = document.getElementById('editModal');
+    if (modal) modal.style.display = 'none';
+    openArtworkPicker(mediaId, type);
+}
+
 async function openArtworkPicker(mediaId, type) {
     const res = await api('GET', `/media/${mediaId}/artwork`);
     if (!res.success || !res.data) {
