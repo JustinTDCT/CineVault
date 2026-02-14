@@ -318,6 +318,19 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 		if existing.PosterPath == nil && s.isProbeableType(library.MediaType) {
 			s.generateScreenshotPoster(existing)
 		}
+		// Generate preview/thumbnails for existing items that don't have them yet
+		if s.isProbeableType(library.MediaType) && s.settingsRepo != nil {
+			if val, _ := s.settingsRepo.Get("create_previews_enabled"); val != "false" {
+				if existing.PreviewPath == nil {
+					s.GeneratePreviewClip(existing)
+				}
+			}
+			if val, _ := s.settingsRepo.Get("create_timeline_thumbnails_enabled"); val != "false" {
+				if existing.SpritePath == nil {
+					s.GenerateTimelineThumbnails(existing)
+				}
+			}
+		}
 		atomic.AddInt64(filesSkipped, 1)
 		return
 	}
@@ -523,6 +536,20 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 
 	if item.PosterPath == nil && s.isProbeableType(library.MediaType) {
 		s.generateScreenshotPoster(item)
+	}
+
+	// Generate preview clip and timeline thumbnails if enabled (default: on)
+	if s.isProbeableType(library.MediaType) && s.settingsRepo != nil {
+		if val, _ := s.settingsRepo.Get("create_previews_enabled"); val != "false" {
+			if item.PreviewPath == nil {
+				s.GeneratePreviewClip(item)
+			}
+		}
+		if val, _ := s.settingsRepo.Get("create_timeline_thumbnails_enabled"); val != "false" {
+			if item.SpritePath == nil {
+				s.GenerateTimelineThumbnails(item)
+			}
+		}
 	}
 
 	atomic.AddInt64(filesAdded, 1)
@@ -1043,6 +1070,43 @@ func (s *Scanner) GeneratePreviewClip(item *models.MediaItem) {
 	// Clean up temp files
 	for _, f := range clipFiles { os.Remove(f) }
 	os.Remove(concatFile)
+}
+
+// GenerateTimelineThumbnails creates a sprite sheet of thumbnails for scrubber hover preview.
+// Stores in /thumbnails/sprites/{id}.jpg. Updates media_items.sprite_path.
+func (s *Scanner) GenerateTimelineThumbnails(item *models.MediaItem) {
+	if s.ffmpegPath == "" || s.posterDir == "" || item.DurationSeconds == nil || *item.DurationSeconds < 10 {
+		return
+	}
+
+	spriteDir := filepath.Join(s.posterDir, "sprites")
+	os.MkdirAll(spriteDir, 0755)
+
+	duration := *item.DurationSeconds
+	// One frame every 10 seconds for short videos, scale up interval for longer content
+	interval := 10
+	if duration > 600 {
+		interval = duration / 60 // ~60 frames total
+	}
+
+	outFile := filepath.Join(spriteDir, item.ID.String()+".jpg")
+	cmd := exec.Command(s.ffmpegPath,
+		"-i", item.FilePath,
+		"-vf", fmt.Sprintf("fps=1/%d,scale=160:-1,tile=10x10", interval),
+		"-q:v", "5",
+		"-y", outFile,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("Sprite: generation failed for %s: %v (%s)", item.FileName, err, string(output))
+		return
+	}
+
+	webPath := "/thumbnails/sprites/" + item.ID.String() + ".jpg"
+	if err := s.mediaRepo.UpdateSpritePath(item.ID, webPath); err != nil {
+		log.Printf("Sprite: failed to store path for %s: %v", item.FileName, err)
+		return
+	}
+	log.Printf("Sprite: generated timeline thumbnails for %s (interval=%ds)", item.FileName, interval)
 }
 
 func (s *Scanner) isValidExtension(mediaType models.MediaType, ext string) bool {

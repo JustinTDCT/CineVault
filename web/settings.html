@@ -201,7 +201,38 @@
         const mc = document.getElementById('settingsContent');
         mc.innerHTML = `<div class="section-header"><h2 class="section-title">Video</h2></div>
             <p class="section-desc">Configure playback preferences and video quality settings.</p>
+            <div id="videoGenerationCards"></div>
             <div class="settings-grid" id="videoGrid"><div class="spinner"></div></div>`;
+
+        // Load system settings for generation toggles
+        const sysSett = await api('GET', '/settings/system');
+        const sys = sysSett.success ? sysSett.data : {};
+        const previewsEnabled = sys.create_previews_enabled !== 'false';
+        const thumbnailsEnabled = sys.create_timeline_thumbnails_enabled !== 'false';
+
+        document.getElementById('videoGenerationCards').innerHTML = `
+            <div class="settings-card full-width" style="margin-bottom:20px;">
+                <h3>Media Generation</h3>
+                <p class="settings-warning-note">&#9888; These features generate additional files for each video in your libraries and can consume significant disk space on your server.</p>
+                <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                    <div>
+                        <label class="toggle-label" style="margin-bottom:0;">
+                            <span class="toggle-switch"><input type="checkbox" id="setCreatePreviews" ${previewsEnabled?'checked':''} onchange="saveVideoGenerationSetting('create_previews_enabled', this.checked)"><span class="toggle-slider"></span></span>
+                            Create Previews
+                        </label>
+                        <p style="color:#8a9bae;font-size:0.8rem;margin:4px 0 0 0;">Generate short video preview clips for hover playback, similar to StashApp. Runs automatically during library scans.</p>
+                    </div>
+                </div>
+                <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">
+                    <div>
+                        <label class="toggle-label" style="margin-bottom:0;">
+                            <span class="toggle-switch"><input type="checkbox" id="setCreateTimeline" ${thumbnailsEnabled?'checked':''} onchange="saveVideoGenerationSetting('create_timeline_thumbnails_enabled', this.checked)"><span class="toggle-slider"></span></span>
+                            Create Timeline Thumbnails
+                        </label>
+                        <p style="color:#8a9bae;font-size:0.8rem;margin:4px 0 0 0;">Generate sprite sheet thumbnails used when scrubbing through a video's timeline. Runs automatically during library scans.</p>
+                    </div>
+                </div>
+            </div>`;
 
         const prefs = await api('GET', '/settings/playback');
         const p = prefs.success ? prefs.data : { playback_mode: 'always_ask', preferred_quality: '1080p', auto_play_next: true };
@@ -230,6 +261,15 @@
                 <div class="form-group"><label><input type="checkbox" id="setPbAutoPlay" ${p.auto_play_next?'checked':''}> Auto-play next episode</label></div>
                 <button class="btn-primary" onclick="savePlaybackPrefs()">Save</button>
             </div>`;
+    }
+
+    async function saveVideoGenerationSetting(key, enabled) {
+        const settings = {};
+        settings[key] = enabled ? 'true' : 'false';
+        const d = await api('PUT', '/settings/system', settings);
+        const label = key === 'create_previews_enabled' ? 'Create Previews' : 'Create Timeline Thumbnails';
+        if (d.success) toast(label + (enabled ? ' enabled' : ' disabled'));
+        else toast(d.error || 'Failed to save setting', 'error');
     }
 
     async function savePlaybackPrefs() {

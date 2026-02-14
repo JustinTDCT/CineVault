@@ -231,6 +231,8 @@ type MediaItem struct {
 	MetadataLocked   bool            `json:"metadata_locked" db:"metadata_locked"`
 	LockedFields     pq.StringArray  `json:"locked_fields" db:"locked_fields"`
 	DuplicateStatus  string          `json:"duplicate_status" db:"duplicate_status"`
+	PreviewPath      *string         `json:"preview_path,omitempty" db:"preview_path"`
+	SpritePath       *string         `json:"sprite_path,omitempty" db:"sprite_path"`
 	// Extras support (trailers, featurettes, etc.)
 	ParentMediaID    *uuid.UUID      `json:"parent_media_id,omitempty" db:"parent_media_id"`
 	ExtraType        *string         `json:"extra_type,omitempty" db:"extra_type"`

@@ -1,6 +1,6 @@
 {
-  "version": "1.11.02",
+  "version": "1.12.02",
   "phase": 18,
   "released": "2026-02-14",
-  "notes": "Added Find Duplicates toggle in Content > Duplicates settings to enable/disable automatic phash gathering after library scans."
+  "notes": "Added Create Previews and Create Timeline Thumbnails toggles in Playback > Video settings with disk space warning. Preview clips and sprite sheets generated during library scans when enabled."
 }

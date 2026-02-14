@@ -63,7 +63,8 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	source_type, hdr_format, dynamic_range, keywords,
 	metacritic_score, content_ratings_json, taglines_json, trailers_json, descriptions_json,
 	custom_notes, custom_tags,
-	metadata_locked, locked_fields, duplicate_status, parent_media_id, extra_type,
+	metadata_locked, locked_fields, duplicate_status, preview_path, sprite_path,
+	parent_media_id, extra_type,
 	added_at, updated_at`
 
 // prefixedMediaColumns returns mediaColumns with each column prefixed by the given alias (e.g. "m.").
@@ -96,6 +97,7 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.MetacriticScore, &item.ContentRatingsJSON, &item.TaglinesJSON, &item.TrailersJSON, &item.DescriptionsJSON,
 		&item.CustomNotes, &item.CustomTags,
 		&item.MetadataLocked, &item.LockedFields, &item.DuplicateStatus,
+		&item.PreviewPath, &item.SpritePath,
 		&item.ParentMediaID, &item.ExtraType, &item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
@@ -721,6 +723,12 @@ func (r *MediaRepository) SetGeneratedPoster(id uuid.UUID, generated bool) error
 // UpdatePreviewPath sets the preview clip path for a media item.
 func (r *MediaRepository) UpdatePreviewPath(id uuid.UUID, previewPath string) error {
 	_, err := r.db.Exec(`UPDATE media_items SET preview_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, previewPath, id)
+	return err
+}
+
+// UpdateSpritePath sets the timeline thumbnail sprite sheet path for a media item.
+func (r *MediaRepository) UpdateSpritePath(id uuid.UUID, spritePath string) error {
+	_, err := r.db.Exec(`UPDATE media_items SET sprite_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, spritePath, id)
 	return err
 }
 

@@ -460,6 +460,7 @@ body {
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
 .section-desc { color: var(--text-tertiary); font-size: 0.88rem; margin-bottom: var(--sp-6); max-width: 600px; line-height: 1.5; }
+.settings-warning-note { color: #d4a843; background: rgba(212,168,67,0.08); border: 1px solid rgba(212,168,67,0.2); border-radius: var(--radius-md); padding: 10px 14px; font-size: 0.82rem; line-height: 1.5; margin-bottom: 16px; }
 .view-all { color: var(--text-tertiary); font-size: var(--text-base); cursor: pointer; padding: var(--sp-2) var(--sp-4); border-radius: var(--radius-md); transition: all var(--transition); }
 .view-all:hover { color: var(--accent); background: var(--accent-bg); }
 
