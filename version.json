@@ -1,6 +1,6 @@
 {
-  "version": "1.09.00",
+  "version": "1.10.00",
   "phase": 18,
-  "released": "2026-02-13",
-  "notes": "Unified cache server integration: exclusive cache mode, artwork picker, resolution-aware editions, multi-country content ratings, metacritic score, all trailers/taglines/descriptions from cache."
+  "released": "2026-02-14",
+  "notes": "Editions tab redesign: View button replaces Edit for direct navigation to edition detail, edition appendix under description, simplified Known Editions list with expandable metadata."
 }

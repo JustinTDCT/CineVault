@@ -500,6 +500,7 @@ async function loadMediaDetail(id) {
                 <h1>${m.title}</h1>
                 <div class="meta-row">${meta}</div>
                 ${m.description ? '<p class="description">'+m.description+'</p>' : ''}
+                ${(m.edition_type && m.edition_type !== 'Theatrical' && m.edition_type !== 'Standard' && m.edition_type !== '' && m.edition_type !== 'unknown') ? '<div class="edition-appendix"><span class="edition-appendix-badge">'+m.edition_type+' Edition</span></div>' : ''}
                 <div id="detailGenreTags" class="genre-tags"></div>
                 ${ratingsHTML}
                 ${countryRatingsHTML}
@@ -667,7 +668,7 @@ async function showDetailTab(btn, tab, mediaId) {
                     <td>${e.edition_type}${defBadge}</td>
                     <td>${dur}</td><td>${res}</td><td>${codec}</td><td>${audio}</td><td>${src}</td><td>${dr}</td><td>${size}</td>
                     <td class="edition-tab-actions">
-                        <button class="edition-tab-edit" onclick="openEditModal('${e.media_item_id}')" title="Edit this edition">&#9998;</button>
+                        <button class="edition-tab-view" onclick="loadMediaDetail('${e.media_item_id}')" title="View this edition">&#128065; View</button>
                         <button class="edition-tab-play" onclick="playMedia('${e.media_item_id}','${e.title.replace(/'/g,"\\'")}')">&#9654; Play</button>
                     </td>
                 </tr>`;
@@ -686,43 +687,38 @@ async function showDetailTab(btn, tab, mediaId) {
             html += `<div class="cache-editions-section">
                 <h4 class="edition-tab-heading">Known Editions <span class="cache-editions-badge">AI</span></h4>
                 <p class="cache-editions-note">These editions are known to exist for this title, discovered via AI metadata enrichment.</p>
-                <div class="cache-editions-grid">`;
-            for (const ed of ce) {
+                <ul class="known-editions-list">`;
+            for (let i = 0; i < ce.length; i++) {
+                const ed = ce[i];
                 const runtime = ed.runtime ? ed.runtime + ' min' : '';
                 const extra = ed.additional_runtime ? ' (+' + ed.additional_runtime + ' min)' : '';
-                const year = ed.edition_release_year ? ' (' + ed.edition_release_year + ')' : '';
+                const year = ed.edition_release_year ? '(' + ed.edition_release_year + ')' : '';
                 const overview = ed.overview || '';
                 const contentSummary = ed.new_content_summary || '';
-                // Resolution badges
-                let resBadges = '';
+                // Build detail content for expand
+                let detailParts = [];
+                if (runtime) detailParts.push('<strong>Runtime:</strong> ' + runtime + extra);
+                if (year) detailParts.push('<strong>Year:</strong> ' + ed.edition_release_year);
+                if (ed.content_rating) detailParts.push('<strong>Rating:</strong> ' + escapeHtml(ed.content_rating));
                 if (ed.known_resolutions) {
                     let resolutions = ed.known_resolutions;
                     if (typeof resolutions === 'string') { try { resolutions = JSON.parse(resolutions); } catch(e) { resolutions = []; } }
-                    if (Array.isArray(resolutions)) {
-                        resolutions.forEach(r => {
-                            const cls = r.toLowerCase().includes('4k') || r.toLowerCase().includes('uhd') ? 'res-4k' :
-                                        r.toLowerCase().includes('1080') ? 'res-1080p' :
-                                        r.toLowerCase().includes('720') ? 'res-720p' : 'res-default';
-                            resBadges += `<span class="edition-resolution-badge ${cls}">${escapeHtml(r)}</span>`;
-                        });
-                    }
+                    if (Array.isArray(resolutions) && resolutions.length > 0) detailParts.push('<strong>Resolutions:</strong> ' + resolutions.map(r => escapeHtml(r)).join(', '));
                 }
-                // Content rating badge
-                const ratingBadge = ed.content_rating ? `<span class="edition-content-rating">${escapeHtml(ed.content_rating)}</span>` : '';
-                // Verified badge
-                const verifiedBadge = ed.verified ? `<span class="edition-verified" title="${ed.verification_source ? escapeHtml(ed.verification_source) : 'Verified'}">Verified</span>` : '';
-                html += `<div class="cache-edition-card">
-                    <div class="cache-edition-header">
-                        <span class="cache-edition-type">${escapeHtml(ed.edition_type)}</span>
-                        ${runtime ? `<span class="cache-edition-runtime">${runtime}${extra}</span>` : ''}
-                        ${year ? `<span class="cache-edition-year">${year}</span>` : ''}
+                if (overview) detailParts.push('<strong>Overview:</strong> ' + escapeHtml(overview));
+                if (contentSummary) detailParts.push('<strong>New content:</strong> ' + escapeHtml(contentSummary));
+                if (ed.verified) detailParts.push('<span class="edition-verified">' + (ed.verification_source ? escapeHtml(ed.verification_source) : 'Verified') + '</span>');
+                const hasDetails = detailParts.length > 0;
+                const label = escapeHtml(ed.edition_type) + (runtime ? ' &mdash; ' + runtime + extra : '') + (year ? ' ' + year : '');
+                html += `<li class="known-edition-item">
+                    <div class="known-edition-row">
+                        <span class="known-edition-name">${label}</span>
+                        ${hasDetails ? `<a class="known-edition-toggle" href="javascript:void(0)" onclick="toggleKnownEdition(this)" data-idx="${i}">Show details</a>` : ''}
                     </div>
-                    ${resBadges || ratingBadge || verifiedBadge ? `<div style="margin:6px 0;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">${resBadges}${ratingBadge}${verifiedBadge}</div>` : ''}
-                    ${overview ? `<div class="cache-edition-overview">${escapeHtml(overview)}</div>` : ''}
-                    ${contentSummary ? `<div class="cache-edition-content"><strong>New content:</strong> ${escapeHtml(contentSummary)}</div>` : ''}
-                </div>`;
+                    ${hasDetails ? `<div class="known-edition-details" id="knownEdDetail_${i}" style="display:none;">${detailParts.join('<br>')}</div>` : ''}
+                </li>`;
             }
-            html += '</div></div>';
+            html += '</ul></div>';
         }
         tc.innerHTML = html;
     } else if (tab === 'metadata') {
@@ -3302,6 +3298,20 @@ async function applyMatchByIndex(idx) {
     if (!match) { toast('Match not found','error'); return; }
     const d=await api('POST','/media/'+_identifyMediaId+'/apply-meta',match);
     if(d.success){toast('Metadata applied!');loadMediaDetail(_identifyMediaId);}else toast(d.error,'error');
+}
+
+// ──── Toggle Known Edition Details ────
+function toggleKnownEdition(el) {
+    const idx = el.getAttribute('data-idx');
+    const detail = document.getElementById('knownEdDetail_' + idx);
+    if (!detail) return;
+    if (detail.style.display === 'none') {
+        detail.style.display = 'block';
+        el.textContent = 'Hide details';
+    } else {
+        detail.style.display = 'none';
+        el.textContent = 'Show details';
+    }
 }
 
 // ──── Edit Media ────

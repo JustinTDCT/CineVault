@@ -1993,12 +1993,12 @@ video::cue { background: rgba(0,0,0,0.7); color: #fff; font-size: 1.1rem; line-h
 }
 .edition-tab-play:hover { transform: translateY(-1px); box-shadow: 0 6px 18px var(--accent-glow); }
 .edition-tab-actions { display: flex; align-items: center; gap: var(--sp-2); justify-content: flex-end; }
-.edition-tab-edit {
+.edition-tab-view {
     background: rgba(255,255,255,0.07); color: var(--text-secondary);
     padding: 4px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
     font-size: var(--text-sm); cursor: pointer; transition: all var(--transition); font-family: inherit;
 }
-.edition-tab-edit:hover { background: rgba(0,217,255,0.12); color: var(--accent); border-color: rgba(0,217,255,0.3); }
+.edition-tab-view:hover { background: rgba(0,217,255,0.12); color: var(--accent); border-color: rgba(0,217,255,0.3); }
 
 /* Cache Server AI Editions */
 .cache-editions-section {
@@ -2040,6 +2040,42 @@ video::cue { background: rgba(0,0,0,0.7); color: #fff; font-size: 1.1rem; line-h
     border-top: 1px solid rgba(139,92,246,0.06);
 }
 .cache-edition-content strong { color: #b794f4; font-weight: 600; }
+
+/* ── Edition Appendix (under description) ── */
+.edition-appendix {
+    margin: 8px 0 4px; display: flex; align-items: center; gap: 8px;
+}
+.edition-appendix-badge {
+    display: inline-block; font-size: var(--text-sm); font-weight: 600;
+    color: #d4a5ff; background: rgba(168,85,247,0.15);
+    padding: 4px 14px; border-radius: var(--radius-sm);
+    border: 1px solid rgba(168,85,247,0.25); letter-spacing: 0.3px;
+}
+
+/* ── Known Editions List ── */
+.known-editions-list {
+    list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px;
+}
+.known-edition-item {
+    padding: 8px 14px; border-radius: var(--radius-lg);
+    background: rgba(139,92,246,0.04); border: 1px solid rgba(139,92,246,0.10);
+}
+.known-edition-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.known-edition-name {
+    color: var(--text-primary); font-size: var(--text-sm); font-weight: 500;
+}
+.known-edition-toggle {
+    color: var(--accent); font-size: var(--text-xs); cursor: pointer;
+    text-decoration: none; white-space: nowrap; transition: color var(--transition);
+}
+.known-edition-toggle:hover { color: #66e5ff; text-decoration: underline; }
+.known-edition-details {
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(139,92,246,0.08);
+    color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.7;
+}
+.known-edition-details strong { color: #b794f4; font-weight: 600; }
 
 /* ══════════════════════════════════════
    27. Login Intro Overlay
