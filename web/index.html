@@ -354,11 +354,17 @@
             <div class="edit-field-row">
                 <div class="form-group">
                     <label>Poster URL</label>
-                    <input type="text" id="editPosterPath" placeholder="URL or local path to poster image">
+                    <div class="input-with-btn">
+                        <input type="text" id="editPosterPath" placeholder="URL or local path to poster image">
+                        <button type="button" class="btn-browse" onclick="openArtworkPicker(document.getElementById('editMediaId').value,'poster')" title="Browse posters">&#128444;</button>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Backdrop URL</label>
-                    <input type="text" id="editBackdropPath" placeholder="URL or local path to backdrop image">
+                    <div class="input-with-btn">
+                        <input type="text" id="editBackdropPath" placeholder="URL or local path to backdrop image">
+                        <button type="button" class="btn-browse" onclick="openArtworkPicker(document.getElementById('editMediaId').value,'backdrop')" title="Browse backdrops">&#127756;</button>
+                    </div>
                 </div>
             </div>
             <div class="form-group">

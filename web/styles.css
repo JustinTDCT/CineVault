@@ -1348,6 +1348,14 @@ video::cue { background: rgba(0,0,0,0.7); color: #fff; font-size: 1.1rem; line-h
     border-top: 1px solid rgba(0,217,255,0.1);
 }
 .edit-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.input-with-btn { display: flex; gap: 6px; align-items: stretch; }
+.input-with-btn input { flex: 1; min-width: 0; }
+.btn-browse {
+    flex-shrink: 0; padding: 0 12px; border: 1px solid rgba(0,217,255,0.25); border-radius: var(--radius-xl);
+    background: linear-gradient(135deg, rgba(0,217,255,0.1) 0%, rgba(0,153,204,0.15) 100%);
+    color: var(--text-primary); font-size: 1.1rem; cursor: pointer; transition: all var(--transition);
+}
+.btn-browse:hover { border-color: var(--accent); background: rgba(0,217,255,0.2); box-shadow: var(--shadow-glow); }
 
 /* ── Lock Badges ── */
 .lock-badge {
