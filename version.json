@@ -1,6 +1,6 @@
 {
-  "version": "1.10.00",
+  "version": "1.10.02",
   "phase": 18,
   "released": "2026-02-14",
-  "notes": "Editions tab redesign: View button replaces Edit for direct navigation to edition detail, edition appendix under description, simplified Known Editions list with expandable metadata."
+  "notes": "Editions tab redesign: View button, edition appendix with AI metadata under description, simplified Known Editions list, search results enriched with edition counts."
 }
