@@ -31,40 +31,31 @@ services:
       PREVIEW_PATH: /previews
       THUMBNAIL_PATH: /thumbnails
       MEDIA_PATH: /media
+      # ── Intel QSV ──
+      LIBVA_DRIVER_NAME: iHD
+      # ── NVIDIA ──
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
     volumes:
-      - /plexdata:/media:ro
+      - /media:/media:ro
       - previews_data:/previews
       - thumbnails_data:/thumbnails
 
     # ── Intel QSV (Quick Sync Video) ──
-    # Uncomment to enable Intel GPU hardware transcoding.
-    # Requires: Intel CPU with integrated graphics, host driver + i915, /dev/dri devices.
-    #
-    # devices:
-    #   - /dev/dri/renderD128:/dev/dri/renderD128
-    #   - /dev/dri/card0:/dev/dri/card0
-    # environment:
-    #   LIBVA_DRIVER_NAME: iHD          # Use intel-media-driver (Broadwell+); use "i965" for older
-    #   LIBVA_DRIVERS_PATH: /usr/lib/dri
-    # group_add:
-    #   - "109"                          # 'render' group GID — check with: getent group render
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+      - /dev/dri/card0:/dev/dri/card0
+    group_add:
+      - "993"   # 'render' group GID
 
     # ── NVIDIA GPU ──
-    # Uncomment to enable NVIDIA hardware transcoding (NVENC/NVDEC).
-    # Requires: NVIDIA GPU, host nvidia-driver, nvidia-container-toolkit installed.
-    # Note: The Dockerfile must also be updated to install NVIDIA CUDA/NVENC libs
-    # (replace Alpine ffmpeg with an NVENC-capable build, e.g. linuxserver/ffmpeg).
-    #
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1                 # or "all" for all GPUs
-    #           capabilities: [gpu, video]
-    # environment:
-    #   NVIDIA_VISIBLE_DEVICES: all
-    #   NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, video]
 
   # ── PostgreSQL ──
   postgres:
