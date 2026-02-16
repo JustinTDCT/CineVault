@@ -1010,8 +1010,13 @@ func (s *Scanner) GeneratePreviewClip(item *models.MediaItem) {
 
 	outFile := filepath.Join(previewDir, item.ID.String()+".mp4")
 
-	// Build ffmpeg args: one -ss/-t/-i per segment
+	// Detect hardware encoder for faster preview generation
+	encoder := ffmpeg.DetectH264Encoder(s.ffmpegPath)
+	hwCfg := ffmpeg.PreviewEncodeConfig(encoder)
+
+	// Build ffmpeg args: hw init (if needed), then one -ss/-t/-i per segment
 	args := make([]string, 0, numSegments*6+20)
+	args = append(args, hwCfg.PreInputArgs...)
 	for i := 0; i < numSegments; i++ {
 		ss := startOffset + float64(i)*interval
 		args = append(args,
@@ -1028,14 +1033,15 @@ func (s *Scanner) GeneratePreviewClip(item *models.MediaItem) {
 		filterParts += fmt.Sprintf("[%d:v]scale=320:-2,setpts=PTS-STARTPTS[v%d];", i, i)
 		concatInputs += fmt.Sprintf("[v%d]", i)
 	}
-	filterComplex := fmt.Sprintf("%s%sconcat=n=%d:v=1:a=0[out]", filterParts, concatInputs, numSegments)
+	filterComplex := fmt.Sprintf("%s%sconcat=n=%d:v=1:a=0%s[out]", filterParts, concatInputs, numSegments, hwCfg.FilterSuffix)
 
 	args = append(args,
 		"-filter_complex", filterComplex,
 		"-map", "[out]",
-		"-c:v", "libx264",
-		"-preset", "veryfast",
-		"-crf", "28",
+		"-c:v", hwCfg.Encoder,
+	)
+	args = append(args, hwCfg.QualityArgs...)
+	args = append(args,
 		"-an",
 		"-movflags", "+faststart",
 		"-y", outFile,

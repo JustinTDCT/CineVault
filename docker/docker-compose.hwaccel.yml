@@ -1,0 +1,25 @@
+# Hardware acceleration overlay for GPU-equipped hosts.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.hwaccel.yml up -d
+#
+# Requires:
+#   Intel QSV: /dev/dri devices, i915 driver, render group access
+#   NVIDIA:    nvidia-driver + nvidia-container-toolkit on host
+
+services:
+  cinevault:
+    environment:
+      LIBVA_DRIVER_NAME: iHD
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+      - /dev/dri/card0:/dev/dri/card0
+    group_add:
+      - "993"   # 'render' group GID — verify with: getent group render
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, video]

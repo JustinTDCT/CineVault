@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/JustinTDCT/CineVault/internal/ffmpeg"
 )
 
 type Generator struct {
@@ -101,8 +103,13 @@ func (g *Generator) GenerateAnimatedPreview(mediaItemID, filePath string, durati
 	usable := float64(durationSec) * 0.90
 	interval := usable / float64(numSegments)
 
-	// Build ffmpeg args: one -ss/-t/-i per segment, then a filter_complex to scale+concat
+	// Detect hardware encoder for faster preview generation
+	encoder := ffmpeg.DetectH264Encoder(g.ffmpegPath)
+	hwCfg := ffmpeg.PreviewEncodeConfig(encoder)
+
+	// Build ffmpeg args: hw init (if needed), then one -ss/-t/-i per segment
 	args := make([]string, 0, numSegments*6+20)
+	args = append(args, hwCfg.PreInputArgs...)
 	for i := 0; i < numSegments; i++ {
 		ss := startOffset + float64(i)*interval
 		args = append(args,
@@ -119,14 +126,15 @@ func (g *Generator) GenerateAnimatedPreview(mediaItemID, filePath string, durati
 		filterParts += fmt.Sprintf("[%d:v]scale=320:-2,setpts=PTS-STARTPTS[v%d];", i, i)
 		concatInputs += fmt.Sprintf("[v%d]", i)
 	}
-	filterComplex := fmt.Sprintf("%s%sconcat=n=%d:v=1:a=0[out]", filterParts, concatInputs, numSegments)
+	filterComplex := fmt.Sprintf("%s%sconcat=n=%d:v=1:a=0%s[out]", filterParts, concatInputs, numSegments, hwCfg.FilterSuffix)
 
 	args = append(args,
 		"-filter_complex", filterComplex,
 		"-map", "[out]",
-		"-c:v", "libx264",
-		"-preset", "veryfast",
-		"-crf", "28",
+		"-c:v", hwCfg.Encoder,
+	)
+	args = append(args, hwCfg.QualityArgs...)
+	args = append(args,
 		"-an",
 		"-movflags", "+faststart",
 		"-y", outPath,

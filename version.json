@@ -1,6 +1,6 @@
 {
-  "version": "1.17.00",
+  "version": "1.17.01",
   "phase": 18,
   "released": "2026-02-16",
-  "notes": "Switch to Jellyfin FFmpeg (jellyfin-ffmpeg7) for full QSV, NVENC, and VAAPI hardware transcoding support."
+  "notes": "Preview MP4 generation now uses hardware encoding (QSV/NVENC/VAAPI) when available."
 }
