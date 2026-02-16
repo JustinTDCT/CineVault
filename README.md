@@ -98,5 +98,5 @@ Server starts on `http://localhost:8080`
 | `SERVER_PORT` | `8080` | HTTP server port |
 | `JWT_SECRET` | (dev key) | JWT signing secret |
 | `TMDB_API_KEY` | (empty) | TMDB API key for metadata |
-| `FFMPEG_PATH` | `/usr/bin/ffmpeg` | FFmpeg binary path |
-| `FFPROBE_PATH` | `/usr/bin/ffprobe` | FFprobe binary path |
+| `FFMPEG_PATH` | `/usr/lib/jellyfin-ffmpeg/ffmpeg` | FFmpeg binary path (Jellyfin FFmpeg) |
+| `FFPROBE_PATH` | `/usr/lib/jellyfin-ffmpeg/ffprobe` | FFprobe binary path (Jellyfin FFmpeg) |

@@ -83,8 +83,8 @@ func Load() (*Config, error) {
 			Thumbnail: getEnv("THUMBNAIL_PATH", "/thumbnails"),
 		},
 		FFmpeg: FFmpegConfig{
-			FFmpegPath:  getEnv("FFMPEG_PATH", "/usr/bin/ffmpeg"),
-			FFprobePath: getEnv("FFPROBE_PATH", "/usr/bin/ffprobe"),
+			FFmpegPath:  getEnv("FFMPEG_PATH", "/usr/lib/jellyfin-ffmpeg/ffmpeg"),
+			FFprobePath: getEnv("FFPROBE_PATH", "/usr/lib/jellyfin-ffmpeg/ffprobe"),
 		},
 		TMDBAPIKey: getEnv("TMDB_API_KEY", "ca12f0b4ddc375cc34dd9ae9e4fe94e0"),
 	}, nil

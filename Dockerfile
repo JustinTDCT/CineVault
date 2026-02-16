@@ -10,19 +10,27 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o cinevault ./cmd/cinevault/
 
-# ── Runtime stage ──
-FROM alpine:3.20
+# ── Runtime stage (Debian for Jellyfin FFmpeg hw-accel support) ──
+FROM debian:bookworm-slim
 
-RUN apk add --no-cache \
-    ffmpeg \
-    ca-certificates \
-    tzdata \
-    postgresql16-client \
-    libva \
-    libva-utils \
-    intel-media-driver \
-    intel-media-sdk \
-    mesa-va-gallium
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl gnupg ca-certificates tzdata postgresql-client && \
+    mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key \
+      | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/jellyfin.gpg arch=amd64] https://repo.jellyfin.org/debian bookworm main" \
+      > /etc/apt/sources.list.d/jellyfin.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        jellyfin-ffmpeg7 \
+        intel-media-va-driver \
+        mesa-va-drivers \
+        vainfo && \
+    apt-get purge -y curl gnupg && \
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
