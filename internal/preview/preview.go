@@ -80,33 +80,59 @@ func (g *Generator) GenerateSprite(mediaItemID, filePath string, durationSec int
 	return outPath, nil
 }
 
-// GenerateAnimatedPreview creates a short animated WebP/GIF preview
+// GenerateAnimatedPreview creates a short looping MP4 video preview (StashApp-style).
+// Extracts multiple short clips from evenly-spaced positions, concatenates them into
+// a single MP4 encoded with H.264 at low resolution for fast card-hover playback.
 func (g *Generator) GenerateAnimatedPreview(mediaItemID, filePath string, durationSec int) (string, error) {
 	outDir := filepath.Join(g.outputBase, mediaItemID)
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		return "", err
 	}
 
-	outPath := filepath.Join(outDir, "preview.webp")
-	// Take 3-second clips from 3 different points
-	start1 := durationSec / 4
-	start2 := durationSec / 2
-	start3 := durationSec * 3 / 4
-	if start1 < 1 {
-		start1 = 1
+	outPath := filepath.Join(outDir, "preview.mp4")
+
+	numSegments := 8
+	clipDuration := 1.5
+	if durationSec < 60 {
+		numSegments = 4
 	}
 
-	// Use complex filter to concatenate segments
-	cmd := exec.Command(g.ffmpegPath,
-		"-ss", fmt.Sprintf("%d", start1), "-t", "2", "-i", filePath,
-		"-ss", fmt.Sprintf("%d", start2), "-t", "2", "-i", filePath,
-		"-ss", fmt.Sprintf("%d", start3), "-t", "2", "-i", filePath,
-		"-filter_complex", "[0:v]scale=320:-1[v0];[1:v]scale=320:-1[v1];[2:v]scale=320:-1[v2];[v0][v1][v2]concat=n=3:v=1[out]",
+	startOffset := float64(durationSec) * 0.05
+	usable := float64(durationSec) * 0.90
+	interval := usable / float64(numSegments)
+
+	// Build ffmpeg args: one -ss/-t/-i per segment, then a filter_complex to scale+concat
+	args := make([]string, 0, numSegments*6+20)
+	for i := 0; i < numSegments; i++ {
+		ss := startOffset + float64(i)*interval
+		args = append(args,
+			"-ss", fmt.Sprintf("%.2f", ss),
+			"-t", fmt.Sprintf("%.2f", clipDuration),
+			"-i", filePath,
+		)
+	}
+
+	// Build filter_complex: scale each stream then concat
+	var filterParts string
+	var concatInputs string
+	for i := 0; i < numSegments; i++ {
+		filterParts += fmt.Sprintf("[%d:v]scale=320:-2,setpts=PTS-STARTPTS[v%d];", i, i)
+		concatInputs += fmt.Sprintf("[v%d]", i)
+	}
+	filterComplex := fmt.Sprintf("%s%sconcat=n=%d:v=1:a=0[out]", filterParts, concatInputs, numSegments)
+
+	args = append(args,
+		"-filter_complex", filterComplex,
 		"-map", "[out]",
-		"-loop", "0",
-		"-y",
-		outPath,
+		"-c:v", "libx264",
+		"-preset", "veryfast",
+		"-crf", "28",
+		"-an",
+		"-movflags", "+faststart",
+		"-y", outPath,
 	)
+
+	cmd := exec.Command(g.ffmpegPath, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Printf("Animated preview failed: %s", string(output))

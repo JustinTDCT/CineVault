@@ -1,6 +1,6 @@
 {
-  "version": "1.15.02",
+  "version": "1.16.00",
   "phase": 18,
-  "released": "2026-02-14",
-  "notes": "StashApp-style animated WebP previews: hover 3s to see animated preview, play button stays accessible, no more video overlay flickering."
+  "released": "2026-02-16",
+  "notes": "StashApp-style MP4 video previews: generates short clip montages, plays on 3s hover (excludes play button), adds Rebuild Previews to library menu."
 }

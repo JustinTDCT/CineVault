@@ -394,6 +394,7 @@ function openLibCtxMenu(libId, dotsEl) {
     html += `<div class="lib-ctx-item" onclick="sidebarScanLibrary('${libId}')"><span class="ctx-icon">&#128269;</span> Scan Library</div>`;
     html += `<div class="lib-ctx-item" onclick="sidebarMetadataRefresh('${libId}')"><span class="ctx-icon">&#8635;</span> Metadata Refresh</div>`;
     html += `<div class="lib-ctx-item" onclick="sidebarRehashPhash('${libId}')"><span class="ctx-icon">&#128274;</span> Rehash pHash</div>`;
+    html += `<div class="lib-ctx-item" onclick="sidebarRebuildPreviews('${libId}')"><span class="ctx-icon">&#127916;</span> Rebuild Previews</div>`;
     menu.innerHTML = html;
     menu.dataset.libId = libId;
 
@@ -449,6 +450,15 @@ function sidebarRehashPhash(libId) {
     toast('pHash computation started...');
     api('POST', '/libraries/' + libId + '/phash').then(data => {
         if (data.success) toast('pHash job queued — duplicates will be analyzed');
+        else toast('Failed: ' + (data.error || 'Unknown'), 'error');
+    }).catch(e => toast('Error: ' + e.message, 'error'));
+}
+
+function sidebarRebuildPreviews(libId) {
+    closeLibCtxMenu();
+    toast('Rebuilding previews...');
+    api('POST', '/libraries/' + libId + '/rebuild-previews').then(data => {
+        if (data.success) toast('Preview rebuild queued — existing previews will be cleared and regenerated');
         else toast('Failed: ' + (data.error || 'Unknown'), 'error');
     }).catch(e => toast('Error: ' + e.message, 'error'));
 }

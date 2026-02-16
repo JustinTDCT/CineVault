@@ -47,6 +47,7 @@ type SpritesLibraryPayload struct {
 
 type PreviewsLibraryPayload struct {
 	LibraryID string `json:"library_id"`
+	Rebuild   bool   `json:"rebuild,omitempty"`
 }
 
 type MetadataPayload struct {
@@ -525,7 +526,8 @@ func (h *PreviewsLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 		return fmt.Errorf("unmarshal: %w", err)
 	}
 
-	if h.settingsRepo != nil {
+	// For non-rebuild jobs, respect the setting; rebuild always runs
+	if !p.Rebuild && h.settingsRepo != nil {
 		if val, err := h.settingsRepo.Get("create_previews_enabled"); err == nil && val == "false" {
 			log.Printf("Previews: skipping for library %s (Create Previews disabled)", p.LibraryID)
 			return nil
@@ -534,11 +536,38 @@ func (h *PreviewsLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 
 	taskID := "previews:" + p.LibraryID
 	taskDesc := "Generating preview clips"
+	if p.Rebuild {
+		taskDesc = "Rebuilding preview clips"
+	}
 	libID, _ := uuid.Parse(p.LibraryID)
 
-	items, err := h.mediaRepo.ListItemsNeedingPreviews(libID)
+	// For rebuild: clear existing previews and delete files, then regenerate all
+	if p.Rebuild {
+		log.Printf("Previews: rebuild requested — clearing existing previews for library %s", p.LibraryID)
+		oldPaths, err := h.mediaRepo.ClearLibraryPreviews(libID)
+		if err != nil {
+			log.Printf("Previews: failed to clear DB preview paths: %v", err)
+		}
+		previewBaseDir := h.sc.PreviewDir()
+		for _, webPath := range oldPaths {
+			// webPath is like /previews/previews/{id}.mp4 or .webp
+			relPath := strings.TrimPrefix(webPath, "/previews/")
+			diskPath := filepath.Join(previewBaseDir, relPath)
+			if err := os.Remove(diskPath); err != nil && !os.IsNotExist(err) {
+				log.Printf("Previews: failed to remove %s: %v", diskPath, err)
+			}
+		}
+	}
+
+	var items []*models.MediaItem
+	var err error
+	if p.Rebuild {
+		items, err = h.mediaRepo.ListAllItemsForPreviews(libID)
+	} else {
+		items, err = h.mediaRepo.ListItemsNeedingPreviews(libID)
+	}
 	if err != nil {
-		return fmt.Errorf("list items needing previews: %w", err)
+		return fmt.Errorf("list items for previews: %w", err)
 	}
 
 	if len(items) == 0 {

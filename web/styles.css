@@ -3010,9 +3010,18 @@ body.is-offline::after {
     font-size: 0.78rem; font-weight: 600; z-index: 10000; pointer-events: none;
 }
 
-/* Animated WebP preview state (StashApp-style hover) */
-/* No overlay elements needed -- poster img src swaps to animated WebP. */
-/* Play overlay remains visible via existing .media-card:hover .play-overlay rule. */
+/* StashApp-style video preview on hover */
+.preview-video {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; border-radius: var(--radius-2xl);
+    z-index: 1; opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+.media-card.previewing .preview-video { opacity: 1; }
+/* Keep play overlay above the preview video so it stays clickable */
+.media-card.previewing .play-overlay { z-index: 2; }
+.media-card.previewing .play-button { z-index: 3; }
 
 /* ── Phase 12: Watch Together / SyncPlay ── */
 .sync-panel {

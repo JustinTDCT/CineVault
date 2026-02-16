@@ -225,33 +225,84 @@ function renderMediaCard(item) {
     </div>`;
 }
 
-// Animated WebP preview on hover (StashApp-style)
-// After 3s hover, swaps poster img src to animated WebP; restores on mouse leave.
-// Play button and all overlays remain accessible throughout.
-let previewTimer = null;
-document.addEventListener('mouseenter', (e) => {
-    if (!e.target || !e.target.closest) return;
-    const card = e.target.closest('.media-card[data-preview]');
-    if (!card) return;
-    previewTimer = setTimeout(() => {
-        const img = card.querySelector('.media-poster img');
-        if (!img || card.classList.contains('previewing')) return;
-        card.dataset.originalSrc = img.src;
-        img.src = card.dataset.preview;
-        card.classList.add('previewing');
-    }, 3000);
-}, true);
-document.addEventListener('mouseleave', (e) => {
-    if (!e.target || !e.target.closest) return;
-    const card = e.target.closest('.media-card[data-preview]');
-    if (!card) return;
-    clearTimeout(previewTimer);
-    if (card.classList.contains('previewing')) {
-        const img = card.querySelector('.media-poster img');
-        if (img && card.dataset.originalSrc) img.src = card.dataset.originalSrc;
-        card.classList.remove('previewing');
-        delete card.dataset.originalSrc;
+// StashApp-style video preview on hover
+// After 3s hovering the card (excluding the play button), a muted looping MP4
+// video fades in over the poster. Moving to the play button pauses/hides the
+// preview so it stays click-accessible. Leaving the card cleans up entirely.
+let _pvTimer = null;
+let _pvCard = null;
+
+function _pvShow(card) {
+    const poster = card.querySelector('.media-poster');
+    if (!poster || card.classList.contains('previewing')) return;
+    let vid = card.querySelector('.preview-video');
+    if (!vid) {
+        vid = document.createElement('video');
+        vid.className = 'preview-video';
+        vid.src = card.dataset.preview;
+        vid.muted = true;
+        vid.loop = true;
+        vid.playsInline = true;
+        vid.setAttribute('playsinline', '');
+        vid.preload = 'auto';
+        poster.appendChild(vid);
     }
+    vid.play().catch(() => {});
+    card.classList.add('previewing');
+}
+
+function _pvHide(card) {
+    const vid = card.querySelector('.preview-video');
+    if (vid) {
+        vid.pause();
+        vid.removeAttribute('src');
+        vid.load();
+        vid.remove();
+    }
+    card.classList.remove('previewing');
+}
+
+function _pvStop() {
+    clearTimeout(_pvTimer);
+    _pvTimer = null;
+    if (_pvCard) _pvHide(_pvCard);
+    _pvCard = null;
+}
+
+function _pvStart(card) {
+    if (_pvCard === card && _pvTimer) return;
+    _pvStop();
+    _pvCard = card;
+    _pvTimer = setTimeout(() => { _pvTimer = null; _pvShow(card); }, 3000);
+}
+
+document.addEventListener('mouseenter', (e) => {
+    if (!e.target || !e.target.classList) return;
+    // Entering the play button: pause preview timer / hide active preview
+    if (e.target.classList.contains('play-button')) {
+        clearTimeout(_pvTimer);
+        _pvTimer = null;
+        if (_pvCard) _pvHide(_pvCard);
+        return;
+    }
+    // Entering a card with preview data: start the 3s timer
+    const card = e.target.closest ? e.target.closest('.media-card[data-preview]') : null;
+    if (card) _pvStart(card);
+}, true);
+
+document.addEventListener('mouseleave', (e) => {
+    if (!e.target || !e.target.classList) return;
+    // Leaving the play button back to the card: restart timer
+    if (e.target.classList.contains('play-button')) {
+        const card = e.target.closest ? e.target.closest('.media-card[data-preview]') : null;
+        if (card && card === _pvCard) {
+            _pvTimer = setTimeout(() => { _pvTimer = null; _pvShow(card); }, 3000);
+        }
+        return;
+    }
+    // Leaving the card entirely: full cleanup
+    const card = e.target.closest ? e.target.closest('.media-card[data-preview]') : null;
+    if (card && card === _pvCard) _pvStop();
 }, true);
 
 // ──── Skeleton Generators ────

@@ -460,6 +460,47 @@ func (s *Server) handlePhashLibrary(w http.ResponseWriter, r *http.Request) {
 	}})
 }
 
+// handleRebuildPreviews clears existing previews for a library and enqueues a rebuild job.
+func (s *Server) handleRebuildPreviews(w http.ResponseWriter, r *http.Request) {
+	if val, err := s.settingsRepo.Get("create_previews_enabled"); err == nil && val == "false" {
+		s.respondError(w, http.StatusBadRequest, "Create Previews is disabled in settings")
+		return
+	}
+
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid library id")
+		return
+	}
+
+	library, err := s.libRepo.GetByID(id)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "library not found")
+		return
+	}
+
+	if s.jobQueue == nil {
+		s.respondError(w, http.StatusServiceUnavailable, "job queue not available")
+		return
+	}
+
+	uniqueID := "rebuild-previews:" + id.String()
+	jobID, err := s.jobQueue.EnqueueUnique(jobs.TaskPreviewsLibrary, jobs.PreviewsLibraryPayload{
+		LibraryID: id.String(),
+		Rebuild:   true,
+	}, uniqueID, asynq.Timeout(12*time.Hour), asynq.Retention(1*time.Hour))
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	log.Printf("Rebuild previews job enqueued for library %q: %s", library.Name, jobID)
+	s.respondJSON(w, http.StatusAccepted, Response{Success: true, Data: map[string]string{
+		"job_id":  jobID,
+		"message": "rebuild previews job enqueued",
+	}})
+}
+
 // handleLibraryFilters returns available filter options for a library.
 func (s *Server) handleLibraryFilters(w http.ResponseWriter, r *http.Request) {
 	libraryID, err := uuid.Parse(r.PathValue("id"))

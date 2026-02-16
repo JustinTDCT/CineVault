@@ -121,6 +121,11 @@ func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepos
 	}
 }
 
+// PreviewDir returns the base preview output directory.
+func (s *Scanner) PreviewDir() string {
+	return s.posterDir
+}
+
 // ProgressFunc reports scan progress: current processed count, total eligible files, files added so far, current filename.
 type ProgressFunc func(current, total, added int, filename string)
 
@@ -979,9 +984,10 @@ func (s *Scanner) generateScreenshotPoster(item *models.MediaItem) {
 	log.Printf("Screenshot: generated poster for %s at %ds", item.FileName, seekSec)
 }
 
-// GeneratePreviewClip creates an animated WebP from still frames sampled across the video.
-// Extracts ~16 frames at even intervals, encodes as a looping animated WebP for card hover.
-// Stores in /previews/previews/{id}.webp. Updates media_items.preview_path.
+// GeneratePreviewClip creates a short looping MP4 video preview (StashApp-style).
+// Extracts multiple short clips from evenly-spaced positions across the video,
+// concatenates them into a single H.264 MP4 at 320px width for fast card-hover playback.
+// Stores in /previews/previews/{id}.mp4. Updates media_items.preview_path.
 func (s *Scanner) GeneratePreviewClip(item *models.MediaItem) {
 	if s.ffmpegPath == "" || s.posterDir == "" || item.DurationSeconds == nil || *item.DurationSeconds < 30 {
 		return
@@ -991,42 +997,62 @@ func (s *Scanner) GeneratePreviewClip(item *models.MediaItem) {
 	os.MkdirAll(previewDir, 0755)
 
 	duration := *item.DurationSeconds
-	// ~16 frames evenly spaced, skipping first/last 5%
-	numFrames := 16
-	interval := float64(duration) * 0.9 / float64(numFrames)
-	if interval < 1 {
-		interval = 1
-	}
-	startOffset := float64(duration) * 0.05
 
-	outFile := filepath.Join(previewDir, item.ID.String()+".webp")
-	// Use fps filter to extract frames at the computed interval, starting from 5% in
-	cmd := exec.Command(s.ffmpegPath,
-		"-ss", fmt.Sprintf("%.1f", startOffset),
-		"-i", item.FilePath,
-		"-t", fmt.Sprintf("%.1f", float64(duration)*0.9),
-		"-vf", fmt.Sprintf("fps=1/%.2f,scale=320:-1", interval),
-		"-vcodec", "libwebp",
-		"-lossless", "0",
-		"-compression_level", "4",
-		"-q:v", "65",
-		"-loop", "0",
+	numSegments := 8
+	clipDuration := 1.5
+	if duration < 60 {
+		numSegments = 4
+	}
+
+	startOffset := float64(duration) * 0.05
+	usable := float64(duration) * 0.90
+	interval := usable / float64(numSegments)
+
+	outFile := filepath.Join(previewDir, item.ID.String()+".mp4")
+
+	// Build ffmpeg args: one -ss/-t/-i per segment
+	args := make([]string, 0, numSegments*6+20)
+	for i := 0; i < numSegments; i++ {
+		ss := startOffset + float64(i)*interval
+		args = append(args,
+			"-ss", fmt.Sprintf("%.2f", ss),
+			"-t", fmt.Sprintf("%.2f", clipDuration),
+			"-i", item.FilePath,
+		)
+	}
+
+	// Build filter_complex: scale each stream then concat
+	var filterParts string
+	var concatInputs string
+	for i := 0; i < numSegments; i++ {
+		filterParts += fmt.Sprintf("[%d:v]scale=320:-2,setpts=PTS-STARTPTS[v%d];", i, i)
+		concatInputs += fmt.Sprintf("[v%d]", i)
+	}
+	filterComplex := fmt.Sprintf("%s%sconcat=n=%d:v=1:a=0[out]", filterParts, concatInputs, numSegments)
+
+	args = append(args,
+		"-filter_complex", filterComplex,
+		"-map", "[out]",
+		"-c:v", "libx264",
+		"-preset", "veryfast",
+		"-crf", "28",
 		"-an",
-		"-vsync", "vfr",
+		"-movflags", "+faststart",
 		"-y", outFile,
 	)
 
+	cmd := exec.Command(s.ffmpegPath, args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("Preview: animated WebP failed for %s: %v (%s)", item.FileName, err, string(output))
+		log.Printf("Preview: MP4 clip failed for %s: %v (%s)", item.FileName, err, string(output))
 		return
 	}
 
-	webPath := "/previews/previews/" + item.ID.String() + ".webp"
+	webPath := "/previews/previews/" + item.ID.String() + ".mp4"
 	if err := s.mediaRepo.UpdatePreviewPath(item.ID, webPath); err != nil {
 		log.Printf("Preview: failed to store path for %s: %v", item.FileName, err)
 		return
 	}
-	log.Printf("Preview: generated animated WebP for %s (%d frames, %.1fs interval)", item.FileName, numFrames, interval)
+	log.Printf("Preview: generated MP4 clip for %s (%d segments x %.1fs)", item.FileName, numSegments, clipDuration)
 }
 
 // GenerateTimelineThumbnails creates a sprite sheet of thumbnails for scrubber hover preview.

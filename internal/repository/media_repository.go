@@ -959,6 +959,54 @@ func (r *MediaRepository) ListItemsNeedingPreviews(libraryID uuid.UUID) ([]*mode
 	return items, rows.Err()
 }
 
+// ListAllItemsForPreviews returns all video items eligible for previews (duration >= 30s),
+// including those that already have a preview_path. Used for rebuild operations.
+func (r *MediaRepository) ListAllItemsForPreviews(libraryID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + `
+		FROM media_items
+		WHERE library_id = $1
+		  AND duration_seconds >= 30
+		  AND media_type IN ('movies','adult_movies','tv_shows','music_videos','home_videos','other_videos')
+		ORDER BY added_at`
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// ClearLibraryPreviews NULLs out preview_path for all items in a library and returns
+// the old preview paths so the caller can delete the files on disk.
+func (r *MediaRepository) ClearLibraryPreviews(libraryID uuid.UUID) ([]string, error) {
+	rows, err := r.db.Query(`SELECT preview_path FROM media_items WHERE library_id = $1 AND preview_path IS NOT NULL AND preview_path != ''`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		paths = append(paths, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	_, err = r.db.Exec(`UPDATE media_items SET preview_path = NULL, updated_at = CURRENT_TIMESTAMP WHERE library_id = $1`, libraryID)
+	return paths, err
+}
+
 // ListPhashesInLibrary returns all items in a library that have a phash.
 func (r *MediaRepository) ListPhashesInLibrary(libraryID uuid.UUID) ([]*models.MediaItem, error) {
 	query := `SELECT ` + mediaColumns + `

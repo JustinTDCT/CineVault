@@ -273,6 +273,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("POST /api/v1/libraries/{id}/auto-match", s.authMiddleware(s.handleAutoMatch, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/libraries/{id}/refresh-metadata", s.authMiddleware(s.handleRefreshMetadata, models.RoleAdmin))
 	s.router.HandleFunc("POST /api/v1/libraries/{id}/phash", s.authMiddleware(s.handlePhashLibrary, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/libraries/{id}/rebuild-previews", s.authMiddleware(s.handleRebuildPreviews, models.RoleAdmin))
 	s.router.HandleFunc("GET /api/v1/libraries/{id}/filters", s.authMiddleware(s.handleLibraryFilters, models.RoleUser))
 
 	// TV Shows
