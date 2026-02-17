@@ -1,6 +1,6 @@
 {
-  "version": "1.17.01",
+  "version": "1.18.00",
   "phase": 18,
   "released": "2026-02-16",
-  "notes": "Preview MP4 generation now uses hardware encoding (QSV/NVENC/VAAPI) when available."
+  "notes": "Per-library preview clip and timeline thumbnail settings. Libraries can now individually enable or disable preview and thumbnail generation."
 }

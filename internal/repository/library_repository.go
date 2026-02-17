@@ -19,6 +19,7 @@ func NewLibraryRepository(db *sql.DB) *LibraryRepository {
 const libraryColumns = `id, name, media_type, path, is_enabled, scan_on_startup,
 	season_grouping, access_level, include_in_homepage, include_in_search,
 	retrieve_metadata, nfo_import, nfo_export, prefer_local_artwork,
+	create_previews, create_thumbnails,
 	adult_content_type, scan_interval, next_scan_at, watch_enabled,
 	last_scan_at, created_at, updated_at`
 
@@ -30,6 +31,7 @@ func scanLibrary(row interface{ Scan(dest ...interface{}) error }) (*models.Libr
 		&lib.SeasonGrouping, &lib.AccessLevel,
 		&lib.IncludeInHomepage, &lib.IncludeInSearch,
 		&lib.RetrieveMetadata, &lib.NFOImport, &lib.NFOExport, &lib.PreferLocalArtwork,
+		&lib.CreatePreviews, &lib.CreateThumbnails,
 		&lib.AdultContentType, &lib.ScanInterval, &lib.NextScanAt, &lib.WatchEnabled,
 		&lib.LastScanAt, &lib.CreatedAt, &lib.UpdatedAt,
 	)
@@ -41,8 +43,9 @@ func (r *LibraryRepository) Create(library *models.Library) error {
 		INSERT INTO libraries (id, name, media_type, path, is_enabled, scan_on_startup,
 			season_grouping, access_level, include_in_homepage, include_in_search,
 			retrieve_metadata, nfo_import, nfo_export, prefer_local_artwork,
+			create_previews, create_thumbnails,
 			adult_content_type, scan_interval, next_scan_at, watch_enabled)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		RETURNING created_at, updated_at`
 
 	return r.db.QueryRow(query, library.ID, library.Name, library.MediaType,
@@ -50,6 +53,7 @@ func (r *LibraryRepository) Create(library *models.Library) error {
 		library.SeasonGrouping, library.AccessLevel,
 		library.IncludeInHomepage, library.IncludeInSearch,
 		library.RetrieveMetadata, library.NFOImport, library.NFOExport, library.PreferLocalArtwork,
+		library.CreatePreviews, library.CreateThumbnails,
 		library.AdultContentType, library.ScanInterval, library.NextScanAt, library.WatchEnabled).
 		Scan(&library.CreatedAt, &library.UpdatedAt)
 }
@@ -109,6 +113,7 @@ func (r *LibraryRepository) ListForUser(userID uuid.UUID, role models.UserRole) 
 	aliasedColumns := `l.id, l.name, l.media_type, l.path, l.is_enabled, l.scan_on_startup,
 		l.season_grouping, l.access_level, l.include_in_homepage, l.include_in_search,
 		l.retrieve_metadata, l.nfo_import, l.nfo_export, l.prefer_local_artwork,
+		l.create_previews, l.create_thumbnails,
 		l.adult_content_type, l.scan_interval, l.next_scan_at, l.watch_enabled,
 		l.last_scan_at, l.created_at, l.updated_at`
 
@@ -183,6 +188,7 @@ func (r *LibraryRepository) ListHomepageLibraries(userID uuid.UUID, role models.
 	aliasedColumns := `l.id, l.name, l.media_type, l.path, l.is_enabled, l.scan_on_startup,
 		l.season_grouping, l.access_level, l.include_in_homepage, l.include_in_search,
 		l.retrieve_metadata, l.nfo_import, l.nfo_export, l.prefer_local_artwork,
+		l.create_previews, l.create_thumbnails,
 		l.adult_content_type, l.scan_interval, l.next_scan_at, l.watch_enabled,
 		l.last_scan_at, l.created_at, l.updated_at`
 
@@ -256,15 +262,17 @@ func (r *LibraryRepository) Update(library *models.Library) error {
 		    season_grouping = $5, access_level = $6,
 		    include_in_homepage = $7, include_in_search = $8,
 		    retrieve_metadata = $9, nfo_import = $10, nfo_export = $11, prefer_local_artwork = $12,
-		    adult_content_type = $13, scan_interval = $14, next_scan_at = $15, watch_enabled = $16,
+		    create_previews = $13, create_thumbnails = $14,
+		    adult_content_type = $15, scan_interval = $16, next_scan_at = $17, watch_enabled = $18,
 		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = $17`
+		WHERE id = $19`
 
 	result, err := r.db.Exec(query, library.Name, library.Path,
 		library.IsEnabled, library.ScanOnStartup,
 		library.SeasonGrouping, library.AccessLevel,
 		library.IncludeInHomepage, library.IncludeInSearch,
 		library.RetrieveMetadata, library.NFOImport, library.NFOExport, library.PreferLocalArtwork,
+		library.CreatePreviews, library.CreateThumbnails,
 		library.AdultContentType, library.ScanInterval, library.NextScanAt, library.WatchEnabled,
 		library.ID)
 	if err != nil {

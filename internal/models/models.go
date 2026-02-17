@@ -118,6 +118,8 @@ type Library struct {
 	NFOImport           bool          `json:"nfo_import" db:"nfo_import"`
 	NFOExport           bool          `json:"nfo_export" db:"nfo_export"`
 	PreferLocalArtwork  bool          `json:"prefer_local_artwork" db:"prefer_local_artwork"`
+	CreatePreviews      bool          `json:"create_previews" db:"create_previews"`
+	CreateThumbnails    bool          `json:"create_thumbnails" db:"create_thumbnails"`
 	AdultContentType    *string       `json:"adult_content_type,omitempty" db:"adult_content_type"`
 	ScanInterval      string        `json:"scan_interval" db:"scan_interval"`
 	NextScanAt        *time.Time    `json:"next_scan_at,omitempty" db:"next_scan_at"`

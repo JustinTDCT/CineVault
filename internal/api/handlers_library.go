@@ -39,6 +39,8 @@ type createLibraryRequest struct {
 	NFOImport          *bool    `json:"nfo_import"`
 	NFOExport          *bool    `json:"nfo_export"`
 	PreferLocalArtwork *bool    `json:"prefer_local_artwork"`
+	CreatePreviews     *bool    `json:"create_previews"`
+	CreateThumbnails   *bool    `json:"create_thumbnails"`
 	AdultContentType   *string  `json:"adult_content_type"`
 	ScanInterval       string   `json:"scan_interval"`
 	WatchEnabled       bool     `json:"watch_enabled"`
@@ -81,6 +83,14 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 	if req.PreferLocalArtwork != nil {
 		preferLocalArtwork = *req.PreferLocalArtwork
 	}
+	createPreviews := true // default on
+	if req.CreatePreviews != nil {
+		createPreviews = *req.CreatePreviews
+	}
+	createThumbnails := true // default on
+	if req.CreateThumbnails != nil {
+		createThumbnails = *req.CreateThumbnails
+	}
 
 	// Determine primary path from folders or path field
 	primaryPath := req.Path
@@ -107,6 +117,8 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 		NFOImport:          nfoImport,
 		NFOExport:          nfoExport,
 		PreferLocalArtwork: preferLocalArtwork,
+		CreatePreviews:     createPreviews,
+		CreateThumbnails:   createThumbnails,
 		AdultContentType:   req.AdultContentType,
 		ScanInterval:       scanInterval,
 		WatchEnabled:       req.WatchEnabled,
@@ -223,6 +235,8 @@ type updateLibraryRequest struct {
 	NFOImport          *bool    `json:"nfo_import"`
 	NFOExport          *bool    `json:"nfo_export"`
 	PreferLocalArtwork *bool    `json:"prefer_local_artwork"`
+	CreatePreviews     *bool    `json:"create_previews"`
+	CreateThumbnails   *bool    `json:"create_thumbnails"`
 	AdultContentType   *string  `json:"adult_content_type"`
 	ScanInterval       string   `json:"scan_interval"`
 	WatchEnabled       bool     `json:"watch_enabled"`
@@ -278,6 +292,14 @@ func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
 	if req.PreferLocalArtwork != nil {
 		preferLocalArtwork = *req.PreferLocalArtwork
 	}
+	createPreviews := existing.CreatePreviews
+	if req.CreatePreviews != nil {
+		createPreviews = *req.CreatePreviews
+	}
+	createThumbnails := existing.CreateThumbnails
+	if req.CreateThumbnails != nil {
+		createThumbnails = *req.CreateThumbnails
+	}
 	adultContentType := existing.AdultContentType
 	if req.AdultContentType != nil {
 		adultContentType = req.AdultContentType
@@ -319,6 +341,8 @@ func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
 		NFOImport:          nfoImport,
 		NFOExport:          nfoExport,
 		PreferLocalArtwork: preferLocalArtwork,
+		CreatePreviews:     createPreviews,
+		CreateThumbnails:   createThumbnails,
 		AdultContentType:   adultContentType,
 		ScanInterval:       scanInterval,
 		NextScanAt:         nextScanAt,

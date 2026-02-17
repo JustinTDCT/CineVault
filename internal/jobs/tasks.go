@@ -185,6 +185,10 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 				spritesEnabled = false
 			}
 		}
+		if spritesEnabled && !library.CreateThumbnails {
+			spritesEnabled = false
+			log.Printf("Job: skipping thumbnails for library %s (disabled per-library)", p.LibraryID)
+		}
 		if spritesEnabled {
 			uniqueID := "sprites:" + p.LibraryID
 			if _, err := h.queue.EnqueueUnique(TaskSpritesLibrary, SpritesLibraryPayload{LibraryID: p.LibraryID}, uniqueID,
@@ -201,6 +205,10 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 			if val, err := h.settingsRepo.Get("create_previews_enabled"); err == nil && val == "false" {
 				previewsEnabled = false
 			}
+		}
+		if previewsEnabled && !library.CreatePreviews {
+			previewsEnabled = false
+			log.Printf("Job: skipping previews for library %s (disabled per-library)", p.LibraryID)
 		}
 		if previewsEnabled {
 			uniqueID := "previews:" + p.LibraryID
@@ -428,13 +436,14 @@ func (h *PreviewHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 
 type SpritesLibraryHandler struct {
 	mediaRepo    *repository.MediaRepository
+	libRepo      *repository.LibraryRepository
 	settingsRepo *repository.SettingsRepository
 	sc           *scanner.Scanner
 	notifier     EventNotifier
 }
 
-func NewSpritesLibraryHandler(mediaRepo *repository.MediaRepository, settingsRepo *repository.SettingsRepository, sc *scanner.Scanner, notifier EventNotifier) *SpritesLibraryHandler {
-	return &SpritesLibraryHandler{mediaRepo: mediaRepo, settingsRepo: settingsRepo, sc: sc, notifier: notifier}
+func NewSpritesLibraryHandler(mediaRepo *repository.MediaRepository, libRepo *repository.LibraryRepository, settingsRepo *repository.SettingsRepository, sc *scanner.Scanner, notifier EventNotifier) *SpritesLibraryHandler {
+	return &SpritesLibraryHandler{mediaRepo: mediaRepo, libRepo: libRepo, settingsRepo: settingsRepo, sc: sc, notifier: notifier}
 }
 
 func (h *SpritesLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
@@ -443,9 +452,19 @@ func (h *SpritesLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		return fmt.Errorf("unmarshal: %w", err)
 	}
 
+	// Global kill-switch
 	if h.settingsRepo != nil {
 		if val, err := h.settingsRepo.Get("create_timeline_thumbnails_enabled"); err == nil && val == "false" {
-			log.Printf("Sprites: skipping for library %s (Timeline Thumbnails disabled)", p.LibraryID)
+			log.Printf("Sprites: skipping for library %s (Timeline Thumbnails globally disabled)", p.LibraryID)
+			return nil
+		}
+	}
+
+	// Per-library setting
+	if h.libRepo != nil {
+		libID, _ := uuid.Parse(p.LibraryID)
+		if lib, err := h.libRepo.GetByID(libID); err == nil && !lib.CreateThumbnails {
+			log.Printf("Sprites: skipping for library %s (Timeline Thumbnails disabled for this library)", p.LibraryID)
 			return nil
 		}
 	}
@@ -511,13 +530,14 @@ func (h *SpritesLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 
 type PreviewsLibraryHandler struct {
 	mediaRepo    *repository.MediaRepository
+	libRepo      *repository.LibraryRepository
 	settingsRepo *repository.SettingsRepository
 	sc           *scanner.Scanner
 	notifier     EventNotifier
 }
 
-func NewPreviewsLibraryHandler(mediaRepo *repository.MediaRepository, settingsRepo *repository.SettingsRepository, sc *scanner.Scanner, notifier EventNotifier) *PreviewsLibraryHandler {
-	return &PreviewsLibraryHandler{mediaRepo: mediaRepo, settingsRepo: settingsRepo, sc: sc, notifier: notifier}
+func NewPreviewsLibraryHandler(mediaRepo *repository.MediaRepository, libRepo *repository.LibraryRepository, settingsRepo *repository.SettingsRepository, sc *scanner.Scanner, notifier EventNotifier) *PreviewsLibraryHandler {
+	return &PreviewsLibraryHandler{mediaRepo: mediaRepo, libRepo: libRepo, settingsRepo: settingsRepo, sc: sc, notifier: notifier}
 }
 
 func (h *PreviewsLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
@@ -526,11 +546,20 @@ func (h *PreviewsLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 		return fmt.Errorf("unmarshal: %w", err)
 	}
 
-	// For non-rebuild jobs, respect the setting; rebuild always runs
-	if !p.Rebuild && h.settingsRepo != nil {
-		if val, err := h.settingsRepo.Get("create_previews_enabled"); err == nil && val == "false" {
-			log.Printf("Previews: skipping for library %s (Create Previews disabled)", p.LibraryID)
-			return nil
+	// For non-rebuild jobs, respect the global + per-library settings; rebuild always runs
+	if !p.Rebuild {
+		if h.settingsRepo != nil {
+			if val, err := h.settingsRepo.Get("create_previews_enabled"); err == nil && val == "false" {
+				log.Printf("Previews: skipping for library %s (Create Previews globally disabled)", p.LibraryID)
+				return nil
+			}
+		}
+		if h.libRepo != nil {
+			libID, _ := uuid.Parse(p.LibraryID)
+			if lib, err := h.libRepo.GetByID(libID); err == nil && !lib.CreatePreviews {
+				log.Printf("Previews: skipping for library %s (Create Previews disabled for this library)", p.LibraryID)
+				return nil
+			}
 		}
 	}
 
@@ -1659,8 +1688,8 @@ func RegisterHandlers(q *Queue, sc *scanner.Scanner, libRepo *repository.Library
 	q.RegisterHandler(TaskScanLibrary, NewScanHandler(sc, libRepo, jobRepo, settingsRepo, q, notifier))
 	q.RegisterHandler(TaskFingerprint, NewFingerprintHandler(mediaRepo))
 	q.RegisterHandler(TaskPhashLibrary, NewPhashLibraryHandler(mediaRepo, settingsRepo, fp, notifier))
-	q.RegisterHandler(TaskSpritesLibrary, NewSpritesLibraryHandler(mediaRepo, settingsRepo, sc, notifier))
-	q.RegisterHandler(TaskPreviewsLibrary, NewPreviewsLibraryHandler(mediaRepo, settingsRepo, sc, notifier))
+	q.RegisterHandler(TaskSpritesLibrary, NewSpritesLibraryHandler(mediaRepo, libRepo, settingsRepo, sc, notifier))
+	q.RegisterHandler(TaskPreviewsLibrary, NewPreviewsLibraryHandler(mediaRepo, libRepo, settingsRepo, sc, notifier))
 	q.RegisterHandler(TaskGeneratePreview, NewPreviewHandler())
 	q.RegisterHandler(TaskMetadataScrape, NewMetadataScrapeHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))
 	q.RegisterHandler(TaskMetadataRefresh, NewMetadataRefreshHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))

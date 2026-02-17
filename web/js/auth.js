@@ -596,6 +596,26 @@ async function showEditLibraryForm(libId) {
             </div>
             <div class="option-row">
                 <div class="option-row-info">
+                    <div class="option-row-label">Generate Preview Clips</div>
+                    <div class="option-row-desc">Create short animated preview clips shown on hover</div>
+                </div>
+                <div class="toggle-btns">
+                    <label><input type="radio" name="createPreviews" value="yes" ${lib.create_previews!==false?'checked':''}><span>Yes</span></label>
+                    <label><input type="radio" name="createPreviews" value="no" ${lib.create_previews===false?'checked':''}><span>No</span></label>
+                </div>
+            </div>
+            <div class="option-row">
+                <div class="option-row-info">
+                    <div class="option-row-label">Generate Timeline Thumbnails</div>
+                    <div class="option-row-desc">Create sprite sheets used for the player timeline scrubber</div>
+                </div>
+                <div class="toggle-btns">
+                    <label><input type="radio" name="createThumbnails" value="yes" ${lib.create_thumbnails!==false?'checked':''}><span>Yes</span></label>
+                    <label><input type="radio" name="createThumbnails" value="no" ${lib.create_thumbnails===false?'checked':''}><span>No</span></label>
+                </div>
+            </div>
+            <div class="option-row">
+                <div class="option-row-info">
                     <div class="option-row-label">Scheduled Scan</div>
                     <div class="option-row-desc">Automatically scan this library on a schedule</div>
                 </div>
@@ -659,6 +679,8 @@ async function saveEditLibrary() {
     const nfo_import = document.querySelector('input[name="nfoImport"]:checked')?.value === 'yes';
     const nfo_export = document.querySelector('input[name="nfoExport"]:checked')?.value === 'yes';
     const prefer_local_artwork = document.querySelector('input[name="preferLocalArtwork"]:checked')?.value === 'yes';
+    const create_previews = document.querySelector('input[name="createPreviews"]:checked')?.value === 'yes';
+    const create_thumbnails = document.querySelector('input[name="createThumbnails"]:checked')?.value === 'yes';
     const scan_interval = document.getElementById('editScanInterval')?.value || 'disabled';
     const watch_enabled = document.querySelector('input[name="watchEnabled"]:checked')?.value === 'yes';
 
@@ -671,7 +693,8 @@ async function saveEditLibrary() {
         name, path: folders[0], folders, is_enabled: true,
         season_grouping, access_level, allowed_users,
         include_in_homepage, include_in_search, retrieve_metadata,
-        nfo_import, nfo_export, prefer_local_artwork, adult_content_type,
+        nfo_import, nfo_export, prefer_local_artwork,
+        create_previews, create_thumbnails, adult_content_type,
         scan_interval, watch_enabled
     });
     if (d.success) { toast('Library updated!'); loadLibrariesView(); loadSidebarCounts(); }
