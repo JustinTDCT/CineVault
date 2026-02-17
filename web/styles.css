@@ -877,7 +877,7 @@ body {
 .play-overlay {
     position: absolute; inset: 0;
     background: linear-gradient(135deg, rgba(0,217,255,0.15) 0%, rgba(10,25,41,0.8) 100%);
-    backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     opacity: 0; transition: opacity var(--transition); border-radius: var(--radius-2xl);
     pointer-events: none;
 }
