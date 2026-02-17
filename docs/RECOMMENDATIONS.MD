@@ -162,16 +162,44 @@ For full documentation of collections (manual, smart, nested, statistics, templa
 
 ---
 
+## Discovery Hubs
+
+CineVault provides curated discovery endpoints for browsing content by trending, genre, and decade.
+
+### Trending
+
+`GET /api/v1/discover/trending`
+
+Returns trending content based on recent watch activity across all users. Items are ranked by play count and recency.
+
+### Genre Hub
+
+`GET /api/v1/discover/genre/{slug}`
+
+Returns a genre-focused browse page with content tagged with the specified genre. Includes related genres and mood suggestions.
+
+### Decade Hub
+
+`GET /api/v1/discover/decade/{year}`
+
+Returns content grouped by decade (e.g., `/decade/1980` returns all 1980s content). Useful for era-based browsing.
+
+---
+
 ## API Reference
 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/v1/recommendations` | Personalized recommendations (top 20) |
 | GET | `/api/v1/recommendations/because-you-watched` | Content-similarity rows (5 sources x 8 similar) |
+| GET | `/api/v1/discover/trending` | Trending content |
+| GET | `/api/v1/discover/genre/{slug}` | Genre hub browse |
+| GET | `/api/v1/discover/decade/{year}` | Decade hub browse |
 
 All endpoints require authentication (Bearer token) and `user` role minimum.
 
 For collection-related endpoints, see [COLLECTIONS.MD](COLLECTIONS.MD).
+For watchlist and favorites, see [PLAYBACK.MD](PLAYBACK.MD).
 
 ---
 

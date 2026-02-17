@@ -86,6 +86,51 @@ When no users exist in the database, the setup wizard is triggered:
 3. `POST /api/v1/setup` creates the first user as an admin
 4. The response includes a JWT so the user is immediately logged in
 
+### Two-Factor Authentication (TOTP)
+
+CineVault supports time-based one-time password (TOTP) two-factor authentication compatible with any authenticator app (Google Authenticator, Authy, etc.).
+
+**Setup flow:**
+
+1. User calls `POST /api/v1/auth/2fa/setup` — server generates a TOTP secret and returns a provisioning URI (for QR code scanning)
+2. User scans the QR code with their authenticator app
+3. User calls `POST /api/v1/auth/2fa/verify` with a TOTP code from the app to confirm setup
+4. 2FA is now enabled for the account
+
+**Login flow with 2FA:**
+
+1. User logs in with username/password as normal
+2. If 2FA is enabled, the login response indicates a second factor is required
+3. User calls `POST /api/v1/auth/2fa/validate` with the current TOTP code
+4. On success, the full JWT is issued
+
+**Management:**
+
+- `GET /api/v1/auth/2fa/status` — check whether 2FA is enabled for the current user
+- `DELETE /api/v1/auth/2fa` — disable 2FA (requires current TOTP code for confirmation)
+
+### Password Reset
+
+CineVault uses an admin-generated token system for password resets (no email required).
+
+**Flow:**
+
+1. Admin calls `POST /api/v1/auth/reset-token` with the target user's ID
+2. Server generates a 32-byte hex token, stores a SHA-256 hash with a 24-hour expiry
+3. Admin shares the token with the user out-of-band
+4. User calls `POST /api/v1/auth/reset-password` with the token and their new password
+5. Server validates the token, updates the password (bcrypt), marks the token as used, and invalidates all existing sessions for the user
+
+Tokens are single-use and expire after 24 hours. The SHA-256 hash ensures that even if the database is compromised, tokens cannot be extracted.
+
+### Session Management
+
+Users can view and revoke their active sessions:
+
+- `GET /api/v1/auth/sessions` — list all active sessions for the current user
+- `DELETE /api/v1/auth/sessions/{id}` — revoke a specific session
+- `POST /api/v1/auth/logout` — end the current session
+
 ---
 
 ## Household / Master-User System
@@ -191,6 +236,29 @@ Sub-profiles are checked using their own user ID — they do not automatically i
 
 ---
 
+## Streaming Limits
+
+Admins can set per-user streaming limits to control resource usage:
+
+| Field | Description |
+|---|---|
+| `max_streams` | Maximum concurrent streams allowed for the user |
+| `max_bitrate` | Maximum bitrate cap (bits per second) |
+| `remote_quality_cap` | Quality cap for remote (non-local) streaming |
+
+Streaming limits are managed via admin-only endpoints and enforced by the stream handlers.
+
+---
+
+## Profile Statistics
+
+Users can view their profile statistics:
+
+- `GET /api/v1/profile/stats` — returns aggregate stats: total items watched, total watch time, favorite genres, most-watched actors/directors
+- `GET /api/v1/profile/wrapped/{year}` — returns a "Wrapped" summary for a given year (similar to Spotify Wrapped): top genres, top titles, total hours, viewing patterns
+
+---
+
 ## API Endpoints
 
 ### Public (No Auth)
@@ -204,6 +272,7 @@ Sub-profiles are checked using their own user ID — they do not automatically i
 | GET | `/api/v1/auth/fast-login/settings` | Fast login configuration |
 | GET | `/api/v1/auth/fast-login/users` | Master users for fast login |
 | POST | `/api/v1/auth/fast-login` | PIN-based login |
+| POST | `/api/v1/auth/reset-password` | Reset password with admin-generated token |
 
 ### Authenticated (User)
 
@@ -214,15 +283,21 @@ Sub-profiles are checked using their own user ID — they do not automatically i
 | PUT | `/api/v1/auth/pin` | Set own PIN |
 | GET | `/api/v1/profile/settings` | Get parental controls, kids mode, avatar |
 | PUT | `/api/v1/profile/settings` | Update parental controls, kids mode, avatar |
+| GET | `/api/v1/profile/stats` | Profile viewing statistics |
+| GET | `/api/v1/profile/wrapped/{year}` | Yearly wrapped summary |
+| POST | `/api/v1/auth/logout` | End current session |
+| GET | `/api/v1/auth/sessions` | List active sessions |
+| DELETE | `/api/v1/auth/sessions/{id}` | Revoke a session |
+| POST | `/api/v1/auth/2fa/setup` | Generate TOTP secret for 2FA setup |
+| POST | `/api/v1/auth/2fa/verify` | Confirm 2FA setup with TOTP code |
+| POST | `/api/v1/auth/2fa/validate` | Validate TOTP code during login |
+| GET | `/api/v1/auth/2fa/status` | Check 2FA enabled status |
+| DELETE | `/api/v1/auth/2fa` | Disable 2FA |
 | GET | `/api/v1/household/profiles` | List household profiles |
 | POST | `/api/v1/household/switch` | Switch to another household profile |
 | POST | `/api/v1/household/profiles` | Create sub-profile (master only) |
 | PUT | `/api/v1/household/profiles/{id}` | Update sub-profile (master only) |
 | DELETE | `/api/v1/household/profiles/{id}` | Delete sub-profile (master only) |
-| GET | `/api/v1/recommendations` | Personalized recommendations |
-| GET | `/api/v1/recommendations/because-you-watched` | "Because you watched X" similarity rows |
-| PUT | `/api/v1/collections/{id}` | Update collection metadata and rules |
-| GET | `/api/v1/collections/{id}/evaluate` | Evaluate smart collection rules |
 
 ### Admin Only
 
@@ -231,6 +306,9 @@ Sub-profiles are checked using their own user ID — they do not automatically i
 | GET | `/api/v1/users` | List all users |
 | PUT | `/api/v1/users/{id}/pin` | Set PIN for any user |
 | PUT | `/api/v1/users/{id}/settings` | Update any user's profile settings |
+| POST | `/api/v1/auth/reset-token` | Generate password reset token for a user |
+| GET | `/api/v1/admin/users/{id}/stream-limits` | Get user streaming limits |
+| PUT | `/api/v1/admin/users/{id}/stream-limits` | Update user streaming limits |
 
 ---
 

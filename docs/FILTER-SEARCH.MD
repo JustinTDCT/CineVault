@@ -403,6 +403,22 @@ CREATE INDEX idx_media_dynamic_range ON media_items (dynamic_range);
 
 ---
 
+## Saved Filters
+
+Users can save frequently used filter combinations as named presets for quick reuse.
+
+### API Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/v1/filters` | User | List saved filter presets |
+| POST | `/api/v1/filters` | User | Save a filter preset (name + filter parameters) |
+| DELETE | `/api/v1/filters/{id}` | User | Delete a saved filter preset |
+
+Saved filters store the complete filter state (genre, codec, resolution, sort, etc.) as a reusable preset. Clicking a saved filter applies all its parameters to the current library view.
+
+---
+
 ## File Locations
 
 | Component | Path |

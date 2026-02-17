@@ -246,6 +246,8 @@ Series items link movies to a series with a `sort_order` (typically the release 
 | POST | `/api/v1/collections/{id}/items` | User | Add a single item to a manual collection |
 | POST | `/api/v1/collections/{id}/items/bulk` | User | Add multiple items in a single transaction |
 | DELETE | `/api/v1/collections/{id}/items/{itemId}` | User | Remove an item from a collection |
+| GET | `/api/v1/collections/{id}/artwork` | User | Get collection artwork |
+| PUT | `/api/v1/collections/{id}/artwork` | Admin | Set collection artwork |
 
 ### Movie Series
 
