@@ -36,7 +36,7 @@ func NewQueue(redisAddr string) *Queue {
 	server := asynq.NewServer(
 		redisOpt,
 		asynq.Config{
-			Concurrency: 5,
+			Concurrency: 2,
 			Queues: map[string]int{
 				"critical": 6,
 				"default":  3,
