@@ -161,6 +161,9 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 		Rating      *float64 `json:"rating"`
 		Genres      []string `json:"genres"`
 		IMDBId      string   `json:"imdb_id"`
+		ArtistName  string   `json:"artist_name"`
+		AlbumTitle  string   `json:"album_title"`
+		RecordLabel string   `json:"record_label"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondError(w, http.StatusBadRequest, "invalid request body")
@@ -204,6 +207,11 @@ func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {
 	// Link genre tags
 	if len(req.Genres) > 0 {
 		s.linkGenreTags(mediaID, req.Genres)
+	}
+
+	// ── Music video metadata: link Artist, Album, and Record Label ──
+	if media.MediaType == models.MediaTypeMusicVideos && req.Source == "musicbrainz" {
+		s.linkMusicVideoMetadata(mediaID, media.LibraryID, req.ArtistName, req.AlbumTitle, req.RecordLabel, req.Year)
 	}
 
 	// ── Supplementary data (IMDB ID, ratings, credits) via cache or direct APIs ──
@@ -342,6 +350,84 @@ func (s *Server) linkGenreTags(mediaItemID uuid.UUID, genres []string) {
 		}
 		if err := s.tagRepo.AssignToMedia(mediaItemID, tagID); err != nil {
 			log.Printf("Apply metadata: assign genre tag %q to %s failed: %v", genre, mediaItemID, err)
+		}
+	}
+}
+
+// linkMusicVideoMetadata creates or finds Artist, Album, and Record Label records
+// and links them to a music video media item.
+func (s *Server) linkMusicVideoMetadata(mediaItemID, libraryID uuid.UUID, artistName, albumTitle, recordLabel string, year *int) {
+	if artistName == "" {
+		return
+	}
+
+	// Find or create Artist
+	artist, err := s.musicRepo.FindArtistByName(libraryID, artistName)
+	if err != nil {
+		log.Printf("Music video metadata: find artist %q error: %v", artistName, err)
+		return
+	}
+	if artist == nil {
+		artist = &models.Artist{
+			ID:        uuid.New(),
+			LibraryID: libraryID,
+			Name:      artistName,
+		}
+		if err := s.musicRepo.CreateArtist(artist); err != nil {
+			log.Printf("Music video metadata: create artist %q failed: %v", artistName, err)
+			return
+		}
+		log.Printf("Music video metadata: created artist %q", artistName)
+	}
+
+	// Link artist to media item
+	s.db.DB.Exec(`UPDATE media_items SET artist_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, artist.ID, mediaItemID)
+
+	// Find or create Album (if provided)
+	if albumTitle != "" {
+		album, err := s.musicRepo.FindAlbumByTitle(artist.ID, albumTitle)
+		if err != nil {
+			log.Printf("Music video metadata: find album %q error: %v", albumTitle, err)
+		}
+		if album == nil {
+			album = &models.Album{
+				ID:        uuid.New(),
+				ArtistID:  artist.ID,
+				LibraryID: libraryID,
+				Title:     albumTitle,
+				Year:      year,
+			}
+			if err := s.musicRepo.CreateAlbum(album); err != nil {
+				log.Printf("Music video metadata: create album %q failed: %v", albumTitle, err)
+			} else {
+				log.Printf("Music video metadata: created album %q", albumTitle)
+			}
+		}
+		if album != nil {
+			s.db.DB.Exec(`UPDATE media_items SET album_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, album.ID, mediaItemID)
+		}
+	}
+
+	// Find or create Record Label as Studio (if provided)
+	if recordLabel != "" {
+		studio, err := s.studioRepo.FindByNameAndType(recordLabel, models.StudioTypeLabel)
+		if err != nil {
+			log.Printf("Music video metadata: find label %q error: %v", recordLabel, err)
+		}
+		if studio == nil {
+			studio = &models.Studio{
+				ID:         uuid.New(),
+				Name:       recordLabel,
+				StudioType: models.StudioTypeLabel,
+			}
+			if err := s.studioRepo.Create(studio); err != nil {
+				log.Printf("Music video metadata: create label %q failed: %v", recordLabel, err)
+			} else {
+				log.Printf("Music video metadata: created label %q", recordLabel)
+			}
+		}
+		if studio != nil {
+			_ = s.studioRepo.LinkMedia(mediaItemID, studio.ID, "label")
 		}
 	}
 }

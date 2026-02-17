@@ -11,6 +11,12 @@ let currentPlayMode = null; // 'direct', 'mpegts', 'hls'
 let knownDuration = 0; // Total duration from DB
 let seekOffset = 0; // FFmpeg -ss offset for MPEGTS streams
 
+// ── MTV Music Video Overlay State ──
+let mtvOverlayData = null;    // {song_title, artist_name, album_title, record_label, year}
+let mtvStartShown = false;    // Whether start overlay has been shown
+let mtvEndShown = false;      // Whether end overlay has been triggered
+let mtvOverlayTimer = null;   // Auto-hide timer
+
 // ── Skip Segment State ──
 let currentSegments = [];     // MediaSegment[] for current media
 let activeSegment = null;     // Currently active segment (user is inside it)
@@ -247,6 +253,9 @@ async function playMediaDirect(mediaId, title) {
     const markerBtn = document.getElementById('addMarkerBtn');
     if (markerBtn) markerBtn.style.display = '';
 
+    // MTV music video overlay setup
+    setupMtvOverlay(currentStreamInfo);
+
     // Start playback — MPEGTS for non-native formats, direct for native
     if (currentStreamInfo && currentStreamInfo.needs_remux) {
         startMpegtsPlay(mediaId, token, 0);
@@ -478,6 +487,12 @@ function closePlayer() {
     currentSegments = [];
     activeSegment = null;
     document.getElementById('skipSegmentBtn').style.display = 'none';
+
+    // Clean up MTV overlay
+    hideMtvOverlay();
+    mtvOverlayData = null;
+    mtvStartShown = false;
+    mtvEndShown = false;
 }
 
 function updatePlayerUI() {
@@ -496,6 +511,9 @@ function updatePlayerUI() {
 
     // Check for skip segments
     checkSegments();
+
+    // MTV overlay: show at start and 10s before end
+    checkMtvOverlay(currentTime, totalDuration);
 }
 
 function togglePlay() {
@@ -676,5 +694,77 @@ document.addEventListener('keydown', (e) => {
         case 'Escape': closePlayer(); break;
     }
 });
+
+// ──────────────────── MTV Music Video Overlay ────────────────────
+
+function setupMtvOverlay(streamInfo) {
+    mtvOverlayData = null;
+    mtvStartShown = false;
+    mtvEndShown = false;
+    if (mtvOverlayTimer) { clearTimeout(mtvOverlayTimer); mtvOverlayTimer = null; }
+    hideMtvOverlay();
+
+    if (!streamInfo || !streamInfo.music_video) return;
+
+    const mv = streamInfo.music_video;
+    if (!mv.artist_name && !mv.song_title) return;
+
+    mtvOverlayData = mv;
+
+    // Populate overlay elements
+    const titleEl = document.getElementById('mtvSongTitle');
+    const artistEl = document.getElementById('mtvArtist');
+    const albumEl = document.getElementById('mtvAlbum');
+    const labelYearEl = document.getElementById('mtvLabelYear');
+
+    titleEl.textContent = mv.song_title || '';
+    artistEl.textContent = mv.artist_name || '';
+    albumEl.textContent = mv.album_title || '';
+
+    const parts = [];
+    if (mv.record_label) parts.push(mv.record_label);
+    if (mv.year) parts.push(mv.year);
+    labelYearEl.textContent = parts.join(' / ');
+
+    // Hide lines that have no data
+    albumEl.style.display = mv.album_title ? '' : 'none';
+    labelYearEl.style.display = parts.length > 0 ? '' : 'none';
+}
+
+function showMtvOverlay(autoHideSec) {
+    const el = document.getElementById('mtvOverlay');
+    if (!el || !mtvOverlayData) return;
+    el.classList.add('visible');
+
+    if (mtvOverlayTimer) clearTimeout(mtvOverlayTimer);
+    if (autoHideSec > 0) {
+        mtvOverlayTimer = setTimeout(() => {
+            el.classList.remove('visible');
+            mtvOverlayTimer = null;
+        }, autoHideSec * 1000);
+    }
+}
+
+function hideMtvOverlay() {
+    const el = document.getElementById('mtvOverlay');
+    if (el) el.classList.remove('visible');
+    if (mtvOverlayTimer) { clearTimeout(mtvOverlayTimer); mtvOverlayTimer = null; }
+}
+
+function checkMtvOverlay(currentTime, totalDuration) {
+    if (!mtvOverlayData || totalDuration <= 0) return;
+
+    // Start overlay: show for 10s at the beginning
+    if (!mtvStartShown && currentTime >= 0.5 && currentTime < 11) {
+        mtvStartShown = true;
+        showMtvOverlay(10);
+    }
+
+    // End overlay: show 10s before the end
+    if (!mtvEndShown && totalDuration > 20 && currentTime >= totalDuration - 10) {
+        mtvEndShown = true;
+        showMtvOverlay(0); // stays until player closes
+    }
+}
 
 // ──────────────────── Profile Avatars ────────────────────

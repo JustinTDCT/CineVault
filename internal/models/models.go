@@ -854,6 +854,10 @@ type MetadataMatch struct {
 	CollectionName   *string  `json:"collection_name,omitempty"`
 	Keywords         []string `json:"keywords,omitempty"`
 	Confidence       float64  `json:"confidence"`
+	// Music video fields (from MusicBrainz)
+	ArtistName  string `json:"artist_name,omitempty"`
+	AlbumTitle  string `json:"album_title,omitempty"`
+	RecordLabel string `json:"record_label,omitempty"`
 }
 
 // ──────────────────── Media Segments (Skip Detection) ────────────────────

@@ -108,6 +108,19 @@ func (r *StudioRepository) UnlinkMedia(mediaItemID, studioID uuid.UUID) error {
 	return err
 }
 
+func (r *StudioRepository) FindByNameAndType(name string, studioType models.StudioType) (*models.Studio, error) {
+	s := &models.Studio{}
+	query := `SELECT id, name, studio_type, logo_path, description, website,
+		sort_position, created_at, updated_at, 0 as media_count
+		FROM studios WHERE LOWER(name) = LOWER($1) AND studio_type = $2 LIMIT 1`
+	err := r.db.QueryRow(query, name, studioType).Scan(&s.ID, &s.Name, &s.StudioType, &s.LogoPath,
+		&s.Description, &s.Website, &s.SortPosition, &s.CreatedAt, &s.UpdatedAt, &s.MediaCount)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return s, err
+}
+
 func (r *StudioRepository) GetMediaStudios(mediaItemID uuid.UUID) ([]*models.Studio, error) {
 	query := `SELECT s.id, s.name, s.studio_type, s.logo_path, s.description, s.website,
 		s.sort_position, s.created_at, s.updated_at, 0 as media_count

@@ -212,6 +212,15 @@
             <button class="player-close" onclick="closePlayer()" aria-label="Close player">&#10005;</button>
         </div>
         <video id="videoPlayer"></video>
+        <div class="mtv-overlay" id="mtvOverlay">
+            <div class="mtv-accent-bar"></div>
+            <div class="mtv-content">
+                <div class="mtv-song-title" id="mtvSongTitle"></div>
+                <div class="mtv-artist" id="mtvArtist"></div>
+                <div class="mtv-album" id="mtvAlbum"></div>
+                <div class="mtv-label-year" id="mtvLabelYear"></div>
+            </div>
+        </div>
         <div class="skip-segment-btn" id="skipSegmentBtn" onclick="skipCurrentSegment()" style="display:none;" aria-label="Skip segment">
             <span id="skipSegmentLabel">Skip Intro</span>
             <span class="skip-arrow">&#9654;&#9654;</span>

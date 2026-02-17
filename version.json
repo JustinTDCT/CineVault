@@ -1,6 +1,6 @@
 {
-  "version": "1.18.00",
-  "phase": 18,
-  "released": "2026-02-16",
-  "notes": "Per-library preview clip and timeline thumbnail settings. Libraries can now individually enable or disable preview and thumbnail generation."
+  "version": "1.19.00",
+  "phase": 19,
+  "released": "2026-02-17",
+  "notes": "MTV-style music video overlay with MusicBrainz metadata. Shows song title, artist, album, and record label at start and end of music video playback."
 }

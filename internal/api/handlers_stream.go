@@ -138,26 +138,57 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 		dynamicRange = media.DynamicRange
 	}
 
+	data := map[string]interface{}{
+		"media_id":            mediaID.String(),
+		"width":               width,
+		"height":              height,
+		"native_resolution":   nativeRes,
+		"codec":               codec,
+		"audio_codec":         audioCodec,
+		"container":           container,
+		"direct_playable":     true,
+		"needs_remux":         needsRemux,
+		"duration_seconds":    duration,
+		"transcode_qualities": transcodeQualities,
+		"subtitles":           subtitles,
+		"audio_tracks":        audioTracks,
+		"chapters":            chapters,
+		"hdr_format":          hdrFormat,
+		"dynamic_range":       dynamicRange,
+	}
+
+	// Music video overlay metadata (artist, album, label, year)
+	if media.MediaType == "music_videos" {
+		mvMeta := map[string]interface{}{
+			"song_title": media.Title,
+		}
+		if media.Year != nil {
+			mvMeta["year"] = *media.Year
+		}
+		if media.ArtistID != nil {
+			if artist, err := s.musicRepo.GetArtistByID(*media.ArtistID); err == nil {
+				mvMeta["artist_name"] = artist.Name
+			}
+		}
+		if media.AlbumID != nil {
+			if album, err := s.musicRepo.GetAlbumByID(*media.AlbumID); err == nil {
+				mvMeta["album_title"] = album.Title
+			}
+		}
+		if studios, err := s.studioRepo.GetMediaStudios(mediaID); err == nil {
+			for _, st := range studios {
+				if st.StudioType == "label" {
+					mvMeta["record_label"] = st.Name
+					break
+				}
+			}
+		}
+		data["music_video"] = mvMeta
+	}
+
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
-		Data: map[string]interface{}{
-			"media_id":            mediaID.String(),
-			"width":               width,
-			"height":              height,
-			"native_resolution":   nativeRes,
-			"codec":               codec,
-			"audio_codec":         audioCodec,
-			"container":           container,
-			"direct_playable":     true,
-			"needs_remux":         needsRemux,
-			"duration_seconds":    duration,
-			"transcode_qualities": transcodeQualities,
-			"subtitles":           subtitles,
-			"audio_tracks":        audioTracks,
-			"chapters":            chapters,
-			"hdr_format":          hdrFormat,
-			"dynamic_range":       dynamicRange,
-		},
+		Data:    data,
 	})
 }
 

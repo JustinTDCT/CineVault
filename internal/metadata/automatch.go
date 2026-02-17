@@ -81,8 +81,12 @@ func ScrapersForMediaType(scrapers []Scraper, mediaType models.MediaType) []Scra
 	var result []Scraper
 	for _, s := range scrapers {
 		switch mediaType {
-		case models.MediaTypeMovies, models.MediaTypeAdultMovies, models.MediaTypeMusicVideos:
+		case models.MediaTypeMovies, models.MediaTypeAdultMovies:
 			if s.Name() == "tmdb" {
+				result = append(result, s)
+			}
+		case models.MediaTypeMusicVideos:
+			if s.Name() == "musicbrainz" {
 				result = append(result, s)
 			}
 		case models.MediaTypeTVShows:

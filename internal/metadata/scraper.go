@@ -1076,6 +1076,7 @@ func (s *MusicBrainzScraper) getRecordingDetails(recordingID string) (*models.Me
 	}
 
 	var desc *string
+	var artistName string
 	var artists []string
 	for _, ac := range r.ArtistCredit {
 		name := ac.Name
@@ -1085,7 +1086,8 @@ func (s *MusicBrainzScraper) getRecordingDetails(recordingID string) (*models.Me
 		artists = append(artists, name)
 	}
 	if len(artists) > 0 {
-		d := "Recording by " + strings.Join(artists, ", ")
+		artistName = strings.Join(artists, ", ")
+		d := "Recording by " + artistName
 		desc = &d
 	}
 
@@ -1096,12 +1098,25 @@ func (s *MusicBrainzScraper) getRecordingDetails(recordingID string) (*models.Me
 
 	// Try to get cover art from the first release
 	var posterURL *string
+	var albumTitle string
 	for _, rel := range r.Releases {
+		if albumTitle == "" {
+			albumTitle = rel.Title
+		}
 		if rel.CoverArtArchive.Front {
 			p := fmt.Sprintf("https://coverartarchive.org/release/%s/front-500", rel.ID)
 			posterURL = &p
+			if albumTitle == "" {
+				albumTitle = rel.Title
+			}
 			break
 		}
+	}
+
+	// Fetch record label from the first release (requires separate API call)
+	var recordLabel string
+	if len(r.Releases) > 0 {
+		recordLabel = s.fetchReleaseLabel(r.Releases[0].ID)
 	}
 
 	return &models.MetadataMatch{
@@ -1113,7 +1128,47 @@ func (s *MusicBrainzScraper) getRecordingDetails(recordingID string) (*models.Me
 		PosterURL:   posterURL,
 		Genres:      genres,
 		Confidence:  1.0,
+		ArtistName:  artistName,
+		AlbumTitle:  albumTitle,
+		RecordLabel: recordLabel,
 	}, nil
+}
+
+// fetchReleaseLabel fetches label info for a MusicBrainz release.
+func (s *MusicBrainzScraper) fetchReleaseLabel(releaseID string) string {
+	reqURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?inc=labels&fmt=json", releaseID)
+
+	req, _ := http.NewRequest("GET", reqURL, nil)
+	req.Header.Set("User-Agent", "CineVault/1.0 (https://github.com/JustinTDCT/CineVault)")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return ""
+	}
+
+	var release struct {
+		LabelInfo []struct {
+			CatalogNumber string `json:"catalog-number"`
+			Label         *struct {
+				Name string `json:"name"`
+			} `json:"label"`
+		} `json:"label-info"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return ""
+	}
+
+	for _, li := range release.LabelInfo {
+		if li.Label != nil && li.Label.Name != "" && li.Label.Name != "[no label]" {
+			return li.Label.Name
+		}
+	}
+	return ""
 }
 
 // ──────────────────── Open Library ────────────────────
