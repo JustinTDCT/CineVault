@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/ffmpeg"
@@ -984,6 +986,39 @@ func (s *Scanner) generateScreenshotPoster(item *models.MediaItem) {
 	log.Printf("Screenshot: generated poster for %s at %ds", item.FileName, seekSec)
 }
 
+const ffmpegPreviewTimeout = 2 * time.Minute
+
+// runFFmpegWithTimeout starts an FFmpeg command in its own process group and
+// kills the entire group if it exceeds the timeout.
+func runFFmpegWithTimeout(cmd *exec.Cmd, timeout time.Duration) ([]byte, error) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err := <-done:
+		return buf.Bytes(), err
+	case <-time.After(timeout):
+		pgid, err := syscall.Getpgid(cmd.Process.Pid)
+		if err == nil {
+			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+		} else {
+			_ = cmd.Process.Kill()
+		}
+		<-done
+		return buf.Bytes(), fmt.Errorf("timed out after %v", timeout)
+	}
+}
+
 // GeneratePreviewClip creates a short looping MP4 video preview (StashApp-style).
 // Extracts multiple short clips from evenly-spaced positions across the video,
 // concatenates them into a single H.264 MP4 at 320px width for fast card-hover playback.
@@ -1048,7 +1083,7 @@ func (s *Scanner) GeneratePreviewClip(item *models.MediaItem) {
 	)
 
 	cmd := exec.Command(s.ffmpegPath, args...)
-	if output, err := cmd.CombinedOutput(); err != nil {
+	if output, err := runFFmpegWithTimeout(cmd, ffmpegPreviewTimeout); err != nil {
 		log.Printf("Preview: MP4 clip failed for %s: %v (%s)", item.FileName, err, string(output))
 		return
 	}

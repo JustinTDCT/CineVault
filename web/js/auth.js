@@ -394,7 +394,7 @@ function openLibCtxMenu(libId, dotsEl) {
     html += `<div class="lib-ctx-item" onclick="sidebarScanLibrary('${libId}')"><span class="ctx-icon">&#128269;</span> Scan Library</div>`;
     html += `<div class="lib-ctx-item" onclick="sidebarMetadataRefresh('${libId}')"><span class="ctx-icon">&#8635;</span> Metadata Refresh</div>`;
     html += `<div class="lib-ctx-item" onclick="sidebarRehashPhash('${libId}')"><span class="ctx-icon">&#128274;</span> Rehash pHash</div>`;
-    html += `<div class="lib-ctx-item" onclick="sidebarRebuildPreviews('${libId}')"><span class="ctx-icon">&#127916;</span> Rebuild Previews</div>`;
+    html += `<div class="lib-ctx-item" onclick="sidebarBuildPreviews('${libId}')"><span class="ctx-icon">&#127916;</span> Build Previews</div>`;
     menu.innerHTML = html;
     menu.dataset.libId = libId;
 
@@ -454,13 +454,39 @@ function sidebarRehashPhash(libId) {
     }).catch(e => toast('Error: ' + e.message, 'error'));
 }
 
-function sidebarRebuildPreviews(libId) {
+function sidebarBuildPreviews(libId) {
     closeLibCtxMenu();
-    toast('Rebuilding previews...');
-    api('POST', '/libraries/' + libId + '/rebuild-previews').then(data => {
-        if (data.success) toast('Preview rebuild queued — existing previews will be cleared and regenerated');
-        else toast('Failed: ' + (data.error || 'Unknown'), 'error');
-    }).catch(e => toast('Error: ' + e.message, 'error'));
+    const overlay = document.createElement('div');
+    overlay.className = 'preview-choice-overlay active';
+    overlay.innerHTML = `
+        <div class="preview-choice-dialog">
+            <div class="preview-choice-title">Build Previews</div>
+            <p class="preview-choice-desc">Generate hover preview clips for this library.</p>
+            <div class="preview-choice-buttons">
+                <button class="btn btn-secondary" id="previewChoiceMissing">Missing Only</button>
+                <button class="btn btn-primary" id="previewChoiceAll">Rebuild All</button>
+            </div>
+            <button class="btn btn-ghost preview-choice-cancel" id="previewChoiceCancel">Cancel</button>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove(); } });
+    document.getElementById('previewChoiceCancel').onclick = () => overlay.remove();
+    document.getElementById('previewChoiceMissing').onclick = () => {
+        overlay.remove();
+        toast('Building missing previews...');
+        api('POST', '/libraries/' + libId + '/build-previews').then(data => {
+            if (data.success) toast('Preview build queued — generating for items without previews');
+            else toast('Failed: ' + (data.error || 'Unknown'), 'error');
+        }).catch(e => toast('Error: ' + e.message, 'error'));
+    };
+    document.getElementById('previewChoiceAll').onclick = () => {
+        overlay.remove();
+        toast('Rebuilding all previews...');
+        api('POST', '/libraries/' + libId + '/rebuild-previews').then(data => {
+            if (data.success) toast('Preview rebuild queued — existing previews will be cleared and regenerated');
+            else toast('Failed: ' + (data.error || 'Unknown'), 'error');
+        }).catch(e => toast('Error: ' + e.message, 'error'));
+    };
 }
 
 async function showEditLibraryForm(libId) {
