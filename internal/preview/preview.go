@@ -1,12 +1,13 @@
 package preview
 
 import (
-	"context"
+	"bytes"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/ffmpeg"
@@ -28,6 +29,40 @@ func NewGenerator(ffmpegPath, ffprobePath, outputBase string) *Generator {
 	}
 }
 
+// runFFmpegWithTimeout starts an FFmpeg command in its own process group and
+// kills the entire group if it exceeds the timeout. This avoids the known
+// issue where exec.CommandContext + CombinedOutput blocks on pipe drain even
+// after the process is signaled.
+func runFFmpegWithTimeout(cmd *exec.Cmd, timeout time.Duration) ([]byte, error) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err := <-done:
+		return buf.Bytes(), err
+	case <-time.After(timeout):
+		// Kill the entire process group so no orphans survive
+		pgid, err := syscall.Getpgid(cmd.Process.Pid)
+		if err == nil {
+			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+		} else {
+			_ = cmd.Process.Kill()
+		}
+		<-done // wait for Wait() to return after kill
+		return buf.Bytes(), fmt.Errorf("timed out after %v", timeout)
+	}
+}
+
 // GenerateThumbnail extracts a poster frame at ~10% into the video
 func (g *Generator) GenerateThumbnail(mediaItemID, filePath string, durationSec int) (string, error) {
 	outDir := filepath.Join(g.outputBase, mediaItemID)
@@ -41,10 +76,7 @@ func (g *Generator) GenerateThumbnail(mediaItemID, filePath string, durationSec 
 		seekTo = 1
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), ffmpegTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, g.ffmpegPath,
+	cmd := exec.Command(g.ffmpegPath,
 		"-ss", fmt.Sprintf("%d", seekTo),
 		"-i", filePath,
 		"-vframes", "1",
@@ -52,13 +84,9 @@ func (g *Generator) GenerateThumbnail(mediaItemID, filePath string, durationSec 
 		"-y",
 		outPath,
 	)
-	output, err := cmd.CombinedOutput()
+	output, err := runFFmpegWithTimeout(cmd, ffmpegTimeout)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			log.Printf("Thumbnail generation timed out after %v: %s", ffmpegTimeout, filePath)
-			return "", fmt.Errorf("thumbnail: timed out")
-		}
-		log.Printf("Thumbnail generation failed: %s", string(output))
+		log.Printf("Thumbnail generation failed for %s: %v\n%s", filePath, err, string(output))
 		return "", fmt.Errorf("thumbnail: %w", err)
 	}
 	return outPath, nil
@@ -72,29 +100,21 @@ func (g *Generator) GenerateSprite(mediaItemID, filePath string, durationSec int
 	}
 
 	outPath := filepath.Join(outDir, "sprite.jpg")
-	// Extract one frame every 10 seconds, tile into 10 columns
 	interval := 10
 	if durationSec > 600 {
 		interval = durationSec / 60
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), ffmpegTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, g.ffmpegPath,
+	cmd := exec.Command(g.ffmpegPath,
 		"-i", filePath,
 		"-vf", fmt.Sprintf("fps=1/%d,scale=160:-1,tile=10x10", interval),
 		"-q:v", "5",
 		"-y",
 		outPath,
 	)
-	output, err := cmd.CombinedOutput()
+	output, err := runFFmpegWithTimeout(cmd, ffmpegTimeout)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			log.Printf("Sprite generation timed out after %v: %s", ffmpegTimeout, filePath)
-			return "", fmt.Errorf("sprite: timed out")
-		}
-		log.Printf("Sprite generation failed: %s", string(output))
+		log.Printf("Sprite generation failed for %s: %v\n%s", filePath, err, string(output))
 		return "", fmt.Errorf("sprite: %w", err)
 	}
 	return outPath, nil
@@ -121,11 +141,9 @@ func (g *Generator) GenerateAnimatedPreview(mediaItemID, filePath string, durati
 	usable := float64(durationSec) * 0.90
 	interval := usable / float64(numSegments)
 
-	// Detect hardware encoder for faster preview generation
 	encoder := ffmpeg.DetectH264Encoder(g.ffmpegPath)
 	hwCfg := ffmpeg.PreviewEncodeConfig(encoder)
 
-	// Build ffmpeg args: hw init (if needed), then one -ss/-t/-i per segment
 	args := make([]string, 0, numSegments*6+20)
 	args = append(args, hwCfg.PreInputArgs...)
 	for i := 0; i < numSegments; i++ {
@@ -137,7 +155,6 @@ func (g *Generator) GenerateAnimatedPreview(mediaItemID, filePath string, durati
 		)
 	}
 
-	// Build filter_complex: scale each stream then concat
 	var filterParts string
 	var concatInputs string
 	for i := 0; i < numSegments; i++ {
@@ -158,17 +175,10 @@ func (g *Generator) GenerateAnimatedPreview(mediaItemID, filePath string, durati
 		"-y", outPath,
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), ffmpegTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, g.ffmpegPath, args...)
-	output, err := cmd.CombinedOutput()
+	cmd := exec.Command(g.ffmpegPath, args...)
+	output, err := runFFmpegWithTimeout(cmd, ffmpegTimeout)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			log.Printf("Animated preview timed out after %v: %s", ffmpegTimeout, filePath)
-			return "", fmt.Errorf("animated preview: timed out")
-		}
-		log.Printf("Animated preview failed: %s", string(output))
+		log.Printf("Animated preview failed for %s: %v\n%s", filePath, err, string(output))
 		return "", fmt.Errorf("animated preview: %w", err)
 	}
 	return outPath, nil
