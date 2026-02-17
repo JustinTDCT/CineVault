@@ -3018,9 +3018,13 @@ body.is-offline::after {
     pointer-events: none;
 }
 .media-card.previewing .preview-video { opacity: 1; }
-/* Keep play overlay above the preview video so it stays clickable */
-.media-card.previewing .play-overlay { z-index: 2; }
-.media-card.previewing .play-button { z-index: 3; }
+/* Hide all overlays when preview video is playing */
+.media-card.previewing .play-overlay { opacity: 0; pointer-events: none; }
+.media-card.previewing .overlay-zone-tr,
+.media-card.previewing .overlay-zone-tl,
+.media-card.previewing .overlay-zone-bl,
+.media-card.previewing .overlay-zone-br { opacity: 0; transition: opacity 0.2s; }
+.media-card.previewing .media-card-hover-info { opacity: 0; }
 
 /* ── Phase 12: Watch Together / SyncPlay ── */
 .sync-panel {
