@@ -1,14 +1,18 @@
 package preview
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/ffmpeg"
 )
+
+const ffmpegTimeout = 2 * time.Minute
 
 type Generator struct {
 	ffmpegPath  string
@@ -37,7 +41,10 @@ func (g *Generator) GenerateThumbnail(mediaItemID, filePath string, durationSec 
 		seekTo = 1
 	}
 
-	cmd := exec.Command(g.ffmpegPath,
+	ctx, cancel := context.WithTimeout(context.Background(), ffmpegTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, g.ffmpegPath,
 		"-ss", fmt.Sprintf("%d", seekTo),
 		"-i", filePath,
 		"-vframes", "1",
@@ -47,6 +54,10 @@ func (g *Generator) GenerateThumbnail(mediaItemID, filePath string, durationSec 
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("Thumbnail generation timed out after %v: %s", ffmpegTimeout, filePath)
+			return "", fmt.Errorf("thumbnail: timed out")
+		}
 		log.Printf("Thumbnail generation failed: %s", string(output))
 		return "", fmt.Errorf("thumbnail: %w", err)
 	}
@@ -67,7 +78,10 @@ func (g *Generator) GenerateSprite(mediaItemID, filePath string, durationSec int
 		interval = durationSec / 60
 	}
 
-	cmd := exec.Command(g.ffmpegPath,
+	ctx, cancel := context.WithTimeout(context.Background(), ffmpegTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, g.ffmpegPath,
 		"-i", filePath,
 		"-vf", fmt.Sprintf("fps=1/%d,scale=160:-1,tile=10x10", interval),
 		"-q:v", "5",
@@ -76,6 +90,10 @@ func (g *Generator) GenerateSprite(mediaItemID, filePath string, durationSec int
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("Sprite generation timed out after %v: %s", ffmpegTimeout, filePath)
+			return "", fmt.Errorf("sprite: timed out")
+		}
 		log.Printf("Sprite generation failed: %s", string(output))
 		return "", fmt.Errorf("sprite: %w", err)
 	}
@@ -140,9 +158,16 @@ func (g *Generator) GenerateAnimatedPreview(mediaItemID, filePath string, durati
 		"-y", outPath,
 	)
 
-	cmd := exec.Command(g.ffmpegPath, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), ffmpegTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, g.ffmpegPath, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("Animated preview timed out after %v: %s", ffmpegTimeout, filePath)
+			return "", fmt.Errorf("animated preview: timed out")
+		}
 		log.Printf("Animated preview failed: %s", string(output))
 		return "", fmt.Errorf("animated preview: %w", err)
 	}

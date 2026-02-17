@@ -614,7 +614,7 @@ func (h *PreviewsLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 		})
 	}
 
-	const previewWorkers = 3
+	const previewWorkers = 2
 	var completed int64
 	total := int64(len(items))
 
