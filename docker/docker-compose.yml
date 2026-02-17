@@ -32,7 +32,7 @@ services:
       THUMBNAIL_PATH: /thumbnails
       MEDIA_PATH: /media
     volumes:
-      - /media:/media:ro
+      - /media:/media:rw
       - previews_data:/previews
       - thumbnails_data:/thumbnails
     # Hardware acceleration: use docker-compose.hwaccel.yml overlay on GPU-equipped hosts
