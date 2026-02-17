@@ -273,7 +273,7 @@ function _pvStart(card) {
     if (_pvCard === card && _pvTimer) return;
     _pvStop();
     _pvCard = card;
-    _pvTimer = setTimeout(() => { _pvTimer = null; _pvShow(card); }, 3000);
+    _pvTimer = setTimeout(() => { _pvTimer = null; _pvShow(card); }, 1500);
 }
 
 document.addEventListener('mouseenter', (e) => {
@@ -285,7 +285,7 @@ document.addEventListener('mouseenter', (e) => {
         if (_pvCard) _pvHide(_pvCard);
         return;
     }
-    // Entering a card with preview data: start the 3s timer
+    // Entering a card with preview data: start the 1.5s timer
     const card = e.target.closest ? e.target.closest('.media-card[data-preview]') : null;
     if (card) _pvStart(card);
 }, true);
@@ -296,7 +296,7 @@ document.addEventListener('mouseleave', (e) => {
     if (e.target.classList.contains('play-button')) {
         const card = e.target.closest ? e.target.closest('.media-card[data-preview]') : null;
         if (card && card === _pvCard) {
-            _pvTimer = setTimeout(() => { _pvTimer = null; _pvShow(card); }, 3000);
+            _pvTimer = setTimeout(() => { _pvTimer = null; _pvShow(card); }, 1500);
         }
         return;
     }
