@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -612,30 +614,69 @@ func (h *PreviewsLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 		})
 	}
 
-	var lastTaskBroadcast time.Time
-	for i, item := range items {
-		select {
-		case <-ctx.Done():
-			log.Printf("Previews: cancelled after %d/%d items", i, len(items))
-			return ctx.Err()
-		default:
+	const previewWorkers = 3
+	var completed int64
+	total := int64(len(items))
+
+	work := make(chan *models.MediaItem, previewWorkers)
+	var wg sync.WaitGroup
+
+	// Progress reporter: runs in a separate goroutine so it doesn't
+	// contend with workers. Reports at most every 500ms.
+	progressDone := make(chan struct{})
+	go func() {
+		defer close(progressDone)
+		if h.notifier == nil {
+			return
 		}
-
-		h.sc.GeneratePreviewClip(item)
-
-		if h.notifier != nil {
-			now := time.Now()
-			if now.Sub(lastTaskBroadcast) >= 500*time.Millisecond || i == len(items)-1 {
-				lastTaskBroadcast = now
-				pct := int(float64(i+1) / float64(len(items)) * 100)
-				desc := fmt.Sprintf("Preview clips · %s (%d/%d)", item.FileName, i+1, len(items))
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				done := atomic.LoadInt64(&completed)
+				pct := int(float64(done) / float64(total) * 100)
+				desc := fmt.Sprintf("Preview clips · %d/%d", done, total)
 				h.notifier.Broadcast("task:update", map[string]interface{}{
 					"task_id": taskID, "task_type": TaskPreviewsLibrary,
 					"status": "running", "progress": pct, "description": desc,
 				})
+				if done >= total {
+					return
+				}
+			case <-ctx.Done():
+				return
 			}
 		}
+	}()
+
+	// Start workers
+	for w := 0; w < previewWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for item := range work {
+				h.sc.GeneratePreviewClip(item)
+				atomic.AddInt64(&completed, 1)
+			}
+		}()
 	}
+
+	// Feed items to workers
+	for _, item := range items {
+		select {
+		case <-ctx.Done():
+			log.Printf("Previews: cancelled after %d/%d items", atomic.LoadInt64(&completed), total)
+			close(work)
+			wg.Wait()
+			<-progressDone
+			return ctx.Err()
+		case work <- item:
+		}
+	}
+	close(work)
+	wg.Wait()
+	<-progressDone
 
 	log.Printf("Previews: completed %d preview clips for library %s", len(items), p.LibraryID)
 	if h.notifier != nil {
