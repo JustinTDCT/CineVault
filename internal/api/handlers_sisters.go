@@ -153,6 +153,7 @@ func (s *Server) handleRegroupMultiParts(w http.ResponseWriter, r *http.Request)
 		}
 
 		pending := make(map[string][]multiPartEntry)
+		displayNames := make(map[string]string) // key → original-cased title
 		for _, item := range items {
 			if item.SisterGroupID != nil {
 				continue
@@ -173,6 +174,9 @@ func (s *Server) handleRegroupMultiParts(w http.ResponseWriter, r *http.Request)
 				itemID:     item.ID,
 				partNumber: partNum,
 			})
+			if _, exists := displayNames[key]; !exists {
+				displayNames[key] = baseTitle
+			}
 		}
 
 		for key, parts := range pending {
@@ -180,10 +184,7 @@ func (s *Server) handleRegroupMultiParts(w http.ResponseWriter, r *http.Request)
 				continue
 			}
 
-			groupName := key
-			if idx := strings.Index(key, "|"); idx >= 0 {
-				groupName = key[idx+1:]
-			}
+			groupName := displayNames[key]
 
 			group := &models.SisterGroup{
 				ID:   uuid.New(),
