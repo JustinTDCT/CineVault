@@ -1798,9 +1798,15 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		return
 	}
 
+	autoCfg := metadata.AutoMatchConfig(s.settingsRepo)
 	match := metadata.FindBestMatch(s.scrapers, searchQuery, item.MediaType, item.Year)
-	if match == nil {
-		log.Printf("Auto-match: no match for %q", searchQuery)
+	if match == nil || match.Confidence < autoCfg.MinConfidence {
+		if match != nil {
+			log.Printf("Auto-match: %q → %q rejected (confidence=%.2f < threshold=%.2f)",
+				searchQuery, match.Title, match.Confidence, autoCfg.MinConfidence)
+		} else {
+			log.Printf("Auto-match: no match for %q", searchQuery)
+		}
 		return
 	}
 

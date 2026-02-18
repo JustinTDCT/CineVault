@@ -1,6 +1,6 @@
 {
-  "version": "1.22.01",
-  "phase": 22,
+  "version": "1.23.00",
+  "phase": 23,
   "released": "2026-02-18",
-  "notes": "Timeline thumbnails performance — keyframe-only decoding (~100x faster), hardware acceleration, and parallel worker pool."
+  "notes": "Configurable metadata matching — fuzzy title similarity, user-settable auto/manual thresholds and max results, multi-result returns for manual identification."
 }

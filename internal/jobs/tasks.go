@@ -994,8 +994,9 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 			continue
 		}
 
+		autoCfg := metadata.AutoMatchConfig(h.settingsRepo)
 		best := metadata.FindBestMatch(h.scrapers, query, item.MediaType, yearHint)
-		if best == nil {
+		if best == nil || best.Confidence < autoCfg.MinConfidence {
 			continue
 		}
 

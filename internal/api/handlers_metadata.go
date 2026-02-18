@@ -67,6 +67,9 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read configurable match thresholds
+	matchCfg := metadata.ManualMatchConfig(s.settingsRepo)
+
 	// Clean the title and search applicable scrapers
 	query := metadata.CleanTitleForSearch(media.Title)
 	if query == "" {
@@ -81,16 +84,14 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 
 	var allMatches []*models.MetadataMatch
 
-	// ── Cache server is the sole metadata source when enabled ──
+	// ── Cache server: use search endpoint for multiple results ──
 	cacheClient := s.getCacheClient()
 	if cacheClient != nil {
-		result := cacheClient.Lookup(query, fileYear, media.MediaType)
-		if result != nil && result.Match != nil {
-			allMatches = append(allMatches, result.Match)
-			log.Printf("Identify: cache hit for %q → %q (confidence=%.2f)", query, result.Match.Title, result.Confidence)
+		cacheMatches := cacheClient.Search(query, media.MediaType, fileYear, matchCfg.MaxResults*2)
+		if len(cacheMatches) > 0 {
+			allMatches = append(allMatches, cacheMatches...)
+			log.Printf("Identify: cache search for %q returned %d results", query, len(cacheMatches))
 		}
-		// Cache enabled = sole source. No fallback to direct scrapers.
-		// The cache server itself fetches from TMDB/OMDb on miss.
 	} else {
 		// Cache disabled — use direct scrapers
 		scrapers := metadata.ScrapersForMediaType(s.scrapers, media.MediaType)
@@ -126,16 +127,29 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Filter by manual match threshold
+	filtered := make([]*models.MetadataMatch, 0, len(allMatches))
+	for _, m := range allMatches {
+		if m.Confidence >= matchCfg.MinConfidence {
+			filtered = append(filtered, m)
+		}
+	}
+
 	// Sort by confidence descending
-	for i := 0; i < len(allMatches); i++ {
-		for j := i + 1; j < len(allMatches); j++ {
-			if allMatches[j].Confidence > allMatches[i].Confidence {
-				allMatches[i], allMatches[j] = allMatches[j], allMatches[i]
+	for i := 0; i < len(filtered); i++ {
+		for j := i + 1; j < len(filtered); j++ {
+			if filtered[j].Confidence > filtered[i].Confidence {
+				filtered[i], filtered[j] = filtered[j], filtered[i]
 			}
 		}
 	}
 
-	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: allMatches})
+	// Cap at max results
+	if matchCfg.MaxResults > 0 && len(filtered) > matchCfg.MaxResults {
+		filtered = filtered[:matchCfg.MaxResults]
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: filtered})
 }
 
 func (s *Server) handleApplyMetadata(w http.ResponseWriter, r *http.Request) {

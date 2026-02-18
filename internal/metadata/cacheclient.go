@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -449,6 +450,89 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 	}
 
 	return result
+}
+
+// ── Search (multi-result) ──
+
+// cacheSearchResult mirrors the cache server's SearchResult model.
+type cacheSearchResult struct {
+	TMDBID      int     `json:"tmdb_id"`
+	MediaType   string  `json:"media_type"`
+	Title       string  `json:"title"`
+	Year        int     `json:"year,omitempty"`
+	Overview    string  `json:"overview,omitempty"`
+	PosterURL   *string `json:"poster_url,omitempty"`
+	VoteAverage float64 `json:"vote_average,omitempty"`
+	Source      string  `json:"source"`
+	Confidence  float64 `json:"confidence,omitempty"`
+}
+
+// Search queries the cache server's search endpoint and returns multiple matches.
+// Used for manual identification where the user picks from several options.
+func (c *CacheClient) Search(query string, mediaType models.MediaType, year *int, limit int) []*models.MetadataMatch {
+	cacheType := mediaTypeToCacheType(mediaType)
+
+	reqURL := fmt.Sprintf("%s/api/v1/search?q=%s&type=%s&limit=%d",
+		c.baseURL, url.QueryEscape(query), cacheType, limit)
+	if year != nil && *year > 0 {
+		reqURL += fmt.Sprintf("&year=%d", *year)
+	}
+
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		log.Printf("[cache-client] search request error: %v", err)
+		return nil
+	}
+	req.Header.Set("X-API-Key", c.apiKey)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		log.Printf("[cache-client] search unreachable: %v", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		log.Printf("[cache-client] search returned %d", resp.StatusCode)
+		return nil
+	}
+
+	var results []cacheSearchResult
+	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+		log.Printf("[cache-client] search decode error: %v", err)
+		return nil
+	}
+
+	var matches []*models.MetadataMatch
+	for _, r := range results {
+		var yr *int
+		if r.Year > 0 {
+			y := r.Year
+			yr = &y
+		}
+		var desc *string
+		if r.Overview != "" {
+			desc = &r.Overview
+		}
+		rating := r.VoteAverage
+
+		conf := r.Confidence
+		if conf == 0 {
+			conf = titleSimilarity(query, r.Title)
+		}
+
+		matches = append(matches, &models.MetadataMatch{
+			Source:      r.Source,
+			ExternalID:  fmt.Sprintf("%d", r.TMDBID),
+			Title:       r.Title,
+			Year:        yr,
+			Description: desc,
+			PosterURL:   r.PosterURL,
+			Rating:      &rating,
+			Confidence:  conf,
+		})
+	}
+	return matches
 }
 
 // ── External ID helpers ──

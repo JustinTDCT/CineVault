@@ -9,35 +9,90 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
+	"github.com/JustinTDCT/CineVault/internal/repository"
 )
 
 const (
-	// MinAutoMatchConfidence is the minimum confidence score to auto-apply metadata
-	MinAutoMatchConfidence = 0.6
 	// scraperDelay prevents hammering external APIs
 	scraperDelay = 300 * time.Millisecond
+
+	// DefaultAutoMinMatch is the default minimum confidence for automatic indexing (95%)
+	DefaultAutoMinMatch = 0.95
+	// DefaultManualMinMatch is the default minimum confidence for manual matching (75%)
+	DefaultManualMinMatch = 0.75
+	// DefaultMaxResults is the default number of results returned for manual matching
+	DefaultMaxResults = 5
+
+	// Settings keys
+	SettingAutoMinMatch  = "metadata_match_auto_min"
+	SettingManualMinMatch = "metadata_match_manual_min"
+	SettingMaxResults     = "metadata_match_max_results"
 )
 
-// FindBestMatch searches all applicable scrapers for the best metadata match.
-// It selects scrapers based on media type and returns the highest-confidence result.
-// If itemYear is non-nil, results matching that year get a confidence boost.
-func FindBestMatch(scrapers []Scraper, query string, mediaType models.MediaType, itemYear ...*int) *models.MetadataMatch {
+// MatchConfig holds configurable thresholds for metadata matching.
+type MatchConfig struct {
+	MinConfidence float64
+	MaxResults    int
+}
+
+// AutoMatchConfig reads auto-match thresholds from system settings.
+func AutoMatchConfig(settingsRepo *repository.SettingsRepository) MatchConfig {
+	cfg := MatchConfig{MinConfidence: DefaultAutoMinMatch, MaxResults: 1}
+	if settingsRepo == nil {
+		return cfg
+	}
+	if v, err := settingsRepo.Get(SettingAutoMinMatch); err == nil && v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 && f <= 100 {
+			if f > 1 {
+				f = f / 100.0
+			}
+			cfg.MinConfidence = f
+		}
+	}
+	return cfg
+}
+
+// ManualMatchConfig reads manual-match thresholds from system settings.
+func ManualMatchConfig(settingsRepo *repository.SettingsRepository) MatchConfig {
+	cfg := MatchConfig{MinConfidence: DefaultManualMinMatch, MaxResults: DefaultMaxResults}
+	if settingsRepo == nil {
+		return cfg
+	}
+	if v, err := settingsRepo.Get(SettingManualMinMatch); err == nil && v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 && f <= 100 {
+			if f > 1 {
+				f = f / 100.0
+			}
+			cfg.MinConfidence = f
+		}
+	}
+	if v, err := settingsRepo.Get(SettingMaxResults); err == nil && v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 50 {
+			cfg.MaxResults = n
+		}
+	}
+	return cfg
+}
+
+// FindTopMatches searches all applicable scrapers and returns the top matches
+// above the configured confidence threshold, sorted by confidence descending.
+func FindTopMatches(scrapers []Scraper, query string, mediaType models.MediaType, cfg MatchConfig, itemYear ...*int) []*models.MetadataMatch {
 	applicable := ScrapersForMediaType(scrapers, mediaType)
 	if len(applicable) == 0 {
 		return nil
 	}
 
-	// Extract year hint if provided
 	var yearHint *int
 	if len(itemYear) > 0 {
 		yearHint = itemYear[0]
 	}
 
-	var best *models.MetadataMatch
+	var all []*models.MetadataMatch
 	for _, scraper := range applicable {
 		matches, err := scraper.Search(query, mediaType, yearHint)
 		if err != nil {
@@ -46,34 +101,56 @@ func FindBestMatch(scrapers []Scraper, query string, mediaType models.MediaType,
 		}
 		for _, m := range matches {
 			conf := m.Confidence
-			// Boost confidence when the year from the file matches the result year
 			if yearHint != nil && m.Year != nil && *yearHint == *m.Year {
 				conf += 0.20
 				if conf > 1.0 {
 					conf = 1.0
 				}
 			}
-			// Strong penalty when we have a year but the result year doesn't match
 			if yearHint != nil && m.Year != nil && *yearHint != *m.Year {
 				diff := *yearHint - *m.Year
 				if diff < 0 {
 					diff = -diff
 				}
 				if diff <= 1 {
-					conf -= 0.10 // off by 1 year, mild penalty
+					conf -= 0.10
 				} else {
-					conf -= 0.40 // more than 1 year off, strong penalty
+					conf -= 0.40
 				}
 			}
 			m.Confidence = conf
-			if m.Confidence >= MinAutoMatchConfidence && (best == nil || m.Confidence > best.Confidence) {
-				best = m
+			if m.Confidence >= cfg.MinConfidence {
+				all = append(all, m)
 			}
 		}
-		// Rate-limit between scraper calls
 		time.Sleep(scraperDelay)
 	}
-	return best
+
+	// Sort by confidence descending
+	for i := 0; i < len(all); i++ {
+		for j := i + 1; j < len(all); j++ {
+			if all[j].Confidence > all[i].Confidence {
+				all[i], all[j] = all[j], all[i]
+			}
+		}
+	}
+
+	if cfg.MaxResults > 0 && len(all) > cfg.MaxResults {
+		all = all[:cfg.MaxResults]
+	}
+
+	return all
+}
+
+// FindBestMatch is a convenience wrapper that returns the single highest-confidence match.
+// Uses a low internal threshold (0.1) so callers can apply their own configurable threshold.
+func FindBestMatch(scrapers []Scraper, query string, mediaType models.MediaType, itemYear ...*int) *models.MetadataMatch {
+	cfg := MatchConfig{MinConfidence: 0.1, MaxResults: 1}
+	matches := FindTopMatches(scrapers, query, mediaType, cfg, itemYear...)
+	if len(matches) == 0 {
+		return nil
+	}
+	return matches[0]
 }
 
 // ScrapersForMediaType returns the scrapers relevant to a given media type.

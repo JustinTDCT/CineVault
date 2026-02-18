@@ -1213,6 +1213,33 @@
                 </div>
             </div>
             <div class="settings-card full-width">
+                <h3>Metadata Matching</h3>
+                <p style="color:#8a9bae;margin-bottom:16px;">Control how aggressively CineVault matches files to metadata. Higher percentages require closer title matches. Auto applies during scans; Manual applies when you use the Identify button.</p>
+                <div class="form-group">
+                    <label>Min Match Percentage — Auto</label>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <input type="number" id="setAutoMinMatch" value="${sys.metadata_match_auto_min||'95'}" min="50" max="100" step="1" style="width:80px;">
+                        <span style="color:#5a6a7f;font-size:0.85rem;">%</span>
+                    </div>
+                    <p style="color:#5a6a7f;font-size:0.78rem;margin-top:4px;">Used during library scans and auto-match jobs. Higher values reduce false matches.</p>
+                </div>
+                <div class="form-group">
+                    <label>Min Match Percentage — Manual</label>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <input type="number" id="setManualMinMatch" value="${sys.metadata_match_manual_min||'75'}" min="10" max="100" step="1" style="width:80px;">
+                        <span style="color:#5a6a7f;font-size:0.85rem;">%</span>
+                    </div>
+                    <p style="color:#5a6a7f;font-size:0.78rem;margin-top:4px;">Used when identifying media manually. Lower values show more options.</p>
+                </div>
+                <div class="form-group">
+                    <label>Max Results</label>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <input type="number" id="setMaxResults" value="${sys.metadata_match_max_results||'5'}" min="1" max="25" step="1" style="width:80px;">
+                    </div>
+                    <p style="color:#5a6a7f;font-size:0.78rem;margin-top:4px;">Maximum number of matches to return for manual identification.</p>
+                </div>
+            </div>
+            <div class="settings-card full-width">
                 <h3>Metadata Enrichment</h3>
                 <p style="color:#8a9bae;margin-bottom:16px;">Configure external API keys for additional metadata enrichment. An OMDb API key enables IMDB ratings, Rotten Tomatoes scores, and audience scores.</p>
                 <div class="form-group">
@@ -1235,6 +1262,12 @@
         if (omdbEl) settings.omdb_api_key = omdbEl.value.trim();
         const cacheEnabledEl = document.getElementById('setCacheEnabled');
         if (cacheEnabledEl) settings.cache_server_enabled = cacheEnabledEl.checked ? 'true' : 'false';
+        const autoMinEl = document.getElementById('setAutoMinMatch');
+        if (autoMinEl) settings.metadata_match_auto_min = autoMinEl.value.trim();
+        const manualMinEl = document.getElementById('setManualMinMatch');
+        if (manualMinEl) settings.metadata_match_manual_min = manualMinEl.value.trim();
+        const maxResEl = document.getElementById('setMaxResults');
+        if (maxResEl) settings.metadata_match_max_results = maxResEl.value.trim();
         const d = await api('PUT', '/settings/system', settings);
         if (d.success) toast('Metadata settings saved!'); else toast(d.error, 'error');
     }
