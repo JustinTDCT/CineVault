@@ -100,7 +100,7 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 	seriesRepo := repository.NewSeriesRepository(database.DB)
 	tracksRepo := repository.NewTracksRepository(database.DB)
 	posterDir := cfg.Paths.Preview
-	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, cfg.FFmpeg.FFmpegPath, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo, tagRepo, performerRepo, settingsRepo, sisterRepo, seriesRepo, tracksRepo, scrapers, posterDir)
+	sc := scanner.NewScanner(cfg.FFmpeg.FFprobePath, cfg.FFmpeg.FFmpegPath, cfg.FFmpeg.HWAccel, mediaRepo, tvRepo, musicRepo, audiobookRepo, galleryRepo, tagRepo, performerRepo, settingsRepo, sisterRepo, seriesRepo, tracksRepo, scrapers, posterDir)
 	transcoder := stream.NewTranscoder(cfg.FFmpeg.FFmpegPath, cfg.Paths.Preview)
 
 	wsHub := NewWSHub()

@@ -28,6 +28,7 @@ import (
 type Scanner struct {
 	ffprobe       *ffmpeg.FFprobe
 	ffmpegPath    string
+	hwaccel       string
 	mediaRepo     *repository.MediaRepository
 	tvRepo        *repository.TVRepository
 	musicRepo     *repository.MusicRepository
@@ -92,7 +93,7 @@ var tvPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(.+?)[.\s_-]+[Ee](?:pisode)?\s*(\d{1,3})`), // Episode 2 (no season)
 }
 
-func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepository,
+func NewScanner(ffprobePath, ffmpegPath, hwaccel string, mediaRepo *repository.MediaRepository,
 	tvRepo *repository.TVRepository, musicRepo *repository.MusicRepository,
 	audiobookRepo *repository.AudiobookRepository, galleryRepo *repository.GalleryRepository,
 	tagRepo *repository.TagRepository, performerRepo *repository.PerformerRepository,
@@ -100,9 +101,13 @@ func NewScanner(ffprobePath, ffmpegPath string, mediaRepo *repository.MediaRepos
 	seriesRepo *repository.SeriesRepository, tracksRepo *repository.TracksRepository,
 	scrapers []metadata.Scraper, posterDir string,
 ) *Scanner {
+	if hwaccel == "" {
+		hwaccel = "none"
+	}
 	return &Scanner{
 		ffprobe:            ffmpeg.NewFFprobe(ffprobePath),
 		ffmpegPath:         ffmpegPath,
+		hwaccel:            hwaccel,
 		mediaRepo:          mediaRepo,
 		tvRepo:             tvRepo,
 		musicRepo:          musicRepo,
@@ -1097,6 +1102,9 @@ func (s *Scanner) GeneratePreviewClip(item *models.MediaItem) {
 }
 
 // GenerateTimelineThumbnails creates a sprite sheet of thumbnails for scrubber hover preview.
+// Uses keyframe-only decoding (-skip_frame nokey) for ~100x faster extraction, matching
+// the approach used by Jellyfin's trickplay implementation. Timeline thumbnails don't
+// need exact frame positioning so keyframe approximation is ideal.
 // Stores in /thumbnails/sprites/{id}.jpg. Updates media_items.sprite_path.
 func (s *Scanner) GenerateTimelineThumbnails(item *models.MediaItem) {
 	if s.ffmpegPath == "" || s.posterDir == "" || item.DurationSeconds == nil || *item.DurationSeconds < 10 {
@@ -1107,19 +1115,30 @@ func (s *Scanner) GenerateTimelineThumbnails(item *models.MediaItem) {
 	os.MkdirAll(spriteDir, 0755)
 
 	duration := *item.DurationSeconds
-	// One frame every 10 seconds for short videos, scale up interval for longer content
 	interval := 10
 	if duration > 600 {
 		interval = duration / 60 // ~60 frames total
 	}
 
 	outFile := filepath.Join(spriteDir, item.ID.String()+".jpg")
-	cmd := exec.Command(s.ffmpegPath,
+
+	args := make([]string, 0, 20)
+	// Keyframe-only decoding: decoder skips all P/B-frames, only outputs I-frames
+	args = append(args, "-skip_frame", "nokey")
+	if s.hwaccel != "none" {
+		args = append(args, "-hwaccel", s.hwaccel)
+	}
+	args = append(args,
 		"-i", item.FilePath,
+		"-an", "-sn",
 		"-vf", fmt.Sprintf("fps=1/%d,scale=160:-1,tile=10x10", interval),
 		"-q:v", "5",
+		"-vsync", "passthrough",
+		"-threads", "4",
 		"-y", outFile,
 	)
+
+	cmd := exec.Command(s.ffmpegPath, args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("Sprite: generation failed for %s: %v (%s)", item.FileName, err, string(output))
 		return

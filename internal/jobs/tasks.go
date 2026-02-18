@@ -536,7 +536,7 @@ func (h *SpritesLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		return nil
 	}
 
-	log.Printf("Sprites: generating timeline thumbnails for %d items in library %s", len(items), p.LibraryID)
+	log.Printf("Sprites: generating timeline thumbnails for %d items in library %s (2 workers, keyframe-only)", len(items), p.LibraryID)
 	if h.notifier != nil {
 		h.notifier.Broadcast("task:update", map[string]interface{}{
 			"task_id": taskID, "task_type": TaskSpritesLibrary,
@@ -544,30 +544,65 @@ func (h *SpritesLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		})
 	}
 
-	var lastTaskBroadcast time.Time
-	for i, item := range items {
-		select {
-		case <-ctx.Done():
-			log.Printf("Sprites: cancelled after %d/%d items", i, len(items))
-			return ctx.Err()
-		default:
+	const spriteWorkers = 2
+	var completed int64
+	total := int64(len(items))
+
+	work := make(chan *models.MediaItem, spriteWorkers)
+	var wg sync.WaitGroup
+
+	progressDone := make(chan struct{})
+	go func() {
+		defer close(progressDone)
+		if h.notifier == nil {
+			return
 		}
-
-		h.sc.GenerateTimelineThumbnails(item)
-
-		if h.notifier != nil {
-			now := time.Now()
-			if now.Sub(lastTaskBroadcast) >= 500*time.Millisecond || i == len(items)-1 {
-				lastTaskBroadcast = now
-				pct := int(float64(i+1) / float64(len(items)) * 100)
-				desc := fmt.Sprintf("Timeline thumbnails · %s (%d/%d)", item.FileName, i+1, len(items))
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				done := atomic.LoadInt64(&completed)
+				pct := int(float64(done) / float64(total) * 100)
+				desc := fmt.Sprintf("Timeline thumbnails · %d/%d", done, total)
 				h.notifier.Broadcast("task:update", map[string]interface{}{
 					"task_id": taskID, "task_type": TaskSpritesLibrary,
 					"status": "running", "progress": pct, "description": desc,
 				})
+				if done >= total {
+					return
+				}
+			case <-ctx.Done():
+				return
 			}
 		}
+	}()
+
+	for w := 0; w < spriteWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for item := range work {
+				h.sc.GenerateTimelineThumbnails(item)
+				atomic.AddInt64(&completed, 1)
+			}
+		}()
 	}
+
+	for _, item := range items {
+		select {
+		case <-ctx.Done():
+			log.Printf("Sprites: cancelled after %d/%d items", atomic.LoadInt64(&completed), total)
+			close(work)
+			wg.Wait()
+			<-progressDone
+			return ctx.Err()
+		case work <- item:
+		}
+	}
+	close(work)
+	wg.Wait()
+	<-progressDone
 
 	log.Printf("Sprites: completed %d timeline thumbnails for library %s", len(items), p.LibraryID)
 	if h.notifier != nil {

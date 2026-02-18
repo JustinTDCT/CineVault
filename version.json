@@ -1,6 +1,6 @@
 {
-  "version": "1.21.01",
-  "phase": 21,
+  "version": "1.22.01",
+  "phase": 22,
   "released": "2026-02-18",
-  "notes": "pHash performance — hardware-accelerated frame decoding and parallel worker pool for duplicate detection."
+  "notes": "Timeline thumbnails performance — keyframe-only decoding (~100x faster), hardware acceleration, and parallel worker pool."
 }
