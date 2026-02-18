@@ -176,7 +176,7 @@ func ScrapersForMediaType(scrapers []Scraper, mediaType models.MediaType) []Scra
 				result = append(result, s)
 			}
 		case models.MediaTypeAudiobooks:
-			if s.Name() == "openlibrary" {
+			if s.Name() == "openlibrary" || s.Name() == "audnexus" {
 				result = append(result, s)
 			}
 		}

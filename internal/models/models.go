@@ -866,6 +866,11 @@ type MetadataMatch struct {
 	ArtistName  string `json:"artist_name,omitempty"`
 	AlbumTitle  string `json:"album_title,omitempty"`
 	RecordLabel string `json:"record_label,omitempty"`
+	// Audiobook fields (from Audnexus)
+	Narrator    string `json:"narrator,omitempty"`
+	ASIN        string `json:"asin,omitempty"`
+	RuntimeMins int    `json:"runtime_mins,omitempty"`
+	Publisher   string `json:"publisher,omitempty"`
 }
 
 // ──────────────────── Media Segments (Skip Detection) ────────────────────

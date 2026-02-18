@@ -1,6 +1,6 @@
 {
-  "version": "1.25.00",
-  "phase": 25,
+  "version": "1.26.00",
+  "phase": 26,
   "released": "2026-02-18",
-  "notes": "Audio normalization — EBU R128 loudness analysis with per-library toggle, server-side volume correction for remux/transcode, client-side Web Audio API gain for direct play."
+  "notes": "Audnexus audiobook integration — direct ASIN lookup, ASIN extraction from filenames and folders, narrator and runtime enrichment, Audnexus scraper alongside OpenLibrary."
 }

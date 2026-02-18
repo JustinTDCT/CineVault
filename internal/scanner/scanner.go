@@ -1789,6 +1789,21 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		}
 	}
 
+	// ── Direct Audnexus ASIN lookup for audiobooks ──
+	if pf.ASIN != "" && item.MediaType == models.MediaTypeAudiobooks {
+		log.Printf("Auto-match: direct Audnexus lookup for ASIN %s (%q)", pf.ASIN, item.Title)
+		for _, sc := range s.scrapers {
+			if a, ok := sc.(*metadata.AudnexusScraper); ok {
+				match, err := a.LookupByASIN(pf.ASIN)
+				if err == nil && match != nil {
+					s.applyAudiobookMatch(item, match)
+					return
+				}
+				break
+			}
+		}
+	}
+
 	// ── Cache server is sole source when enabled ──
 	cacheClient := s.getCacheClient()
 	if cacheClient != nil {
@@ -1865,6 +1880,45 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 	if cacheClient != nil {
 		go cacheClient.Contribute(match)
 	}
+}
+
+// applyAudiobookMatch applies an Audnexus match to an audiobook media item.
+func (s *Scanner) applyAudiobookMatch(item *models.MediaItem, match *models.MetadataMatch) {
+	var posterPath *string
+	if match.PosterURL != nil && s.posterDir != "" && !item.IsFieldLocked("poster_path") {
+		filename := item.ID.String() + ".jpg"
+		saved, err := metadata.DownloadPoster(*match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+		if err != nil {
+			log.Printf("Audnexus: poster download failed for %s: %v", item.ID, err)
+		} else {
+			webPath := "/previews/posters/" + filename
+			posterPath = &webPath
+			_ = saved
+		}
+	}
+
+	if err := s.mediaRepo.UpdateMetadataWithLocks(item.ID, match.Title, match.Year,
+		match.Description, match.Rating, posterPath, match.ContentRating, item.LockedFields); err != nil {
+		log.Printf("Audnexus: DB update failed for %s: %v", item.ID, err)
+	}
+
+	if posterPath != nil {
+		item.PosterPath = posterPath
+	}
+
+	// Store genres
+	if s.tagRepo != nil && len(match.Genres) > 0 && !item.IsFieldLocked("genres") {
+		s.linkGenreTags(item.ID, match.Genres)
+	}
+
+	// Store external IDs
+	idsJSON := metadata.BuildExternalIDsFromMatch("audnexus", match.ExternalID, "", false)
+	if idsJSON != nil {
+		_ = s.mediaRepo.UpdateExternalIDs(item.ID, *idsJSON)
+	}
+
+	log.Printf("Audnexus: matched %q → %q (ASIN=%s, narrator=%s, runtime=%dm)",
+		item.Title, match.Title, match.ASIN, match.Narrator, match.RuntimeMins)
 }
 
 // applyCacheResult uses a cache server hit to populate metadata, genres, and ratings

@@ -38,6 +38,7 @@ type ParsedFilename struct {
 	IMDBID      string // from NFO sidecar file (tt1234567)
 	TMDBID      string // from NFO or inline filename [tmdbid-12345]
 	TVDBID      string // from NFO or inline filename [tvdbid-12345]
+	ASIN        string // Audible ASIN for audiobooks [asin-B08G9PRS1K]
 }
 
 // multiPartEntry tracks a media item that is part of a multi-part set.
@@ -180,6 +181,8 @@ var plexTMDBIDPattern = regexp.MustCompile(`(?i)\{tmdb[=-](\d+)\}`)
 var plexIMDBIDPattern = regexp.MustCompile(`(?i)\{imdb[=-](tt\d+)\}`)
 var plexTVDBIDPattern = regexp.MustCompile(`(?i)\{tvdb[=-](\d+)\}`)
 
+var inlineASINPattern = regexp.MustCompile(`(?i)[\[{]asin[=-]([A-Z0-9]{10})[\]}]`)
+
 func extractInlineProviderIDs(filename string, result *ParsedFilename) {
 	// Jellyfin-style [tmdbid-X]
 	if m := inlineTMDBIDPattern.FindStringSubmatch(filename); len(m) >= 2 {
@@ -211,6 +214,13 @@ func extractInlineProviderIDs(filename string, result *ParsedFilename) {
 		if m := plexTVDBIDPattern.FindStringSubmatch(filename); len(m) >= 2 {
 			result.TVDBID = m[1]
 			log.Printf("Inline ID: found Plex-style TVDB ID %s in %q", m[1], filename)
+		}
+	}
+	// ASIN (Audible) — [asin-B08G9PRS1K] or {asin-B08G9PRS1K}
+	if result.ASIN == "" {
+		if m := inlineASINPattern.FindStringSubmatch(filename); len(m) >= 2 {
+			result.ASIN = m[1]
+			log.Printf("Inline ID: found ASIN %s in %q", m[1], filename)
 		}
 	}
 }
@@ -246,6 +256,7 @@ func (s *Scanner) parseFilename(filename string, mediaType models.MediaType) Par
 	baseName = plexTMDBIDPattern.ReplaceAllString(baseName, "")
 	baseName = plexIMDBIDPattern.ReplaceAllString(baseName, "")
 	baseName = plexTVDBIDPattern.ReplaceAllString(baseName, "")
+	baseName = inlineASINPattern.ReplaceAllString(baseName, "")
 	baseName = strings.TrimSpace(baseName)
 
 	// Step 0b: Check for extras by filename suffix (before any other parsing)

@@ -85,6 +85,7 @@ func NewServer(cfg *config.Config, database *db.DB, jobQueue *jobs.Queue) (*Serv
 	}
 	scrapers = append(scrapers, metadata.NewMusicBrainzScraper())
 	scrapers = append(scrapers, metadata.NewOpenLibraryScraper())
+	scrapers = append(scrapers, metadata.NewAudnexusScraper())
 
 	tagRepo := repository.NewTagRepository(database.DB)
 	settingsRepo := repository.NewSettingsRepository(database.DB)
