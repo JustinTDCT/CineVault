@@ -11,6 +11,31 @@ let currentPlayMode = null; // 'direct', 'mpegts', 'hls'
 let knownDuration = 0; // Total duration from DB
 let seekOffset = 0; // FFmpeg -ss offset for MPEGTS streams
 
+// ── Audio Normalization State ──
+let videoAudioCtx = null;
+let videoGainNode = null;
+let videoSourceNode = null;
+
+function initVideoAudioContext() {
+    if (videoAudioCtx) return;
+    const video = document.getElementById('videoPlayer');
+    if (!video) return;
+    videoAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    videoGainNode = videoAudioCtx.createGain();
+    videoGainNode.connect(videoAudioCtx.destination);
+    videoSourceNode = videoAudioCtx.createMediaElementSource(video);
+    videoSourceNode.connect(videoGainNode);
+}
+
+function setVideoGainDB(db) {
+    if (!videoGainNode) return;
+    if (db === null || db === undefined || db === 0) {
+        videoGainNode.gain.value = 1.0;
+    } else {
+        videoGainNode.gain.value = Math.pow(10, db / 20);
+    }
+}
+
 // ── MTV Music Video Overlay State ──
 let mtvOverlayData = null;    // {song_title, artist_name, album_title, record_label, year}
 let mtvStartShown = false;    // Whether start overlay has been shown
@@ -256,6 +281,16 @@ async function playMediaDirect(mediaId, title) {
     // MTV music video overlay setup
     setupMtvOverlay(currentStreamInfo);
 
+    // Audio normalization: apply client-side gain for direct play only
+    // (remux/transcode paths apply gain server-side via FFmpeg)
+    if (currentStreamInfo && currentStreamInfo.loudness_gain_db !== undefined && !currentStreamInfo.needs_remux) {
+        initVideoAudioContext();
+        if (videoAudioCtx && videoAudioCtx.state === 'suspended') videoAudioCtx.resume();
+        setVideoGainDB(currentStreamInfo.loudness_gain_db);
+    } else {
+        setVideoGainDB(0);
+    }
+
     // Start playback — MPEGTS for non-native formats, direct for native
     if (currentStreamInfo && currentStreamInfo.needs_remux) {
         startMpegtsPlay(mediaId, token, 0);
@@ -451,6 +486,7 @@ document.getElementById('editionPickerOverlay').addEventListener('click', functi
 });
 
 function closePlayer() {
+    setVideoGainDB(0);
     const overlay = document.getElementById('playerOverlay');
     const video = document.getElementById('videoPlayer');
     overlay.classList.remove('active');

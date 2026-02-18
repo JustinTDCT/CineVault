@@ -58,11 +58,11 @@ type MetadataPayload struct {
 	Source      string `json:"source"`
 }
 
-type DetectSegmentsPayload struct {
+type LoudnessLibraryPayload struct {
 	LibraryID string `json:"library_id"`
 }
 
-type LoudnessLibraryPayload struct {
+type DetectSegmentsPayload struct {
 	LibraryID string `json:"library_id"`
 }
 
