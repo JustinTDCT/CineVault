@@ -1,6 +1,6 @@
 {
-  "version": "1.23.00",
-  "phase": 23,
+  "version": "1.24.00",
+  "phase": 24,
   "released": "2026-02-18",
-  "notes": "Configurable metadata matching — fuzzy title similarity, user-settable auto/manual thresholds and max results, multi-result returns for manual identification."
+  "notes": "Matching improvements — TMDB position boost, original title scoring, punctuation normalization, year-less re-search fallback, Plex-format provider IDs."
 }

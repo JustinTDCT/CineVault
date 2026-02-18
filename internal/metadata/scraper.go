@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
 )
+
+// punctRe strips everything except letters, digits, and whitespace for title normalization.
+var punctRe = regexp.MustCompile(`[^a-z0-9\s]+`)
 
 type Scraper interface {
 	Search(query string, mediaType models.MediaType, year *int) ([]*models.MetadataMatch, error)
@@ -46,14 +50,16 @@ var tmdbGenreMap = map[int]string{
 
 type tmdbSearchResult struct {
 	Results []struct {
-		ID           int     `json:"id"`
-		Title        string  `json:"title"`
-		Name         string  `json:"name"`
-		Overview     string  `json:"overview"`
-		PosterPath   string  `json:"poster_path"`
-		ReleaseDate  string  `json:"release_date"`
-		FirstAirDate string  `json:"first_air_date"`
-		VoteAverage  float64 `json:"vote_average"`
+		ID            int     `json:"id"`
+		Title         string  `json:"title"`
+		Name          string  `json:"name"`
+		OriginalTitle string  `json:"original_title"`
+		OriginalName  string  `json:"original_name"`
+		Overview      string  `json:"overview"`
+		PosterPath    string  `json:"poster_path"`
+		ReleaseDate   string  `json:"release_date"`
+		FirstAirDate  string  `json:"first_air_date"`
+		VoteAverage   float64 `json:"vote_average"`
 		GenreIDs     []int   `json:"genre_ids"`
 	} `json:"results"`
 }
@@ -63,6 +69,22 @@ func (s *TMDBScraper) Search(query string, mediaType models.MediaType, year *int
 		return nil, fmt.Errorf("TMDB API key not configured")
 	}
 
+	matches, err := s.tmdbSearch(query, mediaType, year)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fallback: if year was provided but no results, retry without year
+	if len(matches) == 0 && year != nil && *year > 0 {
+		matches, err = s.tmdbSearch(query, mediaType, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return matches, nil
+}
+
+func (s *TMDBScraper) tmdbSearch(query string, mediaType models.MediaType, year *int) ([]*models.MetadataMatch, error) {
 	searchType := "movie"
 	if mediaType == models.MediaTypeTVShows {
 		searchType = "tv"
@@ -71,12 +93,10 @@ func (s *TMDBScraper) Search(query string, mediaType models.MediaType, year *int
 	reqURL := fmt.Sprintf("https://api.themoviedb.org/3/search/%s?api_key=%s&query=%s",
 		searchType, s.apiKey, url.QueryEscape(query))
 
-	// TMDB filters out adult content by default; include it for adult libraries
 	if mediaType == models.MediaTypeAdultMovies {
 		reqURL += "&include_adult=true"
 	}
 
-	// Pass year to TMDB for more accurate results
 	if year != nil && *year > 0 {
 		if searchType == "tv" {
 			reqURL += fmt.Sprintf("&first_air_date_year=%d", *year)
@@ -97,20 +117,24 @@ func (s *TMDBScraper) Search(query string, mediaType models.MediaType, year *int
 	}
 
 	var matches []*models.MetadataMatch
-	for _, r := range result.Results {
+	for i, r := range result.Results {
 		title := r.Title
 		if title == "" {
 			title = r.Name
+		}
+		origTitle := r.OriginalTitle
+		if origTitle == "" {
+			origTitle = r.OriginalName
 		}
 		dateStr := r.ReleaseDate
 		if dateStr == "" {
 			dateStr = r.FirstAirDate
 		}
-		var year *int
+		var resultYear *int
 		if len(dateStr) >= 4 {
 			y := 0
 			fmt.Sscanf(dateStr[:4], "%d", &y)
-			year = &y
+			resultYear = &y
 		}
 		overview := r.Overview
 		var posterURL *string
@@ -125,16 +149,32 @@ func (s *TMDBScraper) Search(query string, mediaType models.MediaType, year *int
 				genres = append(genres, name)
 			}
 		}
+
+		conf := titleSimilarity(query, title)
+		if origTitle != "" && origTitle != title {
+			if origConf := titleSimilarity(query, origTitle); origConf > conf {
+				conf = origConf
+			}
+		}
+
+		// TMDB returns results in relevance order; small boost for top positions
+		if i < 3 {
+			conf += 0.05 * float64(3-i) / 3.0
+			if conf > 1.0 {
+				conf = 1.0
+			}
+		}
+
 		matches = append(matches, &models.MetadataMatch{
 			Source:      "tmdb",
 			ExternalID:  fmt.Sprintf("%d", r.ID),
 			Title:       title,
-			Year:        year,
+			Year:        resultYear,
 			Description: &overview,
 			PosterURL:   posterURL,
 			Rating:      &rating,
 			Genres:      genres,
-			Confidence:  titleSimilarity(query, title),
+			Confidence:  conf,
 		})
 	}
 	return matches, nil
@@ -222,6 +262,10 @@ func titleSimilarity(query, result string) float64 {
 	if q == r {
 		return 1.0
 	}
+
+	// Normalize punctuation so "Spider-Man" matches "Spiderman"
+	q = punctRe.ReplaceAllString(q, " ")
+	r = punctRe.ReplaceAllString(r, " ")
 
 	qWords := stripArticles(strings.Fields(q))
 	rWords := stripArticles(strings.Fields(r))

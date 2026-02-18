@@ -168,16 +168,20 @@ var sampleFileRx = regexp.MustCompile(`(?i)[\s._-]sample[\s._-]|^sample[\s._-]|[
 // SampleFileSizeThreshold is the max file size (300MB) for a sample to be ignored
 const SampleFileSizeThreshold = 300 * 1024 * 1024
 
-// ──────────────────── Inline Provider ID Support (Jellyfin-style) ────────────────────
-// Supports [tmdbid-12345], [imdbid-tt1234567], [tvdbid-12345] in filenames
+// ──────────────────── Inline Provider ID Support ────────────────────
+// Jellyfin-style: [tmdbid-12345], [imdbid-tt1234567], [tvdbid-12345]
+// Plex-style:     {tmdb-12345},   {imdb-tt1234567},   {tvdb-12345}
 
 var inlineTMDBIDPattern = regexp.MustCompile(`(?i)\[tmdbid[=-](\d+)\]`)
 var inlineIMDBIDPattern = regexp.MustCompile(`(?i)\[imdbid[=-](tt\d+)\]`)
 var inlineTVDBIDPattern = regexp.MustCompile(`(?i)\[tvdbid[=-](\d+)\]`)
 
-// extractInlineProviderIDs checks a filename for embedded provider IDs
-// in the Jellyfin [tmdbid-X] format and populates the ParsedFilename.
+var plexTMDBIDPattern = regexp.MustCompile(`(?i)\{tmdb[=-](\d+)\}`)
+var plexIMDBIDPattern = regexp.MustCompile(`(?i)\{imdb[=-](tt\d+)\}`)
+var plexTVDBIDPattern = regexp.MustCompile(`(?i)\{tvdb[=-](\d+)\}`)
+
 func extractInlineProviderIDs(filename string, result *ParsedFilename) {
+	// Jellyfin-style [tmdbid-X]
 	if m := inlineTMDBIDPattern.FindStringSubmatch(filename); len(m) >= 2 {
 		result.TMDBID = m[1]
 		log.Printf("Inline ID: found TMDB ID %s in %q", m[1], filename)
@@ -189,6 +193,25 @@ func extractInlineProviderIDs(filename string, result *ParsedFilename) {
 	if m := inlineTVDBIDPattern.FindStringSubmatch(filename); len(m) >= 2 {
 		result.TVDBID = m[1]
 		log.Printf("Inline ID: found TVDB ID %s in %q", m[1], filename)
+	}
+	// Plex-style {tmdb-X}
+	if result.TMDBID == "" {
+		if m := plexTMDBIDPattern.FindStringSubmatch(filename); len(m) >= 2 {
+			result.TMDBID = m[1]
+			log.Printf("Inline ID: found Plex-style TMDB ID %s in %q", m[1], filename)
+		}
+	}
+	if result.IMDBID == "" {
+		if m := plexIMDBIDPattern.FindStringSubmatch(filename); len(m) >= 2 {
+			result.IMDBID = m[1]
+			log.Printf("Inline ID: found Plex-style IMDB ID %s in %q", m[1], filename)
+		}
+	}
+	if result.TVDBID == "" {
+		if m := plexTVDBIDPattern.FindStringSubmatch(filename); len(m) >= 2 {
+			result.TVDBID = m[1]
+			log.Printf("Inline ID: found Plex-style TVDB ID %s in %q", m[1], filename)
+		}
 	}
 }
 
@@ -214,13 +237,15 @@ func (s *Scanner) parseFilename(filename string, mediaType models.MediaType) Par
 	baseName := strings.TrimSuffix(filename, ext)
 	result.Container = strings.ToLower(strings.TrimPrefix(ext, "."))
 
-	// Step 0a: Extract inline provider IDs [tmdbid-X], [imdbid-X], [tvdbid-X]
-	// (Jellyfin-style — must extract before stripping brackets)
+	// Step 0a: Extract inline provider IDs before stripping brackets
+	// Supports both Jellyfin [tmdbid-X] and Plex {tmdb-X} formats
 	extractInlineProviderIDs(baseName, &result)
-	// Strip inline ID tags from the base name so they don't pollute the title
 	baseName = inlineTMDBIDPattern.ReplaceAllString(baseName, "")
 	baseName = inlineIMDBIDPattern.ReplaceAllString(baseName, "")
 	baseName = inlineTVDBIDPattern.ReplaceAllString(baseName, "")
+	baseName = plexTMDBIDPattern.ReplaceAllString(baseName, "")
+	baseName = plexIMDBIDPattern.ReplaceAllString(baseName, "")
+	baseName = plexTVDBIDPattern.ReplaceAllString(baseName, "")
 	baseName = strings.TrimSpace(baseName)
 
 	// Step 0b: Check for extras by filename suffix (before any other parsing)

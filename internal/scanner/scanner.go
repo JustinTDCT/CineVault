@@ -337,6 +337,12 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 	parsed := s.parseFilename(name, library.MediaType)
 	extraType := IsExtraFile(path, size)
 
+	// Also check parent folder name for provider IDs (Plex convention)
+	parentFolder := filepath.Base(filepath.Dir(path))
+	if parentFolder != "." && parentFolder != "/" {
+		extractInlineProviderIDs(parentFolder, &parsed)
+	}
+
 	var nfoData *metadata.NFOData
 	if library.NFOImport {
 		nfoPath := metadata.FindNFOFile(path, library.MediaType)
