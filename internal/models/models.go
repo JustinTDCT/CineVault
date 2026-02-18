@@ -120,6 +120,7 @@ type Library struct {
 	PreferLocalArtwork  bool          `json:"prefer_local_artwork" db:"prefer_local_artwork"`
 	CreatePreviews      bool          `json:"create_previews" db:"create_previews"`
 	CreateThumbnails    bool          `json:"create_thumbnails" db:"create_thumbnails"`
+	AudioNormalization  bool          `json:"audio_normalization" db:"audio_normalization"`
 	AdultContentType    *string       `json:"adult_content_type,omitempty" db:"adult_content_type"`
 	ScanInterval      string        `json:"scan_interval" db:"scan_interval"`
 	NextScanAt        *time.Time    `json:"next_scan_at,omitempty" db:"next_scan_at"`
@@ -239,6 +240,9 @@ type MediaItem struct {
 	DuplicateStatus  string          `json:"duplicate_status" db:"duplicate_status"`
 	PreviewPath      *string         `json:"preview_path,omitempty" db:"preview_path"`
 	SpritePath       *string         `json:"sprite_path,omitempty" db:"sprite_path"`
+	// Audio normalization (EBU R128)
+	LoudnessLUFS     *float64        `json:"loudness_lufs,omitempty" db:"loudness_lufs"`
+	LoudnessGainDB   *float64        `json:"loudness_gain_db,omitempty" db:"loudness_gain_db"`
 	// Extras support (trailers, featurettes, etc.)
 	ParentMediaID    *uuid.UUID      `json:"parent_media_id,omitempty" db:"parent_media_id"`
 	ExtraType        *string         `json:"extra_type,omitempty" db:"extra_type"`

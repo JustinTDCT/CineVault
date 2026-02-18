@@ -138,6 +138,15 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 		dynamicRange = media.DynamicRange
 	}
 
+	// Audio normalization: include gain for client-side direct play normalization
+	var loudnessGainDB *float64
+	if media.LoudnessGainDB != nil {
+		lib, libErr := s.libRepo.GetByID(media.LibraryID)
+		if libErr == nil && lib.AudioNormalization {
+			loudnessGainDB = media.LoudnessGainDB
+		}
+	}
+
 	data := map[string]interface{}{
 		"media_id":            mediaID.String(),
 		"width":               width,
@@ -155,6 +164,9 @@ func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
 		"chapters":            chapters,
 		"hdr_format":          hdrFormat,
 		"dynamic_range":       dynamicRange,
+	}
+	if loudnessGainDB != nil {
+		data["loudness_gain_db"] = *loudnessGainDB
 	}
 
 	// Music video overlay metadata (artist, album, label, year)
@@ -248,6 +260,13 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 		}
 		if r.URL.Query().Get("codec") == "hevc" {
 			tcOpts.Codec = "hevc"
+		}
+
+		// Audio normalization gain
+		if media.LoudnessGainDB != nil {
+			if lib, libErr := s.libRepo.GetByID(media.LibraryID); libErr == nil && lib.AudioNormalization {
+				tcOpts.GainDB = *media.LoudnessGainDB
+			}
 		}
 
 		sess, err := s.transcoder.StartTranscode(mediaID, userID.String(), media.FilePath, quality, tcOpts)
@@ -389,13 +408,19 @@ func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
 		if audioParam := r.URL.Query().Get("audio"); audioParam != "" {
 			if idx, err := strconv.Atoi(audioParam); err == nil && idx >= 0 {
 				remuxOpts.AudioStreamIndex = idx
-				// Look up the selected audio track's codec and channels
 				if s.tracksRepo != nil {
 					if track, err := s.tracksRepo.GetAudioTrackByIndex(mediaID, idx); err == nil {
 						remuxOpts.AudioCodec = track.Codec
 						remuxOpts.AudioChannels = track.Channels
 					}
 				}
+			}
+		}
+
+		// Audio normalization gain
+		if media.LoudnessGainDB != nil {
+			if lib, libErr := s.libRepo.GetByID(media.LibraryID); libErr == nil && lib.AudioNormalization {
+				remuxOpts.GainDB = *media.LoudnessGainDB
 			}
 		}
 

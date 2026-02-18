@@ -18,6 +18,7 @@ import (
 
 	"github.com/JustinTDCT/CineVault/internal/config"
 	"github.com/JustinTDCT/CineVault/internal/detection"
+	ffmpegPkg "github.com/JustinTDCT/CineVault/internal/ffmpeg"
 	"github.com/JustinTDCT/CineVault/internal/fingerprint"
 	"github.com/JustinTDCT/CineVault/internal/metadata"
 	"github.com/JustinTDCT/CineVault/internal/models"
@@ -58,6 +59,10 @@ type MetadataPayload struct {
 }
 
 type DetectSegmentsPayload struct {
+	LibraryID string `json:"library_id"`
+}
+
+type LoudnessLibraryPayload struct {
 	LibraryID string `json:"library_id"`
 }
 
@@ -219,6 +224,17 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 				log.Printf("Job: failed to enqueue previews job for library %s: %v", p.LibraryID, err)
 			} else {
 				log.Printf("Job: enqueued preview clips for library %s", p.LibraryID)
+			}
+		}
+
+		// Enqueue loudness analysis if the library has audio normalization enabled
+		if library.AudioNormalization {
+			uniqueID := "loudness:" + p.LibraryID
+			if _, err := h.queue.EnqueueUnique(TaskLoudnessLibrary, LoudnessLibraryPayload{LibraryID: p.LibraryID}, uniqueID,
+				asynq.Timeout(12*time.Hour), asynq.Retention(1*time.Hour)); err != nil {
+				log.Printf("Job: failed to enqueue loudness job for library %s: %v", p.LibraryID, err)
+			} else {
+				log.Printf("Job: enqueued loudness analysis for library %s", p.LibraryID)
 			}
 		}
 	}
@@ -1718,6 +1734,111 @@ func (h *DetectSegmentsHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 	return nil
 }
 
+// ──────── Loudness Analysis Handler ────────
+
+type LoudnessLibraryHandler struct {
+	mediaRepo *repository.MediaRepository
+	libRepo   *repository.LibraryRepository
+	notifier  EventNotifier
+	ffmpegPath string
+}
+
+func NewLoudnessLibraryHandler(mediaRepo *repository.MediaRepository, libRepo *repository.LibraryRepository, notifier EventNotifier, ffmpegPath string) *LoudnessLibraryHandler {
+	return &LoudnessLibraryHandler{mediaRepo: mediaRepo, libRepo: libRepo, notifier: notifier, ffmpegPath: ffmpegPath}
+}
+
+func (h *LoudnessLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
+	var p LoudnessLibraryPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return fmt.Errorf("unmarshal: %w", err)
+	}
+
+	libID, _ := uuid.Parse(p.LibraryID)
+
+	// Verify the library still has normalization enabled
+	if h.libRepo != nil {
+		lib, err := h.libRepo.GetByID(libID)
+		if err != nil {
+			return fmt.Errorf("get library: %w", err)
+		}
+		if !lib.AudioNormalization {
+			log.Printf("Loudness: skipping for library %s (Audio Normalization disabled)", p.LibraryID)
+			return nil
+		}
+	}
+
+	taskID := "loudness:" + p.LibraryID
+	taskDesc := "Analyzing audio loudness"
+
+	items, err := h.mediaRepo.ListItemsNeedingLoudness(libID)
+	if err != nil {
+		return fmt.Errorf("list items needing loudness: %w", err)
+	}
+
+	if len(items) == 0 {
+		log.Printf("Loudness: all items already analyzed in library %s", p.LibraryID)
+		return nil
+	}
+
+	log.Printf("Loudness: analyzing %d items in library %s", len(items), p.LibraryID)
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskLoudnessLibrary,
+			"status": "running", "progress": 0, "description": taskDesc,
+		})
+	}
+
+	analyzed := 0
+	var lastTaskBroadcast time.Time
+	for i, item := range items {
+		select {
+		case <-ctx.Done():
+			log.Printf("Loudness: cancelled after %d/%d items", analyzed, len(items))
+			return ctx.Err()
+		default:
+		}
+
+		ffPath := h.ffmpegPath
+		if ffPath == "" {
+			ffPath = "ffmpeg"
+		}
+
+		result, err := ffmpegPkg.AnalyzeLoudness(ffPath, item.FilePath)
+		if err != nil {
+			log.Printf("Loudness: failed for %s: %v", item.FileName, err)
+			continue
+		}
+
+		if err := h.mediaRepo.UpdateLoudness(item.ID, result.InputI, result.GainDB); err != nil {
+			log.Printf("Loudness: failed to store for %s: %v", item.FileName, err)
+			continue
+		}
+		analyzed++
+
+		if h.notifier != nil {
+			now := time.Now()
+			if now.Sub(lastTaskBroadcast) >= 500*time.Millisecond || i == len(items)-1 {
+				lastTaskBroadcast = now
+				pct := int(float64(i+1) / float64(len(items)) * 100)
+				desc := fmt.Sprintf("Audio loudness · %s (%d/%d)", item.FileName, i+1, len(items))
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskLoudnessLibrary,
+					"status": "running", "progress": pct, "description": desc,
+				})
+			}
+		}
+	}
+
+	log.Printf("Loudness: analyzed %d items in library %s", analyzed, p.LibraryID)
+	if h.notifier != nil {
+		h.notifier.Broadcast("task:update", map[string]interface{}{
+			"task_id": taskID, "task_type": TaskLoudnessLibrary,
+			"status": "complete", "progress": 100, "description": taskDesc,
+		})
+	}
+	return nil
+}
+
 // ──────── Register all handlers ────────
 
 func RegisterHandlers(q *Queue, sc *scanner.Scanner, libRepo *repository.LibraryRepository,
@@ -1735,7 +1856,9 @@ func RegisterHandlers(q *Queue, sc *scanner.Scanner, libRepo *repository.Library
 	q.RegisterHandler(TaskMetadataScrape, NewMetadataScrapeHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))
 	q.RegisterHandler(TaskMetadataRefresh, NewMetadataRefreshHandler(mediaRepo, libRepo, settingsRepo, scrapers, cfg, sc, notifier))
 	q.RegisterHandler(TaskDetectSegments, NewDetectSegmentsHandler(det, segRepo, libRepo, notifier))
+	q.RegisterHandler(TaskLoudnessLibrary, NewLoudnessLibraryHandler(mediaRepo, libRepo, notifier, cfg.FFmpeg.FFmpegPath))
 
 	// Ignore unused import
 	_ = models.JobPending
+	_ = ffmpegPkg.TargetLUFS
 }

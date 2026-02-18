@@ -56,15 +56,16 @@ type Session struct {
 
 // TranscodeOptions holds optional parameters for transcoding.
 type TranscodeOptions struct {
-	AudioStreamIndex int    // Specific audio stream index (-1 for default)
-	AudioCodec       string // Source audio codec
-	AudioChannels    int    // Source audio channel count
-	SubtitleIndex    int    // Subtitle stream index for burn-in (-1 for none)
-	SubtitleFormat   string // Subtitle codec name for burn-in filter selection
-	BurnSubtitles    bool   // Whether to burn in subtitles
-	HDRToSDR         bool   // Whether to convert HDR to SDR
+	AudioStreamIndex int     // Specific audio stream index (-1 for default)
+	AudioCodec       string  // Source audio codec
+	AudioChannels    int     // Source audio channel count
+	SubtitleIndex    int     // Subtitle stream index for burn-in (-1 for none)
+	SubtitleFormat   string  // Subtitle codec name for burn-in filter selection
+	BurnSubtitles    bool    // Whether to burn in subtitles
+	HDRToSDR         bool    // Whether to convert HDR to SDR
 	StartSeconds     float64 // Seek position (0 for beginning)
 	Codec            string  // Output codec: "h264" (default), "hevc"
+	GainDB           float64 // Audio normalization gain in dB (0 = no gain)
 }
 
 func NewTranscoder(ffmpegPath, outputBase string) *Transcoder {
@@ -218,7 +219,7 @@ func (t *Transcoder) StartTranscode(mediaItemID, userID, filePath, quality strin
 	if opt.AudioCodec != "" {
 		audioCodec = opt.AudioCodec
 	}
-	args = append(args, BuildAudioTranscodeArgs(audioCodec, channels)...)
+	args = append(args, BuildAudioTranscodeArgs(audioCodec, channels, opt.GainDB)...)
 
 	// HLS output — use fmp4 for HEVC (required by spec), mpegts for H.264
 	segExt := "ts"

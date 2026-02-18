@@ -2083,6 +2083,7 @@ async function loadLibrariesView() {
             if (!lib.retrieve_metadata) settingsTags += '<span class="tag tag-orange" style="margin-left:4px;">No Metadata</span>';
             if (lib.create_previews === false) settingsTags += '<span class="tag tag-orange" style="margin-left:4px;">No Previews</span>';
             if (lib.create_thumbnails === false) settingsTags += '<span class="tag tag-orange" style="margin-left:4px;">No Thumbnails</span>';
+            if (lib.audio_normalization) settingsTags += '<span class="tag tag-cyan" style="margin-left:4px;">Audio Normalization</span>';
             if (lib.media_type === 'adult_movies' && lib.adult_content_type) settingsTags += `<span class="tag tag-purple" style="margin-left:4px;">${lib.adult_content_type === 'clips' ? 'Clips' : 'Movies'}</span>`;
             return `<div class="library-card" id="lib-card-${lib.id}"><div style="flex:1;"><h3>${lib.name}</h3><p style="color:#8a9bae;font-size:0.85rem;"><span class="tag tag-cyan">${MEDIA_LABELS[lib.media_type]||lib.media_type}</span>${lib.season_grouping?'<span class="tag tag-purple" style="margin-left:6px;">Season Grouping</span>':''}<span class="tag ${accessColor}" style="margin-left:6px;">${accessLabel}</span>${folderCount}<span style="margin-left:8px;">${folderPaths}</span></p><div class="lib-settings-tags">${settingsTags}</div><p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">${lib.last_scan_at?'Last scan: '+new Date(lib.last_scan_at).toLocaleString():'Never scanned'}</p><div class="scan-progress" id="scan-progress-${lib.id}"><div class="scan-progress-bar"><div class="scan-progress-fill" id="scan-fill-${lib.id}"></div></div><div class="scan-progress-text"><span class="filename" id="scan-file-${lib.id}"></span><span id="scan-count-${lib.id}"></span></div></div></div><div class="library-actions">${isAdmin?`<button class="btn-secondary" id="scan-btn-${lib.id}" onclick="scanLibrary('${lib.id}',this)">&#128269; Scan</button><button class="btn-danger btn-small" onclick="deleteLibrary('${lib.id}')">Delete</button>`:''}</div></div>`;
         }).join('');
@@ -2265,6 +2266,16 @@ function showCreateLibrary() {
             </div>
             <div class="option-row">
                 <div class="option-row-info">
+                    <div class="option-row-label">Audio Normalization</div>
+                    <div class="option-row-desc">Analyze loudness (EBU R128) and normalize volume during playback</div>
+                </div>
+                <div class="toggle-btns">
+                    <label><input type="radio" name="audioNormalization" value="yes"><span>Yes</span></label>
+                    <label><input type="radio" name="audioNormalization" value="no" checked><span>No</span></label>
+                </div>
+            </div>
+            <div class="option-row">
+                <div class="option-row-info">
                     <div class="option-row-label">Scheduled Scan</div>
                     <div class="option-row-desc">Automatically scan this library on a schedule</div>
                 </div>
@@ -2421,6 +2432,7 @@ async function createLibrary() {
     const prefer_local_artwork = document.querySelector('input[name="preferLocalArtwork"]:checked')?.value === 'yes';
     const create_previews = document.querySelector('input[name="createPreviews"]:checked')?.value === 'yes';
     const create_thumbnails = document.querySelector('input[name="createThumbnails"]:checked')?.value === 'yes';
+    const audio_normalization = document.querySelector('input[name="audioNormalization"]:checked')?.value === 'yes';
     const scan_interval = document.getElementById('editScanInterval')?.value || 'disabled';
     const watch_enabled = document.querySelector('input[name="watchEnabled"]:checked')?.value === 'yes';
 
@@ -2434,7 +2446,7 @@ async function createLibrary() {
         season_grouping, access_level, allowed_users,
         include_in_homepage, include_in_search, retrieve_metadata,
         nfo_import, nfo_export, prefer_local_artwork,
-        create_previews, create_thumbnails, adult_content_type,
+        create_previews, create_thumbnails, audio_normalization, adult_content_type,
         scan_interval, watch_enabled
     });
     if (d.success) { toast('Library created!'); loadLibrariesView(); loadSidebarCounts(); }

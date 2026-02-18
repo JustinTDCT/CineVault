@@ -1,6 +1,6 @@
 {
-  "version": "1.19.01",
-  "phase": 19,
+  "version": "1.20.01",
+  "phase": 20,
   "released": "2026-02-18",
-  "notes": "Fix custom entry poster display — fall back to cache server image path when poster URL is not available."
+  "notes": "Audio normalization — EBU R128 loudness analysis with server-side and client-side volume normalization per library."
 }

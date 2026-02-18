@@ -64,6 +64,7 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	metacritic_score, content_ratings_json, taglines_json, trailers_json, descriptions_json,
 	custom_notes, custom_tags,
 	metadata_locked, locked_fields, duplicate_status, preview_path, sprite_path,
+	loudness_lufs, loudness_gain_db,
 	parent_media_id, extra_type,
 	added_at, updated_at`
 
@@ -98,6 +99,7 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.CustomNotes, &item.CustomTags,
 		&item.MetadataLocked, &item.LockedFields, &item.DuplicateStatus,
 		&item.PreviewPath, &item.SpritePath,
+		&item.LoudnessLUFS, &item.LoudnessGainDB,
 		&item.ParentMediaID, &item.ExtraType, &item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
@@ -691,6 +693,37 @@ func (r *MediaRepository) ListByTVShow(showID uuid.UUID) ([]*models.MediaItem, e
 func (r *MediaRepository) UpdateFileHash(id uuid.UUID, hash string) error {
 	_, err := r.db.Exec(`UPDATE media_items SET file_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, hash, id)
 	return err
+}
+
+// UpdateLoudness stores the measured LUFS loudness and computed gain for a media item.
+func (r *MediaRepository) UpdateLoudness(id uuid.UUID, lufs, gainDB float64) error {
+	_, err := r.db.Exec(`UPDATE media_items SET loudness_lufs = $1, loudness_gain_db = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3`,
+		lufs, gainDB, id)
+	return err
+}
+
+// ListItemsNeedingLoudness returns media items in a library that haven't been analyzed yet.
+func (r *MediaRepository) ListItemsNeedingLoudness(libraryID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `SELECT ` + mediaColumns + `
+		FROM media_items
+		WHERE library_id = $1
+		  AND loudness_lufs IS NULL
+		  AND media_type NOT IN ('images')
+		ORDER BY added_at`
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*models.MediaItem
+	for rows.Next() {
+		item, err := scanMediaItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 // UpdatePhash sets the perceptual hash for a media item.

@@ -253,27 +253,31 @@ func HDRToSDRFilter(hwAccel string) string {
 
 // BuildAudioTranscodeArgs returns FFmpeg args for audio transcoding.
 // When the source audio codec is not browser-compatible, transcodes to AAC stereo
-// or AC3 5.1 based on channel count.
-func BuildAudioTranscodeArgs(sourceCodec string, channels int) []string {
-	if !NeedsAudioTranscode(sourceCodec) {
+// or AC3 5.1 based on channel count. When gainDB is non-zero, a volume filter is
+// applied and audio is forced to transcode (cannot apply filters with -c:a copy).
+func BuildAudioTranscodeArgs(sourceCodec string, channels int, gainDB float64) []string {
+	needsTranscode := NeedsAudioTranscode(sourceCodec)
+	hasGain := gainDB != 0
+
+	// If no gain and codec is compatible, copy audio as-is
+	if !needsTranscode && !hasGain {
 		return []string{"-c:a", "copy"}
 	}
 
-	// For multichannel (>2), transcode to AC3 5.1 to preserve surround
-	if channels > 2 {
-		return []string{
-			"-c:a", "ac3",
-			"-ac", "6",
-			"-b:a", "384k",
-		}
+	var args []string
+
+	// Apply volume filter when gain is non-zero
+	if hasGain {
+		args = append(args, "-af", fmt.Sprintf("volume=%.2fdB", gainDB))
 	}
 
-	// Stereo or mono: transcode to AAC
-	return []string{
-		"-c:a", "aac",
-		"-ac", "2",
-		"-b:a", "192k",
+	if channels > 2 {
+		args = append(args, "-c:a", "ac3", "-ac", "6", "-b:a", "384k")
+	} else {
+		args = append(args, "-c:a", "aac", "-ac", "2", "-b:a", "192k")
 	}
+
+	return args
 }
 
 // SelectAudioStream returns FFmpeg map args for selecting a specific audio stream.

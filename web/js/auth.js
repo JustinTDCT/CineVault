@@ -642,6 +642,16 @@ async function showEditLibraryForm(libId) {
             </div>
             <div class="option-row">
                 <div class="option-row-info">
+                    <div class="option-row-label">Audio Normalization</div>
+                    <div class="option-row-desc">Analyze loudness (EBU R128) and normalize volume during playback</div>
+                </div>
+                <div class="toggle-btns">
+                    <label><input type="radio" name="audioNormalization" value="yes" ${lib.audio_normalization?'checked':''}><span>Yes</span></label>
+                    <label><input type="radio" name="audioNormalization" value="no" ${!lib.audio_normalization?'checked':''}><span>No</span></label>
+                </div>
+            </div>
+            <div class="option-row">
+                <div class="option-row-info">
                     <div class="option-row-label">Scheduled Scan</div>
                     <div class="option-row-desc">Automatically scan this library on a schedule</div>
                 </div>
@@ -707,6 +717,7 @@ async function saveEditLibrary() {
     const prefer_local_artwork = document.querySelector('input[name="preferLocalArtwork"]:checked')?.value === 'yes';
     const create_previews = document.querySelector('input[name="createPreviews"]:checked')?.value === 'yes';
     const create_thumbnails = document.querySelector('input[name="createThumbnails"]:checked')?.value === 'yes';
+    const audio_normalization = document.querySelector('input[name="audioNormalization"]:checked')?.value === 'yes';
     const scan_interval = document.getElementById('editScanInterval')?.value || 'disabled';
     const watch_enabled = document.querySelector('input[name="watchEnabled"]:checked')?.value === 'yes';
 
@@ -720,7 +731,7 @@ async function saveEditLibrary() {
         season_grouping, access_level, allowed_users,
         include_in_homepage, include_in_search, retrieve_metadata,
         nfo_import, nfo_export, prefer_local_artwork,
-        create_previews, create_thumbnails, adult_content_type,
+        create_previews, create_thumbnails, audio_normalization, adult_content_type,
         scan_interval, watch_enabled
     });
     if (d.success) { toast('Library updated!'); loadLibrariesView(); loadSidebarCounts(); }

@@ -47,9 +47,10 @@ func NeedsAudioTranscode(audioCodec string) bool {
 //   of 4-5 seconds when copying video packets from MKV containers.
 // RemuxOptions holds parameters for remux configuration.
 type RemuxOptions struct {
-	AudioStreamIndex int    // -1 means default (first audio), otherwise specific stream index
-	AudioCodec       string // Source audio codec for transcode decision
-	AudioChannels    int    // Source audio channel count
+	AudioStreamIndex int     // -1 means default (first audio), otherwise specific stream index
+	AudioCodec       string  // Source audio codec for transcode decision
+	AudioChannels    int     // Source audio channel count
+	GainDB           float64 // Audio normalization gain in dB (0 = no gain)
 }
 
 func ServeRemuxedMPEGTS(ctx context.Context, w http.ResponseWriter, ffmpegPath, filePath, audioCodec string, startSeconds float64, opts ...RemuxOptions) error {
@@ -83,10 +84,14 @@ func ServeRemuxedMPEGTS(ctx context.Context, w http.ResponseWriter, ffmpegPath, 
 
 	// Audio: use BuildAudioTranscodeArgs for smart codec/channel handling
 	channels := 2
+	gainDB := 0.0
 	if len(opts) > 0 && opts[0].AudioChannels > 0 {
 		channels = opts[0].AudioChannels
 	}
-	args = append(args, BuildAudioTranscodeArgs(audioCodec, channels)...)
+	if len(opts) > 0 {
+		gainDB = opts[0].GainDB
+	}
+	args = append(args, BuildAudioTranscodeArgs(audioCodec, channels, gainDB)...)
 
 	// Output: MPEG Transport Stream for proper timestamp handling
 	args = append(args,

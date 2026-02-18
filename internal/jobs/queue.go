@@ -21,6 +21,7 @@ const (
 	TaskMetadataScrape   = "metadata:scrape"
 	TaskMetadataRefresh  = "metadata:refresh"
 	TaskDetectSegments   = "detect:segments"
+	TaskLoudnessLibrary  = "loudness:library"
 )
 
 type Queue struct {

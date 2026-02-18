@@ -41,6 +41,7 @@ type createLibraryRequest struct {
 	PreferLocalArtwork *bool    `json:"prefer_local_artwork"`
 	CreatePreviews     *bool    `json:"create_previews"`
 	CreateThumbnails   *bool    `json:"create_thumbnails"`
+	AudioNormalization *bool    `json:"audio_normalization"`
 	AdultContentType   *string  `json:"adult_content_type"`
 	ScanInterval       string   `json:"scan_interval"`
 	WatchEnabled       bool     `json:"watch_enabled"`
@@ -91,6 +92,10 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 	if req.CreateThumbnails != nil {
 		createThumbnails = *req.CreateThumbnails
 	}
+	audioNormalization := false // default off
+	if req.AudioNormalization != nil {
+		audioNormalization = *req.AudioNormalization
+	}
 
 	// Determine primary path from folders or path field
 	primaryPath := req.Path
@@ -119,6 +124,7 @@ func (s *Server) handleCreateLibrary(w http.ResponseWriter, r *http.Request) {
 		PreferLocalArtwork: preferLocalArtwork,
 		CreatePreviews:     createPreviews,
 		CreateThumbnails:   createThumbnails,
+		AudioNormalization: audioNormalization,
 		AdultContentType:   req.AdultContentType,
 		ScanInterval:       scanInterval,
 		WatchEnabled:       req.WatchEnabled,
@@ -237,6 +243,7 @@ type updateLibraryRequest struct {
 	PreferLocalArtwork *bool    `json:"prefer_local_artwork"`
 	CreatePreviews     *bool    `json:"create_previews"`
 	CreateThumbnails   *bool    `json:"create_thumbnails"`
+	AudioNormalization *bool    `json:"audio_normalization"`
 	AdultContentType   *string  `json:"adult_content_type"`
 	ScanInterval       string   `json:"scan_interval"`
 	WatchEnabled       bool     `json:"watch_enabled"`
@@ -300,6 +307,10 @@ func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
 	if req.CreateThumbnails != nil {
 		createThumbnails = *req.CreateThumbnails
 	}
+	audioNormalization := existing.AudioNormalization
+	if req.AudioNormalization != nil {
+		audioNormalization = *req.AudioNormalization
+	}
 	adultContentType := existing.AdultContentType
 	if req.AdultContentType != nil {
 		adultContentType = req.AdultContentType
@@ -343,6 +354,7 @@ func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
 		PreferLocalArtwork: preferLocalArtwork,
 		CreatePreviews:     createPreviews,
 		CreateThumbnails:   createThumbnails,
+		AudioNormalization: audioNormalization,
 		AdultContentType:   adultContentType,
 		ScanInterval:       scanInterval,
 		NextScanAt:         nextScanAt,
@@ -358,6 +370,16 @@ func (s *Server) handleUpdateLibrary(w http.ResponseWriter, r *http.Request) {
 	if len(req.Folders) > 0 {
 		if err := s.libRepo.SetFolders(id, req.Folders); err != nil {
 			log.Printf("Failed to update library folders: %v", err)
+		}
+	}
+
+	// Queue loudness analysis if audio normalization was just enabled
+	if audioNormalization && !existing.AudioNormalization && s.jobQueue != nil {
+		uniqueID := "loudness:" + id.String()
+		if _, err := s.jobQueue.EnqueueUnique(jobs.TaskLoudnessLibrary, jobs.LoudnessLibraryPayload{LibraryID: id.String()}, uniqueID); err != nil {
+			log.Printf("Failed to enqueue loudness analysis for library %s: %v", id.String(), err)
+		} else {
+			log.Printf("Enqueued loudness analysis for library %s (normalization enabled)", id.String())
 		}
 	}
 
