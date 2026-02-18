@@ -77,6 +77,8 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 
 	// Enrich items with edition group info (edition_count, edition_group_id)
 	_ = s.mediaRepo.PopulateEditionCounts(media)
+	// Enrich items with sister group info (part count, total duration, group name)
+	_ = s.mediaRepo.PopulateSisterInfo(media)
 
 	count, _ := s.mediaRepo.CountByLibraryFiltered(libraryID, f)
 
@@ -124,6 +126,7 @@ func (s *Server) handleGetMedia(w http.ResponseWriter, r *http.Request) {
 
 	// Enrich with edition info
 	_ = s.mediaRepo.PopulateEditionCounts([]*models.MediaItem{media})
+	_ = s.mediaRepo.PopulateSisterInfo([]*models.MediaItem{media})
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: media})
 }

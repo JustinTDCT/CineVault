@@ -57,8 +57,8 @@ var yearInParensRx = regexp.MustCompile(`[\(\[]([12]\d{3})[\)\]]`)
 // Edition: {edition-XXX} or {XXX} from Radarr/Sonarr convention
 var editionBracePattern = regexp.MustCompile(`(?i)\{(?:edition-)?([^}]+)\}`)
 
-// Multi-part indicator: CD-x, DISC-x, PART-x, PT-x at end
-var multiPartPattern = regexp.MustCompile(`(?i)[\s._-]+(CD|DISC|DISK|PART|PT)-?(\d+)\s*$`)
+// Multi-part indicator: CD-x, DISC-x, PART-x, PT-x (may be followed by year/resolution)
+var multiPartPattern = regexp.MustCompile(`(?i)[\s._-]+(CD|DISC|DISK|PART|PT)[\s._-]*(\d+)`)
 
 // Adult prefix
 var adultPrefixRx = regexp.MustCompile(`(?i)^XXX\s*[-–]\s*`)
@@ -226,14 +226,19 @@ func (s *Scanner) parseFilename(filename string, mediaType models.MediaType) Par
 	// Step 0b: Check for extras by filename suffix (before any other parsing)
 	result.ExtraType = detectExtraFromFilename(baseName)
 
-	// Step 1: For movies/adult movies, check for multi-part indicator and strip it
+	// Step 1: For movies/adult movies, check for multi-part indicator and strip it.
+	// Use last match to avoid false positives on titles containing "Part" mid-string.
+	// Everything from the match position onward (year, resolution suffixes) is stripped
+	// since the media-type parser will extract year from the remaining base title.
 	if mediaType == models.MediaTypeMovies || mediaType == models.MediaTypeAdultMovies {
-		if matches := multiPartPattern.FindStringSubmatch(baseName); len(matches) >= 3 {
-			partNum, _ := strconv.Atoi(matches[2])
+		allLocs := multiPartPattern.FindAllStringSubmatchIndex(baseName, -1)
+		if len(allLocs) > 0 {
+			last := allLocs[len(allLocs)-1]
+			partStr := baseName[last[4]:last[5]]
+			partNum, _ := strconv.Atoi(partStr)
 			result.PartNumber = &partNum
-			result.PartType = strings.ToUpper(matches[1])
-			baseName = multiPartPattern.ReplaceAllString(baseName, "")
-			baseName = strings.TrimSpace(baseName)
+			result.PartType = strings.ToUpper(baseName[last[2]:last[3]])
+			baseName = strings.TrimSpace(baseName[:last[0]])
 		}
 	}
 
@@ -260,9 +265,9 @@ func (s *Scanner) parseFilename(filename string, mediaType models.MediaType) Par
 		result.Edition = extractEdition(baseName)
 	}
 
-	// Step 3: Set BaseTitle for multi-part grouping
+	// Step 3: Set BaseTitle for multi-part grouping (use the parsed title)
 	if result.PartNumber != nil {
-		result.BaseTitle = baseName
+		result.BaseTitle = result.Title
 	}
 
 	return result
@@ -872,9 +877,9 @@ func (s *Scanner) groupMultiPartFiles() {
 			continue
 		}
 
-		// Link all parts to the sister group
+		// Link all parts to the sister group and set sort_position = part number
 		for _, part := range parts {
-			if err := s.sisterRepo.AddMember(group.ID, part.ItemID); err != nil {
+			if err := s.sisterRepo.AddMemberWithPosition(group.ID, part.ItemID, part.PartNumber); err != nil {
 				log.Printf("Multi-part: failed to add part %d (item %s) to group: %v",
 					part.PartNumber, part.ItemID, err)
 			}

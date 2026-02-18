@@ -97,6 +97,13 @@ func (r *SisterRepository) AddMember(groupID, mediaItemID uuid.UUID) error {
 	return err
 }
 
+func (r *SisterRepository) AddMemberWithPosition(groupID, mediaItemID uuid.UUID, position int) error {
+	_, err := r.db.Exec(
+		`UPDATE media_items SET sister_group_id = $1, sort_position = $2 WHERE id = $3`,
+		groupID, position, mediaItemID)
+	return err
+}
+
 func (r *SisterRepository) RemoveMember(groupID, mediaItemID uuid.UUID) error {
 	result, err := r.db.Exec(
 		`UPDATE media_items SET sister_group_id = NULL WHERE id = $1 AND sister_group_id = $2`,
@@ -116,7 +123,7 @@ func (r *SisterRepository) ListMembers(groupID uuid.UUID) ([]*models.MediaItem, 
 		SELECT id, library_id, media_type, file_path, file_name, file_size, title,
 		       duration_seconds, resolution, width, height, codec, container,
 		       poster_path, year, rating, added_at, updated_at
-		FROM media_items WHERE sister_group_id = $1 ORDER BY title`
+		FROM media_items WHERE sister_group_id = $1 ORDER BY sort_position ASC, title ASC`
 	rows, err := r.db.Query(query, groupID)
 	if err != nil {
 		return nil, err

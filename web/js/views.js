@@ -182,10 +182,13 @@ function renderOverlayBadges(item) {
         if (item.audience_score) blBadges += `<span class="overlay-badge overlay-badge-tmdb">AS ${item.audience_score}%</span>`;
     }
 
-    // BOTTOM-RIGHT: Source Type
+    // BOTTOM-RIGHT: Source Type + Multi-Part indicator
     if (p.source_type) {
         const srcLabel = mapSourceLabel(item);
         if (srcLabel) brBadges += `<span class="overlay-badge overlay-badge-source">${srcLabel}</span>`;
+    }
+    if (item.sister_part_count > 1) {
+        brBadges += `<span class="overlay-badge overlay-badge-multipart">${item.sister_part_count} Parts</span>`;
     }
 
     let html = '';
@@ -198,10 +201,12 @@ function renderOverlayBadges(item) {
 
 // ──── Media Card (with expanded hover info) ────
 function renderMediaCard(item) {
-    const dur = item.duration_seconds ? Math.floor(item.duration_seconds/60)+'min' : '';
+    const displayDur = item.sister_total_duration > 0 ? item.sister_total_duration : item.duration_seconds;
+    const dur = displayDur ? Math.floor(displayDur/60)+'min' : '';
     const year = item.year || '';
     const res = item.resolution || '';
     const meta = [year, dur, res].filter(Boolean).join(' \u00b7 ');
+    const displayTitle = item.sister_group_name || item.title;
     // Hover info extras
     const hoverMeta = [year, res, item.codec].filter(Boolean).join(' \u00b7 ');
     const ratingBadge = item.rating ? `<span class="hover-rating-badge">&#11088; ${item.rating.toFixed(1)}</span>` : '';
@@ -216,12 +221,12 @@ function renderMediaCard(item) {
             ${item.poster_path ? '<img src="'+posterSrc(item.poster_path, item.updated_at)+'" alt="" loading="lazy">' : mediaIcon(item.media_type)}
             ${renderOverlayBadges(item)}
             <div class="media-card-hover-info">
-                <div class="hover-title">${item.title}</div>
+                <div class="hover-title">${displayTitle}</div>
                 <div class="hover-meta">${ratingBadge}<span>${hoverMeta}</span></div>
             </div>
-            <div class="play-overlay"><div class="play-button" onclick="event.stopPropagation();playMedia('${item.id}','${(item.title||'').replace(/'/g,"\\'")}')">&#9654;</div></div>
+            <div class="play-overlay"><div class="play-button" onclick="event.stopPropagation();playMedia('${item.id}','${(displayTitle||'').replace(/'/g,"\\'")}')">&#9654;</div></div>
         </div>
-        <div class="media-info"><div class="media-title">${item.title}</div><div class="media-meta">${meta}</div></div>
+        <div class="media-info"><div class="media-title">${displayTitle}</div><div class="media-meta">${meta}</div></div>
     </div>`;
 }
 
@@ -545,11 +550,14 @@ async function loadMediaDetail(id) {
         } catch(e) {}
     }
 
+    const detailTitle = m.sister_group_name || m.title;
+
     mc.innerHTML = `
         <div class="detail-hero">
             <div class="detail-poster">${m.poster_path ? '<img src="'+posterSrc(m.poster_path, m.updated_at)+'">' : mediaIcon(m.media_type)}</div>
             <div class="detail-info">
-                <h1>${m.title}</h1>
+                <h1>${detailTitle}</h1>
+                ${m.sister_part_count > 1 ? '<span class="tag tag-multipart">'+m.sister_part_count+' Parts</span>' : ''}
                 ${(m.edition_type && m.edition_type !== 'Theatrical' && m.edition_type !== 'Standard' && m.edition_type !== '' && m.edition_type !== 'unknown') ? '<span class="edition-appendix-badge">'+m.edition_type+' Edition</span>' : ''}
                 <div class="meta-row">${meta}</div>
                 ${m.description ? '<p class="description">'+m.description+'</p>' : ''}
@@ -558,7 +566,7 @@ async function loadMediaDetail(id) {
                 ${ratingsHTML}
                 ${countryRatingsHTML}
                 <div class="detail-actions">
-                    <button class="btn-primary" onclick="playMedia('${m.id}','${m.title.replace(/'/g,"\\'")}')">&#9654; Play</button>
+                    <button class="btn-primary" onclick="playMedia('${m.id}','${detailTitle.replace(/'/g,"\\'")}')">&#9654; Play${m.sister_part_count > 1 ? ' Part 1' : ''}</button>
                     ${m.trailer_url ? '<button class="btn-secondary" onclick="watchTrailer(\''+m.trailer_url.replace(/'/g,"\\'")+'\',\''+m.title.replace(/'/g,"\\'")+'\')">&#127909; Trailer</button>' : ''}
                     ${m.media_type === 'movie' ? '<button class="btn-secondary" onclick="playCinemaMode(\''+m.id+'\',\''+m.title.replace(/'/g,"\\'")+'\')">&#127910; Cinema</button>' : ''}
                     <button class="btn-secondary" onclick="createSyncSession('${m.id}')">&#128101; Watch Together</button>
@@ -583,6 +591,7 @@ async function loadMediaDetail(id) {
                 </div>
                 <div class="detail-tabs">
                     <button class="detail-tab active" onclick="showDetailTab(this,'info','${m.id}')">Info</button>
+                    ${m.sister_part_count > 1 ? '<button class="detail-tab" onclick="showDetailTab(this,\'parts\',\''+m.id+'\')">Parts</button>' : ''}
                     <button class="detail-tab" onclick="showDetailTab(this,'cast','${m.id}')">Cast</button>
                     <button class="detail-tab" onclick="showDetailTab(this,'tags-tab','${m.id}')">Tags</button>
                     ${m.edition_count > 1 ? '<button class="detail-tab" onclick="showDetailTab(this,\'editions\',\''+m.id+'\')">Editions</button>' : ''}
@@ -799,6 +808,37 @@ async function showDetailTab(btn, tab, mediaId) {
             html += '</ul></div>';
         }
         tc.innerHTML = html;
+    } else if (tab === 'parts') {
+        tc.innerHTML = '<div class="spinner"></div>';
+        const mediaRes = await api('GET', '/media/' + mediaId);
+        if (mediaRes.success && mediaRes.data.sister_group_id) {
+            const sgRes = await api('GET', '/sisters/' + mediaRes.data.sister_group_id);
+            if (sgRes.success && sgRes.data.members && sgRes.data.members.length > 0) {
+                const parts = sgRes.data.members;
+                const rows = parts.map((p, idx) => {
+                    const dur = p.duration_seconds ? formatDuration(p.duration_seconds) : '-';
+                    const res = p.resolution || '-';
+                    const codec = p.codec || '-';
+                    const size = p.file_size ? (p.file_size/1024/1024).toFixed(0)+' MB' : '-';
+                    return `<tr>
+                        <td>Part ${idx + 1}</td>
+                        <td>${p.title}</td>
+                        <td>${dur}</td><td>${res}</td><td>${codec}</td><td>${size}</td>
+                        <td><button class="edition-tab-play" onclick="playMedia('${p.id}','${(p.title||'').replace(/'/g,"\\'")}')">&#9654; Play</button></td>
+                    </tr>`;
+                }).join('');
+                const totalDur = parts.reduce((s, p) => s + (p.duration_seconds || 0), 0);
+                tc.innerHTML = `<h4 class="edition-tab-heading">Parts (${parts.length}) &mdash; Total: ${formatDuration(totalDur)}</h4>
+                    <table class="edition-tab-table">
+                        <thead><tr><th>#</th><th>Title</th><th>Runtime</th><th>Resolution</th><th>Codec</th><th>Size</th><th></th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>`;
+            } else {
+                tc.innerHTML = '<p style="color:#5a6a7f;">No parts found.</p>';
+            }
+        } else {
+            tc.innerHTML = '<p style="color:#5a6a7f;">No parts found.</p>';
+        }
     } else if (tab === 'metadata') {
         tc.innerHTML = '<div class="spinner"></div>';
         const data = await api('GET', '/media/' + mediaId);

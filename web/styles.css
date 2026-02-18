@@ -865,6 +865,12 @@ body {
     background: rgba(10,25,41,0.75); color: var(--text-secondary);
     border: 1px solid rgba(255,255,255,0.12);
 }
+/* Multi-part badge */
+.overlay-badge-multipart {
+    background: linear-gradient(135deg, rgba(59,130,246,0.88) 0%, rgba(37,99,235,0.88) 100%);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(59,130,246,0.3);
+}
 /* Hide overlay zones on hover to avoid clashing with hover info */
 .media-card:hover .overlay-zone-bl { opacity: 0; transition: opacity 0.2s; }
 
@@ -1163,6 +1169,7 @@ body {
 .tag-red { background: var(--error-bg); color: var(--error); border: 1px solid var(--error-border); }
 .tag-gold { background: var(--gold-bg); color: var(--gold); border: 1px solid var(--gold-border); }
 .tag-blue { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-border); }
+.tag-multipart { background: rgba(59,130,246,0.2); color: #60a5fa; border: 1px solid rgba(59,130,246,0.4); margin-left: 8px; }
 
 /* ══════════════════════════════════════
    14. Buttons

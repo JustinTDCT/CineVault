@@ -341,6 +341,7 @@ func (s *Server) setupRoutes() {
 	// Sister groups
 	s.router.HandleFunc("GET /api/v1/sisters", s.authMiddleware(s.handleListSisters, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/sisters", s.authMiddleware(s.handleCreateSister, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/sisters/regroup", s.authMiddleware(s.handleRegroupMultiParts, models.RoleAdmin))
 	s.router.HandleFunc("GET /api/v1/sisters/{id}", s.authMiddleware(s.handleGetSister, models.RoleUser))
 	s.router.HandleFunc("POST /api/v1/sisters/{id}/items", s.authMiddleware(s.handleAddSisterItem, models.RoleAdmin))
 	s.router.HandleFunc("DELETE /api/v1/sisters/{id}/items/{itemId}", s.authMiddleware(s.handleRemoveSisterItem, models.RoleAdmin))

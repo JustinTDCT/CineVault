@@ -338,6 +338,14 @@ func buildFilterClauses(f *MediaFilter, paramStart int) (string, string, string,
 	// Always exclude child editions (non-default edition items) from library listings
 	wheres = append(wheres, `NOT EXISTS (SELECT 1 FROM edition_items ei WHERE ei.media_item_id = m.id AND ei.is_default = false)`)
 
+	// Collapse sister groups: only show the primary item (lowest sort_position) per group
+	wheres = append(wheres, `(m.sister_group_id IS NULL OR m.id = (
+		SELECT id FROM media_items
+		WHERE sister_group_id = m.sister_group_id
+		ORDER BY sort_position ASC, title ASC
+		LIMIT 1
+	))`)
+
 	joinSQL := ""
 	if len(joins) > 0 {
 		joinSQL = " " + strings.Join(joins, " ")
@@ -1598,4 +1606,76 @@ func (r *MediaRepository) PopulateEditionCounts(items []*models.MediaItem) error
 		}
 	}
 	return rows.Err()
+}
+
+// PopulateSisterInfo enriches items that belong to a sister group with part count,
+// combined duration, and the group name.
+func (r *MediaRepository) PopulateSisterInfo(items []*models.MediaItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	// Collect sister group IDs
+	groupIDs := make(map[uuid.UUID]struct{})
+	idMap := make(map[uuid.UUID]*models.MediaItem, len(items))
+	for _, item := range items {
+		idMap[item.ID] = item
+		if item.SisterGroupID != nil {
+			groupIDs[*item.SisterGroupID] = struct{}{}
+		}
+	}
+	if len(groupIDs) == 0 {
+		return nil
+	}
+
+	placeholders := make([]string, 0, len(groupIDs))
+	args := make([]interface{}, 0, len(groupIDs))
+	i := 1
+	for gid := range groupIDs {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", i))
+		args = append(args, gid)
+		i++
+	}
+
+	query := `SELECT sg.id, sg.name, COUNT(mi.id), COALESCE(SUM(mi.duration_seconds), 0)
+		FROM sister_groups sg
+		JOIN media_items mi ON mi.sister_group_id = sg.id
+		WHERE sg.id IN (` + strings.Join(placeholders, ",") + `)
+		GROUP BY sg.id, sg.name`
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type sisterInfo struct {
+		name          string
+		partCount     int
+		totalDuration int
+	}
+	infoMap := make(map[uuid.UUID]sisterInfo)
+	for rows.Next() {
+		var gid uuid.UUID
+		var info sisterInfo
+		if err := rows.Scan(&gid, &info.name, &info.partCount, &info.totalDuration); err != nil {
+			return err
+		}
+		infoMap[gid] = info
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, item := range items {
+		if item.SisterGroupID == nil {
+			continue
+		}
+		if info, ok := infoMap[*item.SisterGroupID]; ok {
+			item.SisterPartCount = info.partCount
+			item.SisterTotalDuration = info.totalDuration
+			item.SisterGroupName = info.name
+		}
+	}
+	return nil
 }

@@ -205,6 +205,10 @@ type MediaItem struct {
 	// Edition fields (transient, not stored in DB)
 	EditionGroupID *uuid.UUID `json:"edition_group_id,omitempty" db:"-"`
 	EditionCount   int        `json:"edition_count,omitempty" db:"-"`
+	// Sister group enrichment (transient, not stored in DB)
+	SisterPartCount    int    `json:"sister_part_count,omitempty" db:"-"`
+	SisterTotalDuration int   `json:"sister_total_duration,omitempty" db:"-"`
+	SisterGroupName    string `json:"sister_group_name,omitempty" db:"-"`
 	// Series context (transient, populated by series detail queries)
 	SeriesItemID *uuid.UUID `json:"series_item_id,omitempty" db:"-"`
 	SeriesOrder  *int       `json:"series_order,omitempty" db:"-"`
