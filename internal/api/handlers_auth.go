@@ -272,6 +272,8 @@ func (s *Server) handlePinLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.recordSession(user.ID, token, r)
+
 	user.PasswordHash = ""
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,

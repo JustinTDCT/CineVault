@@ -92,6 +92,8 @@ func (s *Server) handleUpdateProfileSettings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	s.recordSession(user.ID, token, r)
+
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data: map[string]interface{}{
