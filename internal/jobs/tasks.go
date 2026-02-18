@@ -305,54 +305,89 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 		})
 	}
 
-	computed := 0
+	var computed int64
 	if len(items) > 0 {
-		log.Printf("Phash: computing phash for %d items in library %s", len(items), p.LibraryID)
+		log.Printf("Phash: computing phash for %d items in library %s (4 workers, hwaccel enabled)", len(items), p.LibraryID)
 
-		var lastTaskBroadcast time.Time
-		for i, item := range items {
-			select {
-			case <-ctx.Done():
-				log.Printf("Phash: cancelled after %d/%d items", computed, len(items))
-				return ctx.Err()
-			default:
-			}
+		const phashWorkers = 4
+		total := int64(len(items))
+		var processed int64
 
-			// Use the item's actual duration for multi-point sampling
-			dur := 0
-			if item.DurationSeconds != nil {
-				dur = *item.DurationSeconds
-			}
-			phash, err := h.fingerprinter.ComputePHash(item.FilePath, dur)
-			if err != nil {
-				log.Printf("Phash: failed for %s: %v", item.FileName, err)
-				continue
-			}
-			if err := h.mediaRepo.UpdatePhash(item.ID, phash); err != nil {
-				log.Printf("Phash: failed to store for %s: %v", item.FileName, err)
-				continue
-			}
-			computed++
+		work := make(chan *models.MediaItem, phashWorkers)
+		var wg sync.WaitGroup
 
-			// Broadcast task progress (throttled to every 500ms, plus always on last item)
-			if h.notifier != nil {
-				now := time.Now()
-				if now.Sub(lastTaskBroadcast) >= 500*time.Millisecond || i == len(items)-1 {
-					lastTaskBroadcast = now
-					pct := int(float64(i+1) / float64(len(items)) * 100)
-					desc := fmt.Sprintf("Analyzing duplicates · %s (%d/%d)", item.FileName, i+1, len(items))
+		progressDone := make(chan struct{})
+		go func() {
+			defer close(progressDone)
+			if h.notifier == nil {
+				return
+			}
+			ticker := time.NewTicker(500 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					done := atomic.LoadInt64(&processed)
+					pct := int(float64(done) / float64(total) * 100)
+					desc := fmt.Sprintf("Analyzing duplicates · %d/%d", done, total)
 					h.notifier.Broadcast("task:update", map[string]interface{}{
 						"task_id": taskID, "task_type": TaskPhashLibrary,
 						"status": "running", "progress": pct, "description": desc,
 					})
+					if done >= total {
+						return
+					}
+				case <-ctx.Done():
+					return
 				}
 			}
+		}()
+
+		for w := 0; w < phashWorkers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for item := range work {
+					dur := 0
+					if item.DurationSeconds != nil {
+						dur = *item.DurationSeconds
+					}
+					phash, err := h.fingerprinter.ComputePHash(item.FilePath, dur)
+					if err != nil {
+						log.Printf("Phash: failed for %s: %v", item.FileName, err)
+						atomic.AddInt64(&processed, 1)
+						continue
+					}
+					if err := h.mediaRepo.UpdatePhash(item.ID, phash); err != nil {
+						log.Printf("Phash: failed to store for %s: %v", item.FileName, err)
+						atomic.AddInt64(&processed, 1)
+						continue
+					}
+					atomic.AddInt64(&computed, 1)
+					atomic.AddInt64(&processed, 1)
+				}
+			}()
 		}
+
+		for _, item := range items {
+			select {
+			case <-ctx.Done():
+				log.Printf("Phash: cancelled after %d/%d items", atomic.LoadInt64(&processed), total)
+				close(work)
+				wg.Wait()
+				<-progressDone
+				return ctx.Err()
+			case work <- item:
+			}
+		}
+		close(work)
+		wg.Wait()
+		<-progressDone
 	} else {
 		log.Printf("Phash: all items already hashed in library %s, proceeding to comparison", p.LibraryID)
 	}
 
-	log.Printf("Phash: computed %d new hashes, checking for potential duplicates", computed)
+	log.Printf("Phash: computed %d new hashes, checking for potential duplicates", atomic.LoadInt64(&computed))
 
 	// Check all phash items in the library for potential duplicates
 	allHashed, err := h.mediaRepo.ListPhashesInLibrary(libID)
@@ -422,7 +457,7 @@ func (h *PhashLibraryHandler) ProcessTask(ctx context.Context, t *asynq.Task) er
 	if h.notifier != nil {
 		h.notifier.Broadcast("phash:complete", map[string]interface{}{
 			"library_id":      p.LibraryID,
-			"computed":        computed,
+			"computed":        atomic.LoadInt64(&computed),
 			"duplicate_pairs": dupCount,
 		})
 		h.notifier.Broadcast("task:update", map[string]interface{}{

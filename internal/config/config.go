@@ -51,6 +51,7 @@ type PathsConfig struct {
 type FFmpegConfig struct {
 	FFmpegPath  string
 	FFprobePath string
+	HWAccel     string
 }
 
 func Load() (*Config, error) {
@@ -85,6 +86,7 @@ func Load() (*Config, error) {
 		FFmpeg: FFmpegConfig{
 			FFmpegPath:  getEnv("FFMPEG_PATH", "/usr/lib/jellyfin-ffmpeg/ffmpeg"),
 			FFprobePath: getEnv("FFPROBE_PATH", "/usr/lib/jellyfin-ffmpeg/ffprobe"),
+			HWAccel:     getEnv("FFMPEG_HWACCEL", "auto"),
 		},
 		TMDBAPIKey: getEnv("TMDB_API_KEY", "ca12f0b4ddc375cc34dd9ae9e4fe94e0"),
 	}, nil

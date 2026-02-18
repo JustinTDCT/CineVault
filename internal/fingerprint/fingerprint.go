@@ -18,10 +18,14 @@ import (
 type Fingerprinter struct {
 	ffmpegPath string
 	tempDir    string
+	hwaccel    string
 }
 
-func NewFingerprinter(ffmpegPath, tempDir string) *Fingerprinter {
-	return &Fingerprinter{ffmpegPath: ffmpegPath, tempDir: tempDir}
+func NewFingerprinter(ffmpegPath, tempDir, hwaccel string) *Fingerprinter {
+	if hwaccel == "" {
+		hwaccel = "none"
+	}
+	return &Fingerprinter{ffmpegPath: ffmpegPath, tempDir: tempDir, hwaccel: hwaccel}
 }
 
 // hashSize is the width/height of the scaled frame for perceptual hashing.
@@ -76,7 +80,11 @@ func (f *Fingerprinter) ComputePHash(filePath string, durationSec int) (string, 
 
 		framePath := filepath.Join(tmpDir, fmt.Sprintf("frame_%d.jpg", i))
 
-		cmd := exec.Command(f.ffmpegPath,
+		args := make([]string, 0, 12)
+		if f.hwaccel != "none" {
+			args = append(args, "-hwaccel", f.hwaccel)
+		}
+		args = append(args,
 			"-ss", fmt.Sprintf("%d", seekSec),
 			"-i", filePath,
 			"-vframes", "1",
@@ -84,6 +92,7 @@ func (f *Fingerprinter) ComputePHash(filePath string, durationSec int) (string, 
 			"-y",
 			framePath,
 		)
+		cmd := exec.Command(f.ffmpegPath, args...)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			log.Printf("Frame extraction at %d%% (%ds) failed for %s: %s", int(pct*100), seekSec, filepath.Base(filePath), string(output))
 			continue // slot stays zero-filled

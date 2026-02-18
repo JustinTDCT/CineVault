@@ -1,6 +1,6 @@
 {
-  "version": "1.20.01",
-  "phase": 20,
+  "version": "1.21.01",
+  "phase": 21,
   "released": "2026-02-18",
-  "notes": "Audio normalization — EBU R128 loudness analysis with server-side and client-side volume normalization per library."
+  "notes": "pHash performance — hardware-accelerated frame decoding and parallel worker pool for duplicate detection."
 }

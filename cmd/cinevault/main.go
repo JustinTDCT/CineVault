@@ -56,7 +56,7 @@ func main() {
 	}
 
 	// Initialize fingerprinter for phash computation
-	fp := fingerprint.NewFingerprinter(cfg.FFmpeg.FFmpegPath, cfg.Paths.Preview)
+	fp := fingerprint.NewFingerprinter(cfg.FFmpeg.FFmpegPath, cfg.Paths.Preview, cfg.FFmpeg.HWAccel)
 
 	// Initialize segment detector
 	det := detection.NewDetector(cfg.FFmpeg.FFmpegPath)
