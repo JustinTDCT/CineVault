@@ -1,6 +1,6 @@
 {
-  "version": "1.19.00",
+  "version": "1.19.01",
   "phase": 19,
-  "released": "2026-02-17",
-  "notes": "MTV-style music video overlay with MusicBrainz metadata. Shows song title, artist, album, and record label at start and end of music video playback."
+  "released": "2026-02-18",
+  "notes": "Fix custom entry poster display — fall back to cache server image path when poster URL is not available."
 }

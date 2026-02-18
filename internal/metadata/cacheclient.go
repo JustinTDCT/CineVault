@@ -322,9 +322,17 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 
 	// Use preferred poster from multi-source array if available
 	match.PosterURL = pickPreferredURL(entry.PosterURLs, metadataSource, entry.PosterURL)
+	if match.PosterURL == nil && entry.PosterPath != nil && *entry.PosterPath != "" {
+		url := CacheImageURL(*entry.PosterPath)
+		match.PosterURL = &url
+	}
 
 	// Use preferred backdrop
 	match.BackdropURL = pickPreferredURL(entry.BackdropURLs, metadataSource, entry.BackdropURL)
+	if match.BackdropURL == nil && entry.BackdropPath != nil && *entry.BackdropPath != "" {
+		url := CacheImageURL(*entry.BackdropPath)
+		match.BackdropURL = &url
+	}
 
 	if entry.IMDBID != nil {
 		match.IMDBId = *entry.IMDBID
