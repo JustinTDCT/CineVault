@@ -210,6 +210,9 @@ type MediaItem struct {
 	SisterPartCount    int    `json:"sister_part_count,omitempty" db:"-"`
 	SisterTotalDuration int   `json:"sister_total_duration,omitempty" db:"-"`
 	SisterGroupName    string `json:"sister_group_name,omitempty" db:"-"`
+	// Music enrichment (transient, populated by PopulateMusicInfo)
+	ArtistName string `json:"artist_name,omitempty" db:"-"`
+	AlbumTitle string `json:"album_title,omitempty" db:"-"`
 	// Series context (transient, populated by series detail queries)
 	SeriesItemID *uuid.UUID `json:"series_item_id,omitempty" db:"-"`
 	SeriesOrder  *int       `json:"series_order,omitempty" db:"-"`
@@ -338,7 +341,8 @@ type Album struct {
 	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
 	// Aggregated
-	TrackCount int `json:"track_count,omitempty" db:"-"`
+	TrackCount int    `json:"track_count,omitempty" db:"-"`
+	ArtistName string `json:"artist_name,omitempty" db:"-"`
 }
 
 // ──────────────────── Audiobooks ────────────────────

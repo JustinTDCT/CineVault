@@ -146,7 +146,18 @@ function mapSourceLabel(item) {
 
 function renderOverlayBadges(item) {
     const p = overlayPrefs;
+    const isMusic = item.media_type === 'music';
     let trBadges = '', tlBadges = '', blBadges = '', brBadges = '';
+
+    if (isMusic) {
+        if (p.audio_codec) {
+            const audioLabel = mapAudioLabel(item);
+            if (audioLabel) trBadges += `<span class="overlay-badge overlay-badge-audio">${audioLabel}</span>`;
+        }
+        let html = '';
+        if (trBadges) html += `<div class="overlay-zone-tr">${trBadges}</div>`;
+        return html;
+    }
 
     // TOP-RIGHT: Resolution + HDR, Audio Codec
     if (p.resolution_hdr) {
@@ -167,7 +178,6 @@ function renderOverlayBadges(item) {
     }
     if (p.edition_type) {
         if (item.edition_count && item.edition_count > 1) {
-            // Multiple editions: only show count badge, skip individual edition label
             tlBadges += `<span class="overlay-badge overlay-badge-edition">${item.edition_count} Editions</span>`;
         } else {
             const edLabel = mapEditionLabel(item);
@@ -201,15 +211,24 @@ function renderOverlayBadges(item) {
 
 // ──── Media Card (with expanded hover info) ────
 function renderMediaCard(item) {
+    const isMusic = item.media_type === 'music';
     const displayDur = item.sister_total_duration > 0 ? item.sister_total_duration : item.duration_seconds;
     const dur = displayDur ? Math.floor(displayDur/60)+'min' : '';
     const year = item.year || '';
     const res = item.resolution || '';
-    const meta = [year, dur, res].filter(Boolean).join(' \u00b7 ');
+    let meta, hoverMeta, ratingBadge;
+    if (isMusic) {
+        const artist = item.artist_name || '';
+        const album = item.album_title || '';
+        meta = [artist, dur].filter(Boolean).join(' \u00b7 ');
+        hoverMeta = [artist, album, year].filter(Boolean).join(' \u00b7 ');
+        ratingBadge = '';
+    } else {
+        meta = [year, dur, res].filter(Boolean).join(' \u00b7 ');
+        hoverMeta = [year, res, item.codec].filter(Boolean).join(' \u00b7 ');
+        ratingBadge = item.rating ? `<span class="hover-rating-badge">&#11088; ${item.rating.toFixed(1)}</span>` : '';
+    }
     const displayTitle = item.sister_group_name || item.title;
-    // Hover info extras
-    const hoverMeta = [year, res, item.codec].filter(Boolean).join(' \u00b7 ');
-    const ratingBadge = item.rating ? `<span class="hover-rating-badge">&#11088; ${item.rating.toFixed(1)}</span>` : '';
     const isSelected = selectionState.selectedIds.has(item.id);
     const sortAttr = item.sort_title ? ' data-sort-title="'+item.sort_title.replace(/"/g,'&amp;quot;')+'"' : '';
     const previewAttr = item.preview_path ? ' data-preview="'+item.preview_path+'"' : '';
@@ -1120,11 +1139,11 @@ async function deleteSegment(mediaId, segType) {
 }
 
 // ──── Paginated Media Grid with Alpha Jump ────
-let _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [], filters: {} };
+let _gridState = { libraryId: null, offset: 0, total: 0, loading: false, done: false, observer: null, letterIndex: [], filters: {}, mediaType: '' };
 let _filterOpts = {};
 let _pickerVals = [];
 
-const FILTER_DEFS = [
+const ALL_FILTER_DEFS = [
     { key: 'genre', label: 'Genre', apiKey: 'genres' },
     { key: 'country', label: 'Country', apiKey: 'countries' },
     { key: 'content_rating', label: 'Content Rating', apiKey: 'content_ratings' },
@@ -1142,10 +1161,22 @@ const FILTER_DEFS = [
     { key: 'added_days', label: 'Recently Added', options: [{v:'1',l:'Today'},{v:'7',l:'Last 7 Days'},{v:'30',l:'Last 30 Days'},{v:'90',l:'Last 90 Days'}] }
 ];
 
+const MUSIC_FILTER_KEYS = new Set(['genre', 'folder', 'audio_codec', 'duration_range', 'added_days']);
+
+function getFilterDefs() {
+    if (_gridState.mediaType === 'music') {
+        return ALL_FILTER_DEFS.filter(d => MUSIC_FILTER_KEYS.has(d.key));
+    }
+    return ALL_FILTER_DEFS;
+}
+
+// Keep FILTER_DEFS as a getter for backward compatibility
+const FILTER_DEFS = ALL_FILTER_DEFS;
+
 function teardownGrid() {
     if (_gridState.observer) { _gridState.observer.disconnect(); _gridState.observer = null; }
     if (_gridState.topObserver) { _gridState.topObserver.disconnect(); _gridState.topObserver = null; }
-    _gridState = { libraryId: null, offset: 0, startOffset: 0, total: 0, loading: false, done: false, observer: null, topObserver: null, letterIndex: [], filters: {} };
+    _gridState = { libraryId: null, offset: 0, startOffset: 0, total: 0, loading: false, done: false, observer: null, topObserver: null, letterIndex: [], filters: {}, mediaType: '' };
 }
 
 // Build query string from current filters
@@ -1524,6 +1555,7 @@ async function loadLibraryView(libraryId) {
     }
 
     _gridState.libraryId = libraryId;
+    _gridState.mediaType = type;
 
     // Fetch filter options and letter index in parallel
     const [filterData, idxData] = await Promise.all([
@@ -1536,14 +1568,20 @@ async function loadLibraryView(libraryId) {
 
     const totalCount = letterIndex.reduce((s, e) => s + e.count, 0);
 
+    const isMusic = type === 'music';
+    const extraAreas = isMusic
+        ? `<div id="artistsArea" style="display:none;"></div>
+           <div id="albumsArea" style="display:none;"></div>`
+        : `<div id="collectionsArea" style="display:none;"></div>
+           <div id="seriesArea" style="display:none;"></div>`;
+
     mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2><span class="tag tag-cyan" style="margin-left:12px;">${MEDIA_LABELS[type]||type}</span><span class="tag" id="libItemCount" style="margin-left:8px;">${totalCount.toLocaleString()} items</span></div>
         ${buildFilterToolbar(filterOpts)}
         <div class="media-grid-wrapper" id="mediaGridWrapper">
             <div class="media-grid" id="libGrid"><div id="gridSentinel" class="load-more-sentinel"><div class="spinner"></div></div></div>
             ${buildAlphaJump(letterIndex)}
         </div>
-        <div id="collectionsArea" style="display:none;"></div>
-        <div id="seriesArea" style="display:none;"></div>`;
+        ${extraAreas}`;
 
     renderFilterChips();
     loadFilterPresetsIntoDropdown();
@@ -1580,6 +1618,44 @@ function getFilterLabel(key, value) {
 
 function buildFilterToolbar(opts) {
     _filterOpts = opts;
+    const isMusic = _gridState.mediaType === 'music';
+
+    const sortOptions = isMusic
+        ? `<option value="">Title</option>
+           <option value="artist">Artist</option>
+           <option value="album">Album</option>
+           <option value="year">Year</option>
+           <option value="track_number">Track #</option>
+           <option value="duration">Length</option>
+           <option value="added_at">Date Added</option>`
+        : `<option value="">Title</option>
+           <option value="year">Year</option>
+           <option value="resolution">Resolution</option>
+           <option value="duration">Length</option>
+           <option value="bitrate">Bitrate</option>
+           <option value="rt_rating">Rotten Tomatoes</option>
+           <option value="rating">TMDB Rating</option>
+           <option value="audience_score">Audience Score</option>
+           <option value="added_at">Date Added</option>`;
+
+    const yearRatingSection = isMusic
+        ? `<span class="ft-label">Year</span>
+           <input type="number" id="ftYearFrom" placeholder="From" min="1900" max="2099" onchange="applyLibFilter()">
+           <input type="number" id="ftYearTo" placeholder="To" min="1900" max="2099" onchange="applyLibFilter()">`
+        : `<span class="ft-label">Year</span>
+           <input type="number" id="ftYearFrom" placeholder="From" min="1900" max="2099" onchange="applyLibFilter()">
+           <input type="number" id="ftYearTo" placeholder="To" min="1900" max="2099" onchange="applyLibFilter()">
+           <span class="ft-label">Rating</span>
+           <input type="number" id="ftMinRating" placeholder="0" min="0" max="10" step="0.5" onchange="applyLibFilter()">`;
+
+    const viewButtons = isMusic
+        ? `<button class="ft-btn active" id="ftGridBtn" onclick="showLibraryGrid()" title="All Tracks">&#9638; Grid</button>
+           <button class="ft-btn" id="ftArtistBtn" onclick="showMusicArtists()" title="View by Artist">&#127908; Artists</button>
+           <button class="ft-btn" id="ftAlbumBtn" onclick="showMusicAlbums()" title="View by Album">&#128191; Albums</button>`
+        : `<button class="ft-btn" id="ftGridBtn" onclick="showLibraryGrid()" title="Grid view">&#9638; Grid</button>
+           <button class="ft-btn" id="ftCollBtn" onclick="showLibraryCollections()" title="Collections view">&#128218; Collections</button>
+           <button class="ft-btn" id="ftSeriesBtn" onclick="showLibrarySeries()" title="Series view">&#127910; Series</button>`;
+
     return `<div class="filter-toolbar" id="filterToolbar">
         <div class="ft-add-wrapper">
             <button class="ft-add-btn" onclick="toggleFilterPicker(event)">&#43; Filter</button>
@@ -1590,32 +1666,18 @@ function buildFilterToolbar(opts) {
         </div>
         <div class="ft-chips" id="ftChips"></div>
         <div class="ft-sep"></div>
-        <span class="ft-label">Year</span>
-        <input type="number" id="ftYearFrom" placeholder="From" min="1900" max="2099" onchange="applyLibFilter()">
-        <input type="number" id="ftYearTo" placeholder="To" min="1900" max="2099" onchange="applyLibFilter()">
-        <span class="ft-label">Rating</span>
-        <input type="number" id="ftMinRating" placeholder="0" min="0" max="10" step="0.5" onchange="applyLibFilter()">
+        ${yearRatingSection}
         <div class="ft-sep"></div>
         <span class="ft-label">Sort</span>
         <select id="ftSort" onchange="applyLibFilter()">
-            <option value="">Title</option>
-            <option value="year">Year</option>
-            <option value="resolution">Resolution</option>
-            <option value="duration">Length</option>
-            <option value="bitrate">Bitrate</option>
-            <option value="rt_rating">Rotten Tomatoes</option>
-            <option value="rating">TMDB Rating</option>
-            <option value="audience_score">Audience Score</option>
-            <option value="added_at">Date Added</option>
+            ${sortOptions}
         </select>
         <select id="ftOrder" onchange="applyLibFilter()">
             <option value="asc">A&#8594;Z / Low&#8594;High</option>
             <option value="desc">Z&#8594;A / High&#8594;Low</option>
         </select>
         <div class="ft-sep"></div>
-        <button class="ft-btn" id="ftGridBtn" onclick="showLibraryGrid()" title="Grid view">&#9638; Grid</button>
-        <button class="ft-btn" id="ftCollBtn" onclick="showLibraryCollections()" title="Collections view">&#128218; Collections</button>
-        <button class="ft-btn" id="ftSeriesBtn" onclick="showLibrarySeries()" title="Series view">&#127910; Series</button>
+        ${viewButtons}
         <div class="ft-sep"></div>
         <select class="ft-preset-select" id="ftPresetSelect" onchange="applyFilterPresetFromDropdown(this.value)">
             <option value="">Presets...</option>
@@ -1632,7 +1694,7 @@ function toggleFilterPicker(e) {
     const catsEl = document.getElementById('ftPickerCats');
     const valsEl = document.getElementById('ftPickerVals');
     let catHtml = '';
-    for (const def of FILTER_DEFS) {
+    for (const def of getFilterDefs()) {
         if ((_gridState.filters || {})[def.key]) continue;
         const vals = getFilterValues(def);
         if (!vals || vals.length === 0) continue;
@@ -1699,7 +1761,7 @@ function renderFilterChips() {
     if (!chipsEl) return;
     const f = _gridState.filters || {};
     let html = '';
-    for (const def of FILTER_DEFS) {
+    for (const def of getFilterDefs()) {
         if (!f[def.key]) continue;
         const label = getFilterLabel(def.key, f[def.key]);
         html += `<div class="ft-chip"><span class="ft-chip-cat">${escFilterHtml(def.label)}:</span> ${escFilterHtml(label)}<span class="ft-chip-x" onclick="removeFilter('${def.key}')" title="Remove filter">&times;</span></div>`;
@@ -1818,13 +1880,13 @@ async function reloadLibraryGrid() {
     const countEl = document.getElementById('libItemCount');
     if (countEl) countEl.textContent = totalCount.toLocaleString() + ' items';
 
-    // Show grid, hide collections and series
+    // Show grid, hide all secondary areas
     const wrapper = document.getElementById('mediaGridWrapper');
-    const collArea = document.getElementById('collectionsArea');
-    const serArea = document.getElementById('seriesArea');
     if (wrapper) wrapper.style.display = 'flex';
-    if (collArea) collArea.style.display = 'none';
-    if (serArea) serArea.style.display = 'none';
+    ['collectionsArea','seriesArea','artistsArea','albumsArea'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
 
     // Rebuild grid
     const grid = document.getElementById('libGrid');
@@ -1837,12 +1899,10 @@ async function reloadLibraryGrid() {
     if (existingJump) existingJump.outerHTML = buildAlphaJump(letterIndex);
 
     // Update toggle buttons
-    const gridBtn = document.getElementById('ftGridBtn');
-    const collBtn = document.getElementById('ftCollBtn');
-    const serBtn = document.getElementById('ftSeriesBtn');
-    if (gridBtn) gridBtn.classList.add('active');
-    if (collBtn) collBtn.classList.remove('active');
-    if (serBtn) serBtn.classList.remove('active');
+    ['ftGridBtn','ftCollBtn','ftSeriesBtn','ftArtistBtn','ftAlbumBtn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('active', id === 'ftGridBtn');
+    });
 
     setupScrollObserver();
     loadMoreMedia();
@@ -1850,17 +1910,158 @@ async function reloadLibraryGrid() {
 
 function showLibraryGrid() {
     const wrapper = document.getElementById('mediaGridWrapper');
-    const collArea = document.getElementById('collectionsArea');
-    const serArea = document.getElementById('seriesArea');
     if (wrapper) wrapper.style.display = 'flex';
-    if (collArea) collArea.style.display = 'none';
-    if (serArea) serArea.style.display = 'none';
-    const gridBtn = document.getElementById('ftGridBtn');
-    const collBtn = document.getElementById('ftCollBtn');
-    const serBtn = document.getElementById('ftSeriesBtn');
-    if (gridBtn) gridBtn.classList.add('active');
-    if (collBtn) collBtn.classList.remove('active');
-    if (serBtn) serBtn.classList.remove('active');
+    // Hide all secondary areas
+    ['collectionsArea','seriesArea','artistsArea','albumsArea'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    // Update toggle buttons
+    ['ftGridBtn','ftCollBtn','ftSeriesBtn','ftArtistBtn','ftAlbumBtn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('active', id === 'ftGridBtn');
+    });
+}
+
+// ──── Music: View by Artist / Album ────
+function renderArtistCard(artist) {
+    const meta = [];
+    if (artist.album_count) meta.push(artist.album_count + ' album' + (artist.album_count !== 1 ? 's' : ''));
+    if (artist.track_count) meta.push(artist.track_count + ' track' + (artist.track_count !== 1 ? 's' : ''));
+    return `<div class="media-card" tabindex="0" data-artist-id="${artist.id}" onclick="showArtistDetail('${artist.id}')">
+        <div class="media-poster music-poster-round">
+            ${artist.poster_path ? '<img src="'+posterSrc(artist.poster_path, artist.updated_at)+'" alt="" loading="lazy">' : '<div class="music-icon-placeholder">&#127908;</div>'}
+        </div>
+        <div class="media-info"><div class="media-title">${escapeHtml(artist.name)}</div><div class="media-meta">${meta.join(' \u00b7 ')}</div></div>
+    </div>`;
+}
+
+function renderAlbumCard(album) {
+    const meta = [];
+    if (album.artist_name) meta.push(album.artist_name);
+    if (album.year) meta.push(album.year);
+    if (album.track_count) meta.push(album.track_count + ' track' + (album.track_count !== 1 ? 's' : ''));
+    return `<div class="media-card" tabindex="0" data-album-id="${album.id}" onclick="showAlbumDetail('${album.id}')">
+        <div class="media-poster">
+            ${album.poster_path ? '<img src="'+posterSrc(album.poster_path, album.updated_at)+'" alt="" loading="lazy">' : '<div class="music-icon-placeholder">&#128191;</div>'}
+        </div>
+        <div class="media-info"><div class="media-title">${escapeHtml(album.title)}</div><div class="media-meta">${meta.join(' \u00b7 ')}</div></div>
+    </div>`;
+}
+
+async function showMusicArtists() {
+    const libId = _gridState.libraryId;
+    if (!libId) return;
+
+    const wrapper = document.getElementById('mediaGridWrapper');
+    const artistsArea = document.getElementById('artistsArea');
+    const albumsArea = document.getElementById('albumsArea');
+    if (wrapper) wrapper.style.display = 'none';
+    if (artistsArea) artistsArea.style.display = 'block';
+    if (albumsArea) albumsArea.style.display = 'none';
+
+    ['ftGridBtn','ftArtistBtn','ftAlbumBtn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('active', id === 'ftArtistBtn');
+    });
+
+    artistsArea.innerHTML = '<div class="spinner"></div> Loading artists...';
+    const data = await api('GET', '/libraries/' + libId + '/artists');
+    const artists = (data.success && data.data) ? data.data : [];
+
+    if (artists.length > 0) {
+        artistsArea.innerHTML = `<div class="media-grid-wrapper"><div class="media-grid music-artist-grid">${artists.map(renderArtistCard).join('')}</div></div>`;
+    } else {
+        artistsArea.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#127908;</div><div class="empty-state-title">No artists found</div><p>Scan the library to detect artists</p></div>';
+    }
+}
+
+async function showMusicAlbums() {
+    const libId = _gridState.libraryId;
+    if (!libId) return;
+
+    const wrapper = document.getElementById('mediaGridWrapper');
+    const artistsArea = document.getElementById('artistsArea');
+    const albumsArea = document.getElementById('albumsArea');
+    if (wrapper) wrapper.style.display = 'none';
+    if (artistsArea) artistsArea.style.display = 'none';
+    if (albumsArea) albumsArea.style.display = 'block';
+
+    ['ftGridBtn','ftArtistBtn','ftAlbumBtn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('active', id === 'ftAlbumBtn');
+    });
+
+    albumsArea.innerHTML = '<div class="spinner"></div> Loading albums...';
+    const data = await api('GET', '/libraries/' + libId + '/albums');
+    const albums = (data.success && data.data) ? data.data : [];
+
+    if (albums.length > 0) {
+        albumsArea.innerHTML = `<div class="media-grid-wrapper"><div class="media-grid">${albums.map(renderAlbumCard).join('')}</div></div>`;
+    } else {
+        albumsArea.innerHTML = '<div class="empty-state"><div class="empty-state-icon">&#128191;</div><div class="empty-state-title">No albums found</div><p>Scan the library to detect albums</p></div>';
+    }
+}
+
+async function showArtistDetail(artistId) {
+    const libId = _gridState.libraryId;
+    if (!libId) return;
+    _detailReturnNav = { view: 'library', extra: libId };
+
+    const data = await api('GET', '/libraries/' + libId + '/albums');
+    const allAlbums = (data.success && data.data) ? data.data : [];
+    const albums = allAlbums.filter(a => a.artist_id === artistId);
+
+    const artistsData = await api('GET', '/libraries/' + libId + '/artists');
+    const allArtists = (artistsData.success && artistsData.data) ? artistsData.data : [];
+    const artist = allArtists.find(a => a.id === artistId);
+    const artistName = artist ? artist.name : 'Unknown Artist';
+
+    const mc = document.getElementById('mainContent');
+    let html = `<div class="section-header">
+        <button class="btn-secondary" onclick="navigate('library','${libId}')" style="margin-right:12px;">&#8592; Back</button>
+        <h2 class="section-title">${escapeHtml(artistName)}</h2>
+        <span class="tag" style="margin-left:8px;">${albums.length} album${albums.length !== 1 ? 's' : ''}</span>
+    </div>`;
+
+    if (albums.length > 0) {
+        html += `<div class="media-grid">${albums.map(renderAlbumCard).join('')}</div>`;
+    } else {
+        html += '<div class="empty-state"><div class="empty-state-icon">&#128191;</div><div class="empty-state-title">No albums</div></div>';
+    }
+
+    mc.innerHTML = html;
+}
+
+async function showAlbumDetail(albumId) {
+    const libId = _gridState.libraryId;
+    if (!libId) return;
+
+    const albumData = await api('GET', '/libraries/' + libId + '/albums');
+    const allAlbums = (albumData.success && albumData.data) ? albumData.data : [];
+    const album = allAlbums.find(a => a.id === albumId);
+    const albumTitle = album ? album.title : 'Unknown Album';
+    const artistName = album ? album.artist_name : '';
+
+    const mediaData = await api('GET', '/libraries/' + libId + '/media?limit=500&sort=track_number&order=asc');
+    const allItems = (mediaData.success && mediaData.data && mediaData.data.items) ? mediaData.data.items : [];
+    const tracks = allItems.filter(m => m.album_id === albumId);
+
+    const mc = document.getElementById('mainContent');
+    let html = `<div class="section-header">
+        <button class="btn-secondary" onclick="navigate('library','${libId}')" style="margin-right:12px;">&#8592; Back</button>
+        <h2 class="section-title">${escapeHtml(albumTitle)}</h2>
+        ${artistName ? '<span class="tag tag-cyan" style="margin-left:8px;">'+escapeHtml(artistName)+'</span>' : ''}
+        <span class="tag" style="margin-left:8px;">${tracks.length} track${tracks.length !== 1 ? 's' : ''}</span>
+    </div>`;
+
+    if (tracks.length > 0) {
+        html += `<div class="media-grid">${tracks.map(renderMediaCard).join('')}</div>`;
+    } else {
+        html += '<div class="empty-state"><div class="empty-state-icon">&#127925;</div><div class="empty-state-title">No tracks</div></div>';
+    }
+
+    mc.innerHTML = html;
 }
 
 async function showLibraryCollections() {

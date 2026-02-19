@@ -378,6 +378,14 @@ func buildFilterClauses(f *MediaFilter, paramStart int) (string, string, string,
 			orderCol = "m.bitrate"
 		case "added_at":
 			orderCol = "m.added_at"
+		case "track_number":
+			orderCol = "m.track_number"
+		case "artist":
+			joins = append(joins, `LEFT JOIN artists _sort_ar ON _sort_ar.id = m.artist_id`)
+			orderCol = "COALESCE(_sort_ar.name, '')"
+		case "album":
+			joins = append(joins, `LEFT JOIN albums _sort_al ON _sort_al.id = m.album_id`)
+			orderCol = "COALESCE(_sort_al.title, '')"
 		}
 	}
 	dir := "ASC"
@@ -1708,6 +1716,88 @@ func (r *MediaRepository) PopulateSisterInfo(items []*models.MediaItem) error {
 			item.SisterPartCount = info.partCount
 			item.SisterTotalDuration = info.totalDuration
 			item.SisterGroupName = info.name
+		}
+	}
+	return nil
+}
+
+// PopulateMusicInfo enriches music items with artist name and album title.
+func (r *MediaRepository) PopulateMusicInfo(items []*models.MediaItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	artistIDs := make(map[uuid.UUID]struct{})
+	albumIDs := make(map[uuid.UUID]struct{})
+	for _, item := range items {
+		if item.ArtistID != nil {
+			artistIDs[*item.ArtistID] = struct{}{}
+		}
+		if item.AlbumID != nil {
+			albumIDs[*item.AlbumID] = struct{}{}
+		}
+	}
+
+	artistNames := make(map[uuid.UUID]string)
+	if len(artistIDs) > 0 {
+		ph := make([]string, 0, len(artistIDs))
+		args := make([]interface{}, 0, len(artistIDs))
+		i := 1
+		for id := range artistIDs {
+			ph = append(ph, fmt.Sprintf("$%d", i))
+			args = append(args, id)
+			i++
+		}
+		rows, err := r.db.Query(`SELECT id, name FROM artists WHERE id IN (`+strings.Join(ph, ",")+`)`, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id uuid.UUID
+			var name string
+			if err := rows.Scan(&id, &name); err != nil {
+				return err
+			}
+			artistNames[id] = name
+		}
+	}
+
+	albumTitles := make(map[uuid.UUID]string)
+	if len(albumIDs) > 0 {
+		ph := make([]string, 0, len(albumIDs))
+		args := make([]interface{}, 0, len(albumIDs))
+		i := 1
+		for id := range albumIDs {
+			ph = append(ph, fmt.Sprintf("$%d", i))
+			args = append(args, id)
+			i++
+		}
+		rows, err := r.db.Query(`SELECT id, title FROM albums WHERE id IN (`+strings.Join(ph, ",")+`)`, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id uuid.UUID
+			var title string
+			if err := rows.Scan(&id, &title); err != nil {
+				return err
+			}
+			albumTitles[id] = title
+		}
+	}
+
+	for _, item := range items {
+		if item.ArtistID != nil {
+			if name, ok := artistNames[*item.ArtistID]; ok {
+				item.ArtistName = name
+			}
+		}
+		if item.AlbumID != nil {
+			if title, ok := albumTitles[*item.AlbumID]; ok {
+				item.AlbumTitle = title
+			}
 		}
 	}
 	return nil

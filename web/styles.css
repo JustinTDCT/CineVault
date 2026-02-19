@@ -871,6 +871,24 @@ body {
     color: #fff;
     box-shadow: 0 2px 8px rgba(59,130,246,0.3);
 }
+/* ── Music Library ── */
+.music-poster-round {
+    border-radius: 50% !important;
+}
+.music-poster-round img {
+    border-radius: 50%;
+}
+.music-icon-placeholder {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 100%; font-size: 3.5rem; color: var(--text-muted);
+    background: linear-gradient(135deg, rgba(26,35,50,0.8) 0%, rgba(13,27,42,0.9) 100%);
+}
+.music-poster-round .music-icon-placeholder {
+    border-radius: 50%;
+}
+.music-artist-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
+}
 /* Hide overlay zones on hover to avoid clashing with hover info */
 .media-card:hover .overlay-zone-bl { opacity: 0; transition: opacity 0.2s; }
 

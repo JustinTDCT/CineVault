@@ -79,6 +79,8 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 	_ = s.mediaRepo.PopulateEditionCounts(media)
 	// Enrich items with sister group info (part count, total duration, group name)
 	_ = s.mediaRepo.PopulateSisterInfo(media)
+	// Enrich music items with artist/album names
+	_ = s.mediaRepo.PopulateMusicInfo(media)
 
 	count, _ := s.mediaRepo.CountByLibraryFiltered(libraryID, f)
 

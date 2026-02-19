@@ -1,6 +1,6 @@
 {
-  "version": "1.26.00",
-  "phase": 26,
-  "released": "2026-02-18",
-  "notes": "Audnexus audiobook integration — direct ASIN lookup, ASIN extraction from filenames and folders, narrator and runtime enrichment, Audnexus scraper alongside OpenLibrary."
+  "version": "1.27.00",
+  "phase": 27,
+  "released": "2026-02-19",
+  "notes": "Music library overhaul — media-type-aware filters, sort options, and overlay badges; View by Artist/Album grouping; music enrichment with artist and album names on track cards."
 }
