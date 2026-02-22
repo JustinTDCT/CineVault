@@ -108,7 +108,10 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Apply year-aware scoring: boost matches with matching year, penalize mismatches
+	// Year-aware scoring: boost matches with matching year, apply a mild
+	// penalty for mismatches.  The penalty is kept small (-0.10) because this
+	// is a manual identify flow — the user picks the final result, so we want
+	// to surface plausible alternatives rather than aggressively filter them.
 	if fileYear != nil && *fileYear > 0 {
 		for _, m := range allMatches {
 			if m.Year != nil {
@@ -121,7 +124,7 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 				} else if diff <= 1 {
 					m.Confidence = min(m.Confidence+0.05, 1.0)
 				} else {
-					m.Confidence = max(m.Confidence-0.3, 0.0)
+					m.Confidence = max(m.Confidence-0.05, 0.0)
 				}
 			}
 		}
