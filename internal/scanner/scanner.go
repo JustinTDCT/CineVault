@@ -443,9 +443,40 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 		}
 	}
 
-	if (library.MediaType == models.MediaTypeMusic || library.MediaType == models.MediaTypeMusicVideos) && parsed.Artist != "" {
-		if err := s.handleMusicHierarchy(library, item, parsed); err != nil {
-			log.Printf("Music hierarchy error for %s: %v", path, err)
+	if library.MediaType == models.MediaTypeMusic || library.MediaType == models.MediaTypeMusicVideos {
+		// Fall back to embedded tags (ID3/Vorbis) when filename parser didn't extract artist/album
+		if parsed.Artist == "" && probeResult != nil && len(probeResult.Format.Tags) > 0 {
+			for k, v := range probeResult.Format.Tags {
+				switch strings.ToLower(k) {
+				case "artist", "album_artist":
+					if parsed.Artist == "" {
+						parsed.Artist = strings.TrimSpace(v)
+					}
+				case "album":
+					if parsed.Album == "" {
+						parsed.Album = strings.TrimSpace(v)
+					}
+				case "track":
+					if parsed.TrackNumber == nil {
+						if n, err := strconv.Atoi(strings.Split(v, "/")[0]); err == nil {
+							parsed.TrackNumber = &n
+							item.TrackNumber = &n
+						}
+					}
+				case "disc":
+					if parsed.DiscNumber == nil {
+						if n, err := strconv.Atoi(strings.Split(v, "/")[0]); err == nil {
+							parsed.DiscNumber = &n
+							item.DiscNumber = &n
+						}
+					}
+				}
+			}
+		}
+		if parsed.Artist != "" {
+			if err := s.handleMusicHierarchy(library, item, parsed); err != nil {
+				log.Printf("Music hierarchy error for %s: %v", path, err)
+			}
 		}
 	}
 

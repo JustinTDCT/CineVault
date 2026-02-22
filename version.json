@@ -1,6 +1,6 @@
 {
-  "version": "1.30.01",
-  "phase": 30,
+  "version": "1.31.00",
+  "phase": 31,
   "released": "2026-02-22",
-  "notes": "Fix virtual scroll freeze on letter jump caused by smooth scroll feedback loop."
+  "notes": "Extract music artist/album from embedded ID3/Vorbis tags when filename format doesn't match."
 }

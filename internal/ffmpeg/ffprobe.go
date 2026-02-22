@@ -15,10 +15,11 @@ type ProbeResult struct {
 	Chapters []ChapterInfo `json:"chapters"`
 }
 type FormatInfo struct {
-	Filename string `json:"filename"`
-	Duration string `json:"duration"`
-	Size     string `json:"size"`
-	Bitrate  string `json:"bit_rate"`
+	Filename string            `json:"filename"`
+	Duration string            `json:"duration"`
+	Size     string            `json:"size"`
+	Bitrate  string            `json:"bit_rate"`
+	Tags     map[string]string `json:"tags"`
 }
 type StreamInfo struct {
 	Index          int            `json:"index"`
