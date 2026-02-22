@@ -13,8 +13,10 @@ import (
 // ──────────────────── WebSocket Hub ────────────────────
 
 type WSHub struct {
-	mu      sync.RWMutex
-	clients map[*WSClient]bool
+	mu          sync.RWMutex
+	clients     map[*WSClient]bool
+	activeTasks map[string]json.RawMessage // task_id → last task:update payload
+	tasksMu     sync.RWMutex
 }
 
 type WSClient struct {
@@ -30,7 +32,8 @@ type WSMessage struct {
 
 func NewWSHub() *WSHub {
 	return &WSHub{
-		clients: make(map[*WSClient]bool),
+		clients:     make(map[*WSClient]bool),
+		activeTasks: make(map[string]json.RawMessage),
 	}
 }
 
@@ -39,13 +42,51 @@ func (h *WSHub) Broadcast(event string, data interface{}) {
 	if err != nil {
 		return
 	}
+
+	// Track active task state for new client sync
+	if event == "task:update" {
+		h.trackTask(data, msg)
+	}
+
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for client := range h.clients {
 		select {
 		case client.send <- msg:
 		default:
-			// Drop message if client buffer is full
+		}
+	}
+}
+
+// trackTask keeps a snapshot of each running task so new clients get current state.
+func (h *WSHub) trackTask(data interface{}, raw []byte) {
+	m, ok := data.(map[string]interface{})
+	if !ok {
+		return
+	}
+	taskID, _ := m["task_id"].(string)
+	status, _ := m["status"].(string)
+	if taskID == "" {
+		return
+	}
+
+	h.tasksMu.Lock()
+	defer h.tasksMu.Unlock()
+	if status == "complete" || status == "failed" {
+		delete(h.activeTasks, taskID)
+	} else {
+		h.activeTasks[taskID] = json.RawMessage(raw)
+	}
+}
+
+// sendActiveTasks replays current task state to a newly connected client.
+func (h *WSHub) sendActiveTasks(client *WSClient) {
+	h.tasksMu.RLock()
+	defer h.tasksMu.RUnlock()
+	for _, msg := range h.activeTasks {
+		select {
+		case client.send <- msg:
+		default:
 		}
 	}
 }
@@ -106,6 +147,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.wsHub.addClient(client)
+	s.wsHub.sendActiveTasks(client)
 	log.Printf("WebSocket client connected: %s", claims.Username)
 
 	ctx := r.Context()
