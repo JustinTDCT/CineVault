@@ -153,6 +153,27 @@ func FindBestMatch(scrapers []Scraper, query string, mediaType models.MediaType,
 	return matches[0]
 }
 
+// FindBestMatchWithCache tries the cache server first (which handles TMDB
+// fallback internally), then falls back to direct scrapers if cache is
+// unavailable. This is the preferred entry point when a CacheClient may
+// be available.
+func FindBestMatchWithCache(cache *CacheClient, scrapers []Scraper, query string, mediaType models.MediaType, cfg MatchConfig, itemYear ...*int) *models.MetadataMatch {
+	var yearHint *int
+	if len(itemYear) > 0 {
+		yearHint = itemYear[0]
+	}
+
+	if cache != nil {
+		matches := cache.Search(query, mediaType, yearHint, cfg.MinConfidence, cfg.MaxResults)
+		if len(matches) > 0 {
+			return matches[0]
+		}
+		return nil
+	}
+
+	return FindBestMatch(scrapers, query, mediaType, itemYear...)
+}
+
 // ScrapersForMediaType returns the scrapers relevant to a given media type.
 func ScrapersForMediaType(scrapers []Scraper, mediaType models.MediaType) []Scraper {
 	var result []Scraper

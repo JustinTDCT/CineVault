@@ -82,87 +82,71 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 		fileYear = yearFromFilename(media.FilePath)
 	}
 
-	var allMatches []*models.MetadataMatch
-	seen := make(map[string]bool)
+	var filtered []*models.MetadataMatch
 
-	// ── Cache server: use search endpoint for multiple results ──
 	cacheClient := s.getCacheClient()
 	if cacheClient != nil {
-		cacheMatches := cacheClient.Search(query, media.MediaType, fileYear, matchCfg.MaxResults*2)
-		for _, m := range cacheMatches {
-			seen[m.ExternalID] = true
-			allMatches = append(allMatches, m)
-		}
-		if len(cacheMatches) > 0 {
-			log.Printf("Identify: cache search for %q returned %d results", query, len(cacheMatches))
-		}
-	}
-
-	// Always supplement with direct TMDB scrapers when we have fewer than
-	// MaxResults — same approach Plex/Jellyfin use for their identify flow.
-	if len(allMatches) < matchCfg.MaxResults {
+		// Cache enabled: delegate scoring, filtering, and TMDB fallback
+		// entirely to the cache server. Pass thresholds so it returns
+		// ready-to-use results.
+		filtered = cacheClient.Search(query, media.MediaType, fileYear,
+			matchCfg.MinConfidence, matchCfg.MaxResults)
+		log.Printf("Identify: cache search for %q returned %d results (min=%.2f max=%d)",
+			query, len(filtered), matchCfg.MinConfidence, matchCfg.MaxResults)
+	} else {
+		// Cache disabled: query scrapers directly using app-side API keys.
 		scrapers := metadata.ScrapersForMediaType(s.scrapers, media.MediaType)
 		if len(scrapers) == 0 {
 			scrapers = s.scrapers
 		}
+
+		var allMatches []*models.MetadataMatch
 		for _, scraper := range scrapers {
 			matches, err := scraper.Search(query, media.MediaType, fileYear)
 			if err != nil {
 				log.Printf("Identify: scraper %q error for %q: %v", scraper.Name(), query, err)
 				continue
 			}
-			log.Printf("Identify: scraper %q for %q returned %d results", scraper.Name(), query, len(matches))
-			for _, m := range matches {
-				if !seen[m.ExternalID] {
-					seen[m.ExternalID] = true
-					allMatches = append(allMatches, m)
+			allMatches = append(allMatches, matches...)
+		}
+
+		// Year-aware scoring (local, only when cache is disabled)
+		if fileYear != nil && *fileYear > 0 {
+			for _, m := range allMatches {
+				if m.Year != nil {
+					diff := *fileYear - *m.Year
+					if diff < 0 {
+						diff = -diff
+					}
+					if diff == 0 {
+						m.Confidence = min(m.Confidence+0.15, 1.0)
+					} else if diff <= 1 {
+						m.Confidence = min(m.Confidence+0.05, 1.0)
+					} else {
+						m.Confidence = max(m.Confidence-0.05, 0.0)
+					}
 				}
 			}
 		}
-	}
 
-	// Year-aware scoring: boost matches with matching year, apply a mild
-	// penalty for mismatches.  The penalty is kept small (-0.10) because this
-	// is a manual identify flow — the user picks the final result, so we want
-	// to surface plausible alternatives rather than aggressively filter them.
-	if fileYear != nil && *fileYear > 0 {
+		filtered = make([]*models.MetadataMatch, 0, len(allMatches))
 		for _, m := range allMatches {
-			if m.Year != nil {
-				diff := *fileYear - *m.Year
-				if diff < 0 {
-					diff = -diff
-				}
-				if diff == 0 {
-					m.Confidence = min(m.Confidence+0.15, 1.0)
-				} else if diff <= 1 {
-					m.Confidence = min(m.Confidence+0.05, 1.0)
-				} else {
-					m.Confidence = max(m.Confidence-0.05, 0.0)
+			if m.Confidence >= matchCfg.MinConfidence {
+				filtered = append(filtered, m)
+			}
+		}
+
+		for i := 0; i < len(filtered); i++ {
+			for j := i + 1; j < len(filtered); j++ {
+				if filtered[j].Confidence > filtered[i].Confidence {
+					filtered[i], filtered[j] = filtered[j], filtered[i]
 				}
 			}
 		}
-	}
 
-	// Filter by manual match threshold
-	filtered := make([]*models.MetadataMatch, 0, len(allMatches))
-	for _, m := range allMatches {
-		if m.Confidence >= matchCfg.MinConfidence {
-			filtered = append(filtered, m)
+		if matchCfg.MaxResults > 0 && len(filtered) > matchCfg.MaxResults {
+			filtered = filtered[:matchCfg.MaxResults]
 		}
-	}
-
-	// Sort by confidence descending
-	for i := 0; i < len(filtered); i++ {
-		for j := i + 1; j < len(filtered); j++ {
-			if filtered[j].Confidence > filtered[i].Confidence {
-				filtered[i], filtered[j] = filtered[j], filtered[i]
-			}
-		}
-	}
-
-	// Cap at max results
-	if matchCfg.MaxResults > 0 && len(filtered) > matchCfg.MaxResults {
-		filtered = filtered[:matchCfg.MaxResults]
 	}
 
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: filtered})

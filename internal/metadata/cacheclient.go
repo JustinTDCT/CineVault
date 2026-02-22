@@ -469,11 +469,11 @@ type cacheSearchResult struct {
 
 // Search queries the cache server's search endpoint and returns multiple matches.
 // Used for manual identification where the user picks from several options.
-func (c *CacheClient) Search(query string, mediaType models.MediaType, year *int, limit int) []*models.MetadataMatch {
+func (c *CacheClient) Search(query string, mediaType models.MediaType, year *int, minConfidence float64, maxResults int) []*models.MetadataMatch {
 	cacheType := mediaTypeToCacheType(mediaType)
 
-	reqURL := fmt.Sprintf("%s/api/v1/search?q=%s&type=%s&limit=%d",
-		c.baseURL, url.QueryEscape(query), cacheType, limit)
+	reqURL := fmt.Sprintf("%s/api/v1/search?q=%s&type=%s&max_results=%d&min_confidence=%.2f",
+		c.baseURL, url.QueryEscape(query), cacheType, maxResults, minConfidence)
 	if year != nil && *year > 0 {
 		reqURL += fmt.Sprintf("&year=%d", *year)
 	}
