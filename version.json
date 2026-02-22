@@ -1,6 +1,6 @@
 {
-  "version": "1.29.01",
-  "phase": 29,
+  "version": "1.30.00",
+  "phase": 30,
   "released": "2026-02-22",
-  "notes": "Fix library scroll position not restoring when navigating back from media detail."
+  "notes": "Virtual scroll engine for library grid — only ~100 cards in DOM regardless of library size."
 }
