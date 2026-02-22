@@ -144,22 +144,118 @@ function mapSourceLabel(item) {
     return raw.toUpperCase();
 }
 
+function _overlayGroup(prefs, key) {
+    if (!prefs.groups) return null;
+    const g = prefs.groups[key];
+    return (g && g.enabled) ? g : null;
+}
+
+const ZONE_CSS_MAP = {
+    'top-left': 'overlay-zone-tl', 'top': 'overlay-zone-t', 'top-right': 'overlay-zone-tr',
+    'left': 'overlay-zone-l', 'right': 'overlay-zone-r',
+    'bottom-left': 'overlay-zone-bl', 'bottom': 'overlay-zone-b', 'bottom-right': 'overlay-zone-br'
+};
+
+function _buildRatingBadges(item) {
+    let badges = '';
+    if (item.imdb_rating)
+        badges += `<span class="overlay-badge overlay-badge-rating">${ratingIcon('imdb', item.imdb_rating)} ${item.imdb_rating.toFixed(1)}</span>`;
+    if (item.rt_rating != null)
+        badges += `<span class="overlay-badge overlay-badge-rating">${ratingIcon('rt_critic', item.rt_rating)} ${item.rt_rating}%</span>`;
+    if (item.audience_score != null)
+        badges += `<span class="overlay-badge overlay-badge-rating">${ratingIcon('rt_audience', item.audience_score)} ${item.audience_score}%</span>`;
+    if (item.rating)
+        badges += `<span class="overlay-badge overlay-badge-rating">${ratingIcon('tmdb', item.rating)} ${item.rating.toFixed(1)}</span>`;
+    if (item.metacritic_score)
+        badges += `<span class="overlay-badge overlay-badge-rating">${ratingIcon('metacritic', item.metacritic_score)}</span>`;
+    return badges;
+}
+
+function _buildResAudioBadges(item, prefs) {
+    let badges = '';
+    const resEnabled = prefs.resolution_hdr !== undefined ? prefs.resolution_hdr : true;
+    const audioEnabled = prefs.audio_codec !== undefined ? prefs.audio_codec : true;
+    if (resEnabled) {
+        const resLabel = buildResolutionLabel(item);
+        if (resLabel) {
+            const isHDR = resLabel.includes('HDR') || resLabel.includes('DV') || resLabel.includes('HLG');
+            badges += `<span class="overlay-badge ${isHDR ? 'overlay-badge-res-hdr' : 'overlay-badge-res'}">${resLabel}</span>`;
+        }
+    }
+    if (audioEnabled) {
+        const audioLabel = mapAudioLabel(item);
+        if (audioLabel) badges += `<span class="overlay-badge overlay-badge-audio">${audioLabel}</span>`;
+    }
+    return badges;
+}
+
+function _buildEditionBadges(item, prefs) {
+    let badges = '';
+    const crEnabled = prefs.content_rating !== undefined ? prefs.content_rating : false;
+    if (crEnabled && item.content_rating) {
+        badges += `<span class="overlay-badge overlay-badge-content-rating">${item.content_rating}</span>`;
+    }
+    const edEnabled = prefs.edition_type !== undefined ? prefs.edition_type : true;
+    if (edEnabled) {
+        if (item.edition_count && item.edition_count > 1) {
+            badges += `<span class="overlay-badge overlay-badge-edition">${item.edition_count} Editions</span>`;
+        } else {
+            const edLabel = mapEditionLabel(item);
+            if (edLabel) badges += `<span class="overlay-badge overlay-badge-edition">${edLabel}</span>`;
+        }
+    }
+    const srcEnabled = prefs.source_type !== undefined ? prefs.source_type : false;
+    if (srcEnabled) {
+        const srcLabel = mapSourceLabel(item);
+        if (srcLabel) badges += `<span class="overlay-badge overlay-badge-source">${srcLabel}</span>`;
+    }
+    return badges;
+}
+
 function renderOverlayBadges(item) {
     const p = overlayPrefs;
     const isMusic = item.media_type === 'music';
-    let trBadges = '', tlBadges = '', blBadges = '', brBadges = '';
 
+    // Music: only show audio codec in top-right
     if (isMusic) {
-        if (p.audio_codec) {
-            const audioLabel = mapAudioLabel(item);
-            if (audioLabel) trBadges += `<span class="overlay-badge overlay-badge-audio">${audioLabel}</span>`;
+        const audioLabel = mapAudioLabel(item);
+        if (!audioLabel) return '';
+        const g = _overlayGroup(p, 'resolution_audio');
+        const pos = g ? g.position : 'top-right';
+        const cls = ZONE_CSS_MAP[pos] || 'overlay-zone-tr';
+        return `<div class="${cls}"><span class="overlay-badge overlay-badge-audio">${audioLabel}</span></div>`;
+    }
+
+    // New group-based system
+    if (p.groups) {
+        const zones = {};
+        const addToZone = (pos, html) => { if (html) { zones[pos] = (zones[pos] || '') + html; } };
+
+        const raG = _overlayGroup(p, 'resolution_audio');
+        if (raG) addToZone(raG.position, _buildResAudioBadges(item, p));
+
+        const edG = _overlayGroup(p, 'edition');
+        if (edG) addToZone(edG.position, _buildEditionBadges(item, p));
+
+        const rtG = _overlayGroup(p, 'ratings');
+        if (rtG) addToZone(rtG.position, _buildRatingBadges(item));
+
+        // Multi-part always goes with edition group or bottom-right fallback
+        if (item.sister_part_count > 1) {
+            const mpPos = edG ? edG.position : 'bottom-right';
+            addToZone(mpPos, `<span class="overlay-badge overlay-badge-multipart">${item.sister_part_count} Parts</span>`);
         }
+
         let html = '';
-        if (trBadges) html += `<div class="overlay-zone-tr">${trBadges}</div>`;
+        for (const [pos, content] of Object.entries(zones)) {
+            const cls = ZONE_CSS_MAP[pos] || 'overlay-zone-tr';
+            html += `<div class="${cls}">${content}</div>`;
+        }
         return html;
     }
 
-    // TOP-RIGHT: Resolution + HDR, Audio Codec
+    // Legacy boolean fallback
+    let trBadges = '', tlBadges = '', blBadges = '', brBadges = '';
     if (p.resolution_hdr) {
         const resLabel = buildResolutionLabel(item);
         if (resLabel) {
@@ -171,8 +267,6 @@ function renderOverlayBadges(item) {
         const audioLabel = mapAudioLabel(item);
         if (audioLabel) trBadges += `<span class="overlay-badge overlay-badge-audio">${audioLabel}</span>`;
     }
-
-    // TOP-LEFT: Content Rating + Edition Type (single row)
     if (p.content_rating && item.content_rating) {
         tlBadges += `<span class="overlay-badge overlay-badge-content-rating">${item.content_rating}</span>`;
     }
@@ -184,15 +278,9 @@ function renderOverlayBadges(item) {
             if (edLabel) tlBadges += `<span class="overlay-badge overlay-badge-edition">${edLabel}</span>`;
         }
     }
-
-    // BOTTOM-LEFT: Ratings
     if (p.ratings) {
-        if (item.imdb_rating) blBadges += `<span class="overlay-badge overlay-badge-imdb">IMDb ${item.imdb_rating.toFixed(1)}</span>`;
-        if (item.rt_rating) blBadges += `<span class="overlay-badge overlay-badge-rt">RT ${item.rt_rating}%</span>`;
-        if (item.audience_score) blBadges += `<span class="overlay-badge overlay-badge-tmdb">AS ${item.audience_score}%</span>`;
+        blBadges += _buildRatingBadges(item);
     }
-
-    // BOTTOM-RIGHT: Source Type + Multi-Part indicator
     if (p.source_type) {
         const srcLabel = mapSourceLabel(item);
         if (srcLabel) brBadges += `<span class="overlay-badge overlay-badge-source">${srcLabel}</span>`;
@@ -226,7 +314,7 @@ function renderMediaCard(item) {
     } else {
         meta = [year, dur, res].filter(Boolean).join(' \u00b7 ');
         hoverMeta = [year, res, item.codec].filter(Boolean).join(' \u00b7 ');
-        ratingBadge = item.rating ? `<span class="hover-rating-badge">&#11088; ${item.rating.toFixed(1)}</span>` : '';
+        ratingBadge = item.rating ? `<span class="hover-rating-badge">${ratingIcon('tmdb', item.rating)} ${item.rating.toFixed(1)}</span>` : '';
     }
     const displayTitle = item.sister_group_name || item.title;
     const isSelected = selectionState.selectedIds.has(item.id);
@@ -382,7 +470,7 @@ async function loadHomeView() {
             <div class="hero-banner-content">
                 <div class="hero-banner-title">${heroItem.title}</div>
                 <div class="hero-banner-meta">
-                    ${heroItem.rating ? '<span class="hero-rating">&#11088; '+heroItem.rating.toFixed(1)+'</span>' : ''}
+                    ${heroItem.rating ? '<span class="hero-rating">'+ratingIcon('tmdb', heroItem.rating)+' '+heroItem.rating.toFixed(1)+'</span>' : ''}
                     <span>${hMeta}</span>
                 </div>
                 ${hDesc ? '<div class="hero-banner-desc">'+hDesc+'</div>' : ''}
@@ -496,7 +584,7 @@ async function loadHomeView() {
                     <div class="media-poster">${item.poster_path ? '<img src="'+posterSrc(item.poster_path, item.updated_at)+'">' : mediaIcon(item.media_type||'movies')}
                         <span class="trending-badge">${item.unique_viewers} viewer${item.unique_viewers !== 1 ? 's' : ''}</span>
                     </div>
-                    <div class="media-info"><div class="media-title">${item.title}</div><div class="media-meta">${item.year||''} ${item.rating?'&#11088; '+item.rating.toFixed(1):''}</div></div>
+                    <div class="media-info"><div class="media-title">${item.title}</div><div class="media-meta">${item.year||''} ${item.rating?ratingIcon('tmdb',item.rating)+' '+item.rating.toFixed(1):''}</div></div>
                 </div>`).join('')}</div></div>`;
         }
     } catch {}
@@ -545,11 +633,11 @@ async function loadMediaDetail(id) {
     const hasAnyRating = m.rating || m.imdb_rating || m.rt_rating != null || m.audience_score != null || m.metacritic_score;
     if (hasAnyRating) {
         ratingsHTML = '<div class="ratings-row">';
-        if (m.rating) ratingsHTML += `<div class="rating-badge rating-tmdb"><span class="rating-icon">&#11088;</span><span class="rating-value">${m.rating.toFixed(1)}</span><span class="rating-label">TMDB</span></div>`;
-        if (m.imdb_rating) ratingsHTML += `<div class="rating-badge rating-imdb"><span class="rating-icon">&#127902;</span><span class="rating-value">${m.imdb_rating.toFixed(1)}</span><span class="rating-label">IMDb</span></div>`;
-        if (m.rt_rating != null) ratingsHTML += `<div class="rating-badge rating-rt"><span class="rating-icon">&#127813;</span><span class="rating-value">${m.rt_rating}%</span><span class="rating-label">Rotten Tomatoes</span></div>`;
-        if (m.audience_score != null) ratingsHTML += `<div class="rating-badge rating-audience"><span class="rating-icon">&#128101;</span><span class="rating-value">${m.audience_score}%</span><span class="rating-label">Audience</span></div>`;
-        if (m.metacritic_score) ratingsHTML += `<div class="rating-badge" style="border-color:rgba(255,204,0,0.3);"><span class="rating-icon">&#127942;</span><span class="rating-value">${m.metacritic_score}</span><span class="rating-label">Metacritic</span></div>`;
+        if (m.rating) ratingsHTML += `<div class="rating-badge rating-tmdb"><span class="rating-icon">${ratingIcon('tmdb', m.rating, 'large')}</span><span class="rating-value">${m.rating.toFixed(1)}</span><span class="rating-label">TMDB</span></div>`;
+        if (m.imdb_rating) ratingsHTML += `<div class="rating-badge rating-imdb"><span class="rating-icon">${ratingIcon('imdb', m.imdb_rating, 'large')}</span><span class="rating-value">${m.imdb_rating.toFixed(1)}</span><span class="rating-label">IMDb</span></div>`;
+        if (m.rt_rating != null) ratingsHTML += `<div class="rating-badge rating-rt"><span class="rating-icon">${ratingIcon('rt_critic', m.rt_rating, 'large')}</span><span class="rating-value">${m.rt_rating}%</span><span class="rating-label">Rotten Tomatoes</span></div>`;
+        if (m.audience_score != null) ratingsHTML += `<div class="rating-badge rating-audience"><span class="rating-icon">${ratingIcon('rt_audience', m.audience_score, 'large')}</span><span class="rating-value">${m.audience_score}%</span><span class="rating-label">Audience</span></div>`;
+        if (m.metacritic_score) ratingsHTML += `<div class="rating-badge rating-metacritic"><span class="rating-icon">${ratingIcon('metacritic', m.metacritic_score, 'large')}</span><span class="rating-value">${m.metacritic_score}</span><span class="rating-label">Metacritic</span></div>`;
         ratingsHTML += '</div>';
     }
 
@@ -3314,7 +3402,7 @@ async function loadCollectionDetailView(collId) {
                         <button class="cw-remove" onclick="event.stopPropagation();removeFromCollection('${collId}','${ci.id}')" title="Remove from collection">&#10005;</button>
                         <div class="media-card-hover-info">
                             <div class="hover-title">${ci.title || 'Untitled'}</div>
-                            <div class="hover-meta">${ci.rating ? '<span class="hover-rating-badge">&#11088; ' + ci.rating.toFixed(1) + '</span>' : ''}<span>${meta}</span></div>
+                            <div class="hover-meta">${ci.rating ? '<span class="hover-rating-badge">' + ratingIcon('tmdb', ci.rating) + ' ' + ci.rating.toFixed(1) + '</span>' : ''}<span>${meta}</span></div>
                         </div>
                         <div class="play-overlay"><div class="play-button">&#9654;</div></div>
                     </div>

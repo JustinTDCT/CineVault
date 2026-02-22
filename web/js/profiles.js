@@ -694,47 +694,136 @@ loadProfileView = async function() {
     loadProfilePlaybackPrefs();
 };
 
+const OVERLAY_POSITIONS = [
+    { id: 'top-left', label: 'Top Left' }, { id: 'top', label: 'Top' }, { id: 'top-right', label: 'Top Right' },
+    { id: 'left', label: 'Left Side' }, { id: 'right', label: 'Right Side' },
+    { id: 'bottom-left', label: 'Bottom Left' }, { id: 'bottom', label: 'Bottom' }, { id: 'bottom-right', label: 'Bottom Right' }
+];
+const OVERLAY_ZONES = {
+    'top-left': 'top', 'top': 'top', 'top-right': 'top',
+    'bottom-left': 'bottom', 'bottom': 'bottom', 'bottom-right': 'bottom',
+    'left': 'left', 'right': 'right'
+};
+const OVERLAY_GROUPS = [
+    { key: 'resolution_audio', label: 'Resolution & Audio' },
+    { key: 'edition', label: 'Edition & Content' },
+    { key: 'ratings', label: 'Ratings' }
+];
+
+function _overlayPositionsTaken(groups, excludeKey) {
+    const takenZones = new Set();
+    for (const g of OVERLAY_GROUPS) {
+        if (g.key === excludeKey) continue;
+        const gd = groups[g.key];
+        if (gd && gd.enabled && gd.position) {
+            takenZones.add(OVERLAY_ZONES[gd.position]);
+        }
+    }
+    return takenZones;
+}
+
+function _renderPositionDropdown(groupKey, selectedPos, groups) {
+    const takenZones = _overlayPositionsTaken(groups, groupKey);
+    let opts = '';
+    for (const p of OVERLAY_POSITIONS) {
+        const zone = OVERLAY_ZONES[p.id];
+        const disabled = takenZones.has(zone) ? 'disabled' : '';
+        const selected = p.id === selectedPos ? 'selected' : '';
+        opts += `<option value="${p.id}" ${selected} ${disabled}>${p.label}</option>`;
+    }
+    return `<select id="profOvPos_${groupKey}" class="ov-pos-select" onchange="overlayPosChanged()">${opts}</select>`;
+}
+
+function _renderOverlayGroupRow(group, data, groups) {
+    const enabled = data && data.enabled;
+    const pos = (data && data.position) || 'top-right';
+    return `<div class="overlay-group-row" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;flex:0 0 auto;">
+            <span class="toggle-switch"><input type="checkbox" id="profOvEn_${group.key}" ${enabled?'checked':''} onchange="overlayPosChanged()"><span class="toggle-slider"></span></span>
+        </label>
+        <span style="flex:1;font-weight:600;font-size:0.88rem;">${group.label}</span>
+        ${_renderPositionDropdown(group.key, pos, groups)}
+    </div>`;
+}
+
+function overlayPosChanged() {
+    const groups = {};
+    for (const g of OVERLAY_GROUPS) {
+        groups[g.key] = {
+            enabled: document.getElementById('profOvEn_' + g.key).checked,
+            position: document.getElementById('profOvPos_' + g.key).value
+        };
+    }
+    // Re-render dropdowns to update disabled states
+    for (const g of OVERLAY_GROUPS) {
+        const sel = document.getElementById('profOvPos_' + g.key);
+        const curVal = sel.value;
+        const takenZones = _overlayPositionsTaken(groups, g.key);
+        for (const opt of sel.options) {
+            const zone = OVERLAY_ZONES[opt.value];
+            opt.disabled = takenZones.has(zone);
+        }
+    }
+}
+
 async function loadProfileOverlayToggles() {
     const res = await api('GET', '/settings/display');
-    const p = res.success && res.data ? res.data.overlay_settings : {
-        resolution_hdr: true, audio_codec: true, ratings: true,
-        content_rating: false, edition_type: true, source_type: false
+    const raw = res.success && res.data ? res.data.overlay_settings : null;
+    const p = migrateOverlayPrefs(raw);
+
+    const groups = p.groups || {
+        resolution_audio: { enabled: true, position: 'top-right' },
+        edition: { enabled: true, position: 'top-left' },
+        ratings: { enabled: true, position: 'bottom-left' }
     };
+
+    let rowsHTML = '';
+    for (const g of OVERLAY_GROUPS) {
+        rowsHTML += _renderOverlayGroupRow(g, groups[g.key], groups);
+    }
+
     document.getElementById('profileOverlayToggles').innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">
-            <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
-                <span class="toggle-switch"><input type="checkbox" id="profOvResHdr" ${p.resolution_hdr?'checked':''}><span class="toggle-slider"></span></span>
-                Resolution &amp; HDR
-            </label>
-            <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
-                <span class="toggle-switch"><input type="checkbox" id="profOvAudio" ${p.audio_codec?'checked':''}><span class="toggle-slider"></span></span>
-                Audio Codec
-            </label>
-            <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
-                <span class="toggle-switch"><input type="checkbox" id="profOvRatings" ${p.ratings?'checked':''}><span class="toggle-slider"></span></span>
-                Ratings
-            </label>
-            <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
-                <span class="toggle-switch"><input type="checkbox" id="profOvContentRating" ${p.content_rating?'checked':''}><span class="toggle-slider"></span></span>
-                Content Rating
-            </label>
-            <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
-                <span class="toggle-switch"><input type="checkbox" id="profOvEdition" ${p.edition_type?'checked':''}><span class="toggle-slider"></span></span>
-                Edition Type
-            </label>
-            <label class="toggle-label" style="margin-bottom:0;display:flex;align-items:center;gap:10px;">
-                <span class="toggle-switch"><input type="checkbox" id="profOvSource" ${p.source_type?'checked':''}><span class="toggle-slider"></span></span>
-                Source Type
-            </label>
+        <div class="overlay-groups-container">
+            ${rowsHTML}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;margin-top:14px;">
+                <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;font-size:0.82rem;">
+                    <span class="toggle-switch"><input type="checkbox" id="profOvContentRating" ${p.content_rating?'checked':''}><span class="toggle-slider"></span></span>
+                    Content Rating
+                </label>
+                <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;font-size:0.82rem;">
+                    <span class="toggle-switch"><input type="checkbox" id="profOvSource" ${p.source_type?'checked':''}><span class="toggle-slider"></span></span>
+                    Source Type
+                </label>
+                <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;font-size:0.82rem;">
+                    <span class="toggle-switch"><input type="checkbox" id="profOvEdition" ${p.edition_type !== false?'checked':''}><span class="toggle-slider"></span></span>
+                    Edition Type
+                </label>
+                <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;font-size:0.82rem;">
+                    <span class="toggle-switch"><input type="checkbox" id="profOvResHdr" ${p.resolution_hdr !== false?'checked':''}><span class="toggle-slider"></span></span>
+                    Resolution &amp; HDR
+                </label>
+                <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;font-size:0.82rem;">
+                    <span class="toggle-switch"><input type="checkbox" id="profOvAudio" ${p.audio_codec !== false?'checked':''}><span class="toggle-slider"></span></span>
+                    Audio Codec
+                </label>
+            </div>
         </div>
         <button class="btn-primary" onclick="saveProfileOverlayPrefs()" style="margin-top:16px;">Save Overlay Settings</button>`;
 }
 
 async function saveProfileOverlayPrefs() {
+    const groups = {};
+    for (const g of OVERLAY_GROUPS) {
+        groups[g.key] = {
+            enabled: document.getElementById('profOvEn_' + g.key).checked,
+            position: document.getElementById('profOvPos_' + g.key).value
+        };
+    }
     const settings = {
+        groups,
         resolution_hdr: document.getElementById('profOvResHdr').checked,
         audio_codec: document.getElementById('profOvAudio').checked,
-        ratings: document.getElementById('profOvRatings').checked,
+        ratings: groups.ratings.enabled,
         content_rating: document.getElementById('profOvContentRating').checked,
         edition_type: document.getElementById('profOvEdition').checked,
         source_type: document.getElementById('profOvSource').checked,

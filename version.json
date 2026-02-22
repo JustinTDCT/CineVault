@@ -1,6 +1,6 @@
 {
-  "version": "1.28.00",
-  "phase": 28,
+  "version": "1.29.00",
+  "phase": 29,
   "released": "2026-02-22",
-  "notes": "Global settings with region preference — filters content ratings to user's country; spacing fix between content ratings and action buttons on detail page."
+  "notes": "Dynamic rating icon overlays — brand-style SVG icons for IMDb, RT, TMDB, Metacritic that change based on score thresholds; configurable overlay group positions with zone exclusivity."
 }

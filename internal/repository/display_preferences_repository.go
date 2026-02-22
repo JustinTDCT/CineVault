@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const defaultOverlaySettings = `{"resolution_hdr":true,"audio_codec":true,"ratings":true,"content_rating":false,"edition_type":true,"source_type":false}`
+const defaultOverlaySettings = `{"groups":{"resolution_audio":{"enabled":true,"position":"top-right"},"edition":{"enabled":true,"position":"top-left"},"ratings":{"enabled":true,"position":"bottom-left"}},"resolution_hdr":true,"audio_codec":true,"ratings":true,"content_rating":false,"edition_type":true,"source_type":false}`
 
 type DisplayPreferencesRepository struct {
 	db *sql.DB

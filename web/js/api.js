@@ -3,7 +3,15 @@ let currentUser = null;
 let allLibraries = [];
 let ws = null;
 // Overlay badge display preferences (fetched from server per-user)
-let overlayPrefs = { resolution_hdr: true, audio_codec: true, ratings: true, content_rating: false, edition_type: true, source_type: false };
+let overlayPrefs = {
+    groups: {
+        resolution_audio: { enabled: true, position: 'top-right' },
+        edition: { enabled: true, position: 'top-left' },
+        ratings: { enabled: true, position: 'bottom-left' }
+    },
+    resolution_hdr: true, audio_codec: true, ratings: true,
+    content_rating: false, edition_type: true, source_type: false
+};
 let _userRegion = '';
 let hlsPlayer = null;
 let mpegtsPlayer = null;
@@ -45,11 +53,30 @@ const MEDIA_LABELS = { movies:'Movies', adult_movies:'Adult Movies', tv_shows:'T
 function mediaIcon(type) { return MEDIA_ICONS[type] || '&#128191;'; }
 function posterSrc(path, updatedAt, width) { if (!path) return ''; const ts = updatedAt ? new Date(updatedAt).getTime() : Date.now(); let url = path + '?v=' + ts; if (width && path.startsWith('http')) url += '&w=' + width; return url; }
 function posterSrcset(path, updatedAt) { if (!path || !path.startsWith('http')) return ''; return posterSrc(path, updatedAt, 300) + ' 300w, ' + posterSrc(path, updatedAt, 500) + ' 500w'; }
+function migrateOverlayPrefs(raw) {
+    if (!raw) return overlayPrefs;
+    if (raw.groups) return raw;
+    // Legacy boolean format — upgrade to group-based
+    return {
+        groups: {
+            resolution_audio: { enabled: !!(raw.resolution_hdr || raw.audio_codec), position: 'top-right' },
+            edition: { enabled: !!(raw.edition_type || raw.content_rating), position: 'top-left' },
+            ratings: { enabled: !!raw.ratings, position: 'bottom-left' }
+        },
+        resolution_hdr: raw.resolution_hdr !== false,
+        audio_codec: raw.audio_codec !== false,
+        ratings: raw.ratings !== false,
+        content_rating: !!raw.content_rating,
+        edition_type: raw.edition_type !== false,
+        source_type: !!raw.source_type
+    };
+}
+
 async function fetchOverlayPrefs() {
     try {
         const res = await api('GET', '/settings/display');
         if (res.success && res.data && res.data.overlay_settings) {
-            overlayPrefs = res.data.overlay_settings;
+            overlayPrefs = migrateOverlayPrefs(res.data.overlay_settings);
         }
     } catch(e) { /* keep defaults */ }
 }
