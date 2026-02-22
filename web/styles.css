@@ -769,6 +769,8 @@ body {
     transition: all var(--transition);
     position: relative;
     outline: none;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 180px auto 320px;
 }
 .media-card:hover { transform: translateY(-8px); }
 

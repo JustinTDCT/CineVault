@@ -1280,7 +1280,239 @@ function getFilterDefs() {
 // Keep FILTER_DEFS as a getter for backward compatibility
 const FILTER_DEFS = ALL_FILTER_DEFS;
 
+// ──── Virtual Scroll Engine ────
+const _vs = {
+    active: false,
+    items: new Map(),
+    totalItems: 0,
+    colCount: 0,
+    rowHeight: 0,
+    cardGap: 22,
+    bufferRows: 4,
+    renderedRange: null,
+    fetchBatch: 200,
+    fetching: new Set(),
+    container: null,
+    grid: null,
+    gridOffset: 0,
+    measured: false,
+    scrollHandler: null,
+    resizeHandler: null,
+    rafId: null,
+};
+
+function vsTeardown() {
+    if (_vs.scrollHandler && _vs.container) {
+        _vs.container.removeEventListener('scroll', _vs.scrollHandler);
+    }
+    if (_vs.resizeHandler) {
+        window.removeEventListener('resize', _vs.resizeHandler);
+    }
+    if (_vs.rafId) cancelAnimationFrame(_vs.rafId);
+    _vs.active = false;
+    _vs.items.clear();
+    _vs.totalItems = 0;
+    _vs.colCount = 0;
+    _vs.rowHeight = 0;
+    _vs.measured = false;
+    _vs.renderedRange = null;
+    _vs.fetching.clear();
+    _vs.container = null;
+    _vs.grid = null;
+    _vs.gridOffset = 0;
+    _vs.scrollHandler = null;
+    _vs.resizeHandler = null;
+    _vs.rafId = null;
+}
+
+function vsMeasureGrid() {
+    if (!_vs.grid) return;
+    const style = getComputedStyle(_vs.grid);
+    _vs.colCount = style.gridTemplateColumns.split(' ').length;
+    const card = _vs.grid.querySelector('.media-card');
+    if (card) {
+        _vs.rowHeight = card.offsetHeight + _vs.cardGap;
+        _vs.measured = true;
+    }
+    const containerRect = _vs.container.getBoundingClientRect();
+    const gridRect = _vs.grid.getBoundingClientRect();
+    _vs.gridOffset = gridRect.top - containerRect.top + _vs.container.scrollTop;
+}
+
+async function vsFetchRange(start, count) {
+    const end = Math.min(start + count, _vs.totalItems);
+    let needFetch = false;
+    for (let i = start; i < end; i++) {
+        if (!_vs.items.has(i)) { needFetch = true; break; }
+    }
+    if (!needFetch) return;
+
+    const fetchKey = start + ':' + count;
+    if (_vs.fetching.has(fetchKey)) return;
+    _vs.fetching.add(fetchKey);
+    try {
+        const m = await api('GET', '/libraries/' + _gridState.libraryId +
+            '/media?limit=' + count + '&offset=' + start + buildFilterQS());
+        const items = (m.success && m.data && m.data.items) ? m.data.items : [];
+        for (let i = 0; i < items.length; i++) _vs.items.set(start + i, items[i]);
+        if (m.data && m.data.total !== undefined) {
+            _vs.totalItems = m.data.total;
+            _gridState.total = m.data.total;
+        }
+    } finally {
+        _vs.fetching.delete(fetchKey);
+    }
+}
+
+function vsRender(force) {
+    if (!_vs.active || !_vs.measured || !_vs.grid || !_vs.container) return;
+
+    const scrollTop = _vs.container.scrollTop;
+    const viewportH = _vs.container.clientHeight;
+    const rowPitch = _vs.rowHeight;
+    const totalRows = Math.ceil(_vs.totalItems / _vs.colCount);
+    const adjScroll = Math.max(0, scrollTop - _vs.gridOffset);
+
+    const startRow = Math.max(0, Math.floor(adjScroll / rowPitch) - _vs.bufferRows);
+    const endRow = Math.min(totalRows - 1,
+        Math.ceil((adjScroll + viewportH) / rowPitch) + _vs.bufferRows);
+
+    if (!force && _vs.renderedRange &&
+        _vs.renderedRange.startRow === startRow &&
+        _vs.renderedRange.endRow === endRow) return;
+
+    _vs.renderedRange = { startRow, endRow };
+
+    const startIdx = startRow * _vs.colCount;
+    const endIdx = Math.min((endRow + 1) * _vs.colCount, _vs.totalItems);
+
+    // Prefetch visible range + one batch ahead and behind
+    const prefetchStart = Math.max(0, startIdx - _vs.fetchBatch);
+    const prefetchEnd = Math.min(_vs.totalItems, endIdx + _vs.fetchBatch);
+    for (let off = prefetchStart; off < prefetchEnd; off += _vs.fetchBatch) {
+        const batchStart = Math.floor(off / _vs.fetchBatch) * _vs.fetchBatch;
+        let missing = false;
+        for (let i = batchStart; i < Math.min(batchStart + _vs.fetchBatch, _vs.totalItems); i++) {
+            if (!_vs.items.has(i)) { missing = true; break; }
+        }
+        if (missing) {
+            vsFetchRange(batchStart, _vs.fetchBatch).then(() => {
+                if (_vs.active) vsRender(true);
+            });
+        }
+    }
+
+    const cards = [];
+    for (let i = startIdx; i < endIdx; i++) {
+        const item = _vs.items.get(i);
+        if (item) {
+            cards.push(renderMediaCard(item));
+        } else {
+            cards.push('<div class="skeleton-card"><div class="skeleton skeleton-poster"></div>' +
+                '<div class="skeleton skeleton-title"></div><div class="skeleton skeleton-meta"></div></div>');
+        }
+    }
+
+    const topH = startRow * rowPitch;
+    const bottomH = Math.max(0, (totalRows - endRow - 1) * rowPitch);
+
+    _vs.grid.style.paddingTop = topH + 'px';
+    _vs.grid.style.paddingBottom = bottomH + 'px';
+    _vs.grid.innerHTML = cards.join('');
+}
+
+function vsUpdateAlpha() {
+    if (!_vs.active || !_vs.measured) return;
+    const jump = document.getElementById('alphaJump');
+    if (!jump) return;
+
+    const adjScroll = Math.max(0, _vs.container.scrollTop - _vs.gridOffset);
+    const visibleIdx = Math.floor(adjScroll / _vs.rowHeight) * _vs.colCount;
+
+    const li = _gridState.letterIndex;
+    let activeLetter = '#';
+    for (let i = li.length - 1; i >= 0; i--) {
+        if (li[i].offset <= visibleIdx) { activeLetter = li[i].letter; break; }
+    }
+    jump.querySelectorAll('.alpha-jump-letter').forEach(el => {
+        el.classList.toggle('active', el.dataset.letter === activeLetter);
+    });
+}
+
+async function vsInit(restoreScrollTop) {
+    const grid = document.getElementById('libGrid');
+    const container = document.getElementById('mainContent');
+    if (!grid || !container) return;
+
+    _vs.grid = grid;
+    _vs.container = container;
+    _vs.totalItems = _gridState.letterIndex.reduce((s, e) => s + e.count, 0);
+    _vs.active = true;
+    _vs.items.clear();
+    _vs.measured = false;
+    _vs.renderedRange = null;
+
+    if (_vs.totalItems === 0) {
+        const type = (allLibraries.find(l => l.id === _gridState.libraryId) || {}).media_type || '';
+        grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">' +
+            '<div class="empty-state-icon">' + mediaIcon(type) + '</div>' +
+            '<div class="empty-state-title">No items in this library</div>' +
+            '<p>Scan the library to populate it with media</p></div>';
+        return;
+    }
+
+    // Fetch first batch and render measurement cards
+    await vsFetchRange(0, _vs.fetchBatch);
+    const measuredItems = [];
+    for (let i = 0; i < Math.min(_vs.colCount || 10, _vs.totalItems); i++) {
+        if (_vs.items.has(i)) measuredItems.push(_vs.items.get(i));
+    }
+    grid.innerHTML = measuredItems.map(renderMediaCard).join('');
+
+    // Force layout then measure
+    vsMeasureGrid();
+    if (!_vs.measured) return;
+
+    // If restoring scroll, prefetch that range too
+    if (restoreScrollTop > 0) {
+        const adjScroll = Math.max(0, restoreScrollTop - _vs.gridOffset);
+        const targetRow = Math.floor(adjScroll / _vs.rowHeight);
+        const targetIdx = targetRow * _vs.colCount;
+        const fetchStart = Math.floor(targetIdx / _vs.fetchBatch) * _vs.fetchBatch;
+        await vsFetchRange(fetchStart, _vs.fetchBatch);
+    }
+
+    vsRender(true);
+
+    if (restoreScrollTop > 0) {
+        container.scrollTop = restoreScrollTop;
+        vsRender(true);
+    }
+
+    // Scroll handler with single-RAF debounce
+    _vs.scrollHandler = () => {
+        if (_vs.rafId) return;
+        _vs.rafId = requestAnimationFrame(() => {
+            _vs.rafId = null;
+            vsRender();
+            vsUpdateAlpha();
+        });
+    };
+    container.addEventListener('scroll', _vs.scrollHandler, { passive: true });
+
+    _vs.resizeHandler = () => {
+        const oldCols = _vs.colCount;
+        vsMeasureGrid();
+        if (_vs.colCount !== oldCols) vsRender(true);
+    };
+    window.addEventListener('resize', _vs.resizeHandler);
+
+    vsUpdateAlpha();
+    enableGridKeyNav(grid);
+}
+
 function teardownGrid() {
+    vsTeardown();
     if (_gridState.observer) { _gridState.observer.disconnect(); _gridState.observer = null; }
     if (_gridState.topObserver) { _gridState.topObserver.disconnect(); _gridState.topObserver = null; }
     _gridState = { libraryId: null, offset: 0, startOffset: 0, total: 0, loading: false, done: false, observer: null, topObserver: null, letterIndex: [], filters: {}, mediaType: '' };
@@ -1346,30 +1578,30 @@ let _appendingNewItems = false;
 async function appendNewScanItems(libraryId, newCount) {
     if (_appendingNewItems || !libraryId || newCount <= 0) return;
     if (_gridState.libraryId !== libraryId) return;
-    const grid = document.getElementById('libGrid');
-    if (!grid) return;
 
     _appendingNewItems = true;
     try {
-        // Fetch the most recently added items, sorted by added_at desc
+        if (_vs.active) {
+            // Invalidate VS cache: bump total and clear cached ranges near the end
+            _vs.totalItems += newCount;
+            _gridState.total = _vs.totalItems;
+            const countEl = document.getElementById('libItemCount');
+            if (countEl) countEl.textContent = _vs.totalItems.toLocaleString() + ' items';
+            // Clear cached items near the end so they re-fetch with new additions
+            const clearFrom = Math.max(0, _vs.totalItems - newCount - _vs.fetchBatch);
+            for (let i = clearFrom; i < _vs.totalItems; i++) _vs.items.delete(i);
+            vsRender(true);
+            return;
+        }
+
+        const grid = document.getElementById('libGrid');
+        if (!grid) return;
         const m = await api('GET', '/libraries/' + libraryId + '/media?sort=added_at&order=desc&limit=' + Math.min(newCount, 50));
         const items = (m.success && m.data && m.data.items) ? m.data.items : [];
         if (items.length === 0) return;
-
-        // Filter out items already in the grid
         const newItems = items.filter(item => !grid.querySelector('[data-media-id="' + item.id + '"]'));
         if (newItems.length === 0) return;
-
-        // Insert before the sentinel (or append at end)
-        const sentinel = document.getElementById('gridSentinel');
-        const html = newItems.map(renderMediaCard).join('');
-        if (sentinel) {
-            sentinel.insertAdjacentHTML('beforebegin', html);
-        } else {
-            grid.insertAdjacentHTML('beforeend', html);
-        }
-
-        // Update the item count display
+        grid.insertAdjacentHTML('beforeend', newItems.map(renderMediaCard).join(''));
         _gridState.total += newItems.length;
         _gridState.offset += newItems.length;
         const countEl = document.getElementById('libItemCount');
@@ -1561,35 +1793,19 @@ function updateClientAlphaCount() {
 
 async function jumpToLetter(el) {
     const targetOffset = parseInt(el.dataset.offset);
-    const letter = el.dataset.letter;
-    const grid = document.getElementById('libGrid');
-    if (!grid || !_gridState.libraryId) return;
+    if (!_vs.active || !_vs.measured || !_vs.container) return;
 
-    // Disconnect both observers
-    if (_gridState.observer) _gridState.observer.disconnect();
-    if (_gridState.topObserver) { _gridState.topObserver.disconnect(); _gridState.topObserver = null; }
+    // Calculate scroll position: row containing targetOffset * rowPitch + gridOffset
+    const targetRow = Math.floor(targetOffset / _vs.colCount);
+    _vs.container.scrollTop = _vs.gridOffset + targetRow * _vs.rowHeight;
 
-    // Clear the grid, reset state to the target offset
-    grid.innerHTML = '';
-    _gridState.offset = targetOffset;
-    _gridState.startOffset = targetOffset;
-    _gridState.done = false;
-    _gridState.loading = false;
-    await loadMoreMedia();
+    // Prefetch the target range if not cached
+    const fetchStart = Math.floor(targetOffset / _vs.fetchBatch) * _vs.fetchBatch;
+    vsFetchRange(fetchStart, _vs.fetchBatch).then(() => {
+        if (_vs.active) vsRender(true);
+    });
 
-    // Scroll grid to top so the first loaded card is visible
-    const container = document.getElementById('mainContent');
-    if (container) container.scrollTop = 0;
-
-    // Re-attach infinite scroll for continued browsing forward
-    setupScrollObserver();
-
-    // Add top sentinel for backward scrolling if not at the beginning
-    if (_gridState.startOffset > 0) {
-        grid.insertAdjacentHTML('afterbegin', '<div id="gridTopSentinel" class="load-more-sentinel"></div>');
-        setupTopScrollObserver();
-    }
-
+    vsRender(true);
     document.querySelectorAll('.alpha-jump-letter').forEach(l => l.classList.remove('active'));
     el.classList.add('active');
 }
@@ -1693,7 +1909,7 @@ async function loadLibraryView(libraryId) {
     mc.innerHTML = `<div class="section-header"><h2 class="section-title">${label}</h2><span class="tag tag-cyan" style="margin-left:12px;">${MEDIA_LABELS[type]||type}</span><span class="tag" id="libItemCount" style="margin-left:8px;">${totalCount.toLocaleString()} items</span></div>
         ${buildFilterToolbar(filterOpts)}
         <div class="media-grid-wrapper" id="mediaGridWrapper">
-            <div class="media-grid" id="libGrid"><div id="gridSentinel" class="load-more-sentinel"><div class="spinner"></div></div></div>
+            <div class="media-grid" id="libGrid"></div>
             ${buildAlphaJump(letterIndex)}
         </div>
         ${extraAreas}`;
@@ -1704,31 +1920,9 @@ async function loadLibraryView(libraryId) {
     const restoreState = _pendingScrollRestore;
     _pendingScrollRestore = null;
 
-    if (restoreState && restoreState.libraryId === libraryId) {
-        _gridState.offset = restoreState.startOffset;
-        _gridState.startOffset = restoreState.startOffset;
-        while (_gridState.offset < restoreState.offset && !_gridState.done) {
-            await loadMoreMedia();
-        }
-        setupScrollObserver();
-        if (_gridState.startOffset > 0) {
-            const grid = document.getElementById('libGrid');
-            if (grid) {
-                grid.insertAdjacentHTML('afterbegin', '<div id="gridTopSentinel" class="load-more-sentinel"></div>');
-                setupTopScrollObserver();
-            }
-        }
-        requestAnimationFrame(() => {
-            const c = document.getElementById('mainContent');
-            if (c) c.scrollTop = restoreState.scrollTop;
-        });
-    } else {
-        setupScrollObserver();
-        loadMoreMedia();
-    }
-
-    const container = document.getElementById('mainContent');
-    container.addEventListener('scroll', () => { requestAnimationFrame(updateAlphaCount); });
+    const restoreScroll = (restoreState && restoreState.libraryId === libraryId)
+        ? restoreState.scrollTop : 0;
+    await vsInit(restoreScroll);
 }
 
 // ──── Filter Toolbar ────
@@ -1999,16 +2193,14 @@ async function reloadLibraryGrid() {
     const libId = _gridState.libraryId;
     if (!libId) return;
 
-    // Reset grid state but keep libraryId and filters
+    vsTeardown();
     const filters = _gridState.filters;
-    if (_gridState.observer) { _gridState.observer.disconnect(); _gridState.observer = null; }
     _gridState.offset = 0;
     _gridState.total = 0;
     _gridState.loading = false;
     _gridState.done = false;
     _gridState.filters = filters;
 
-    // Refresh letter index with filters
     const qs = buildFilterQS();
     const idxData = await api('GET', '/libraries/' + libId + '/media/index' + (qs ? '?' + qs.substring(1) : ''));
     const letterIndex = (idxData.success && idxData.data) ? idxData.data : [];
@@ -2018,7 +2210,6 @@ async function reloadLibraryGrid() {
     const countEl = document.getElementById('libItemCount');
     if (countEl) countEl.textContent = totalCount.toLocaleString() + ' items';
 
-    // Show grid, hide all secondary areas
     const wrapper = document.getElementById('mediaGridWrapper');
     if (wrapper) wrapper.style.display = 'flex';
     ['collectionsArea','seriesArea','artistsArea','albumsArea'].forEach(id => {
@@ -2026,24 +2217,18 @@ async function reloadLibraryGrid() {
         if (el) el.style.display = 'none';
     });
 
-    // Rebuild grid
     const grid = document.getElementById('libGrid');
-    if (grid) {
-        grid.innerHTML = '<div id="gridSentinel" class="load-more-sentinel"><div class="spinner"></div></div>';
-    }
+    if (grid) grid.innerHTML = '';
 
-    // Rebuild alpha jump
     const existingJump = document.querySelector('.alpha-jump');
     if (existingJump) existingJump.outerHTML = buildAlphaJump(letterIndex);
 
-    // Update toggle buttons
     ['ftGridBtn','ftCollBtn','ftSeriesBtn','ftArtistBtn','ftAlbumBtn'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('active', id === 'ftGridBtn');
     });
 
-    setupScrollObserver();
-    loadMoreMedia();
+    await vsInit(0);
 }
 
 function showLibraryGrid() {
