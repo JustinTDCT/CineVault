@@ -83,28 +83,39 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var allMatches []*models.MetadataMatch
+	seen := make(map[string]bool)
 
 	// ── Cache server: use search endpoint for multiple results ──
 	cacheClient := s.getCacheClient()
 	if cacheClient != nil {
 		cacheMatches := cacheClient.Search(query, media.MediaType, fileYear, matchCfg.MaxResults*2)
+		for _, m := range cacheMatches {
+			seen[m.ExternalID] = true
+			allMatches = append(allMatches, m)
+		}
 		if len(cacheMatches) > 0 {
-			allMatches = append(allMatches, cacheMatches...)
 			log.Printf("Identify: cache search for %q returned %d results", query, len(cacheMatches))
 		}
-	} else {
-		// Cache disabled — use direct scrapers
+	}
+
+	// Always supplement with direct TMDB scrapers when we have fewer than
+	// MaxResults — same approach Plex/Jellyfin use for their identify flow.
+	if len(allMatches) < matchCfg.MaxResults {
 		scrapers := metadata.ScrapersForMediaType(s.scrapers, media.MediaType)
 		if len(scrapers) == 0 {
 			scrapers = s.scrapers
 		}
-
 		for _, scraper := range scrapers {
 			matches, err := scraper.Search(query, media.MediaType, fileYear)
 			if err != nil {
 				continue
 			}
-			allMatches = append(allMatches, matches...)
+			for _, m := range matches {
+				if !seen[m.ExternalID] {
+					seen[m.ExternalID] = true
+					allMatches = append(allMatches, m)
+				}
+			}
 		}
 	}
 
