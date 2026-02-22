@@ -1525,8 +1525,8 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 			time.Sleep(300 * time.Millisecond)
 		}
 
-		// ── Step 3: No match — generate screenshot poster ──
-		if !matched && h.scanner != nil && h.scanner.IsProbeableType(item.MediaType) {
+		// ── Step 3: No match — generate screenshot poster (video only) ──
+		if !matched && h.scanner != nil && h.scanner.IsScreenshottableType(item.MediaType) {
 			// Re-read the item to get current state (metadata was cleared)
 			freshItem, err := h.mediaRepo.GetByID(item.ID)
 			if err == nil && freshItem.PosterPath == nil {
