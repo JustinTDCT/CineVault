@@ -814,6 +814,7 @@ type UserDisplayPreferences struct {
 	ID              uuid.UUID `json:"id" db:"id"`
 	UserID          uuid.UUID `json:"user_id" db:"user_id"`
 	OverlaySettings string    `json:"overlay_settings" db:"overlay_settings"`
+	Region          string    `json:"region" db:"region"`
 	CreatedAt       time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
 }

@@ -1,6 +1,6 @@
 {
-  "version": "1.27.00",
-  "phase": 27,
-  "released": "2026-02-19",
-  "notes": "Music library overhaul — media-type-aware filters, sort options, and overlay badges; View by Artist/Album grouping; music enrichment with artist and album names on track cards."
+  "version": "1.28.00",
+  "phase": 28,
+  "released": "2026-02-22",
+  "notes": "Global settings with region preference — filters content ratings to user's country; spacing fix between content ratings and action buttons on detail page."
 }

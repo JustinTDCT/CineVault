@@ -4,6 +4,7 @@ let allLibraries = [];
 let ws = null;
 // Overlay badge display preferences (fetched from server per-user)
 let overlayPrefs = { resolution_hdr: true, audio_codec: true, ratings: true, content_rating: false, edition_type: true, source_type: false };
+let _userRegion = '';
 let hlsPlayer = null;
 let mpegtsPlayer = null;
 let currentMediaId = null;
@@ -51,6 +52,14 @@ async function fetchOverlayPrefs() {
             overlayPrefs = res.data.overlay_settings;
         }
     } catch(e) { /* keep defaults */ }
+}
+async function fetchUserRegion() {
+    try {
+        const res = await api('GET', '/settings/general');
+        if (res.success && res.data) {
+            _userRegion = res.data.region || '';
+        }
+    } catch(e) { /* keep default */ }
 }
 function formatDuration(sec) { if (!sec) return ''; const m = Math.floor(sec/60); const s = sec%60; return m + ':' + String(s).padStart(2,'0'); }
 function formatTime(sec) { const h = Math.floor(sec/3600); const m = Math.floor((sec%3600)/60); const s = Math.floor(sec%60); return (h>0?h+':':'')+String(m).padStart(h>0?2:1,'0')+':'+String(s).padStart(2,'0'); }

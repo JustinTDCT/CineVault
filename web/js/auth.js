@@ -44,8 +44,9 @@ async function checkAuth() {
             }
         }
 
-        // Fetch overlay display preferences
+        // Fetch overlay display preferences and user region
         fetchOverlayPrefs();
+        fetchUserRegion();
 
         // If we haven't picked a profile yet this session (master user), show picker
         if (!sessionStorage.getItem('profile_picked') && !currentUser.parent_user_id) {

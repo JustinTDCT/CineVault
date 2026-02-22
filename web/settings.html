@@ -20,6 +20,11 @@
             </a>
             <div class="settings-logo">Settings</div>
 
+            <div class="settings-nav-label">General</div>
+            <div class="settings-nav-item" data-section="global">
+                <span class="settings-nav-icon">&#9881;</span><span>Global Settings</span>
+            </div>
+
             <div class="settings-nav-label">Playback</div>
             <div class="settings-nav-item active" data-section="video">
                 <span class="settings-nav-icon">&#127916;</span><span>Video</span>
@@ -170,6 +175,7 @@
         window.location.hash = section;
 
         switch(section) {
+            case 'global': loadGlobalSettingsSection(); break;
             case 'video': loadVideoSection(); break;
             case 'skip': loadSkipSection(); break;
             case 'transcoder': loadTranscoderSection(); break;
@@ -195,6 +201,58 @@
     document.querySelectorAll('.settings-nav-item[data-section]').forEach(item => {
         item.addEventListener('click', () => navigateSection(item.dataset.section));
     });
+
+    // ──── Global Settings Section ────
+    const REGION_OPTIONS = [
+        {code:'',name:'All Regions (Show All)'},
+        {code:'AU',name:'Australia'},{code:'AT',name:'Austria'},{code:'BR',name:'Brazil'},
+        {code:'CA',name:'Canada'},{code:'CH',name:'Switzerland'},{code:'CL',name:'Chile'},
+        {code:'CN',name:'China'},{code:'CO',name:'Colombia'},{code:'CZ',name:'Czech Republic'},
+        {code:'DE',name:'Germany'},{code:'DK',name:'Denmark'},{code:'ES',name:'Spain'},
+        {code:'FI',name:'Finland'},{code:'FR',name:'France'},{code:'GB',name:'United Kingdom'},
+        {code:'GR',name:'Greece'},{code:'HK',name:'Hong Kong'},{code:'HU',name:'Hungary'},
+        {code:'ID',name:'Indonesia'},{code:'IE',name:'Ireland'},{code:'IL',name:'Israel'},
+        {code:'IN',name:'India'},{code:'IT',name:'Italy'},{code:'JP',name:'Japan'},
+        {code:'KR',name:'South Korea'},{code:'MX',name:'Mexico'},{code:'MY',name:'Malaysia'},
+        {code:'NL',name:'Netherlands'},{code:'NO',name:'Norway'},{code:'NZ',name:'New Zealand'},
+        {code:'PH',name:'Philippines'},{code:'PL',name:'Poland'},{code:'PT',name:'Portugal'},
+        {code:'RO',name:'Romania'},{code:'RU',name:'Russia'},{code:'SE',name:'Sweden'},
+        {code:'SG',name:'Singapore'},{code:'TH',name:'Thailand'},{code:'TR',name:'Turkey'},
+        {code:'TW',name:'Taiwan'},{code:'US',name:'United States'},{code:'ZA',name:'South Africa'}
+    ];
+
+    async function loadGlobalSettingsSection() {
+        const mc = document.getElementById('settingsContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Global Settings</h2></div>
+            <p class="section-desc">Configure global preferences that apply across CineVault.</p>
+            <div class="settings-card" style="max-width:600px;">
+                <h3>&#127760; Region</h3>
+                <p class="section-desc">Select your region to display only the content rating relevant to your country on media detail pages.</p>
+                <div class="form-group">
+                    <label for="regionSelect">Preferred Region</label>
+                    <select id="regionSelect">
+                        ${REGION_OPTIONS.map(r => '<option value="'+r.code+'">'+r.name+(r.code?' ('+r.code+')':'')+'</option>').join('')}
+                    </select>
+                </div>
+                <button class="btn-primary" onclick="saveGeneralSettings()">Save</button>
+            </div>`;
+        try {
+            const res = await api('GET', '/settings/general');
+            if (res.success && res.data) {
+                document.getElementById('regionSelect').value = res.data.region || '';
+            }
+        } catch(e) {}
+    }
+
+    async function saveGeneralSettings() {
+        const region = document.getElementById('regionSelect').value;
+        const res = await api('PUT', '/settings/general', { region });
+        if (res.success) {
+            toast('Global settings saved');
+        } else {
+            toast(res.error || 'Failed to save settings', 'error');
+        }
+    }
 
     // ──── Video Section ────
     async function loadVideoSection() {

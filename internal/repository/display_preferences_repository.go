@@ -21,28 +21,27 @@ func NewDisplayPreferencesRepository(db *sql.DB) *DisplayPreferencesRepository {
 func (r *DisplayPreferencesRepository) GetByUserID(userID uuid.UUID) (*models.UserDisplayPreferences, error) {
 	var pref models.UserDisplayPreferences
 	err := r.db.QueryRow(
-		`SELECT id, user_id, overlay_settings, created_at, updated_at
+		`SELECT id, user_id, overlay_settings, region, created_at, updated_at
 		 FROM user_display_preferences WHERE user_id = $1`, userID,
-	).Scan(&pref.ID, &pref.UserID, &pref.OverlaySettings, &pref.CreatedAt, &pref.UpdatedAt)
+	).Scan(&pref.ID, &pref.UserID, &pref.OverlaySettings, &pref.Region, &pref.CreatedAt, &pref.UpdatedAt)
 
 	if err == sql.ErrNoRows {
-		// Create default row for this user
 		pref.ID = uuid.New()
 		pref.UserID = userID
 		pref.OverlaySettings = defaultOverlaySettings
+		pref.Region = ""
 		_, insertErr := r.db.Exec(
-			`INSERT INTO user_display_preferences (id, user_id, overlay_settings)
-			 VALUES ($1, $2, $3)`,
-			pref.ID, pref.UserID, pref.OverlaySettings,
+			`INSERT INTO user_display_preferences (id, user_id, overlay_settings, region)
+			 VALUES ($1, $2, $3, $4)`,
+			pref.ID, pref.UserID, pref.OverlaySettings, pref.Region,
 		)
 		if insertErr != nil {
 			return nil, insertErr
 		}
-		// Re-read to get timestamps
 		_ = r.db.QueryRow(
-			`SELECT id, user_id, overlay_settings, created_at, updated_at
+			`SELECT id, user_id, overlay_settings, region, created_at, updated_at
 			 FROM user_display_preferences WHERE user_id = $1`, userID,
-		).Scan(&pref.ID, &pref.UserID, &pref.OverlaySettings, &pref.CreatedAt, &pref.UpdatedAt)
+		).Scan(&pref.ID, &pref.UserID, &pref.OverlaySettings, &pref.Region, &pref.CreatedAt, &pref.UpdatedAt)
 		return &pref, nil
 	}
 	if err != nil {
@@ -59,6 +58,18 @@ func (r *DisplayPreferencesRepository) Upsert(userID uuid.UUID, overlaySettings 
 		 ON CONFLICT (user_id) DO UPDATE
 		 SET overlay_settings = $3, updated_at = CURRENT_TIMESTAMP`,
 		uuid.New(), userID, overlaySettings,
+	)
+	return err
+}
+
+// UpdateRegion sets the preferred region for a user.
+func (r *DisplayPreferencesRepository) UpdateRegion(userID uuid.UUID, region string) error {
+	_, err := r.db.Exec(
+		`INSERT INTO user_display_preferences (id, user_id, overlay_settings, region)
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (user_id) DO UPDATE
+		 SET region = $4, updated_at = CURRENT_TIMESTAMP`,
+		uuid.New(), userID, defaultOverlaySettings, region,
 	)
 	return err
 }

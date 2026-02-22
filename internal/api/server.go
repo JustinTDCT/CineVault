@@ -440,6 +440,10 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /api/v1/settings/display", s.authMiddleware(s.handleGetDisplayPrefs, models.RoleUser))
 	s.router.HandleFunc("PUT /api/v1/settings/display", s.authMiddleware(s.handleUpdateDisplayPrefs, models.RoleUser))
 
+	// General / global user settings (region, etc.)
+	s.router.HandleFunc("GET /api/v1/settings/general", s.authMiddleware(s.handleGetGeneralSettings, models.RoleUser))
+	s.router.HandleFunc("PUT /api/v1/settings/general", s.authMiddleware(s.handleUpdateGeneralSettings, models.RoleUser))
+
 	// Skip preferences (per user)
 	s.router.HandleFunc("GET /api/v1/settings/skip", s.authMiddleware(s.handleGetSkipPrefs, models.RoleUser))
 	s.router.HandleFunc("PUT /api/v1/settings/skip", s.authMiddleware(s.handleUpdateSkipPrefs, models.RoleUser))

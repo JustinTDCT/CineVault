@@ -553,12 +553,15 @@ async function loadMediaDetail(id) {
         ratingsHTML += '</div>';
     }
 
-    // Multi-country content ratings display
+    // Multi-country content ratings display (filtered by user region if set)
     let countryRatingsHTML = '';
     if (m.content_ratings_json) {
         try {
             const cr = JSON.parse(m.content_ratings_json);
-            const entries = Object.entries(cr);
+            let entries = Object.entries(cr);
+            if (_userRegion) {
+                entries = entries.filter(([country]) => country === _userRegion);
+            }
             if (entries.length > 0) {
                 countryRatingsHTML = '<div class="multi-rating-row">';
                 entries.forEach(([country, rating]) => {

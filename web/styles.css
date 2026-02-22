@@ -3474,7 +3474,7 @@ body.is-offline::after {
 
 /* ── Multi-Country Ratings Display ── */
 .multi-rating-row {
-    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; margin-bottom: var(--sp-4);
 }
 .rating-country-badge {
     display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;

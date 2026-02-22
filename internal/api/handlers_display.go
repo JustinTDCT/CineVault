@@ -57,3 +57,36 @@ func (s *Server) handleUpdateDisplayPrefs(w http.ResponseWriter, r *http.Request
 	}
 	s.respondJSON(w, http.StatusOK, Response{Success: true})
 }
+
+// ──────────────────── General / Global Settings ────────────────────
+
+func (s *Server) handleGetGeneralSettings(w http.ResponseWriter, r *http.Request) {
+	userID := s.getUserID(r)
+	pref, err := s.displayPrefsRepo.GetByUserID(userID)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.respondJSON(w, http.StatusOK, Response{
+		Success: true,
+		Data: map[string]interface{}{
+			"region": pref.Region,
+		},
+	})
+}
+
+func (s *Server) handleUpdateGeneralSettings(w http.ResponseWriter, r *http.Request) {
+	userID := s.getUserID(r)
+	var req struct {
+		Region string `json:"region"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := s.displayPrefsRepo.UpdateRegion(userID, req.Region); err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.respondJSON(w, http.StatusOK, Response{Success: true})
+}
