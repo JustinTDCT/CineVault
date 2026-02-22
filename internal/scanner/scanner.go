@@ -610,7 +610,7 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 		}
 	}
 
-	if item.PosterPath == nil && s.isProbeableType(library.MediaType) {
+	if item.PosterPath == nil && s.isScreenshottableType(library.MediaType) {
 		s.generateScreenshotPoster(item)
 	}
 
@@ -1308,6 +1308,17 @@ func (s *Scanner) IsProbeableType(mediaType models.MediaType) bool {
 
 func (s *Scanner) isProbeableType(mediaType models.MediaType) bool {
 	return s.IsProbeableType(mediaType)
+}
+
+// isScreenshottableType returns true for media types that have a video stream
+// from which a screenshot poster can be extracted. Audio-only types are excluded.
+func (s *Scanner) isScreenshottableType(mediaType models.MediaType) bool {
+	switch mediaType {
+	case models.MediaTypeMusic, models.MediaTypeAudiobooks, models.MediaTypeImages:
+		return false
+	default:
+		return true
+	}
 }
 
 func (s *Scanner) applyProbeData(item *models.MediaItem, probe *ffmpeg.ProbeResult) {

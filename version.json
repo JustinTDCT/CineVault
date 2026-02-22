@@ -1,6 +1,6 @@
 {
-  "version": "1.32.02",
+  "version": "1.32.03",
   "phase": 32,
   "released": "2026-02-22",
-  "notes": "Batch cache lookups: deferred metadata phase sends up to 50 items per HTTP call instead of per-file individual requests."
+  "notes": "Fix music scan: skip screenshot poster generation for audio files; batch cache lookups for metadata."
 }
