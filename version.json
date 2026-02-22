@@ -1,6 +1,6 @@
 {
-  "version": "1.32.03",
+  "version": "1.32.04",
   "phase": 32,
   "released": "2026-02-22",
-  "notes": "Fix music scan: skip screenshot poster generation for audio files; batch cache lookups for metadata."
+  "notes": "Instant scan start: file pre-count runs in background instead of blocking; all screenshot fixes for audio."
 }

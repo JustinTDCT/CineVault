@@ -172,15 +172,18 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 		scanPaths = []string{library.Path}
 	}
 
-	// Pre-count eligible files for progress reporting
+	// Progress reporting — count files in background so processing starts immediately
 	var onProgress ProgressFunc
 	if len(progressFn) > 0 && progressFn[0] != nil {
 		onProgress = progressFn[0]
 	}
-	totalFiles := 0
+	var totalFiles int64
 	if onProgress != nil {
-		totalFiles = s.countEligibleFiles(library.MediaType, scanPaths)
-		log.Printf("Scan: pre-count found %d eligible files", totalFiles)
+		go func() {
+			n := s.countEligibleFiles(library.MediaType, scanPaths)
+			atomic.StoreInt64(&totalFiles, int64(n))
+			log.Printf("Scan: background count found %d eligible files", n)
+		}()
 	}
 
 	// Determine if metadata should be retrieved for this library
@@ -239,7 +242,7 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 				for f := range fileCh {
 					s.processScanFile(library, scanPath, f, shouldRetrieveMetadata,
 						&filesFound, &filesSkipped, &filesAdded, &errorsMu, &scanErrors,
-						onProgress, totalFiles)
+						onProgress, &totalFiles)
 				}
 			}()
 		}
@@ -335,13 +338,13 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 	shouldRetrieveMetadata bool,
 	filesFound, filesSkipped, filesAdded *int64,
 	errorsMu *sync.Mutex, errors *[]string,
-	onProgress ProgressFunc, totalFiles int,
+	onProgress ProgressFunc, totalFiles *int64,
 ) {
 	path, name, size := f.path, f.name, f.size
 
 	atomic.AddInt64(filesFound, 1)
 	if onProgress != nil {
-		onProgress(int(atomic.LoadInt64(filesFound)), totalFiles, int(atomic.LoadInt64(filesAdded)), name)
+		onProgress(int(atomic.LoadInt64(filesFound)), int(atomic.LoadInt64(totalFiles)), int(atomic.LoadInt64(filesAdded)), name)
 	}
 
 	existing, err := s.mediaRepo.GetByFilePath(path)
