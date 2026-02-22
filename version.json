@@ -1,6 +1,6 @@
 {
-  "version": "1.32.01",
+  "version": "1.32.02",
   "phase": 32,
   "released": "2026-02-22",
-  "notes": "Music scan performance: in-memory artist/album cache eliminates redundant DB lookups; MusicBrainz rate limiter prevents 503 errors."
+  "notes": "Batch cache lookups: deferred metadata phase sends up to 50 items per HTTP call instead of per-file individual requests."
 }

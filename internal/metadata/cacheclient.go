@@ -292,6 +292,81 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 		return nil
 	}
 
+	return c.convertCacheResponse(&lookupResp)
+}
+
+// BatchLookupItem holds lookup parameters for a single item in a batch.
+type BatchLookupItem struct {
+	Title     string
+	Year      *int
+	MediaType models.MediaType
+}
+
+// BatchLookup queries the cache server for multiple items in one HTTP call.
+// Returns results in the same order as input; nil entries indicate misses.
+func (c *CacheClient) BatchLookup(items []BatchLookupItem) []*CacheLookupResult {
+	if len(items) == 0 {
+		return nil
+	}
+
+	type batchReq struct {
+		Items []cacheLookupRequest `json:"items"`
+	}
+	type batchResp struct {
+		Results []cacheLookupResponse `json:"results"`
+	}
+
+	results := make([]*CacheLookupResult, len(items))
+	const batchSize = 50
+
+	for i := 0; i < len(items); i += batchSize {
+		end := i + batchSize
+		if end > len(items) {
+			end = len(items)
+		}
+
+		var br batchReq
+		for _, it := range items[i:end] {
+			br.Items = append(br.Items, cacheLookupRequest{
+				Title:        it.Title,
+				Year:         it.Year,
+				Type:         mediaTypeToCacheType(it.MediaType),
+				IncludeAdult: it.MediaType == models.MediaTypeAdultMovies,
+			})
+		}
+
+		bodyBytes, err := json.Marshal(br)
+		if err != nil {
+			continue
+		}
+
+		req, err := http.NewRequest("POST", c.baseURL+"/api/v1/batch-lookup", bytes.NewReader(bodyBytes))
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-API-Key", c.apiKey)
+
+		resp, err := c.client.Do(req)
+		if err != nil {
+			log.Printf("[cache-client] batch lookup failed: %v", err)
+			continue
+		}
+
+		var bResp batchResp
+		json.NewDecoder(resp.Body).Decode(&bResp)
+		resp.Body.Close()
+
+		for j, lr := range bResp.Results {
+			results[i+j] = c.convertCacheResponse(&lr)
+		}
+	}
+
+	return results
+}
+
+// convertCacheResponse builds a CacheLookupResult from a raw cache response.
+func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *CacheLookupResult {
 	if !lookupResp.Hit || lookupResp.Entry == nil {
 		return nil
 	}
@@ -303,7 +378,6 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 		Source:     lookupResp.Source,
 	}
 
-	// Determine the metadata source from the cache response
 	metadataSource := "tmdb"
 	if lookupResp.Source == "porndb" || lookupResp.Source == "musicbrainz" || lookupResp.Source == "openlibrary" {
 		metadataSource = lookupResp.Source

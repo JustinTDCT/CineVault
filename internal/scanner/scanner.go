@@ -55,6 +55,8 @@ type Scanner struct {
 	artistCache map[string]*models.Artist // key: "libraryID|artistName"
 	// albumCache avoids repeated DB lookups for the same album within a scan
 	albumCache map[string]*models.Album // key: "artistID|albumTitle"
+	// pendingMeta collects items for deferred batch cache lookup
+	pendingMeta []pendingMetaItem
 	// mu protects concurrent access during parallel enrichment
 	mu sync.Mutex
 }
@@ -64,6 +66,13 @@ type scanFile struct {
 	path string
 	name string
 	size int64
+}
+
+// pendingMetaItem is queued during scan for deferred batch cache lookup.
+type pendingMetaItem struct {
+	Item   *models.MediaItem
+	Query  string
+	Parsed ParsedFilename
 }
 
 // Extension sets per media type
@@ -148,6 +157,7 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 	// Reset per-scan caches
 	s.artistCache = make(map[string]*models.Artist)
 	s.albumCache = make(map[string]*models.Album)
+	s.pendingMeta = nil
 
 	// Determine which folders to scan: use library.Folders if available, else fall back to library.Path
 	scanPaths := []string{}
@@ -298,6 +308,11 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 		for showID, tmdbID := range s.pendingEpisodeMeta {
 			s.fetchEpisodeMetadata(showID, tmdbID)
 		}
+	}
+
+	// Post-scan: batch-lookup deferred metadata from cache server
+	if shouldRetrieveMetadata && len(s.pendingMeta) > 0 {
+		s.flushPendingMeta()
 	}
 
 	// Post-scan: re-enrich existing items that are missing OMDb ratings or cast
@@ -603,6 +618,47 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 }
 
 // reEnrichExistingItems finds items in the library that were previously TMDB-matched
+// flushPendingMeta sends all deferred items to the cache server in batches of 50,
+// then applies results. Much faster than per-file individual HTTP calls.
+func (s *Scanner) flushPendingMeta() {
+	if len(s.pendingMeta) == 0 {
+		return
+	}
+
+	cacheClient := s.getCacheClient()
+	if cacheClient == nil {
+		return
+	}
+
+	items := s.pendingMeta
+	s.pendingMeta = nil
+	log.Printf("Batch metadata: looking up %d items from cache server...", len(items))
+
+	lookupItems := make([]metadata.BatchLookupItem, len(items))
+	for i, pm := range items {
+		lookupItems[i] = metadata.BatchLookupItem{
+			Title:     pm.Query,
+			Year:      pm.Item.Year,
+			MediaType: pm.Item.MediaType,
+		}
+	}
+
+	results := cacheClient.BatchLookup(lookupItems)
+
+	hits := 0
+	for i, result := range results {
+		if result == nil || result.Match == nil {
+			continue
+		}
+		hits++
+		pm := items[i]
+		log.Printf("Auto-match: %q → %q (source=cache/%s, confidence=%.2f)",
+			pm.Item.Title, result.Match.Title, result.Source, result.Confidence)
+		s.applyCacheResult(pm.Item, result)
+	}
+	log.Printf("Batch metadata: %d/%d hits from cache server", hits, len(items))
+}
+
 // but are missing OMDb ratings or cast/crew, and re-enriches them using concurrent workers.
 func (s *Scanner) reEnrichExistingItems(library *models.Library, onProgress ProgressFunc) {
 	items, err := s.mediaRepo.ListItemsNeedingEnrichment(library.ID)
@@ -1875,18 +1931,16 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		}
 	}
 
-	// ── Cache server is sole source when enabled ──
+	// ── Cache server: defer to batch phase for better throughput ──
 	cacheClient := s.getCacheClient()
 	if cacheClient != nil {
-		result := cacheClient.Lookup(searchQuery, item.Year, item.MediaType)
-		if result != nil && result.Match != nil {
-			log.Printf("Auto-match: %q → %q (source=cache/%s, confidence=%.2f)",
-				item.Title, result.Match.Title, result.Source, result.Confidence)
-			s.applyCacheResult(item, result)
-			return
-		}
-		// Cache enabled = sole source. No fallback to direct scrapers.
-		log.Printf("Auto-match: cache miss for %q (no fallback, cache is sole source)", searchQuery)
+		s.mu.Lock()
+		s.pendingMeta = append(s.pendingMeta, pendingMetaItem{
+			Item:   item,
+			Query:  searchQuery,
+			Parsed: pf,
+		})
+		s.mu.Unlock()
 		return
 	}
 
