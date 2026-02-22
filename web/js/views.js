@@ -1366,11 +1366,13 @@ async function vsFetchRange(start, count) {
 
 function vsRender(force) {
     if (!_vs.active || !_vs.measured || !_vs.grid || !_vs.container) return;
+    if (_vs.rowHeight <= 0 || _vs.colCount <= 0) return;
 
     const scrollTop = _vs.container.scrollTop;
     const viewportH = _vs.container.clientHeight;
     const rowPitch = _vs.rowHeight;
     const totalRows = Math.ceil(_vs.totalItems / _vs.colCount);
+    if (totalRows <= 0) return;
     const adjScroll = Math.max(0, scrollTop - _vs.gridOffset);
 
     const startRow = Math.max(0, Math.floor(adjScroll / rowPitch) - _vs.bufferRows);
@@ -1392,12 +1394,19 @@ function vsRender(force) {
     for (let off = prefetchStart; off < prefetchEnd; off += _vs.fetchBatch) {
         const batchStart = Math.floor(off / _vs.fetchBatch) * _vs.fetchBatch;
         let missing = false;
-        for (let i = batchStart; i < Math.min(batchStart + _vs.fetchBatch, _vs.totalItems); i++) {
+        const batchEnd = Math.min(batchStart + _vs.fetchBatch, _vs.totalItems);
+        for (let i = batchStart; i < batchEnd; i++) {
             if (!_vs.items.has(i)) { missing = true; break; }
         }
         if (missing) {
             vsFetchRange(batchStart, _vs.fetchBatch).then(() => {
-                if (_vs.active) vsRender(true);
+                if (!_vs.active) return;
+                // Schedule a single debounced re-render instead of forcing immediately
+                if (_vs.rafId) return;
+                _vs.rafId = requestAnimationFrame(() => {
+                    _vs.rafId = null;
+                    vsRender(true);
+                });
             });
         }
     }
@@ -1485,7 +1494,9 @@ async function vsInit(restoreScrollTop) {
     vsRender(true);
 
     if (restoreScrollTop > 0) {
+        container.style.scrollBehavior = 'auto';
         container.scrollTop = restoreScrollTop;
+        container.style.scrollBehavior = '';
         vsRender(true);
     }
 
@@ -1793,16 +1804,36 @@ function updateClientAlphaCount() {
 
 async function jumpToLetter(el) {
     const targetOffset = parseInt(el.dataset.offset);
-    if (!_vs.active || !_vs.measured || !_vs.container) return;
+    if (!_vs.active || !_vs.measured || !_vs.container || _vs.colCount <= 0) return;
 
-    // Calculate scroll position: row containing targetOffset * rowPitch + gridOffset
     const targetRow = Math.floor(targetOffset / _vs.colCount);
-    _vs.container.scrollTop = _vs.gridOffset + targetRow * _vs.rowHeight;
+    const totalRows = Math.ceil(_vs.totalItems / _vs.colCount);
+    const rowPitch = _vs.rowHeight;
+    const targetScroll = _vs.gridOffset + targetRow * rowPitch;
+
+    // Pre-set padding so the grid height supports the target scroll position
+    const viewportH = _vs.container.clientHeight;
+    const adjScroll = Math.max(0, targetScroll - _vs.gridOffset);
+    const startRow = Math.max(0, Math.floor(adjScroll / rowPitch) - _vs.bufferRows);
+    const endRow = Math.min(totalRows - 1,
+        Math.ceil((adjScroll + viewportH) / rowPitch) + _vs.bufferRows);
+    _vs.grid.style.paddingTop = (startRow * rowPitch) + 'px';
+    _vs.grid.style.paddingBottom = Math.max(0, (totalRows - endRow - 1) * rowPitch) + 'px';
+
+    // Instant jump — bypass CSS scroll-behavior: smooth
+    _vs.container.style.scrollBehavior = 'auto';
+    _vs.container.scrollTop = targetScroll;
+    _vs.container.style.scrollBehavior = '';
 
     // Prefetch the target range if not cached
     const fetchStart = Math.floor(targetOffset / _vs.fetchBatch) * _vs.fetchBatch;
     vsFetchRange(fetchStart, _vs.fetchBatch).then(() => {
-        if (_vs.active) vsRender(true);
+        if (!_vs.active) return;
+        if (_vs.rafId) return;
+        _vs.rafId = requestAnimationFrame(() => {
+            _vs.rafId = null;
+            vsRender(true);
+        });
     });
 
     vsRender(true);
