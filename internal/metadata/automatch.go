@@ -230,11 +230,11 @@ func CleanTitleForSearch(title string) string {
 		`cam|screener|scr|tc|telecine|telesync|ppv|retail|` +
 		// Release / misc
 		`remux|proper|repack|rerip|internal|limited|custom|` +
-		`extended|unrated|remastered|` +
+		`extended|unrated|theatrical|remastered|` +
 		`read\.nfo|readnfo|nfofix|nfo|` +
 		`multi|multisubs|dubbed|subbed|subs|sub|` +
 		`ws|fs|fragment|xxx|` +
-		`directors[\s.]cut|dc|se|special[\s.]edition` +
+		`directors[\s.]cut|dc|se|special[\s.]edition|criterion[\s.]edition|anniversary[\s.]edition|collectors[\s.]edition|ultimate[\s.]edition|deluxe[\s.]edition|imax[\s.]edition` +
 		`)\b`)
 	cleaned = junkRx.ReplaceAllString(cleaned, " ")
 
