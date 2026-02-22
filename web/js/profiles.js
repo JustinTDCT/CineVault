@@ -706,8 +706,10 @@ const OVERLAY_ZONES = {
 };
 const OVERLAY_GROUPS = [
     { key: 'resolution_audio', label: 'Resolution & Audio' },
-    { key: 'edition', label: 'Edition & Content' },
-    { key: 'ratings', label: 'Ratings' }
+    { key: 'edition', label: 'Edition' },
+    { key: 'ratings', label: 'Ratings' },
+    { key: 'content_rating', label: 'Content Rating' },
+    { key: 'source_type', label: 'Source Type' }
 ];
 
 function _overlayPositionsTaken(groups, excludeKey) {
@@ -774,7 +776,9 @@ async function loadProfileOverlayToggles() {
     const groups = p.groups || {
         resolution_audio: { enabled: true, position: 'top-right' },
         edition: { enabled: true, position: 'top-left' },
-        ratings: { enabled: true, position: 'bottom-left' }
+        ratings: { enabled: true, position: 'bottom-left' },
+        content_rating: { enabled: false, position: 'bottom-right' },
+        source_type: { enabled: false, position: 'bottom-right' }
     };
 
     let rowsHTML = '';
@@ -786,26 +790,6 @@ async function loadProfileOverlayToggles() {
         <div class="overlay-groups-container">
             ${rowsHTML}
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;margin-top:14px;">
-                <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;font-size:0.82rem;">
-                    <span class="toggle-switch"><input type="checkbox" id="profOvContentRating" ${p.content_rating?'checked':''}><span class="toggle-slider"></span></span>
-                    Content Rating
-                </label>
-                <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;font-size:0.82rem;">
-                    <span class="toggle-switch"><input type="checkbox" id="profOvSource" ${p.source_type?'checked':''}><span class="toggle-slider"></span></span>
-                    Source Type
-                </label>
-                <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;font-size:0.82rem;">
-                    <span class="toggle-switch"><input type="checkbox" id="profOvEdition" ${p.edition_type !== false?'checked':''}><span class="toggle-slider"></span></span>
-                    Edition Type
-                </label>
-                <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;font-size:0.82rem;">
-                    <span class="toggle-switch"><input type="checkbox" id="profOvResHdr" ${p.resolution_hdr !== false?'checked':''}><span class="toggle-slider"></span></span>
-                    Resolution &amp; HDR
-                </label>
-                <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;font-size:0.82rem;">
-                    <span class="toggle-switch"><input type="checkbox" id="profOvAudio" ${p.audio_codec !== false?'checked':''}><span class="toggle-slider"></span></span>
-                    Audio Codec
-                </label>
                 <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;font-size:0.82rem;">
                     <span class="toggle-switch"><input type="checkbox" id="profOvHideTheatrical" ${p.hide_theatrical !== false?'checked':''}><span class="toggle-slider"></span></span>
                     Hide Theatrical Overlay
@@ -825,12 +809,12 @@ async function saveProfileOverlayPrefs() {
     }
     const settings = {
         groups,
-        resolution_hdr: document.getElementById('profOvResHdr').checked,
-        audio_codec: document.getElementById('profOvAudio').checked,
+        resolution_hdr: groups.resolution_audio.enabled,
+        audio_codec: groups.resolution_audio.enabled,
         ratings: groups.ratings.enabled,
-        content_rating: document.getElementById('profOvContentRating').checked,
-        edition_type: document.getElementById('profOvEdition').checked,
-        source_type: document.getElementById('profOvSource').checked,
+        content_rating: groups.content_rating.enabled,
+        edition_type: groups.edition.enabled,
+        source_type: groups.source_type.enabled,
         hide_theatrical: document.getElementById('profOvHideTheatrical').checked,
     };
     const d = await api('PUT', '/settings/display', { overlay_settings: settings });

@@ -188,27 +188,26 @@ function _buildResAudioBadges(item, prefs) {
     return badges;
 }
 
-function _buildEditionBadges(item, prefs) {
+function _buildEditionBadges(item) {
     let badges = '';
-    const crEnabled = prefs.content_rating !== undefined ? prefs.content_rating : false;
-    if (crEnabled && item.content_rating) {
-        badges += `<span class="overlay-badge overlay-badge-content-rating">${item.content_rating}</span>`;
-    }
-    const edEnabled = prefs.edition_type !== undefined ? prefs.edition_type : true;
-    if (edEnabled) {
-        if (item.edition_count && item.edition_count > 1) {
-            badges += `<span class="overlay-badge overlay-badge-edition">${item.edition_count} Editions</span>`;
-        } else {
-            const edLabel = mapEditionLabel(item);
-            if (edLabel) badges += `<span class="overlay-badge overlay-badge-edition">${edLabel}</span>`;
-        }
-    }
-    const srcEnabled = prefs.source_type !== undefined ? prefs.source_type : false;
-    if (srcEnabled) {
-        const srcLabel = mapSourceLabel(item);
-        if (srcLabel) badges += `<span class="overlay-badge overlay-badge-source">${srcLabel}</span>`;
+    if (item.edition_count && item.edition_count > 1) {
+        badges += `<span class="overlay-badge overlay-badge-edition">${item.edition_count} Editions</span>`;
+    } else {
+        const edLabel = mapEditionLabel(item);
+        if (edLabel) badges += `<span class="overlay-badge overlay-badge-edition">${edLabel}</span>`;
     }
     return badges;
+}
+
+function _buildContentRatingBadge(item) {
+    if (!item.content_rating) return '';
+    return `<span class="overlay-badge overlay-badge-content-rating">${item.content_rating}</span>`;
+}
+
+function _buildSourceTypeBadge(item) {
+    const srcLabel = mapSourceLabel(item);
+    if (!srcLabel) return '';
+    return `<span class="overlay-badge overlay-badge-source">${srcLabel}</span>`;
 }
 
 function renderOverlayBadges(item) {
@@ -234,10 +233,16 @@ function renderOverlayBadges(item) {
         if (raG) addToZone(raG.position, _buildResAudioBadges(item, p));
 
         const edG = _overlayGroup(p, 'edition');
-        if (edG) addToZone(edG.position, _buildEditionBadges(item, p));
+        if (edG) addToZone(edG.position, _buildEditionBadges(item));
 
         const rtG = _overlayGroup(p, 'ratings');
         if (rtG) addToZone(rtG.position, _buildRatingBadges(item));
+
+        const crG = _overlayGroup(p, 'content_rating');
+        if (crG) addToZone(crG.position, _buildContentRatingBadge(item));
+
+        const stG = _overlayGroup(p, 'source_type');
+        if (stG) addToZone(stG.position, _buildSourceTypeBadge(item));
 
         // Multi-part always goes with edition group or bottom-right fallback
         if (item.sister_part_count > 1) {

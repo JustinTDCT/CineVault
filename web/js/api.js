@@ -7,7 +7,9 @@ let overlayPrefs = {
     groups: {
         resolution_audio: { enabled: true, position: 'top-right' },
         edition: { enabled: true, position: 'top-left' },
-        ratings: { enabled: true, position: 'bottom-left' }
+        ratings: { enabled: true, position: 'bottom-left' },
+        content_rating: { enabled: false, position: 'bottom-right' },
+        source_type: { enabled: false, position: 'bottom-right' }
     },
     resolution_hdr: true, audio_codec: true, ratings: true,
     content_rating: false, edition_type: true, source_type: false,
@@ -56,13 +58,20 @@ function posterSrc(path, updatedAt, width) { if (!path) return ''; const ts = up
 function posterSrcset(path, updatedAt) { if (!path || !path.startsWith('http')) return ''; return posterSrc(path, updatedAt, 300) + ' 300w, ' + posterSrc(path, updatedAt, 500) + ' 500w'; }
 function migrateOverlayPrefs(raw) {
     if (!raw) return overlayPrefs;
-    if (raw.groups) return raw;
+    if (raw.groups) {
+        // Ensure new groups exist for older group-based settings
+        if (!raw.groups.content_rating) raw.groups.content_rating = { enabled: !!raw.content_rating, position: 'bottom-right' };
+        if (!raw.groups.source_type) raw.groups.source_type = { enabled: !!raw.source_type, position: 'bottom-right' };
+        return raw;
+    }
     // Legacy boolean format — upgrade to group-based
     return {
         groups: {
             resolution_audio: { enabled: !!(raw.resolution_hdr || raw.audio_codec), position: 'top-right' },
-            edition: { enabled: !!(raw.edition_type || raw.content_rating), position: 'top-left' },
-            ratings: { enabled: !!raw.ratings, position: 'bottom-left' }
+            edition: { enabled: !!(raw.edition_type), position: 'top-left' },
+            ratings: { enabled: !!raw.ratings, position: 'bottom-left' },
+            content_rating: { enabled: !!raw.content_rating, position: 'bottom-right' },
+            source_type: { enabled: !!raw.source_type, position: 'bottom-right' }
         },
         resolution_hdr: raw.resolution_hdr !== false,
         audio_codec: raw.audio_codec !== false,
