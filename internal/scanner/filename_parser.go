@@ -842,6 +842,91 @@ func cleanEditionName(raw string) string {
 	return name
 }
 
+// ──────────────────── Folder-First Title Resolution ────────────────────
+
+// folderYearRx matches "Title (Year)" or "Title [Year]" with optional trailing info.
+var folderYearRx = regexp.MustCompile(`[\(\[]([12]\d{3})[\)\]]`)
+
+// ParseFolderName extracts a clean title and year from a parent folder name.
+// Returns empty title if the folder doesn't follow a "Title (Year)" convention.
+func ParseFolderName(folderName string) (title string, year *int) {
+	if folderName == "" || folderName == "." || folderName == "/" {
+		return "", nil
+	}
+
+	name := folderName
+
+	// Strip bracketed content: [anything] and {anything}
+	name = regexp.MustCompile(`\[[^\]]*\]`).ReplaceAllString(name, " ")
+	name = regexp.MustCompile(`\{[^}]*\}`).ReplaceAllString(name, " ")
+
+	// Look for year in parentheses from original folder name
+	if m := folderYearRx.FindStringSubmatch(folderName); len(m) >= 2 {
+		y, _ := strconv.Atoi(m[1])
+		if y >= 1900 && y <= 2100 {
+			year = &y
+			// Take everything before the year match in the cleaned name
+			idx := strings.Index(folderName, m[0])
+			if idx > 0 {
+				name = folderName[:idx]
+			}
+		}
+	}
+
+	name = strings.TrimRight(name, " -–._")
+	name = regexp.MustCompile(`\s+`).ReplaceAllString(name, " ")
+	title = strings.TrimSpace(name)
+	return title, year
+}
+
+// EditionFromFileVsFolder extracts an edition label by comparing a filename
+// against the folder-derived title. The text between the title and the year
+// in the filename becomes the edition.
+//
+// Example:
+//
+//	folder title = "3 Days to Kill"
+//	filename     = "3 Days to Kill - Extended Cut (2014) [Bluray-1080p x265].mkv"
+//	→ edition    = "Extended Cut"
+func EditionFromFileVsFolder(filename, folderTitle string) string {
+	// Check for {edition-XXX} braces first (Radarr/Plex convention)
+	if m := editionBracePattern.FindStringSubmatch(filename); len(m) >= 2 {
+		return cleanEditionName(m[1])
+	}
+
+	if folderTitle == "" {
+		return "Theatrical"
+	}
+
+	// Strip extension
+	ext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
+
+	// Strip bracketed content [xxx] and {xxx}
+	base = regexp.MustCompile(`\[[^\]]*\]`).ReplaceAllString(base, " ")
+	base = regexp.MustCompile(`\{[^}]*\}`).ReplaceAllString(base, " ")
+
+	// Strip year in parens
+	base = regexp.MustCompile(`\(\d{4}\)`).ReplaceAllString(base, " ")
+
+	// Collapse whitespace and trim
+	base = regexp.MustCompile(`\s+`).ReplaceAllString(base, " ")
+	base = strings.TrimSpace(base)
+
+	// Case-insensitive prefix removal: strip the folder title from the start
+	if len(base) > len(folderTitle) && strings.EqualFold(base[:len(folderTitle)], folderTitle) {
+		remainder := base[len(folderTitle):]
+		remainder = strings.TrimLeft(remainder, " -–.")
+		remainder = strings.TrimRight(remainder, " -–.")
+		remainder = strings.TrimSpace(remainder)
+		if remainder != "" {
+			return remainder
+		}
+	}
+
+	return "Theatrical"
+}
+
 // ──────────────────── Music Hierarchy ────────────────────
 
 // handleMusicHierarchy finds or creates Artist and Album records from parsed filename data,

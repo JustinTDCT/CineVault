@@ -343,6 +343,21 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 		extractInlineProviderIDs(parentFolder, &parsed)
 	}
 
+	// Folder-first title resolution for movies: use parent folder name as
+	// primary title source (like Plex/Jellyfin) to avoid edition keywords
+	// like "Extended Cut" or "Theatrical" polluting the title.
+	if (library.MediaType == models.MediaTypeMovies || library.MediaType == models.MediaTypeAdultMovies) &&
+		parentFolder != "." && parentFolder != "/" {
+		folderTitle, folderYear := ParseFolderName(parentFolder)
+		if folderTitle != "" && folderYear != nil {
+			parsed.Title = folderTitle
+			parsed.Year = folderYear
+			parsed.Edition = EditionFromFileVsFolder(name, folderTitle)
+			log.Printf("Folder-first: %q → title=%q year=%d edition=%q",
+				name, parsed.Title, *parsed.Year, parsed.Edition)
+		}
+	}
+
 	var nfoData *metadata.NFOData
 	if library.NFOImport {
 		nfoPath := metadata.FindNFOFile(path, library.MediaType)
@@ -863,6 +878,21 @@ func (s *Scanner) ScanSingleFile(library *models.Library, filePath string) error
 	}
 
 	parsed := s.parseFilename(info.Name(), library.MediaType)
+
+	// Folder-first title resolution for movies (same as processScanFile)
+	parentFolder := filepath.Base(filepath.Dir(filePath))
+	if (library.MediaType == models.MediaTypeMovies || library.MediaType == models.MediaTypeAdultMovies) &&
+		parentFolder != "." && parentFolder != "/" {
+		folderTitle, folderYear := ParseFolderName(parentFolder)
+		if folderTitle != "" && folderYear != nil {
+			parsed.Title = folderTitle
+			parsed.Year = folderYear
+			parsed.Edition = EditionFromFileVsFolder(info.Name(), folderTitle)
+			log.Printf("Folder-first: %q → title=%q year=%d edition=%q",
+				info.Name(), parsed.Title, *parsed.Year, parsed.Edition)
+		}
+	}
+
 	item := &models.MediaItem{
 		ID:          uuid.New(),
 		LibraryID:   library.ID,
