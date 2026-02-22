@@ -1,6 +1,6 @@
 {
-  "version": "1.29.00",
+  "version": "1.29.01",
   "phase": 29,
   "released": "2026-02-22",
-  "notes": "Dynamic rating icon overlays — brand-style SVG icons for IMDb, RT, TMDB, Metacritic that change based on score thresholds; configurable overlay group positions with zone exclusivity."
+  "notes": "Fix library scroll position not restoring when navigating back from media detail."
 }

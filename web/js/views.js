@@ -7,9 +7,13 @@ function escapeHtml(str) {
 // ──── Navigation ────
 let _currentNav = { view: 'home', extra: null };
 let _detailReturnNav = null;
+let _detailReturnScroll = null;
+let _pendingScrollRestore = null;
 
-function navigate(view, extra) {
+function navigate(view, extra, scrollRestore) {
     _currentNav = { view, extra: extra || null };
+    _detailMediaId = null;
+    _pendingScrollRestore = scrollRestore || null;
     selectionState.clear();
     closeUserDropdown();
     document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -47,16 +51,17 @@ function navigate(view, extra) {
 // Navigate back from media detail to the originating view.
 // Falls back to the item's library if no prior context exists.
 function navigateBack(libraryId) {
+    const scrollRestore = _detailReturnScroll;
+    _detailReturnScroll = null;
     if (_detailReturnNav && _detailReturnNav.view) {
         const r = _detailReturnNav;
-        // Special cases that don't go through navigate()
         if (r.view === '__series') {
             loadSeriesDetail(r.extra);
             return;
         }
-        navigate(r.view, r.extra);
+        navigate(r.view, r.extra, scrollRestore);
     } else {
-        navigate('library', libraryId);
+        navigate('library', libraryId, scrollRestore);
     }
 }
 
@@ -620,10 +625,17 @@ async function removeContinue(mediaId) {
 var _detailMediaId = null;
 
 async function loadMediaDetail(id) {
-    // Save return context so Back goes to where the user came from
     _detailReturnNav = { ..._currentNav };
-    _detailMediaId = id;
     const mc = document.getElementById('mainContent');
+    if (!_detailMediaId) {
+        _detailReturnScroll = {
+            scrollTop: mc ? mc.scrollTop : 0,
+            startOffset: _gridState.startOffset || 0,
+            offset: _gridState.offset || 0,
+            libraryId: _currentNav.view === 'library' ? _currentNav.extra : null
+        };
+    }
+    _detailMediaId = id;
     mc.innerHTML = '<div class="spinner"></div> Loading...';
     const data = await api('GET', '/media/' + id);
     if (!data.success) { mc.innerHTML = '<div class="empty-state"><div class="empty-state-title">Media not found</div></div>'; return; }
@@ -1646,6 +1658,14 @@ async function loadLibraryView(libraryId) {
         } else {
             grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">&#128250;</div><div class="empty-state-title">No TV shows yet</div><p>Scan the library to detect shows</p></div>`;
         }
+        const tvRestore = _pendingScrollRestore;
+        _pendingScrollRestore = null;
+        if (tvRestore && tvRestore.scrollTop > 0) {
+            requestAnimationFrame(() => {
+                const c = document.getElementById('mainContent');
+                if (c) c.scrollTop = tvRestore.scrollTop;
+            });
+        }
         return;
     }
 
@@ -1680,10 +1700,33 @@ async function loadLibraryView(libraryId) {
 
     renderFilterChips();
     loadFilterPresetsIntoDropdown();
-    setupScrollObserver();
-    loadMoreMedia();
 
-    // Update active letter on scroll
+    const restoreState = _pendingScrollRestore;
+    _pendingScrollRestore = null;
+
+    if (restoreState && restoreState.libraryId === libraryId) {
+        _gridState.offset = restoreState.startOffset;
+        _gridState.startOffset = restoreState.startOffset;
+        while (_gridState.offset < restoreState.offset && !_gridState.done) {
+            await loadMoreMedia();
+        }
+        setupScrollObserver();
+        if (_gridState.startOffset > 0) {
+            const grid = document.getElementById('libGrid');
+            if (grid) {
+                grid.insertAdjacentHTML('afterbegin', '<div id="gridTopSentinel" class="load-more-sentinel"></div>');
+                setupTopScrollObserver();
+            }
+        }
+        requestAnimationFrame(() => {
+            const c = document.getElementById('mainContent');
+            if (c) c.scrollTop = restoreState.scrollTop;
+        });
+    } else {
+        setupScrollObserver();
+        loadMoreMedia();
+    }
+
     const container = document.getElementById('mainContent');
     container.addEventListener('scroll', () => { requestAnimationFrame(updateAlphaCount); });
 }
