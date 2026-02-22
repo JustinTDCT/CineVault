@@ -425,6 +425,14 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 	result.CacheServerPosterPath = entry.PosterPath
 	result.CacheServerBackdropPath = entry.BackdropPath
 
+	// Extract artist/album from MusicBrainz cache entries for music hierarchy
+	if metadataSource == "musicbrainz" {
+		match.ArtistName = extractArtistFromCastCrew(entry.CastCrew)
+		if entry.OriginalTitle != nil && *entry.OriginalTitle != "" {
+			match.AlbumTitle = *entry.OriginalTitle
+		}
+	}
+
 	// Pass through available editions (AI-discovered) with enriched fields
 	if len(lookupResp.AvailableEditions) > 0 {
 		editions := make([]EditionSummary, 0, len(lookupResp.AvailableEditions))
@@ -1474,6 +1482,26 @@ type artworkEntry struct {
 
 // parseArtworkURLArray parses the JSON artwork array from the cache server.
 // It prefers the local cached path (via /images/) when available, otherwise falls back to the original URL.
+// extractArtistFromCastCrew parses the first artist name from the MusicBrainz-style
+// cast/crew JSON: {"cast":[{"name":"ArtistName","character":"Artist"}],...}
+func extractArtistFromCastCrew(castCrew *string) string {
+	if castCrew == nil || *castCrew == "" {
+		return ""
+	}
+	var cc struct {
+		Cast []struct {
+			Name string `json:"name"`
+		} `json:"cast"`
+	}
+	if err := json.Unmarshal([]byte(*castCrew), &cc); err != nil {
+		return ""
+	}
+	if len(cc.Cast) > 0 {
+		return cc.Cast[0].Name
+	}
+	return ""
+}
+
 func parseArtworkURLArray(raw *string) []string {
 	if raw == nil || *raw == "" || *raw == "null" {
 		return nil

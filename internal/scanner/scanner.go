@@ -1931,6 +1931,11 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 		s.enrichNonTMDBDetails(item.ID, match, item.LockedFields)
 	}
 
+	// Create artist/album from MusicBrainz match when not already linked
+	if match.Source == "musicbrainz" && match.ArtistName != "" {
+		s.linkMusicHierarchyFromMatch(item, match.ArtistName, match.AlbumTitle, match.Year)
+	}
+
 	// Store external IDs from direct match
 	idsJSON := metadata.BuildExternalIDsFromMatch(match.Source, match.ExternalID, match.IMDBId, false)
 	if idsJSON != nil {
@@ -2097,6 +2102,11 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 
 	// Store all unified metadata fields from cache
 	s.storeUnifiedCacheFields(item.ID, result)
+
+	// Create artist/album records from MusicBrainz data when not already linked
+	if match.ArtistName != "" {
+		s.linkMusicHierarchyFromMatch(item, match.ArtistName, match.AlbumTitle, match.Year)
+	}
 }
 
 // storeUnifiedCacheFields persists new metadata fields from the unified cache response.
@@ -2168,6 +2178,65 @@ func filterLockedExtended(lf pq.StringArray, tagline, origLang, country, trailer
 		logoPath = nil
 	}
 	return tagline, origLang, country, trailerURL, logoPath
+}
+
+// linkMusicHierarchyFromMatch creates/links artist and album records when a
+// MusicBrainz or cache match returns artist/album info that wasn't captured
+// from the filename or embedded tags.
+func (s *Scanner) linkMusicHierarchyFromMatch(item *models.MediaItem, artistName, albumTitle string, year *int) {
+	if artistName == "" || s.musicRepo == nil {
+		return
+	}
+	if item.MediaType != models.MediaTypeMusic && item.MediaType != models.MediaTypeMusicVideos {
+		return
+	}
+	// Skip if already linked
+	if item.ArtistID != nil {
+		return
+	}
+
+	artist, err := s.musicRepo.FindArtistByName(item.LibraryID, artistName)
+	if err != nil {
+		log.Printf("Music hierarchy (match): find artist %q error: %v", artistName, err)
+		return
+	}
+	if artist == nil {
+		artist = &models.Artist{
+			ID:        uuid.New(),
+			LibraryID: item.LibraryID,
+			Name:      artistName,
+		}
+		if err := s.musicRepo.CreateArtist(artist); err != nil {
+			log.Printf("Music hierarchy (match): create artist %q failed: %v", artistName, err)
+			return
+		}
+		log.Printf("Music hierarchy (match): created artist %q", artistName)
+	}
+	item.ArtistID = &artist.ID
+	s.mediaRepo.DB().Exec(`UPDATE media_items SET artist_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, artist.ID, item.ID)
+
+	if albumTitle != "" {
+		album, err := s.musicRepo.FindAlbumByTitle(artist.ID, albumTitle)
+		if err != nil {
+			log.Printf("Music hierarchy (match): find album %q error: %v", albumTitle, err)
+		}
+		if album == nil {
+			album = &models.Album{
+				ID:        uuid.New(),
+				ArtistID:  artist.ID,
+				LibraryID: item.LibraryID,
+				Title:     albumTitle,
+				Year:      year,
+			}
+			if err := s.musicRepo.CreateAlbum(album); err != nil {
+				log.Printf("Music hierarchy (match): create album %q failed: %v", albumTitle, err)
+				return
+			}
+			log.Printf("Music hierarchy (match): created album %q for artist %q", albumTitle, artistName)
+		}
+		item.AlbumID = &album.ID
+		s.mediaRepo.DB().Exec(`UPDATE media_items SET album_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, album.ID, item.ID)
+	}
 }
 
 // enrichNonTMDBDetails fetches full details from MusicBrainz or OpenLibrary
