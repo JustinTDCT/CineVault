@@ -1,6 +1,6 @@
 {
-  "version": "1.33.00",
+  "version": "1.33.01",
   "phase": 33,
   "released": "2026-02-22",
-  "notes": "WebSocket state sync: new clients receive active task state on connect so progress survives page refresh."
+  "notes": "Fix batch-lookup URL mismatch (cache server 405) and artist/album duplicate race condition."
 }

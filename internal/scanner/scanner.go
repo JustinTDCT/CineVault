@@ -2263,16 +2263,17 @@ func filterLockedExtended(lf pq.StringArray, tagline, origLang, country, trailer
 }
 
 // cachedFindOrCreateArtist returns an artist from the in-memory cache or DB,
-// creating one if it doesn't exist. Thread-safe via s.mu.
+// creating one if it doesn't exist. Holds lock for the entire operation to
+// prevent concurrent workers from creating duplicate records.
 func (s *Scanner) cachedFindOrCreateArtist(libraryID uuid.UUID, name string) (*models.Artist, error) {
 	key := libraryID.String() + "|" + strings.ToLower(name)
 
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if cached, ok := s.artistCache[key]; ok {
-		s.mu.Unlock()
 		return cached, nil
 	}
-	s.mu.Unlock()
 
 	artist, err := s.musicRepo.FindArtistByName(libraryID, name)
 	if err != nil {
@@ -2290,23 +2291,22 @@ func (s *Scanner) cachedFindOrCreateArtist(libraryID uuid.UUID, name string) (*m
 		log.Printf("Music hierarchy: created artist %q", name)
 	}
 
-	s.mu.Lock()
 	s.artistCache[key] = artist
-	s.mu.Unlock()
 	return artist, nil
 }
 
 // cachedFindOrCreateAlbum returns an album from the in-memory cache or DB,
-// creating one if it doesn't exist. Thread-safe via s.mu.
+// creating one if it doesn't exist. Holds lock for the entire operation to
+// prevent concurrent workers from creating duplicate records.
 func (s *Scanner) cachedFindOrCreateAlbum(artistID, libraryID uuid.UUID, title string, year *int) (*models.Album, error) {
 	key := artistID.String() + "|" + strings.ToLower(title)
 
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if cached, ok := s.albumCache[key]; ok {
-		s.mu.Unlock()
 		return cached, nil
 	}
-	s.mu.Unlock()
 
 	album, err := s.musicRepo.FindAlbumByTitle(artistID, title)
 	if err != nil {
@@ -2326,9 +2326,7 @@ func (s *Scanner) cachedFindOrCreateAlbum(artistID, libraryID uuid.UUID, title s
 		log.Printf("Music hierarchy: created album %q", title)
 	}
 
-	s.mu.Lock()
 	s.albumCache[key] = album
-	s.mu.Unlock()
 	return album, nil
 }
 

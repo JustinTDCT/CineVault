@@ -340,7 +340,7 @@ func (c *CacheClient) BatchLookup(items []BatchLookupItem) []*CacheLookupResult 
 			continue
 		}
 
-		req, err := http.NewRequest("POST", c.baseURL+"/api/v1/batch-lookup", bytes.NewReader(bodyBytes))
+		req, err := http.NewRequest("POST", c.baseURL+"/api/v1/lookup/batch", bytes.NewReader(bodyBytes))
 		if err != nil {
 			continue
 		}
