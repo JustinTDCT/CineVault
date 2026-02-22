@@ -212,6 +212,16 @@ func CleanTitleForSearch(title string) string {
 	// Strip year in parens/brackets (we send year separately)
 	cleaned = regexp.MustCompile(`[\(\[\{]\d{4}[\)\]\}]`).ReplaceAllString(cleaned, " ")
 
+	// Strip edition phrases first (before token-level removal, since "Cut"/"Edition"
+	// alone are too common to remove as standalone tokens)
+	editionPhraseRx := regexp.MustCompile(`(?i)\b(` +
+		`director'?s?\s*cut|final\s+cut|extended\s+cut|theatrical\s+cut|unrated\s+cut|ultimate\s+cut|` +
+		`criterion\s+edition|anniversary\s+edition|collector'?s?\s+edition|ultimate\s+edition|` +
+		`deluxe\s+edition|imax\s+edition|special\s+edition|limited\s+edition|` +
+		`extended\s+edition|unrated\s+edition|theatrical\s+edition|remastered\s+edition` +
+		`)\b`)
+	cleaned = editionPhraseRx.ReplaceAllString(cleaned, " ")
+
 	// Comprehensive junk token removal
 	junkRx := regexp.MustCompile(`(?i)\b(` +
 		// Video codecs
@@ -234,7 +244,7 @@ func CleanTitleForSearch(title string) string {
 		`read\.nfo|readnfo|nfofix|nfo|` +
 		`multi|multisubs|dubbed|subbed|subs|sub|` +
 		`ws|fs|fragment|xxx|` +
-		`directors[\s.]cut|dc|se|special[\s.]edition|criterion[\s.]edition|anniversary[\s.]edition|collectors[\s.]edition|ultimate[\s.]edition|deluxe[\s.]edition|imax[\s.]edition` +
+		`directors[\s.]cut|dc|se` +
 		`)\b`)
 	cleaned = junkRx.ReplaceAllString(cleaned, " ")
 

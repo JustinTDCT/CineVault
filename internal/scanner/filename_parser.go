@@ -518,7 +518,18 @@ func cleanFilenameUniversal(baseName string) cleanResult {
 		}
 	}
 
-	// --- Pass 3: Normalize delimiters ---
+	// --- Pass 3: Strip edition phrases before tokenization ---
+	// "Cut"/"Edition" are too common to remove as standalone tokens,
+	// so strip full phrases like "Extended Cut", "Director's Cut", etc.
+	editionPhraseRx := regexp.MustCompile(`(?i)[-–]?\s*\b(` +
+		`director'?s?\s*cut|final\s+cut|extended\s+cut|theatrical\s+cut|unrated\s+cut|ultimate\s+cut|` +
+		`criterion\s+edition|anniversary\s+edition|collector'?s?\s+edition|ultimate\s+edition|` +
+		`deluxe\s+edition|imax\s+edition|special\s+edition|limited\s+edition|` +
+		`extended\s+edition|unrated\s+edition|theatrical\s+edition|remastered\s+edition` +
+		`)\b`)
+	name = editionPhraseRx.ReplaceAllString(name, " ")
+
+	// --- Pass 4: Normalize delimiters ---
 	name = strings.ReplaceAll(name, ".", " ")
 	name = strings.ReplaceAll(name, "_", " ")
 
