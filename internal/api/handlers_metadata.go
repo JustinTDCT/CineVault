@@ -108,8 +108,10 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 		for _, scraper := range scrapers {
 			matches, err := scraper.Search(query, media.MediaType, fileYear)
 			if err != nil {
+				log.Printf("Identify: scraper %q error for %q: %v", scraper.Name(), query, err)
 				continue
 			}
+			log.Printf("Identify: scraper %q for %q returned %d results", scraper.Name(), query, len(matches))
 			for _, m := range matches {
 				if !seen[m.ExternalID] {
 					seen[m.ExternalID] = true
