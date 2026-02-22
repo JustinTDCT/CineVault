@@ -125,12 +125,11 @@ function mapAudioLabel(item) {
 function mapEditionLabel(item) {
     const raw = (item.edition_type || '').toLowerCase().trim();
     if (!raw || raw === 'standard' || raw === 'unknown') return '';
+    if (overlayPrefs.hide_theatrical !== false && raw.includes('theatrical')) return '';
     if (EDITION_LABEL_MAP[raw]) return EDITION_LABEL_MAP[raw];
-    // Try partial match
     for (const [key, label] of Object.entries(EDITION_LABEL_MAP)) {
         if (raw.includes(key)) return label;
     }
-    // Capitalize first letter as fallback
     return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 

@@ -806,6 +806,10 @@ async function loadProfileOverlayToggles() {
                     <span class="toggle-switch"><input type="checkbox" id="profOvAudio" ${p.audio_codec !== false?'checked':''}><span class="toggle-slider"></span></span>
                     Audio Codec
                 </label>
+                <label class="toggle-label" style="margin:0;display:flex;align-items:center;gap:8px;font-size:0.82rem;">
+                    <span class="toggle-switch"><input type="checkbox" id="profOvHideTheatrical" ${p.hide_theatrical !== false?'checked':''}><span class="toggle-slider"></span></span>
+                    Hide Theatrical Overlay
+                </label>
             </div>
         </div>
         <button class="btn-primary" onclick="saveProfileOverlayPrefs()" style="margin-top:16px;">Save Overlay Settings</button>`;
@@ -827,6 +831,7 @@ async function saveProfileOverlayPrefs() {
         content_rating: document.getElementById('profOvContentRating').checked,
         edition_type: document.getElementById('profOvEdition').checked,
         source_type: document.getElementById('profOvSource').checked,
+        hide_theatrical: document.getElementById('profOvHideTheatrical').checked,
     };
     const d = await api('PUT', '/settings/display', { overlay_settings: settings });
     if (d.success) {

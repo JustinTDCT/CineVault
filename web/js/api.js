@@ -10,7 +10,8 @@ let overlayPrefs = {
         ratings: { enabled: true, position: 'bottom-left' }
     },
     resolution_hdr: true, audio_codec: true, ratings: true,
-    content_rating: false, edition_type: true, source_type: false
+    content_rating: false, edition_type: true, source_type: false,
+    hide_theatrical: true
 };
 let _userRegion = '';
 let hlsPlayer = null;
@@ -68,7 +69,8 @@ function migrateOverlayPrefs(raw) {
         ratings: raw.ratings !== false,
         content_rating: !!raw.content_rating,
         edition_type: raw.edition_type !== false,
-        source_type: !!raw.source_type
+        source_type: !!raw.source_type,
+        hide_theatrical: raw.hide_theatrical !== false
     };
 }
 
