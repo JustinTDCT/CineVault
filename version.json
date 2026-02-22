@@ -1,6 +1,6 @@
 {
-  "version": "1.32.00",
+  "version": "1.32.01",
   "phase": 32,
   "released": "2026-02-22",
-  "notes": "Use cache server MusicBrainz data to populate artist/album hierarchy during metadata matching."
+  "notes": "Music scan performance: in-memory artist/album cache eliminates redundant DB lookups; MusicBrainz rate limiter prevents 503 errors."
 }

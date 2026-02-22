@@ -1,7 +1,6 @@
 package scanner
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -930,47 +929,23 @@ func EditionFromFileVsFolder(filename, folderTitle string) string {
 // ──────────────────── Music Hierarchy ────────────────────
 
 // handleMusicHierarchy finds or creates Artist and Album records from parsed filename data,
-// and links them to the media item before it is persisted.
+// and links them to the media item before it is persisted. Uses the in-memory cache
+// to avoid redundant DB lookups for the same artist/album across tracks.
 func (s *Scanner) handleMusicHierarchy(library *models.Library, item *models.MediaItem, parsed ParsedFilename) error {
 	if parsed.Artist == "" || s.musicRepo == nil {
 		return nil
 	}
 
-	// Find or create artist
-	artist, err := s.musicRepo.FindArtistByName(library.ID, parsed.Artist)
+	artist, err := s.cachedFindOrCreateArtist(library.ID, parsed.Artist)
 	if err != nil {
 		return err
 	}
-	if artist == nil {
-		artist = &models.Artist{
-			ID:        uuid.New(),
-			LibraryID: library.ID,
-			Name:      parsed.Artist,
-		}
-		if err := s.musicRepo.CreateArtist(artist); err != nil {
-			return fmt.Errorf("create artist: %w", err)
-		}
-		log.Printf("Music hierarchy: created artist %q", parsed.Artist)
-	}
 	item.ArtistID = &artist.ID
 
-	// Find or create album (music tracks only, not music videos)
 	if parsed.Album != "" {
-		album, err := s.musicRepo.FindAlbumByTitle(artist.ID, parsed.Album)
+		album, err := s.cachedFindOrCreateAlbum(artist.ID, library.ID, parsed.Album, nil)
 		if err != nil {
 			return err
-		}
-		if album == nil {
-			album = &models.Album{
-				ID:        uuid.New(),
-				ArtistID:  artist.ID,
-				LibraryID: library.ID,
-				Title:     parsed.Album,
-			}
-			if err := s.musicRepo.CreateAlbum(album); err != nil {
-				return fmt.Errorf("create album: %w", err)
-			}
-			log.Printf("Music hierarchy: created album %q for artist %q", parsed.Album, parsed.Artist)
 		}
 		item.AlbumID = &album.ID
 	}

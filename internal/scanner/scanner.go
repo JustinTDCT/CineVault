@@ -51,6 +51,10 @@ type Scanner struct {
 	// scanShowsByFolder maps cleaned folder show names → TVShow records for the current scan,
 	// preventing duplicate show creation when autoMatchTVShow renames the title in the DB.
 	scanShowsByFolder map[string]*models.TVShow
+	// artistCache avoids repeated DB lookups for the same artist within a scan
+	artistCache map[string]*models.Artist // key: "libraryID|artistName"
+	// albumCache avoids repeated DB lookups for the same album within a scan
+	albumCache map[string]*models.Album // key: "artistID|albumTitle"
 	// mu protects concurrent access during parallel enrichment
 	mu sync.Mutex
 }
@@ -125,6 +129,8 @@ func NewScanner(ffprobePath, ffmpegPath, hwaccel string, mediaRepo *repository.M
 		pendingEpisodeMeta: make(map[uuid.UUID]string),
 		pendingMultiParts:  make(map[string][]multiPartEntry),
 		scanShowsByFolder:  make(map[string]*models.TVShow),
+		artistCache:        make(map[string]*models.Artist),
+		albumCache:         make(map[string]*models.Album),
 	}
 }
 
@@ -138,6 +144,10 @@ type ProgressFunc func(current, total, added int, filename string)
 
 func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFunc) (*models.ScanResult, error) {
 	result := &models.ScanResult{}
+
+	// Reset per-scan caches
+	s.artistCache = make(map[string]*models.Artist)
+	s.albumCache = make(map[string]*models.Album)
 
 	// Determine which folders to scan: use library.Folders if available, else fall back to library.Path
 	scanPaths := []string{}
@@ -2180,6 +2190,76 @@ func filterLockedExtended(lf pq.StringArray, tagline, origLang, country, trailer
 	return tagline, origLang, country, trailerURL, logoPath
 }
 
+// cachedFindOrCreateArtist returns an artist from the in-memory cache or DB,
+// creating one if it doesn't exist. Thread-safe via s.mu.
+func (s *Scanner) cachedFindOrCreateArtist(libraryID uuid.UUID, name string) (*models.Artist, error) {
+	key := libraryID.String() + "|" + strings.ToLower(name)
+
+	s.mu.Lock()
+	if cached, ok := s.artistCache[key]; ok {
+		s.mu.Unlock()
+		return cached, nil
+	}
+	s.mu.Unlock()
+
+	artist, err := s.musicRepo.FindArtistByName(libraryID, name)
+	if err != nil {
+		return nil, err
+	}
+	if artist == nil {
+		artist = &models.Artist{
+			ID:        uuid.New(),
+			LibraryID: libraryID,
+			Name:      name,
+		}
+		if err := s.musicRepo.CreateArtist(artist); err != nil {
+			return nil, err
+		}
+		log.Printf("Music hierarchy: created artist %q", name)
+	}
+
+	s.mu.Lock()
+	s.artistCache[key] = artist
+	s.mu.Unlock()
+	return artist, nil
+}
+
+// cachedFindOrCreateAlbum returns an album from the in-memory cache or DB,
+// creating one if it doesn't exist. Thread-safe via s.mu.
+func (s *Scanner) cachedFindOrCreateAlbum(artistID, libraryID uuid.UUID, title string, year *int) (*models.Album, error) {
+	key := artistID.String() + "|" + strings.ToLower(title)
+
+	s.mu.Lock()
+	if cached, ok := s.albumCache[key]; ok {
+		s.mu.Unlock()
+		return cached, nil
+	}
+	s.mu.Unlock()
+
+	album, err := s.musicRepo.FindAlbumByTitle(artistID, title)
+	if err != nil {
+		return nil, err
+	}
+	if album == nil {
+		album = &models.Album{
+			ID:        uuid.New(),
+			ArtistID:  artistID,
+			LibraryID: libraryID,
+			Title:     title,
+			Year:      year,
+		}
+		if err := s.musicRepo.CreateAlbum(album); err != nil {
+			return nil, err
+		}
+		log.Printf("Music hierarchy: created album %q", title)
+	}
+
+	s.mu.Lock()
+	s.albumCache[key] = album
+	s.mu.Unlock()
+	return album, nil
+}
+
 // linkMusicHierarchyFromMatch creates/links artist and album records when a
 // MusicBrainz or cache match returns artist/album info that wasn't captured
 // from the filename or embedded tags.
@@ -2190,49 +2270,23 @@ func (s *Scanner) linkMusicHierarchyFromMatch(item *models.MediaItem, artistName
 	if item.MediaType != models.MediaTypeMusic && item.MediaType != models.MediaTypeMusicVideos {
 		return
 	}
-	// Skip if already linked
 	if item.ArtistID != nil {
 		return
 	}
 
-	artist, err := s.musicRepo.FindArtistByName(item.LibraryID, artistName)
+	artist, err := s.cachedFindOrCreateArtist(item.LibraryID, artistName)
 	if err != nil {
-		log.Printf("Music hierarchy (match): find artist %q error: %v", artistName, err)
+		log.Printf("Music hierarchy (match): artist %q error: %v", artistName, err)
 		return
-	}
-	if artist == nil {
-		artist = &models.Artist{
-			ID:        uuid.New(),
-			LibraryID: item.LibraryID,
-			Name:      artistName,
-		}
-		if err := s.musicRepo.CreateArtist(artist); err != nil {
-			log.Printf("Music hierarchy (match): create artist %q failed: %v", artistName, err)
-			return
-		}
-		log.Printf("Music hierarchy (match): created artist %q", artistName)
 	}
 	item.ArtistID = &artist.ID
 	s.mediaRepo.DB().Exec(`UPDATE media_items SET artist_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, artist.ID, item.ID)
 
 	if albumTitle != "" {
-		album, err := s.musicRepo.FindAlbumByTitle(artist.ID, albumTitle)
+		album, err := s.cachedFindOrCreateAlbum(artist.ID, item.LibraryID, albumTitle, year)
 		if err != nil {
-			log.Printf("Music hierarchy (match): find album %q error: %v", albumTitle, err)
-		}
-		if album == nil {
-			album = &models.Album{
-				ID:        uuid.New(),
-				ArtistID:  artist.ID,
-				LibraryID: item.LibraryID,
-				Title:     albumTitle,
-				Year:      year,
-			}
-			if err := s.musicRepo.CreateAlbum(album); err != nil {
-				log.Printf("Music hierarchy (match): create album %q failed: %v", albumTitle, err)
-				return
-			}
-			log.Printf("Music hierarchy (match): created album %q for artist %q", albumTitle, artistName)
+			log.Printf("Music hierarchy (match): album %q error: %v", albumTitle, err)
+			return
 		}
 		item.AlbumID = &album.ID
 		s.mediaRepo.DB().Exec(`UPDATE media_items SET album_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, album.ID, item.ID)

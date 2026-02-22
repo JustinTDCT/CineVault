@@ -877,13 +877,27 @@ func (s *TMDBScraper) GetTVSeasonDetails(tmdbShowID string, seasonNumber int) (*
 // ──────────────────── MusicBrainz ────────────────────
 
 type MusicBrainzScraper struct {
-	client *http.Client
+	client  *http.Client
+	limiter chan time.Time // token-bucket rate limiter: 1 req/sec
 }
 
 func NewMusicBrainzScraper() *MusicBrainzScraper {
-	return &MusicBrainzScraper{
-		client: &http.Client{Timeout: 10 * time.Second},
+	s := &MusicBrainzScraper{
+		client:  &http.Client{Timeout: 10 * time.Second},
+		limiter: make(chan time.Time, 1),
 	}
+	s.limiter <- time.Now().Add(-time.Second) // allow immediate first request
+	return s
+}
+
+// waitRateLimit enforces MusicBrainz's 1 request/second policy.
+func (s *MusicBrainzScraper) waitRateLimit() {
+	last := <-s.limiter
+	elapsed := time.Since(last)
+	if elapsed < time.Second {
+		time.Sleep(time.Second - elapsed)
+	}
+	s.limiter <- time.Now()
 }
 
 func (s *MusicBrainzScraper) Name() string { return "musicbrainz" }
@@ -901,6 +915,7 @@ func (s *MusicBrainzScraper) Search(query string, mediaType models.MediaType, ye
 	req, _ := http.NewRequest("GET", reqURL, nil)
 	req.Header.Set("User-Agent", "CineVault/1.0 (https://github.com/JustinTDCT/CineVault)")
 
+	s.waitRateLimit()
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1073,6 +1088,7 @@ func (s *MusicBrainzScraper) getReleaseDetails(releaseID string) (*models.Metada
 	req, _ := http.NewRequest("GET", reqURL, nil)
 	req.Header.Set("User-Agent", "CineVault/1.0 (https://github.com/JustinTDCT/CineVault)")
 
+	s.waitRateLimit()
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1172,6 +1188,7 @@ func (s *MusicBrainzScraper) getRecordingDetails(recordingID string) (*models.Me
 	req, _ := http.NewRequest("GET", reqURL, nil)
 	req.Header.Set("User-Agent", "CineVault/1.0 (https://github.com/JustinTDCT/CineVault)")
 
+	s.waitRateLimit()
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1285,6 +1302,7 @@ func (s *MusicBrainzScraper) fetchReleaseLabel(releaseID string) string {
 	req, _ := http.NewRequest("GET", reqURL, nil)
 	req.Header.Set("User-Agent", "CineVault/1.0 (https://github.com/JustinTDCT/CineVault)")
 
+	s.waitRateLimit()
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return ""
