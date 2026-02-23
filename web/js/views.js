@@ -4263,6 +4263,17 @@ async function loadArtworkTab() {
     html += '</div></div>';
 
     container.innerHTML = html;
+
+    // When no current backdrop/poster exists the first item is shown as visually
+    // selected, so register it in the hidden inputs so Save actually picks it up.
+    if (!currentBackdrop && backdrops.length > 0) {
+        const el = document.getElementById('editBackdropPath');
+        if (el && !el.value) el.value = backdrops[0];
+    }
+    if (!currentPoster && posters.length > 0) {
+        const el = document.getElementById('editPosterPath');
+        if (el && !el.value) el.value = posters[0];
+    }
 }
 
 function buildArtworkThumb(url, type, isSelected, isCurrent) {
