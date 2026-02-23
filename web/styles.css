@@ -1162,7 +1162,17 @@ body {
     display: flex; gap: 35px; margin-bottom: 30px;
     background: var(--surface-light);
     border-radius: var(--radius-3xl); padding: 30px; border: 1px solid rgba(0,217,255,0.1);
+    position: relative; overflow: hidden;
+    background-size: cover; background-position: center top;
 }
+.detail-hero-overlay {
+    position: absolute; inset: 0; z-index: 0;
+    background: linear-gradient(to right, rgba(10,18,30,0.97) 0%, rgba(10,18,30,0.85) 55%, rgba(10,18,30,0.6) 100%);
+    border-radius: inherit;
+}
+.detail-hero.has-backdrop { border-color: rgba(0,217,255,0.2); }
+.detail-hero .detail-poster,
+.detail-hero .detail-info { position: relative; z-index: 1; }
 .detail-poster { width: 220px; min-width: 220px; height: 330px; border-radius: var(--radius-2xl); overflow: hidden; box-shadow: var(--shadow-lg); display: flex; align-items: center; justify-content: center; font-size: 4rem; background: linear-gradient(135deg, rgba(26,35,50,0.8) 0%, rgba(13,27,42,0.9) 100%); flex-shrink: 0; }
 .detail-poster img { width: 100%; height: 100%; object-fit: cover; }
 .detail-info { flex: 1; min-width: 0; overflow: hidden; }
