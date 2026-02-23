@@ -4348,10 +4348,24 @@ async function saveMediaEdit() {
     const genres = genresInput ? genresInput.split(',').map(g => g.trim()).filter(Boolean) : null;
     const studio = document.getElementById('editStudio').value.trim() || null;
 
+    // Download artwork locally when a new external URL was selected from the picker
+    const origPoster = (_editMediaItem && _editMediaItem.poster_path) || '';
+    const origBackdrop = (_editMediaItem && _editMediaItem.backdrop_path) || '';
+    let finalPoster = posterPath;
+    let finalBackdrop = backdropPath;
+    if (posterPath && posterPath !== origPoster && posterPath.startsWith('http')) {
+        const artRes = await api('PUT', '/media/' + id + '/artwork', { type: 'poster', url: posterPath });
+        if (artRes.success && artRes.data && artRes.data.path) finalPoster = artRes.data.path;
+    }
+    if (backdropPath && backdropPath !== origBackdrop && backdropPath.startsWith('http')) {
+        const artRes = await api('PUT', '/media/' + id + '/artwork', { type: 'backdrop', url: backdropPath });
+        if (artRes.success && artRes.data && artRes.data.path) finalBackdrop = artRes.data.path;
+    }
+
     const d = await api('PUT', '/media/' + id, {
         title, sort_title: sortTitle, original_title: originalTitle,
         description, year, release_date: releaseDate, rating,
-        edition_type: editionType, poster_path: posterPath, backdrop_path: backdropPath,
+        edition_type: editionType, poster_path: finalPoster, backdrop_path: finalBackdrop,
         custom_notes: customNotes, custom_tags: customTags,
         content_rating: contentRating, original_language: originalLanguage,
         tagline, country, trailer_url: trailerUrl, genres, studio
