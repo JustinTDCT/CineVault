@@ -403,6 +403,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /api/v1/performers/{id}", s.authMiddleware(s.handleGetPerformer, models.RoleUser))
 	s.router.HandleFunc("PUT /api/v1/performers/{id}", s.authMiddleware(s.handleUpdatePerformer, models.RoleAdmin))
 	s.router.HandleFunc("DELETE /api/v1/performers/{id}", s.authMiddleware(s.handleDeletePerformer, models.RoleAdmin))
+	s.router.HandleFunc("POST /api/v1/performers/populate-photos", s.authMiddleware(s.handlePopulatePerformerPhotos, models.RoleAdmin))
 
 	// Tags
 	s.router.HandleFunc("GET /api/v1/tags", s.authMiddleware(s.handleListTags, models.RoleUser))
