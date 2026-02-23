@@ -748,9 +748,11 @@ func pickPreferredURL(urlsJSON *string, preferredSource string, fallback *string
 // into TMDBCredits format for use with enrichWithCredits.
 func ParseCacheCredits(castCrewJSON string) *TMDBCredits {
 	type cachePerson struct {
-		Name      string `json:"name"`
-		Character string `json:"character,omitempty"`
-		Job       string `json:"job,omitempty"`
+		Name        string `json:"name"`
+		Character   string `json:"character,omitempty"`
+		Job         string `json:"job,omitempty"`
+		ID          int    `json:"id,omitempty"`
+		ProfilePath string `json:"profile_path,omitempty"`
 	}
 	type cacheCredits struct {
 		Cast []cachePerson `json:"cast"`
@@ -766,15 +768,19 @@ func ParseCacheCredits(castCrewJSON string) *TMDBCredits {
 	credits := &TMDBCredits{}
 	for i, c := range cc.Cast {
 		credits.Cast = append(credits.Cast, TMDBCastMember{
-			Name:      c.Name,
-			Character: c.Character,
-			Order:     i,
+			ID:          c.ID,
+			Name:        c.Name,
+			Character:   c.Character,
+			ProfilePath: c.ProfilePath,
+			Order:       i,
 		})
 	}
 	for _, c := range cc.Crew {
 		credits.Crew = append(credits.Crew, TMDBCrewMember{
-			Name: c.Name,
-			Job:  c.Job,
+			ID:          c.ID,
+			Name:        c.Name,
+			Job:         c.Job,
+			ProfilePath: c.ProfilePath,
 		})
 	}
 
