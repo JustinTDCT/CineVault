@@ -254,42 +254,49 @@
 
     <!-- Edit Media Modal -->
     <div class="edit-modal-overlay" id="editMediaOverlay" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
-        <div class="edit-modal">
+        <div class="edit-modal" id="editModalContainer">
             <div class="edit-modal-title" id="editModalTitle">Edit Media Item</div>
             <input type="hidden" id="editMediaId">
-            <div class="form-group">
-                <label>Title *</label>
-                <input type="text" id="editTitle">
+            <input type="hidden" id="editPosterPath">
+            <input type="hidden" id="editBackdropPath">
+
+            <!-- Tab Navigation -->
+            <div class="edit-modal-tabs" id="editModalTabs">
+                <button class="edit-tab active" onclick="switchEditTab('basic')" data-tab="basic">Basic Info</button>
+                <button class="edit-tab" onclick="switchEditTab('editions')" data-tab="editions" id="editTabEditionsBtn">Bundle Editions</button>
+                <button class="edit-tab" onclick="switchEditTab('artwork')" data-tab="artwork">Poster &amp; Background</button>
+                <button class="edit-tab" onclick="switchEditTab('metadata')" data-tab="metadata">Metadata</button>
+                <button class="edit-tab" onclick="switchEditTab('locks')" data-tab="locks">Metadata Locks</button>
             </div>
-            <div class="edit-field-row">
+
+            <!-- Tab: Basic Info -->
+            <div class="edit-tab-content active" data-tab-content="basic">
+                <div class="form-group">
+                    <label>Title *</label>
+                    <input type="text" id="editTitle">
+                </div>
                 <div class="form-group">
                     <label>Sort Title</label>
                     <input type="text" id="editSortTitle" placeholder="Leave blank to use title">
                 </div>
                 <div class="form-group">
-                    <label>Original Title</label>
-                    <input type="text" id="editOriginalTitle" placeholder="Original language title">
+                    <label>Description</label>
+                    <textarea id="editDescription" rows="4" placeholder="Synopsis or description"></textarea>
+                </div>
+                <div class="edit-field-row">
+                    <div class="form-group">
+                        <label>Year</label>
+                        <input type="number" id="editYear" min="1800" max="2100" placeholder="e.g. 2024">
+                    </div>
+                    <div class="form-group">
+                        <label>Release Date</label>
+                        <input type="date" id="editReleaseDate">
+                    </div>
                 </div>
             </div>
-            <div class="form-group">
-                <label>Description</label>
-                <textarea id="editDescription" rows="4" placeholder="Synopsis or description"></textarea>
-            </div>
-            <div class="edit-field-row">
-                <div class="form-group">
-                    <label>Year</label>
-                    <input type="number" id="editYear" min="1800" max="2100" placeholder="e.g. 2024">
-                </div>
-                <div class="form-group">
-                    <label>Release Date</label>
-                    <input type="date" id="editReleaseDate">
-                </div>
-            </div>
-            <div class="edit-field-row">
-                <div class="form-group">
-                    <label>Rating</label>
-                    <input type="number" id="editRating" min="0" max="10" step="0.1" placeholder="0.0 – 10.0">
-                </div>
+
+            <!-- Tab: Bundle Editions -->
+            <div class="edit-tab-content" data-tab-content="editions">
                 <div class="form-group">
                     <label>Edition</label>
                     <select id="editEditionType">
@@ -305,101 +312,113 @@
                         <option value="Alternate">Alternate</option>
                     </select>
                 </div>
-            </div>
-            <div class="form-group" id="parentMovieGroup" style="display:none;">
-                <label>Parent Movie</label>
-                <div class="parent-search-wrap">
-                    <input type="text" id="parentMovieSearch" placeholder="Search for parent movie..." autocomplete="off" oninput="searchParentMovie(this.value)">
-                    <input type="hidden" id="parentMovieId">
-                    <div class="parent-search-results" id="parentSearchResults"></div>
-                </div>
-                <div id="parentCurrentInfo" style="display:none;"></div>
-            </div>
-            <div class="edit-field-row">
-                <div class="form-group">
-                    <label>Content Rating</label>
-                    <select id="editContentRating">
-                        <option value="">Not Rated</option>
-                        <option value="G">G</option>
-                        <option value="PG">PG</option>
-                        <option value="PG-13">PG-13</option>
-                        <option value="R">R</option>
-                        <option value="NC-17">NC-17</option>
-                        <option value="TV-Y">TV-Y</option>
-                        <option value="TV-Y7">TV-Y7</option>
-                        <option value="TV-G">TV-G</option>
-                        <option value="TV-PG">TV-PG</option>
-                        <option value="TV-14">TV-14</option>
-                        <option value="TV-MA">TV-MA</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Original Language</label>
-                    <input type="text" id="editOriginalLanguage" placeholder="e.g. en, ja, fr">
+                <div class="form-group" id="parentMovieGroup">
+                    <label>Parent Movie</label>
+                    <div class="parent-search-wrap">
+                        <input type="text" id="parentMovieSearch" placeholder="Search for parent movie..." autocomplete="off" oninput="searchParentMovie(this.value)">
+                        <input type="hidden" id="parentMovieId">
+                        <div class="parent-search-results" id="parentSearchResults"></div>
+                    </div>
+                    <div id="parentCurrentInfo" style="display:none;"></div>
                 </div>
             </div>
-            <div class="form-group">
-                <label>Tagline</label>
-                <input type="text" id="editTagline" placeholder="Movie tagline">
-            </div>
-            <div class="edit-field-row">
-                <div class="form-group">
-                    <label>Country</label>
-                    <input type="text" id="editCountry" placeholder="e.g. US, GB, JP">
-                </div>
-                <div class="form-group">
-                    <label>Trailer URL</label>
-                    <input type="text" id="editTrailerUrl" placeholder="YouTube or direct URL">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Genres <span style="color:#6b7b8d;font-weight:400;font-size:0.78rem;">(comma-separated)</span></label>
-                <input type="text" id="editGenres" placeholder="e.g. Action, Thriller, Drama">
-            </div>
-            <div class="form-group">
-                <label>Studio</label>
-                <input type="text" id="editStudio" placeholder="e.g. Warner Bros, A24">
-            </div>
-            <div class="edit-field-row">
-                <div class="form-group">
-                    <label>Poster URL <a class="edit-browse-link" onclick="browseArtworkFromEdit('poster')">Browse</a></label>
-                    <input type="text" id="editPosterPath" placeholder="URL or local path to poster image">
-                </div>
-                <div class="form-group">
-                    <label>Backdrop URL <a class="edit-browse-link" onclick="browseArtworkFromEdit('backdrop')">Browse</a></label>
-                    <input type="text" id="editBackdropPath" placeholder="URL or local path to backdrop image">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Custom Notes</label>
-                <textarea id="editCustomNotes" rows="2" placeholder="Personal notes (e.g. Hybrid remux, AI upscale, etc.)"></textarea>
-            </div>
-            <div class="form-group">
-                <label>Custom Tags <span style="color:#6b7b8d;font-weight:400;font-size:0.78rem;">(comma-separated)</span></label>
-                <input type="text" id="editCustomTags" placeholder="e.g. reference, demo-disc, keeper">
-            </div>
-            <div id="editCastSection" style="margin-top:8px;">
-                <span class="field-locks-toggle" id="editCastToggle" onclick="toggleEditCast()">
-                    <span class="arrow">&#9656;</span> Cast &amp; Crew
-                </span>
-                <div id="editCastPanel" style="display:none;"></div>
-            </div>
-            <div id="editSeriesGroup" style="display:none; margin-top:8px;">
-                <div id="editSeriesInfo"></div>
-                <button class="btn-secondary" style="font-size:0.82rem; padding:8px 14px;" onclick="openSeriesModal()">&#127910; Add to Series</button>
-            </div>
-            <div id="editLockStatus" style="margin-top:8px;"></div>
-            <div style="margin-top:4px;">
-                <span class="field-locks-toggle" id="fieldLocksToggle" onclick="toggleFieldLocks()">
-                    <span class="arrow">&#9656;</span> Per-Field Locks
-                </span>
-                <div id="fieldLocksPanel" style="display:none;">
-                    <div class="field-locks-grid" id="fieldLocksGrid"></div>
-                    <div style="font-size:0.72rem; color:#6b7b8d; margin-top:6px; padding:0 4px;">
-                        Locked fields are protected from automatic updates during scans and auto-match.
+
+            <!-- Tab: Poster & Background -->
+            <div class="edit-tab-content" data-tab-content="artwork">
+                <div id="artworkTabContent">
+                    <div class="artwork-tab-loading" id="artworkTabLoading">
+                        <div class="artwork-tab-spinner"></div>
+                        <span>Loading artwork...</span>
                     </div>
                 </div>
             </div>
+
+            <!-- Tab: Metadata -->
+            <div class="edit-tab-content" data-tab-content="metadata">
+                <div class="edit-field-row">
+                    <div class="form-group">
+                        <label>Original Title</label>
+                        <input type="text" id="editOriginalTitle" placeholder="Original language title">
+                    </div>
+                    <div class="form-group">
+                        <label>Rating</label>
+                        <input type="number" id="editRating" min="0" max="10" step="0.1" placeholder="0.0 – 10.0">
+                    </div>
+                </div>
+                <div class="edit-field-row">
+                    <div class="form-group">
+                        <label>Content Rating</label>
+                        <select id="editContentRating">
+                            <option value="">Not Rated</option>
+                            <option value="G">G</option>
+                            <option value="PG">PG</option>
+                            <option value="PG-13">PG-13</option>
+                            <option value="R">R</option>
+                            <option value="NC-17">NC-17</option>
+                            <option value="TV-Y">TV-Y</option>
+                            <option value="TV-Y7">TV-Y7</option>
+                            <option value="TV-G">TV-G</option>
+                            <option value="TV-PG">TV-PG</option>
+                            <option value="TV-14">TV-14</option>
+                            <option value="TV-MA">TV-MA</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Original Language</label>
+                        <input type="text" id="editOriginalLanguage" placeholder="e.g. en, ja, fr">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Tagline</label>
+                    <input type="text" id="editTagline" placeholder="Movie tagline">
+                </div>
+                <div class="edit-field-row">
+                    <div class="form-group">
+                        <label>Country</label>
+                        <input type="text" id="editCountry" placeholder="e.g. US, GB, JP">
+                    </div>
+                    <div class="form-group">
+                        <label>Trailer URL</label>
+                        <input type="text" id="editTrailerUrl" placeholder="YouTube or direct URL">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Genres <span class="edit-hint">(comma-separated)</span></label>
+                    <input type="text" id="editGenres" placeholder="e.g. Action, Thriller, Drama">
+                </div>
+                <div class="form-group">
+                    <label>Studio</label>
+                    <input type="text" id="editStudio" placeholder="e.g. Warner Bros, A24">
+                </div>
+                <div class="form-group">
+                    <label>Custom Notes</label>
+                    <textarea id="editCustomNotes" rows="2" placeholder="Personal notes (e.g. Hybrid remux, AI upscale, etc.)"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Custom Tags <span class="edit-hint">(comma-separated)</span></label>
+                    <input type="text" id="editCustomTags" placeholder="e.g. reference, demo-disc, keeper">
+                </div>
+                <div id="editCastSection" style="margin-top:8px;">
+                    <span class="field-locks-toggle" id="editCastToggle" onclick="toggleEditCast()">
+                        <span class="arrow">&#9656;</span> Cast &amp; Crew
+                    </span>
+                    <div id="editCastPanel" style="display:none;"></div>
+                </div>
+                <div id="editSeriesGroup" style="display:none; margin-top:8px;">
+                    <div id="editSeriesInfo"></div>
+                    <button class="btn-secondary" style="font-size:0.82rem; padding:8px 14px;" onclick="openSeriesModal()">&#127910; Add to Series</button>
+                </div>
+            </div>
+
+            <!-- Tab: Metadata Locks -->
+            <div class="edit-tab-content" data-tab-content="locks">
+                <div id="editLockStatus" style="margin-bottom:12px;"></div>
+                <div class="field-locks-grid" id="fieldLocksGrid"></div>
+                <div class="edit-hint" style="margin-top:8px; padding:0 4px;">
+                    Locked fields are protected from automatic updates during scans and auto-match.
+                </div>
+            </div>
+
             <div class="edit-modal-actions">
                 <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
                 <button class="btn-secondary" onclick="identifyFromEdit()">&#128270; Identify</button>

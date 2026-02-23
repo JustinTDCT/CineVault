@@ -1,6 +1,6 @@
 {
-  "version": "1.33.01",
-  "phase": 33,
-  "released": "2026-02-22",
-  "notes": "Fix batch-lookup URL mismatch (cache server 405) and artist/album duplicate race condition."
+  "version": "1.34.00",
+  "phase": 34,
+  "released": "2026-02-23",
+  "notes": "Tabbed edit modal with Plex-style inline artwork picker for video libraries."
 }

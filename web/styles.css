@@ -1462,6 +1462,7 @@ video::cue { background: rgba(0,0,0,0.7); color: #fff; font-size: 1.1rem; line-h
     max-height: 90vh; overflow-y: auto;
     box-shadow: var(--shadow-xl), 0 0 0 1px rgba(0,217,255,0.15);
 }
+.edit-modal.tabbed { width: 720px; }
 .edit-modal-title {
     font-size: var(--text-2xl); font-weight: 700; margin-bottom: var(--sp-6);
     font-family: var(--font-display);
@@ -1474,11 +1475,98 @@ video::cue { background: rgba(0,0,0,0.7); color: #fff; font-size: 1.1rem; line-h
     border-top: 1px solid rgba(0,217,255,0.1);
 }
 .edit-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.edit-browse-link {
-    float: right; font-size: var(--text-sm); color: var(--accent); cursor: pointer;
-    font-weight: 400; opacity: 0.8; transition: opacity var(--transition);
+.edit-hint { color: #6b7b8d; font-weight: 400; font-size: 0.78rem; }
+
+/* ── Edit Modal Tabs ── */
+.edit-modal-tabs {
+    display: none; gap: 2px; margin-bottom: 20px;
+    border-bottom: 1px solid rgba(0,217,255,0.15);
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
 }
-.edit-browse-link:hover { opacity: 1; text-decoration: underline; }
+.edit-modal.tabbed .edit-modal-tabs { display: flex; }
+.edit-tab {
+    background: none; border: none; color: var(--text-tertiary);
+    font-family: inherit; font-size: 0.82rem; font-weight: 500;
+    padding: 10px 14px; cursor: pointer; white-space: nowrap;
+    border-bottom: 2px solid transparent; transition: all 0.2s;
+}
+.edit-tab:hover { color: var(--text-secondary); }
+.edit-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.edit-modal.tabbed .edit-tab-content { display: none; }
+.edit-modal.tabbed .edit-tab-content.active { display: block; }
+
+/* ── Inline Artwork Picker (Plex-style) ── */
+.artwork-section { margin-bottom: 24px; }
+.artwork-section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+}
+.artwork-section-header h3 {
+    font-size: 0.95rem; color: var(--text-secondary); font-weight: 600; margin: 0;
+}
+.artwork-section-count {
+    font-size: 0.75rem; color: var(--text-muted); font-weight: 400;
+}
+.artwork-inline-grid {
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+}
+.artwork-inline-grid.backdrop-grid {
+    grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+}
+.artwork-inline-thumb {
+    position: relative; border-radius: 8px; overflow: hidden; cursor: pointer;
+    border: 3px solid transparent; transition: all 0.2s; aspect-ratio: 2/3;
+    background: rgba(0,0,0,0.3);
+}
+.artwork-inline-thumb.backdrop-thumb { aspect-ratio: 16/9; }
+.artwork-inline-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.artwork-inline-thumb:hover { border-color: rgba(0,217,255,0.5); transform: scale(1.03); }
+.artwork-inline-thumb.selected {
+    border-color: #00D9FF;
+    box-shadow: 0 0 16px rgba(0,217,255,0.3);
+}
+.artwork-inline-thumb .artwork-current-badge {
+    position: absolute; top: 6px; left: 6px; z-index: 2;
+    background: rgba(0,217,255,0.9); color: #000;
+    font-size: 0.6rem; font-weight: 700; padding: 2px 6px;
+    border-radius: 4px; text-transform: uppercase; letter-spacing: 0.3px;
+}
+.artwork-inline-thumb .artwork-source-badge {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 2;
+    padding: 3px 6px; background: rgba(0,0,0,0.7);
+    color: #8a9bae; font-size: 0.65rem; text-align: center;
+}
+.artwork-inline-thumb .artwork-check {
+    position: absolute; top: 6px; right: 6px; z-index: 2;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: #000;
+    display: none; align-items: center; justify-content: center;
+    font-size: 0.7rem; font-weight: 700;
+}
+.artwork-inline-thumb.selected .artwork-check { display: flex; }
+.artwork-tab-loading {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 40px 0; color: var(--text-muted); font-size: 0.9rem;
+}
+.artwork-tab-spinner {
+    width: 20px; height: 20px; border: 2px solid rgba(0,217,255,0.2);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.artwork-tab-empty {
+    text-align: center; padding: 30px 0; color: var(--text-muted); font-size: 0.85rem;
+}
+.artwork-manual-url {
+    margin-top: 10px; display: flex; gap: 8px; align-items: center;
+}
+.artwork-manual-url input {
+    flex: 1; font-size: 0.8rem; padding: 6px 10px;
+}
+.artwork-manual-url button {
+    font-size: 0.75rem; padding: 6px 12px; white-space: nowrap;
+}
 
 /* ── Lock Badges ── */
 .lock-badge {

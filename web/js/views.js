@@ -4065,10 +4065,17 @@ function toggleKnownEdition(el) {
 }
 
 // ──── Edit Media ────
+let _editMediaItem = null;
+let _editArtworkLoaded = false;
+const VIDEO_TYPES_TABBED = ['movies', 'adult_movies', 'home_videos', 'other_videos'];
+
 async function openEditModal(id) {
     const data = await api('GET', '/media/' + id);
     if (!data.success) { toast('Failed to load media', 'error'); return; }
     const m = data.data;
+    _editMediaItem = m;
+    _editArtworkLoaded = false;
+
     document.getElementById('editMediaId').value = m.id;
     document.getElementById('editTitle').value = m.title || '';
     document.getElementById('editSortTitle').value = m.sort_title || '';
@@ -4077,9 +4084,7 @@ async function openEditModal(id) {
     document.getElementById('editYear').value = m.year || '';
     document.getElementById('editReleaseDate').value = m.release_date ? m.release_date.substring(0,10) : '';
     document.getElementById('editRating').value = m.rating != null ? m.rating : '';
-    // Edition type (always shown)
     document.getElementById('editEditionType').value = m.edition_type || 'Theatrical';
-    // New fields: content rating, language, tagline, country, trailer, genres, studio
     document.getElementById('editContentRating').value = m.content_rating || '';
     document.getElementById('editOriginalLanguage').value = m.original_language || '';
     document.getElementById('editTagline').value = m.tagline || '';
@@ -4087,20 +4092,19 @@ async function openEditModal(id) {
     document.getElementById('editTrailerUrl').value = m.trailer_url || '';
     document.getElementById('editGenres').value = (m.genres || []).join(', ');
     document.getElementById('editStudio').value = m.studio || '';
-    // Poster and backdrop
     document.getElementById('editPosterPath').value = m.poster_path || '';
     document.getElementById('editBackdropPath').value = m.backdrop_path || '';
-    // Custom notes and tags
     document.getElementById('editCustomNotes').value = m.custom_notes || '';
     const ctRaw = m.custom_tags ? (typeof m.custom_tags === 'string' ? JSON.parse(m.custom_tags || '{}') : m.custom_tags) : {};
     const ctArr = ctRaw.tags || [];
     document.getElementById('editCustomTags').value = ctArr.join(', ');
+
     // Cast display
     document.getElementById('editCastPanel').style.display = 'none';
     document.getElementById('editCastToggle').classList.remove('open');
     loadEditCast(m.id);
-    // Parent Movie field (movies and adult_movies only)
-    const parentGroup = document.getElementById('parentMovieGroup');
+
+    // Parent Movie (movies and adult_movies only)
     const parentSearch = document.getElementById('parentMovieSearch');
     const parentIdField = document.getElementById('parentMovieId');
     const parentInfo = document.getElementById('parentCurrentInfo');
@@ -4109,9 +4113,8 @@ async function openEditModal(id) {
     parentInfo.style.display = 'none';
     parentInfo.innerHTML = '';
     document.getElementById('parentSearchResults').classList.remove('active');
-    if (m.media_type === 'movies' || m.media_type === 'adult_movies') {
-        parentGroup.style.display = '';
-        // Check if already in an edition group
+    const isMovieType = m.media_type === 'movies' || m.media_type === 'adult_movies';
+    if (isMovieType) {
         const edRes = await api('GET', '/media/' + id + '/editions');
         if (edRes.success && edRes.data.has_editions) {
             const eds = edRes.data.editions || [];
@@ -4124,26 +4127,22 @@ async function openEditModal(id) {
                 parentInfo.innerHTML = `<div class="parent-current"><span class="pc-title">&#11088; This is the parent movie (${eds.length} editions)</span></div>`;
             }
         }
-    } else {
-        parentGroup.style.display = 'none';
     }
+
     // Series info (movies and adult_movies only)
     const seriesGroup = document.getElementById('editSeriesGroup');
     const seriesInfo = document.getElementById('editSeriesInfo');
     seriesInfo.innerHTML = '';
-    if (m.media_type === 'movies' || m.media_type === 'adult_movies') {
+    if (isMovieType) {
         seriesGroup.style.display = '';
         loadEditSeriesInfo(m.id);
     } else {
         seriesGroup.style.display = 'none';
     }
+
     // Lock status & per-field locks
     const lockedFields = m.locked_fields || [];
     renderFieldLocks(lockedFields);
-    // Collapse the field locks panel by default
-    document.getElementById('fieldLocksPanel').style.display = 'none';
-    document.getElementById('fieldLocksToggle').classList.remove('open');
-
     const lockDiv = document.getElementById('editLockStatus');
     const resetBtn = document.getElementById('editResetBtn');
     if (m.metadata_locked || lockedFields.includes('*')) {
@@ -4156,7 +4155,149 @@ async function openEditModal(id) {
         lockDiv.innerHTML = '<span class="lock-badge unlocked">&#128275; No fields locked — auto-match may update all fields</span>';
         resetBtn.style.display = 'none';
     }
+
+    // Tab mode for video types (not music_videos)
+    const modal = document.getElementById('editModalContainer');
+    const useTabs = VIDEO_TYPES_TABBED.includes(m.media_type);
+    if (useTabs) {
+        modal.classList.add('tabbed');
+        document.getElementById('editTabEditionsBtn').style.display = isMovieType ? '' : 'none';
+        switchEditTab('basic');
+    } else {
+        modal.classList.remove('tabbed');
+        document.querySelectorAll('.edit-tab-content').forEach(el => el.classList.add('active'));
+    }
+
+    // Reset artwork tab
+    document.getElementById('artworkTabContent').innerHTML =
+        '<div class="artwork-tab-loading" id="artworkTabLoading"><div class="artwork-tab-spinner"></div><span>Loading artwork...</span></div>';
+
     document.getElementById('editMediaOverlay').classList.add('active');
+}
+
+function switchEditTab(tabName) {
+    document.querySelectorAll('.edit-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+    document.querySelectorAll('.edit-tab-content').forEach(c => c.classList.toggle('active', c.dataset.tabContent === tabName));
+    if (tabName === 'artwork' && !_editArtworkLoaded) {
+        loadArtworkTab();
+    }
+}
+
+async function loadArtworkTab() {
+    if (!_editMediaItem) return;
+    _editArtworkLoaded = true;
+    const container = document.getElementById('artworkTabContent');
+    const mediaId = _editMediaItem.id;
+    const currentPoster = _editMediaItem.poster_path || '';
+    const currentBackdrop = _editMediaItem.backdrop_path || '';
+
+    container.innerHTML = '<div class="artwork-tab-loading"><div class="artwork-tab-spinner"></div><span>Loading artwork...</span></div>';
+
+    const res = await api('GET', `/media/${mediaId}/artwork`);
+    let posters = [];
+    let backdrops = [];
+    if (res.success && res.data) {
+        posters = res.data.posters || [];
+        backdrops = res.data.backdrops || [];
+    }
+
+    let html = '';
+
+    // Poster section
+    html += '<div class="artwork-section">';
+    html += '<div class="artwork-section-header"><h3>Poster</h3>';
+    html += '<span class="artwork-section-count">' + (posters.length + (currentPoster ? 1 : 0)) + ' available</span></div>';
+    if (currentPoster || posters.length > 0) {
+        html += '<div class="artwork-inline-grid">';
+        if (currentPoster) {
+            const alreadyInList = posters.some(u => u === currentPoster);
+            html += buildArtworkThumb(currentPoster, 'poster', true, !alreadyInList);
+            posters.forEach(url => {
+                if (url !== currentPoster) {
+                    html += buildArtworkThumb(url, 'poster', false, false);
+                }
+            });
+        } else {
+            posters.forEach((url, i) => {
+                html += buildArtworkThumb(url, 'poster', i === 0, false);
+            });
+        }
+        html += '</div>';
+    } else {
+        html += '<div class="artwork-tab-empty">No poster images available. Use Identify to fetch metadata.</div>';
+    }
+    html += '<div class="artwork-manual-url">';
+    html += '<input type="text" id="manualPosterUrl" placeholder="Or paste a custom poster URL...">';
+    html += '<button class="btn-secondary" onclick="applyManualArtwork(\'poster\')">Apply</button>';
+    html += '</div></div>';
+
+    // Backdrop section
+    html += '<div class="artwork-section">';
+    html += '<div class="artwork-section-header"><h3>Background</h3>';
+    html += '<span class="artwork-section-count">' + (backdrops.length + (currentBackdrop ? 1 : 0)) + ' available</span></div>';
+    if (currentBackdrop || backdrops.length > 0) {
+        html += '<div class="artwork-inline-grid backdrop-grid">';
+        if (currentBackdrop) {
+            const alreadyInList = backdrops.some(u => u === currentBackdrop);
+            html += buildArtworkThumb(currentBackdrop, 'backdrop', true, !alreadyInList);
+            backdrops.forEach(url => {
+                if (url !== currentBackdrop) {
+                    html += buildArtworkThumb(url, 'backdrop', false, false);
+                }
+            });
+        } else {
+            backdrops.forEach((url, i) => {
+                html += buildArtworkThumb(url, 'backdrop', i === 0, false);
+            });
+        }
+        html += '</div>';
+    } else {
+        html += '<div class="artwork-tab-empty">No background images available. Use Identify to fetch metadata.</div>';
+    }
+    html += '<div class="artwork-manual-url">';
+    html += '<input type="text" id="manualBackdropUrl" placeholder="Or paste a custom background URL...">';
+    html += '<button class="btn-secondary" onclick="applyManualArtwork(\'backdrop\')">Apply</button>';
+    html += '</div></div>';
+
+    container.innerHTML = html;
+}
+
+function buildArtworkThumb(url, type, isSelected, isCurrent) {
+    const cls = type === 'backdrop' ? 'artwork-inline-thumb backdrop-thumb' : 'artwork-inline-thumb';
+    const selCls = isSelected ? ' selected' : '';
+    const safeUrl = url.replace(/'/g, "\\'");
+    const source = extractArtworkSource(url);
+    return `<div class="${cls}${selCls}" onclick="selectInlineArtwork(this,'${type}','${safeUrl}')">
+        <img src="${url}" loading="lazy" alt="${type}">
+        ${isCurrent ? '<span class="artwork-current-badge">Current</span>' : ''}
+        <span class="artwork-check">&#10003;</span>
+        <span class="artwork-source-badge">${source}</span>
+    </div>`;
+}
+
+function selectInlineArtwork(el, type, url) {
+    const grid = el.parentElement;
+    grid.querySelectorAll('.artwork-inline-thumb').forEach(t => t.classList.remove('selected'));
+    el.classList.add('selected');
+    if (type === 'poster') {
+        document.getElementById('editPosterPath').value = url;
+    } else {
+        document.getElementById('editBackdropPath').value = url;
+    }
+}
+
+function applyManualArtwork(type) {
+    const inputId = type === 'poster' ? 'manualPosterUrl' : 'manualBackdropUrl';
+    const url = document.getElementById(inputId).value.trim();
+    if (!url) { toast('Enter a URL first', 'error'); return; }
+    if (type === 'poster') {
+        document.getElementById('editPosterPath').value = url;
+    } else {
+        document.getElementById('editBackdropPath').value = url;
+    }
+    const grid = document.getElementById(inputId).closest('.artwork-section').querySelector('.artwork-inline-grid');
+    if (grid) grid.querySelectorAll('.artwork-inline-thumb').forEach(t => t.classList.remove('selected'));
+    toast(`Custom ${type} URL applied`);
 }
 
 function closeEditModal() {
@@ -4267,14 +4408,6 @@ const LOCKABLE_FIELDS = [
     { key: 'custom_tags', label: 'Custom Tags' },
 ];
 let _currentLockedFields = [];
-
-function toggleFieldLocks() {
-    const panel = document.getElementById('fieldLocksPanel');
-    const toggle = document.getElementById('fieldLocksToggle');
-    const isOpen = panel.style.display !== 'none';
-    panel.style.display = isOpen ? 'none' : '';
-    toggle.classList.toggle('open', !isOpen);
-}
 
 function renderFieldLocks(lockedFields) {
     _currentLockedFields = lockedFields || [];
@@ -4870,11 +5003,13 @@ async function showNewRequestDialog() {
 // ──────────────────── Artwork Picker ────────────────────
 
 function browseArtworkFromEdit(type) {
+    const modal = document.getElementById('editModalContainer');
+    if (modal && modal.classList.contains('tabbed')) {
+        switchEditTab('artwork');
+        return;
+    }
     const mediaId = document.getElementById('editMediaId').value;
     if (!mediaId) { toast('No media item loaded', 'error'); return; }
-    // Close the edit modal first
-    const modal = document.getElementById('editModal');
-    if (modal) modal.style.display = 'none';
     openArtworkPicker(mediaId, type);
 }
 
