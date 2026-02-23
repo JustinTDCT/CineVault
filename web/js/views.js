@@ -678,13 +678,11 @@ async function loadMediaDetail(id) {
 
     const detailTitle = m.sister_group_name || m.title;
 
-    const backdropStyle = m.backdrop_path
-        ? `background-image:url('${posterSrc(m.backdrop_path, m.updated_at)}');`
-        : '';
+    const backdropSrc = m.backdrop_path ? posterSrc(m.backdrop_path, m.updated_at) : '';
 
     mc.innerHTML = `
-        <div class="detail-hero${m.backdrop_path ? ' has-backdrop' : ''}" style="${backdropStyle}">
-            ${m.backdrop_path ? '<div class="detail-hero-overlay"></div>' : ''}
+        <div class="detail-hero${backdropSrc ? ' has-backdrop' : ''}"${backdropSrc ? ` style="background-image:url('${backdropSrc.replace(/'/g, '%27')}');"` : ''}>
+            ${backdropSrc ? '<div class="detail-hero-overlay"></div>' : ''}
             <div class="detail-poster">${m.poster_path ? '<img src="'+posterSrc(m.poster_path, m.updated_at)+'">' : mediaIcon(m.media_type)}</div>
             <div class="detail-info">
                 <h1>${detailTitle}</h1>
@@ -5087,7 +5085,7 @@ async function selectArtwork(el, mediaId, type, url) {
         toast(`${type.charAt(0).toUpperCase()+type.slice(1)} updated!`);
         const overlay = document.getElementById('artworkPickerOverlay');
         if (overlay) overlay.remove();
-        showMediaDetail(mediaId);
+        loadMediaDetail(mediaId);
     } else {
         toast(res.error || 'Failed to update artwork', 'error');
     }

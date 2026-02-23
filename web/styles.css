@@ -1160,14 +1160,14 @@ body {
    ══════════════════════════════════════ */
 .detail-hero {
     display: flex; gap: 35px; margin-bottom: 30px;
-    background: var(--surface-light);
+    background-color: var(--surface-light);
+    background-size: cover; background-position: center top; background-repeat: no-repeat;
     border-radius: var(--radius-3xl); padding: 30px; border: 1px solid rgba(0,217,255,0.1);
     position: relative; overflow: hidden;
-    background-size: cover; background-position: center top;
 }
 .detail-hero-overlay {
     position: absolute; inset: 0; z-index: 0;
-    background: linear-gradient(to right, rgba(10,18,30,0.97) 0%, rgba(10,18,30,0.85) 55%, rgba(10,18,30,0.6) 100%);
+    background: linear-gradient(to right, rgba(10,18,30,0.92) 0%, rgba(10,18,30,0.75) 50%, rgba(10,18,30,0.45) 100%);
     border-radius: inherit;
 }
 .detail-hero.has-backdrop { border-color: rgba(0,217,255,0.2); }

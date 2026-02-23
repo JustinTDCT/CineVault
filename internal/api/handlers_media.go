@@ -157,16 +157,25 @@ func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Title         string   `json:"title"`
-		SortTitle     *string  `json:"sort_title"`
-		OriginalTitle *string  `json:"original_title"`
-		Description   *string  `json:"description"`
-		Year          *int     `json:"year"`
-		ReleaseDate   *string  `json:"release_date"`
-		Rating        *float64 `json:"rating"`
-		EditionType   *string  `json:"edition_type"`
-		CustomNotes   *string  `json:"custom_notes"`
-		CustomTags    *string  `json:"custom_tags"`
+		Title            string   `json:"title"`
+		SortTitle        *string  `json:"sort_title"`
+		OriginalTitle    *string  `json:"original_title"`
+		Description      *string  `json:"description"`
+		Year             *int     `json:"year"`
+		ReleaseDate      *string  `json:"release_date"`
+		Rating           *float64 `json:"rating"`
+		EditionType      *string  `json:"edition_type"`
+		CustomNotes      *string  `json:"custom_notes"`
+		CustomTags       *string  `json:"custom_tags"`
+		PosterPath       *string  `json:"poster_path"`
+		BackdropPath     *string  `json:"backdrop_path"`
+		ContentRating    *string  `json:"content_rating"`
+		OriginalLanguage *string  `json:"original_language"`
+		Tagline          *string  `json:"tagline"`
+		Country          *string  `json:"country"`
+		TrailerURL       *string  `json:"trailer_url"`
+		Genres           []string `json:"genres"`
+		Studio           *string  `json:"studio"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondError(w, http.StatusBadRequest, "invalid request body")
@@ -189,6 +198,27 @@ func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 	// Update custom tags if provided
 	if req.CustomTags != nil {
 		_ = s.mediaRepo.UpdateCustomTags(id, *req.CustomTags)
+	}
+	// Update poster path if provided
+	if req.PosterPath != nil && *req.PosterPath != "" {
+		_ = s.mediaRepo.UpdatePosterPath(id, *req.PosterPath)
+	}
+	// Update backdrop path if provided
+	if req.BackdropPath != nil && *req.BackdropPath != "" {
+		_ = s.mediaRepo.UpdateBackdropPath(id, *req.BackdropPath)
+	}
+	// Update content rating if provided
+	if req.ContentRating != nil {
+		_ = s.mediaRepo.UpdateContentRating(id, *req.ContentRating)
+	}
+	// Update extended metadata fields (tagline, language, country, trailer)
+	if req.OriginalLanguage != nil || req.Tagline != nil || req.Country != nil || req.TrailerURL != nil {
+		_ = s.mediaRepo.UpdateExtendedMetadataFull(id, &repository.ExtendedMetadataUpdate{
+			OriginalLanguage: req.OriginalLanguage,
+			Tagline:          req.Tagline,
+			Country:          req.Country,
+			TrailerURL:       req.TrailerURL,
+		})
 	}
 
 	// Return updated item
