@@ -502,6 +502,7 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 	// Extract artist/album from MusicBrainz cache entries for music hierarchy
 	if metadataSource == "musicbrainz" {
 		match.ArtistName = extractArtistFromCastCrew(entry.CastCrew)
+		match.ArtistMBID = extractArtistMBIDFromCastCrew(entry.CastCrew)
 		if entry.OriginalTitle != nil && *entry.OriginalTitle != "" {
 			match.AlbumTitle = *entry.OriginalTitle
 		}
@@ -1563,7 +1564,7 @@ type artworkEntry struct {
 // parseArtworkURLArray parses the JSON artwork array from the cache server.
 // It prefers the local cached path (via /images/) when available, otherwise falls back to the original URL.
 // extractArtistFromCastCrew parses the first artist name from the MusicBrainz-style
-// cast/crew JSON: {"cast":[{"name":"ArtistName","character":"Artist"}],...}
+// cast/crew JSON: {"cast":[{"name":"ArtistName","character":"Artist","mbid":"..."}],...}
 func extractArtistFromCastCrew(castCrew *string) string {
 	if castCrew == nil || *castCrew == "" {
 		return ""
@@ -1578,6 +1579,24 @@ func extractArtistFromCastCrew(castCrew *string) string {
 	}
 	if len(cc.Cast) > 0 {
 		return cc.Cast[0].Name
+	}
+	return ""
+}
+
+func extractArtistMBIDFromCastCrew(castCrew *string) string {
+	if castCrew == nil || *castCrew == "" {
+		return ""
+	}
+	var cc struct {
+		Cast []struct {
+			MBID string `json:"mbid"`
+		} `json:"cast"`
+	}
+	if err := json.Unmarshal([]byte(*castCrew), &cc); err != nil {
+		return ""
+	}
+	if len(cc.Cast) > 0 {
+		return cc.Cast[0].MBID
 	}
 	return ""
 }
@@ -1608,4 +1627,43 @@ func parseArtworkURLArray(raw *string) []string {
 	}
 
 	return nil
+}
+
+// CacheMusicArtist represents a music artist from the cache server.
+type CacheMusicArtist struct {
+	ID        string  `json:"id"`
+	MBID      string  `json:"mbid"`
+	Name      string  `json:"name"`
+	PhotoURL  *string `json:"photo_url,omitempty"`
+	PhotoPath *string `json:"photo_path,omitempty"`
+}
+
+// LookupMusicArtist requests a music artist from the cache server by MBID.
+// The cache server will fetch from fanart.tv on miss.
+func (c *CacheClient) LookupMusicArtist(mbid, name string) *CacheMusicArtist {
+	if c == nil || mbid == "" {
+		return nil
+	}
+	reqURL := fmt.Sprintf("%s/api/v1/music-artist/%s?name=%s", c.baseURL, mbid, url.QueryEscape(name))
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("X-API-Key", c.apiKey)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil
+	}
+
+	var artist CacheMusicArtist
+	if err := json.NewDecoder(resp.Body).Decode(&artist); err != nil {
+		return nil
+	}
+	return &artist
 }

@@ -318,6 +318,7 @@ type Artist struct {
 	SortName     *string   `json:"sort_name,omitempty" db:"sort_name"`
 	Description  *string   `json:"description,omitempty" db:"description"`
 	PosterPath   *string   `json:"poster_path,omitempty" db:"poster_path"`
+	MBID         *string   `json:"mbid,omitempty" db:"mbid"`
 	SortPosition int       `json:"sort_position" db:"sort_position"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
@@ -867,9 +868,10 @@ type MetadataMatch struct {
 	CollectionName   *string  `json:"collection_name,omitempty"`
 	Keywords         []string `json:"keywords,omitempty"`
 	Confidence       float64  `json:"confidence"`
-	// Music video fields (from MusicBrainz)
-	ArtistName  string `json:"artist_name,omitempty"`
-	AlbumTitle  string `json:"album_title,omitempty"`
+	// Music fields (from MusicBrainz)
+	ArtistName string `json:"artist_name,omitempty"`
+	ArtistMBID string `json:"artist_mbid,omitempty"`
+	AlbumTitle string `json:"album_title,omitempty"`
 	RecordLabel string `json:"record_label,omitempty"`
 	// Audiobook fields (from Audnexus)
 	Narrator    string `json:"narrator,omitempty"`

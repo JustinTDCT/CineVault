@@ -1311,6 +1311,35 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 			updated = int(musicUpdated)
 			log.Printf("Metadata refresh: music fast path done — %d/%d tracks updated in %q",
 				updated, len(musicItems), library.Name)
+
+			// Backfill album cover art for albums still missing posters
+			if h.notifier != nil {
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskMetadataRefresh,
+					"status": "running", "progress": 90, "description": "Fetching album cover art...",
+				})
+			}
+			artCount, artErr := h.scanner.BackfillAlbumArt(libID)
+			if artErr != nil {
+				log.Printf("Metadata refresh: album art backfill error: %v", artErr)
+			} else if artCount > 0 {
+				log.Printf("Metadata refresh: fetched %d album covers", artCount)
+			}
+
+			// Backfill artist images from cache server
+			if h.notifier != nil {
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskMetadataRefresh,
+					"status": "running", "progress": 95, "description": "Fetching artist images...",
+				})
+			}
+			artistImgCount, artistImgErr := h.scanner.BackfillArtistImages(libID)
+			if artistImgErr != nil {
+				log.Printf("Metadata refresh: artist image backfill error: %v", artistImgErr)
+			} else if artistImgCount > 0 {
+				log.Printf("Metadata refresh: fetched %d artist images", artistImgCount)
+			}
+
 			if h.notifier != nil {
 				h.notifier.Broadcast("task:update", map[string]interface{}{
 					"task_id": taskID, "task_type": TaskMetadataRefresh,

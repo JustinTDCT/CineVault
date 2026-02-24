@@ -2015,7 +2015,12 @@ func (s *Scanner) autoPopulateMetadata(library *models.Library, item *models.Med
 
 	// Create artist/album from MusicBrainz match when not already linked
 	if match.Source == "musicbrainz" && match.ArtistName != "" {
-		s.linkMusicHierarchyFromMatch(item, match.ArtistName, match.AlbumTitle, match.Year)
+		s.linkMusicHierarchyFromMatch(item, match.ArtistName, match.ArtistMBID, match.AlbumTitle, match.Year)
+	}
+
+	// Propagate cover art to the parent album
+	if item.MediaType == models.MediaTypeMusic && item.AlbumID != nil && match.PosterURL != nil {
+		s.propagateAlbumArt(item, match.PosterURL)
 	}
 
 	// Store external IDs from direct match
@@ -2187,7 +2192,12 @@ func (s *Scanner) applyCacheResult(item *models.MediaItem, result *metadata.Cach
 
 	// Create artist/album records from MusicBrainz data when not already linked
 	if match.ArtistName != "" {
-		s.linkMusicHierarchyFromMatch(item, match.ArtistName, match.AlbumTitle, match.Year)
+		s.linkMusicHierarchyFromMatch(item, match.ArtistName, match.ArtistMBID, match.AlbumTitle, match.Year)
+	}
+
+	// Propagate cover art to the parent album
+	if item.MediaType == models.MediaTypeMusic && item.AlbumID != nil && match.PosterURL != nil {
+		s.propagateAlbumArt(item, match.PosterURL)
 	}
 }
 
@@ -2330,10 +2340,148 @@ func (s *Scanner) cachedFindOrCreateAlbum(artistID, libraryID uuid.UUID, title s
 	return album, nil
 }
 
+// BackfillArtistImages finds artists without poster art and fetches images
+// from the cache server (which sources them from fanart.tv).
+func (s *Scanner) BackfillArtistImages(libraryID uuid.UUID) (int, error) {
+	if s.musicRepo == nil || s.posterDir == "" {
+		return 0, nil
+	}
+	artists, err := s.musicRepo.ListArtistsWithoutPosters(libraryID)
+	if err != nil {
+		return 0, fmt.Errorf("list artists: %w", err)
+	}
+	if len(artists) == 0 {
+		return 0, nil
+	}
+
+	cacheClient := s.getCacheClient()
+	if cacheClient == nil {
+		return 0, fmt.Errorf("cache server not configured")
+	}
+
+	log.Printf("Artist image backfill: %d artists without photos in library %s", len(artists), libraryID)
+
+	fetched := 0
+	for _, artist := range artists {
+		if artist.MBID == nil || *artist.MBID == "" {
+			continue
+		}
+		result := cacheClient.LookupMusicArtist(*artist.MBID, artist.Name)
+		if result == nil {
+			continue
+		}
+
+		// Prefer cached local path, fall back to source URL
+		var imageURL string
+		if result.PhotoPath != nil && *result.PhotoPath != "" {
+			imageURL = metadata.CacheImageURL(*result.PhotoPath)
+		} else if result.PhotoURL != nil && *result.PhotoURL != "" {
+			imageURL = *result.PhotoURL
+		}
+		if imageURL == "" {
+			continue
+		}
+
+		filename := "artist_" + artist.ID.String() + ".jpg"
+		_, dlErr := metadata.DownloadPoster(imageURL, filepath.Join(s.posterDir, "posters"), filename)
+		if dlErr != nil {
+			log.Printf("Artist image backfill: download failed for %q: %v", artist.Name, dlErr)
+			continue
+		}
+		webPath := "/previews/posters/" + filename
+		if err := s.musicRepo.UpdateArtistPosterPath(artist.ID, webPath); err == nil {
+			fetched++
+			log.Printf("Artist image backfill: set photo for %q", artist.Name)
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	return fetched, nil
+}
+
 // linkMusicHierarchyFromMatch creates/links artist and album records when a
 // MusicBrainz or cache match returns artist/album info that wasn't captured
 // from the filename or embedded tags.
-func (s *Scanner) linkMusicHierarchyFromMatch(item *models.MediaItem, artistName, albumTitle string, year *int) {
+// propagateAlbumArt copies the track's poster to its parent album if the album has no cover art.
+func (s *Scanner) propagateAlbumArt(item *models.MediaItem, posterURL *string) {
+	if s.musicRepo == nil || item.AlbumID == nil || posterURL == nil || *posterURL == "" || s.posterDir == "" {
+		return
+	}
+	album, err := s.musicRepo.GetAlbumByID(*item.AlbumID)
+	if err != nil || album == nil || album.PosterPath != nil {
+		return
+	}
+	filename := "album_" + album.ID.String() + ".jpg"
+	_, dlErr := metadata.DownloadPoster(*posterURL, filepath.Join(s.posterDir, "posters"), filename)
+	if dlErr != nil {
+		log.Printf("Album art: download failed for %q: %v", album.Title, dlErr)
+		return
+	}
+	webPath := "/previews/posters/" + filename
+	if err := s.musicRepo.UpdateAlbumPosterPath(album.ID, webPath); err != nil {
+		log.Printf("Album art: DB update failed for %q: %v", album.Title, err)
+		return
+	}
+	log.Printf("Album art: set cover for %q", album.Title)
+}
+
+// BackfillAlbumArt finds albums without poster art and attempts to fetch covers
+// from the Cover Art Archive via MusicBrainz release search.
+func (s *Scanner) BackfillAlbumArt(libraryID uuid.UUID) (int, error) {
+	if s.musicRepo == nil || s.posterDir == "" {
+		return 0, nil
+	}
+	albums, err := s.musicRepo.ListAlbumsWithoutPosters(libraryID)
+	if err != nil {
+		return 0, fmt.Errorf("list albums: %w", err)
+	}
+	if len(albums) == 0 {
+		return 0, nil
+	}
+	log.Printf("Album art backfill: %d albums without covers in library %s", len(albums), libraryID)
+
+	var mbScraper *metadata.MusicBrainzScraper
+	for _, sc := range s.scrapers {
+		if mb, ok := sc.(*metadata.MusicBrainzScraper); ok {
+			mbScraper = mb
+			break
+		}
+	}
+	if mbScraper == nil {
+		return 0, fmt.Errorf("MusicBrainz scraper not configured")
+	}
+
+	fetched := 0
+	for _, album := range albums {
+		query := album.Title
+		if album.ArtistName != "" {
+			query = album.ArtistName + " " + album.Title
+		}
+		matches, err := mbScraper.Search(query, models.MediaTypeMusic, album.Year)
+		if err != nil {
+			log.Printf("Album art backfill: search failed for %q: %v", album.Title, err)
+			continue
+		}
+		for _, m := range matches {
+			if m.PosterURL != nil && *m.PosterURL != "" {
+				filename := "album_" + album.ID.String() + ".jpg"
+				_, dlErr := metadata.DownloadPoster(*m.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+				if dlErr != nil {
+					continue
+				}
+				webPath := "/previews/posters/" + filename
+				if err := s.musicRepo.UpdateAlbumPosterPath(album.ID, webPath); err == nil {
+					fetched++
+					log.Printf("Album art backfill: set cover for %q", album.Title)
+				}
+				break
+			}
+		}
+		time.Sleep(1100 * time.Millisecond)
+	}
+	return fetched, nil
+}
+
+func (s *Scanner) linkMusicHierarchyFromMatch(item *models.MediaItem, artistName, artistMBID, albumTitle string, year *int) {
 	if artistName == "" || s.musicRepo == nil {
 		return
 	}
@@ -2351,6 +2499,12 @@ func (s *Scanner) linkMusicHierarchyFromMatch(item *models.MediaItem, artistName
 	}
 	item.ArtistID = &artist.ID
 	s.mediaRepo.DB().Exec(`UPDATE media_items SET artist_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, artist.ID, item.ID)
+
+	// Store MusicBrainz artist ID if available and not yet set
+	if artistMBID != "" && artist.MBID == nil {
+		_ = s.musicRepo.UpdateArtistMBID(artist.ID, artistMBID)
+		artist.MBID = &artistMBID
+	}
 
 	if albumTitle != "" {
 		album, err := s.cachedFindOrCreateAlbum(artist.ID, item.LibraryID, albumTitle, year)

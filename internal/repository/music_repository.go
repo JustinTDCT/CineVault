@@ -20,23 +20,23 @@ func NewMusicRepository(db *sql.DB) *MusicRepository {
 
 func (r *MusicRepository) CreateArtist(a *models.Artist) error {
 	query := `
-		INSERT INTO artists (id, library_id, name, sort_name, description, poster_path, sort_position)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO artists (id, library_id, name, sort_name, description, poster_path, mbid, sort_position)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING created_at, updated_at`
 	return r.db.QueryRow(query, a.ID, a.LibraryID, a.Name, a.SortName,
-		a.Description, a.PosterPath, a.SortPosition).
+		a.Description, a.PosterPath, a.MBID, a.SortPosition).
 		Scan(&a.CreatedAt, &a.UpdatedAt)
 }
 
 func (r *MusicRepository) GetArtistByID(id uuid.UUID) (*models.Artist, error) {
 	a := &models.Artist{}
 	query := `
-		SELECT id, library_id, name, sort_name, description, poster_path,
+		SELECT id, library_id, name, sort_name, description, poster_path, mbid,
 		       sort_position, created_at, updated_at
 		FROM artists WHERE id = $1`
 	err := r.db.QueryRow(query, id).Scan(
 		&a.ID, &a.LibraryID, &a.Name, &a.SortName, &a.Description,
-		&a.PosterPath, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt,
+		&a.PosterPath, &a.MBID, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("artist not found")
@@ -46,7 +46,7 @@ func (r *MusicRepository) GetArtistByID(id uuid.UUID) (*models.Artist, error) {
 
 func (r *MusicRepository) ListArtistsByLibrary(libraryID uuid.UUID) ([]*models.Artist, error) {
 	query := `
-		SELECT a.id, a.library_id, a.name, a.sort_name, a.description, a.poster_path,
+		SELECT a.id, a.library_id, a.name, a.sort_name, a.description, a.poster_path, a.mbid,
 		       a.sort_position, a.created_at, a.updated_at,
 		       COUNT(DISTINCT al.id) AS album_count,
 		       COUNT(DISTINCT m.id) AS track_count
@@ -66,7 +66,7 @@ func (r *MusicRepository) ListArtistsByLibrary(libraryID uuid.UUID) ([]*models.A
 	for rows.Next() {
 		a := &models.Artist{}
 		if err := rows.Scan(&a.ID, &a.LibraryID, &a.Name, &a.SortName,
-			&a.Description, &a.PosterPath, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt,
+			&a.Description, &a.PosterPath, &a.MBID, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt,
 			&a.AlbumCount, &a.TrackCount); err != nil {
 			return nil, err
 		}
@@ -78,12 +78,12 @@ func (r *MusicRepository) ListArtistsByLibrary(libraryID uuid.UUID) ([]*models.A
 func (r *MusicRepository) FindArtistByName(libraryID uuid.UUID, name string) (*models.Artist, error) {
 	a := &models.Artist{}
 	query := `
-		SELECT id, library_id, name, sort_name, description, poster_path,
+		SELECT id, library_id, name, sort_name, description, poster_path, mbid,
 		       sort_position, created_at, updated_at
 		FROM artists WHERE library_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1`
 	err := r.db.QueryRow(query, libraryID, name).Scan(
 		&a.ID, &a.LibraryID, &a.Name, &a.SortName, &a.Description,
-		&a.PosterPath, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt,
+		&a.PosterPath, &a.MBID, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -101,6 +101,43 @@ func (r *MusicRepository) DeleteArtist(id uuid.UUID) error {
 		return fmt.Errorf("artist not found")
 	}
 	return nil
+}
+
+func (r *MusicRepository) UpdateArtistMBID(artistID uuid.UUID, mbid string) error {
+	_, err := r.db.Exec(`UPDATE artists SET mbid = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+		mbid, artistID)
+	return err
+}
+
+func (r *MusicRepository) UpdateArtistPosterPath(artistID uuid.UUID, posterPath string) error {
+	_, err := r.db.Exec(`UPDATE artists SET poster_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+		posterPath, artistID)
+	return err
+}
+
+func (r *MusicRepository) ListArtistsWithoutPosters(libraryID uuid.UUID) ([]*models.Artist, error) {
+	query := `
+		SELECT id, library_id, name, sort_name, description, poster_path, mbid,
+		       sort_position, created_at, updated_at
+		FROM artists
+		WHERE library_id = $1 AND poster_path IS NULL
+		ORDER BY COALESCE(sort_name, name)`
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var artists []*models.Artist
+	for rows.Next() {
+		a := &models.Artist{}
+		if err := rows.Scan(&a.ID, &a.LibraryID, &a.Name, &a.SortName,
+			&a.Description, &a.PosterPath, &a.MBID, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			return nil, err
+		}
+		artists = append(artists, a)
+	}
+	return artists, rows.Err()
 }
 
 // ──────────────────── Albums ────────────────────
@@ -217,4 +254,41 @@ func (r *MusicRepository) DeleteAlbum(id uuid.UUID) error {
 		return fmt.Errorf("album not found")
 	}
 	return nil
+}
+
+func (r *MusicRepository) UpdateAlbumPosterPath(albumID uuid.UUID, posterPath string) error {
+	_, err := r.db.Exec(`UPDATE albums SET poster_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+		posterPath, albumID)
+	return err
+}
+
+func (r *MusicRepository) ListAlbumsWithoutPosters(libraryID uuid.UUID) ([]*models.Album, error) {
+	query := `
+		SELECT al.id, al.artist_id, al.library_id, al.title, al.sort_title, al.year,
+		       al.release_date, al.description, al.genre, al.poster_path,
+		       al.sort_position, al.created_at, al.updated_at,
+		       0 AS track_count,
+		       COALESCE(ar.name, '') AS artist_name
+		FROM albums al
+		LEFT JOIN artists ar ON ar.id = al.artist_id
+		WHERE al.library_id = $1 AND al.poster_path IS NULL
+		ORDER BY COALESCE(al.sort_title, al.title)`
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var albums []*models.Album
+	for rows.Next() {
+		a := &models.Album{}
+		if err := rows.Scan(&a.ID, &a.ArtistID, &a.LibraryID, &a.Title, &a.SortTitle,
+			&a.Year, &a.ReleaseDate, &a.Description, &a.Genre,
+			&a.PosterPath, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt,
+			&a.TrackCount, &a.ArtistName); err != nil {
+			return nil, err
+		}
+		albums = append(albums, a)
+	}
+	return albums, rows.Err()
 }

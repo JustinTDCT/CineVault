@@ -1951,6 +1951,11 @@ async function loadLibraryView(libraryId) {
     renderFilterChips();
     loadFilterPresetsIntoDropdown();
 
+    if (isMusic) {
+        showMusicAlbums();
+        return;
+    }
+
     const restoreState = _pendingScrollRestore;
     _pendingScrollRestore = null;
 
@@ -2015,9 +2020,9 @@ function buildFilterToolbar(opts) {
            <input type="number" id="ftMinRating" placeholder="0" min="0" max="10" step="0.5" onchange="applyLibFilter()">`;
 
     const viewButtons = isMusic
-        ? `<button class="ft-btn active" id="ftGridBtn" onclick="showLibraryGrid()" title="All Tracks">&#9638; Grid</button>
+        ? `<button class="ft-btn" id="ftGridBtn" onclick="showLibraryGrid()" title="All Tracks">&#9638; Grid</button>
            <button class="ft-btn" id="ftArtistBtn" onclick="showMusicArtists()" title="View by Artist">&#127908; Artists</button>
-           <button class="ft-btn" id="ftAlbumBtn" onclick="showMusicAlbums()" title="View by Album">&#128191; Albums</button>`
+           <button class="ft-btn active" id="ftAlbumBtn" onclick="showMusicAlbums()" title="View by Album">&#128191; Albums</button>`
         : `<button class="ft-btn" id="ftGridBtn" onclick="showLibraryGrid()" title="Grid view">&#9638; Grid</button>
            <button class="ft-btn" id="ftCollBtn" onclick="showLibraryCollections()" title="Collections view">&#128218; Collections</button>
            <button class="ft-btn" id="ftSeriesBtn" onclick="showLibrarySeries()" title="Series view">&#127910; Series</button>`;

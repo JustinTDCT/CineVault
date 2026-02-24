@@ -1106,6 +1106,7 @@ func (s *MusicBrainzScraper) getReleaseDetails(releaseID string) (*models.Metada
 		ArtistCredit []struct {
 			Name   string `json:"name"`
 			Artist struct {
+				ID   string `json:"id"`
 				Name string `json:"name"`
 			} `json:"artist"`
 		} `json:"artist-credit"`
@@ -1142,6 +1143,7 @@ func (s *MusicBrainzScraper) getReleaseDetails(releaseID string) (*models.Metada
 	}
 
 	var desc *string
+	var artistName, artistMBID string
 	var artists []string
 	for _, ac := range r.ArtistCredit {
 		name := ac.Name
@@ -1149,13 +1151,17 @@ func (s *MusicBrainzScraper) getReleaseDetails(releaseID string) (*models.Metada
 			name = ac.Artist.Name
 		}
 		artists = append(artists, name)
+		if artistMBID == "" && ac.Artist.ID != "" {
+			artistMBID = ac.Artist.ID
+		}
 	}
 	if len(artists) > 0 {
+		artistName = strings.Join(artists, ", ")
 		releaseType := "Release"
 		if r.ReleaseGroup.PrimaryType != "" {
 			releaseType = r.ReleaseGroup.PrimaryType
 		}
-		d := releaseType + " by " + strings.Join(artists, ", ")
+		d := releaseType + " by " + artistName
 		desc = &d
 	}
 
@@ -1179,6 +1185,8 @@ func (s *MusicBrainzScraper) getReleaseDetails(releaseID string) (*models.Metada
 		PosterURL:   posterURL,
 		Genres:      genres,
 		Confidence:  1.0,
+		ArtistName:  artistName,
+		ArtistMBID:  artistMBID,
 	}, nil
 }
 
@@ -1207,6 +1215,7 @@ func (s *MusicBrainzScraper) getRecordingDetails(recordingID string) (*models.Me
 		ArtistCredit   []struct {
 			Name   string `json:"name"`
 			Artist struct {
+				ID   string `json:"id"`
 				Name string `json:"name"`
 			} `json:"artist"`
 		} `json:"artist-credit"`
@@ -1237,7 +1246,7 @@ func (s *MusicBrainzScraper) getRecordingDetails(recordingID string) (*models.Me
 	}
 
 	var desc *string
-	var artistName string
+	var artistName, artistMBID string
 	var artists []string
 	for _, ac := range r.ArtistCredit {
 		name := ac.Name
@@ -1245,6 +1254,9 @@ func (s *MusicBrainzScraper) getRecordingDetails(recordingID string) (*models.Me
 			name = ac.Artist.Name
 		}
 		artists = append(artists, name)
+		if artistMBID == "" && ac.Artist.ID != "" {
+			artistMBID = ac.Artist.ID
+		}
 	}
 	if len(artists) > 0 {
 		artistName = strings.Join(artists, ", ")
@@ -1290,6 +1302,7 @@ func (s *MusicBrainzScraper) getRecordingDetails(recordingID string) (*models.Me
 		Genres:      genres,
 		Confidence:  1.0,
 		ArtistName:  artistName,
+		ArtistMBID:  artistMBID,
 		AlbumTitle:  albumTitle,
 		RecordLabel: recordLabel,
 	}, nil
