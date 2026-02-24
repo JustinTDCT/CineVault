@@ -847,6 +847,13 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 		select {
 		case <-ctx.Done():
 			log.Printf("Metadata: cancelled after %d/%d items", i, len(items))
+			if h.notifier != nil {
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskMetadataScrape,
+					"status": "complete", "progress": 100,
+					"description": fmt.Sprintf("Metadata scrape: %s (cancelled)", library.Name),
+				})
+			}
 			return ctx.Err()
 		default:
 		}
@@ -1354,6 +1361,13 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 		select {
 		case <-ctx.Done():
 			log.Printf("Metadata refresh: cancelled after %d/%d items", i, len(items))
+			if h.notifier != nil {
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskMetadataRefresh,
+					"status": "complete", "progress": 100,
+					"description": fmt.Sprintf("Metadata refresh: %s (cancelled)", library.Name),
+				})
+			}
 			return ctx.Err()
 		default:
 		}
