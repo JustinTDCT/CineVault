@@ -1266,6 +1266,61 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 	var pendingRefreshContributions []metadata.BatchContributeItem
 	var lastBroadcast time.Time
 
+	// ── Music fast path: concurrent re-probe of embedded tags ──
+	if library.MediaType == models.MediaTypeMusic && h.scanner != nil {
+		var musicItems []*models.MediaItem
+		for _, item := range items {
+			if !item.MetadataLocked && !item.IsFieldLocked("*") {
+				musicItems = append(musicItems, item)
+			}
+		}
+		if len(musicItems) > 0 {
+			log.Printf("Metadata refresh: music fast path — %d tracks with %d workers", len(musicItems), 16)
+			var musicUpdated int64
+			var musicDone int64
+			sem := make(chan struct{}, 16)
+			var wg sync.WaitGroup
+			for _, mi := range musicItems {
+				select {
+				case <-ctx.Done():
+					break
+				default:
+				}
+				wg.Add(1)
+				sem <- struct{}{}
+				go func(item *models.MediaItem) {
+					defer wg.Done()
+					defer func() { <-sem }()
+					if err := h.scanner.RefreshMusicItem(item); err != nil {
+						log.Printf("Metadata refresh: music re-probe failed for %s: %v", item.FileName, err)
+					} else {
+						atomic.AddInt64(&musicUpdated, 1)
+					}
+					done := atomic.AddInt64(&musicDone, 1)
+					if h.notifier != nil && done%500 == 0 {
+						pct := int(float64(done) / float64(len(musicItems)) * 100)
+						desc := fmt.Sprintf("Metadata refresh: %s (%d/%d tracks)", library.Name, done, len(musicItems))
+						h.notifier.Broadcast("task:update", map[string]interface{}{
+							"task_id": taskID, "task_type": TaskMetadataRefresh,
+							"status": "running", "progress": pct, "description": desc,
+						})
+					}
+				}(mi)
+			}
+			wg.Wait()
+			updated = int(musicUpdated)
+			log.Printf("Metadata refresh: music fast path done — %d/%d tracks updated in %q",
+				updated, len(musicItems), library.Name)
+			if h.notifier != nil {
+				h.notifier.Broadcast("task:update", map[string]interface{}{
+					"task_id": taskID, "task_type": TaskMetadataRefresh,
+					"status": "complete", "progress": 100, "description": taskDesc,
+				})
+			}
+			return nil
+		}
+	}
+
 	for i, item := range items {
 		select {
 		case <-ctx.Done():
@@ -1295,16 +1350,6 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 
 		// Skip types that don't support auto-match
 		if !metadata.ShouldAutoMatch(item.MediaType) {
-			continue
-		}
-
-		// ── Music fast path: re-read embedded tags instead of hitting external APIs ──
-		if item.MediaType == models.MediaTypeMusic && h.scanner != nil {
-			if err := h.scanner.RefreshMusicItem(item); err != nil {
-				log.Printf("Metadata refresh: music re-probe failed for %s: %v", item.FileName, err)
-			} else {
-				updated++
-			}
 			continue
 		}
 
