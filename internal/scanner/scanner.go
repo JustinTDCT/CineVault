@@ -2428,6 +2428,128 @@ func (s *Scanner) EnrichMatchedItem(itemID uuid.UUID, tmdbExternalID string, med
 	s.enrichWithDetails(itemID, tmdbExternalID, mediaType, lockedFields)
 }
 
+// RefreshMusicItem re-reads embedded tags (ID3/Vorbis) from the file via ffprobe
+// and updates the media item's metadata + music hierarchy. This is much faster
+// than hitting external scrapers for every track during a metadata refresh.
+func (s *Scanner) RefreshMusicItem(item *models.MediaItem) error {
+	probe, err := s.ffprobe.Probe(item.FilePath)
+	if err != nil {
+		return fmt.Errorf("ffprobe: %w", err)
+	}
+
+	// Update technical metadata (duration, codec, bitrate, etc.)
+	dur := probe.GetDurationSeconds()
+	ac := probe.GetAudioCodec()
+	af := probe.GetAudioFormat()
+	br := probe.GetBitrate()
+	ext := strings.TrimPrefix(filepath.Ext(item.FilePath), ".")
+
+	setClauses := []string{"updated_at = CURRENT_TIMESTAMP"}
+	args := []interface{}{}
+	idx := 1
+
+	if dur > 0 {
+		setClauses = append(setClauses, fmt.Sprintf("duration_seconds = $%d", idx))
+		args = append(args, dur)
+		idx++
+	}
+	if ac != "" {
+		setClauses = append(setClauses, fmt.Sprintf("audio_codec = $%d", idx))
+		args = append(args, ac)
+		idx++
+	}
+	if af != "" {
+		setClauses = append(setClauses, fmt.Sprintf("audio_format = $%d", idx))
+		args = append(args, af)
+		idx++
+	}
+	if br > 0 {
+		setClauses = append(setClauses, fmt.Sprintf("bitrate = $%d", idx))
+		args = append(args, br)
+		idx++
+	}
+	if ext != "" {
+		setClauses = append(setClauses, fmt.Sprintf("container = $%d", idx))
+		args = append(args, ext)
+		idx++
+	}
+
+	// Extract embedded tags
+	var artist, album string
+	var trackNum, discNum *int
+	if len(probe.Format.Tags) > 0 {
+		for k, v := range probe.Format.Tags {
+			switch strings.ToLower(k) {
+			case "title":
+				v = strings.TrimSpace(v)
+				if v != "" {
+					setClauses = append(setClauses, fmt.Sprintf("title = $%d", idx))
+					args = append(args, v)
+					idx++
+				}
+			case "artist", "album_artist":
+				if artist == "" {
+					artist = strings.TrimSpace(v)
+				}
+			case "album":
+				if album == "" {
+					album = strings.TrimSpace(v)
+				}
+			case "track":
+				if trackNum == nil {
+					if n, err := strconv.Atoi(strings.Split(v, "/")[0]); err == nil {
+						trackNum = &n
+					}
+				}
+			case "disc":
+				if discNum == nil {
+					if n, err := strconv.Atoi(strings.Split(v, "/")[0]); err == nil {
+						discNum = &n
+					}
+				}
+			case "date":
+				v = strings.TrimSpace(v)
+				if v != "" {
+					if y, err := strconv.Atoi(v[:4]); err == nil && y > 1000 && y < 3000 {
+						setClauses = append(setClauses, fmt.Sprintf("year = $%d", idx))
+						args = append(args, y)
+						idx++
+					}
+				}
+			}
+		}
+	}
+
+	if trackNum != nil {
+		setClauses = append(setClauses, fmt.Sprintf("track_number = $%d", idx))
+		args = append(args, *trackNum)
+		idx++
+	}
+	if discNum != nil {
+		setClauses = append(setClauses, fmt.Sprintf("disc_number = $%d", idx))
+		args = append(args, *discNum)
+		idx++
+	}
+
+	// Execute the update
+	args = append(args, item.ID)
+	query := fmt.Sprintf("UPDATE media_items SET %s WHERE id = $%d",
+		strings.Join(setClauses, ", "), idx)
+	if _, err := s.mediaRepo.DB().Exec(query, args...); err != nil {
+		return fmt.Errorf("update media item: %w", err)
+	}
+
+	// Update music hierarchy (artist → album → track)
+	if artist != "" && s.musicRepo != nil {
+		parsed := ParsedFilename{Artist: artist, Album: album, TrackNumber: trackNum, DiscNumber: discNum}
+		if err := s.handleMusicHierarchy(&models.Library{ID: item.LibraryID}, item, parsed); err != nil {
+			log.Printf("Music refresh: hierarchy update failed for %s: %v", item.FileName, err)
+		}
+	}
+
+	return nil
+}
+
 // enrichWithDetails fetches TMDB details, creates genre tags, fetches OMDb ratings, and populates cast.
 // lockedFields is passed through to respect per-field metadata locks.
 func (s *Scanner) enrichWithDetails(itemID uuid.UUID, tmdbExternalID string, mediaType models.MediaType, lockedFields pq.StringArray) {

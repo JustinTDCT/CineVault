@@ -1298,6 +1298,16 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 			continue
 		}
 
+		// ── Music fast path: re-read embedded tags instead of hitting external APIs ──
+		if item.MediaType == models.MediaTypeMusic && h.scanner != nil {
+			if err := h.scanner.RefreshMusicItem(item); err != nil {
+				log.Printf("Metadata refresh: music re-probe failed for %s: %v", item.FileName, err)
+			} else {
+				updated++
+			}
+			continue
+		}
+
 		// ── Step 1: Clear existing metadata (respects per-field locks) ──
 		fileTitle := metadata.TitleFromFilename(item.FileName)
 		if fileTitle == "" {
