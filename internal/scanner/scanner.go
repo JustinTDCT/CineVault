@@ -472,40 +472,92 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 	}
 
 	if library.MediaType == models.MediaTypeMusic || library.MediaType == models.MediaTypeMusicVideos {
-		// Fall back to embedded tags (ID3/Vorbis) when filename parser didn't extract artist/album
-		if parsed.Artist == "" && probeResult != nil && len(probeResult.Format.Tags) > 0 {
+		// Tags-first: embedded tags are the primary source of truth for music.
+		// Filename-parsed values are only used as fallback when tags are absent.
+		if probeResult != nil && len(probeResult.Format.Tags) > 0 {
+			var tagArtist, tagAlbumArtist, tagAlbum, tagTitle, tagGenre string
+			var tagTrack, tagDisc *int
+			var tagYear *int
 			for k, v := range probeResult.Format.Tags {
 				switch strings.ToLower(k) {
-				case "artist", "album_artist":
-					if parsed.Artist == "" {
-						parsed.Artist = strings.TrimSpace(v)
-					}
+				case "album_artist":
+					tagAlbumArtist = strings.TrimSpace(v)
+				case "artist":
+					tagArtist = strings.TrimSpace(v)
 				case "album":
-					if parsed.Album == "" {
-						parsed.Album = strings.TrimSpace(v)
-					}
+					tagAlbum = strings.TrimSpace(v)
+				case "title":
+					tagTitle = strings.TrimSpace(v)
+				case "genre":
+					tagGenre = strings.TrimSpace(v)
 				case "track":
-					if parsed.TrackNumber == nil {
-						if n, err := strconv.Atoi(strings.Split(v, "/")[0]); err == nil {
-							parsed.TrackNumber = &n
-							item.TrackNumber = &n
-						}
+					if n, err := strconv.Atoi(strings.Split(strings.TrimSpace(v), "/")[0]); err == nil {
+						tagTrack = &n
 					}
-				case "disc":
-					if parsed.DiscNumber == nil {
-						if n, err := strconv.Atoi(strings.Split(v, "/")[0]); err == nil {
-							parsed.DiscNumber = &n
-							item.DiscNumber = &n
+				case "disc", "discnumber", "disc_number":
+					if n, err := strconv.Atoi(strings.Split(strings.TrimSpace(v), "/")[0]); err == nil {
+						tagDisc = &n
+					}
+				case "date":
+					v = strings.TrimSpace(v)
+					if len(v) >= 4 {
+						if y, err := strconv.Atoi(v[:4]); err == nil && y > 1000 && y < 3000 {
+							tagYear = &y
 						}
 					}
 				}
 			}
+
+			// Use album_artist for hierarchy, fall back to track artist.
+			// Store album_artist on the item so track-level artist is preserved.
+			hierarchyArtist := tagAlbumArtist
+			if hierarchyArtist == "" {
+				hierarchyArtist = tagArtist
+			}
+			if hierarchyArtist != "" {
+				parsed.Artist = hierarchyArtist
+			}
+			if tagAlbumArtist != "" {
+				item.AlbumArtist = &tagAlbumArtist
+			}
+			if tagAlbum != "" {
+				parsed.Album = tagAlbum
+			}
+			if tagTitle != "" {
+				item.Title = tagTitle
+			}
+			if tagTrack != nil {
+				parsed.TrackNumber = tagTrack
+				item.TrackNumber = tagTrack
+			}
+			if tagDisc != nil {
+				parsed.DiscNumber = tagDisc
+				item.DiscNumber = tagDisc
+			}
+			if tagYear != nil {
+				item.Year = tagYear
+			}
+			// Store genre tag for later linking
+			if tagGenre != "" {
+				parsed.Genre = tagGenre
+			}
 		}
+
+		// Multi-disc detection from folder names (e.g., "Disc 1", "CD 2", "Vol 3")
+		if item.DiscNumber == nil {
+			parentDir := filepath.Base(filepath.Dir(path))
+			if dn := parseDiscFromFolder(parentDir); dn > 0 {
+				item.DiscNumber = &dn
+				parsed.DiscNumber = &dn
+			}
+		}
+
 		if parsed.Artist != "" {
 			if err := s.handleMusicHierarchy(library, item, parsed); err != nil {
 				log.Printf("Music hierarchy error for %s: %v", path, err)
 			}
 		}
+
 	}
 
 	if err := s.mediaRepo.Create(item); err != nil {
@@ -513,6 +565,11 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 		*errors = append(*errors, fmt.Sprintf("insert failed %s: %v", path, err))
 		errorsMu.Unlock()
 		return
+	}
+
+	// Link genre tag from embedded metadata (must be after Create)
+	if parsed.Genre != "" && s.tagRepo != nil {
+		s.linkGenreTags(item.ID, []string{parsed.Genre})
 	}
 
 	if item.ExtraType != nil {
@@ -2424,6 +2481,30 @@ func (s *Scanner) propagateAlbumArt(item *models.MediaItem, posterURL *string) {
 	log.Printf("Album art: set cover for %q", album.Title)
 }
 
+// extractEmbeddedCoverArt extracts embedded cover art from an audio file using ffmpeg
+// and saves it as a JPEG file. Returns the web path or empty string if extraction fails.
+func (s *Scanner) extractEmbeddedCoverArt(filePath string, itemID uuid.UUID) string {
+	if s.ffmpegPath == "" || s.posterDir == "" {
+		return ""
+	}
+	filename := "album_embedded_" + itemID.String() + ".jpg"
+	outPath := filepath.Join(s.posterDir, "posters", filename)
+	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
+		return ""
+	}
+	cmd := exec.Command(s.ffmpegPath, "-i", filePath, "-an", "-vcodec", "mjpeg",
+		"-frames:v", "1", "-y", outPath)
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	info, err := os.Stat(outPath)
+	if err != nil || info.Size() < 1000 {
+		os.Remove(outPath)
+		return ""
+	}
+	return "/previews/posters/" + filename
+}
+
 // BackfillAlbumArt finds albums without poster art and attempts to fetch covers
 // from the Cover Art Archive via MusicBrainz release search.
 func (s *Scanner) BackfillAlbumArt(libraryID uuid.UUID) (int, error) {
@@ -2452,33 +2533,119 @@ func (s *Scanner) BackfillAlbumArt(libraryID uuid.UUID) (int, error) {
 
 	fetched := 0
 	for _, album := range albums {
+		// Try MusicBrainz / Cover Art Archive first
+		found := false
 		query := album.Title
 		if album.ArtistName != "" {
 			query = album.ArtistName + " " + album.Title
 		}
 		matches, err := mbScraper.Search(query, models.MediaTypeMusic, album.Year)
-		if err != nil {
-			log.Printf("Album art backfill: search failed for %q: %v", album.Title, err)
-			continue
+		if err == nil {
+			for _, m := range matches {
+				if m.PosterURL != nil && *m.PosterURL != "" {
+					filename := "album_" + album.ID.String() + ".jpg"
+					_, dlErr := metadata.DownloadPoster(*m.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+					if dlErr != nil {
+						continue
+					}
+					webPath := "/previews/posters/" + filename
+					if err := s.musicRepo.UpdateAlbumPosterPath(album.ID, webPath); err == nil {
+						fetched++
+						found = true
+						log.Printf("Album art backfill: set cover for %q (Cover Art Archive)", album.Title)
+					}
+					break
+				}
+			}
 		}
-		for _, m := range matches {
-			if m.PosterURL != nil && *m.PosterURL != "" {
-				filename := "album_" + album.ID.String() + ".jpg"
-				_, dlErr := metadata.DownloadPoster(*m.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
-				if dlErr != nil {
+
+		// Fallback: try extracting embedded cover art from a track in this album
+		if !found {
+			tracks, _ := s.musicRepo.ListTracksByAlbum(album.ID)
+			for _, track := range tracks {
+				probe, probeErr := s.ffprobe.Probe(track.FilePath)
+				if probeErr != nil || !probe.HasEmbeddedCoverArt() {
 					continue
 				}
-				webPath := "/previews/posters/" + filename
-				if err := s.musicRepo.UpdateAlbumPosterPath(album.ID, webPath); err == nil {
-					fetched++
-					log.Printf("Album art backfill: set cover for %q", album.Title)
+				webPath := s.extractEmbeddedCoverArt(track.FilePath, album.ID)
+				if webPath != "" {
+					if err := s.musicRepo.UpdateAlbumPosterPath(album.ID, webPath); err == nil {
+						fetched++
+						log.Printf("Album art backfill: extracted embedded art for %q", album.Title)
+					}
 				}
 				break
 			}
 		}
+
 		time.Sleep(1100 * time.Millisecond)
 	}
 	return fetched, nil
+}
+
+// AggregateAlbumMetadata derives album-level metadata (year, genre) from child
+// tracks using majority vote, similar to Jellyfin's AlbumMetadataService.
+func (s *Scanner) AggregateAlbumMetadata(libraryID uuid.UUID) (int, error) {
+	if s.musicRepo == nil {
+		return 0, nil
+	}
+	albums, err := s.musicRepo.ListAlbumsByLibrary(libraryID)
+	if err != nil {
+		return 0, fmt.Errorf("list albums: %w", err)
+	}
+
+	updated := 0
+	for _, album := range albums {
+		tracks, err := s.musicRepo.ListTracksByAlbum(album.ID)
+		if err != nil || len(tracks) == 0 {
+			continue
+		}
+
+		// Aggregate year by majority vote
+		yearCounts := map[int]int{}
+		for _, t := range tracks {
+			if t.Year != nil && *t.Year > 0 {
+				yearCounts[*t.Year]++
+			}
+		}
+		if album.Year == nil && len(yearCounts) > 0 {
+			bestYear, bestCount := 0, 0
+			for y, c := range yearCounts {
+				if c > bestCount {
+					bestYear, bestCount = y, c
+				}
+			}
+			if bestYear > 0 {
+				s.mediaRepo.DB().Exec(`UPDATE albums SET year = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, bestYear, album.ID)
+				updated++
+			}
+		}
+
+		// Aggregate genre from track tags
+		if album.Genre == nil && s.tagRepo != nil {
+			genreCounts := map[string]int{}
+			for _, t := range tracks {
+				tags, _ := s.tagRepo.GetMediaTags(t.ID)
+				for _, tag := range tags {
+					if tag.Category == "genre" {
+						genreCounts[tag.Name]++
+					}
+				}
+			}
+			if len(genreCounts) > 0 {
+				bestGenre, bestCount := "", 0
+				for g, c := range genreCounts {
+					if c > bestCount {
+						bestGenre, bestCount = g, c
+					}
+				}
+				if bestGenre != "" {
+					s.mediaRepo.DB().Exec(`UPDATE albums SET genre = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, bestGenre, album.ID)
+				}
+			}
+		}
+	}
+	return updated, nil
 }
 
 func (s *Scanner) linkMusicHierarchyFromMatch(item *models.MediaItem, artistName, artistMBID, albumTitle string, year *int) {
@@ -2628,8 +2795,8 @@ func (s *Scanner) RefreshMusicItem(item *models.MediaItem) error {
 		idx++
 	}
 
-	// Extract embedded tags
-	var artist, album string
+	// Extract embedded tags (tags-first: prefer album_artist for hierarchy)
+	var tagArtist, tagAlbumArtist, album, genre string
 	var trackNum, discNum *int
 	if len(probe.Format.Tags) > 0 {
 		for k, v := range probe.Format.Tags {
@@ -2641,29 +2808,31 @@ func (s *Scanner) RefreshMusicItem(item *models.MediaItem) error {
 					args = append(args, v)
 					idx++
 				}
-			case "artist", "album_artist":
-				if artist == "" {
-					artist = strings.TrimSpace(v)
-				}
+			case "album_artist":
+				tagAlbumArtist = strings.TrimSpace(v)
+			case "artist":
+				tagArtist = strings.TrimSpace(v)
 			case "album":
 				if album == "" {
 					album = strings.TrimSpace(v)
 				}
+			case "genre":
+				genre = strings.TrimSpace(v)
 			case "track":
 				if trackNum == nil {
-					if n, err := strconv.Atoi(strings.Split(v, "/")[0]); err == nil {
+					if n, err := strconv.Atoi(strings.Split(strings.TrimSpace(v), "/")[0]); err == nil {
 						trackNum = &n
 					}
 				}
-			case "disc":
+			case "disc", "discnumber", "disc_number":
 				if discNum == nil {
-					if n, err := strconv.Atoi(strings.Split(v, "/")[0]); err == nil {
+					if n, err := strconv.Atoi(strings.Split(strings.TrimSpace(v), "/")[0]); err == nil {
 						discNum = &n
 					}
 				}
 			case "date":
 				v = strings.TrimSpace(v)
-				if v != "" {
+				if len(v) >= 4 {
 					if y, err := strconv.Atoi(v[:4]); err == nil && y > 1000 && y < 3000 {
 						setClauses = append(setClauses, fmt.Sprintf("year = $%d", idx))
 						args = append(args, y)
@@ -2693,12 +2862,21 @@ func (s *Scanner) RefreshMusicItem(item *models.MediaItem) error {
 		return fmt.Errorf("update media item: %w", err)
 	}
 
-	// Update music hierarchy (artist → album → track)
+	// Use album_artist for hierarchy building, fall back to track artist
+	artist := tagAlbumArtist
+	if artist == "" {
+		artist = tagArtist
+	}
 	if artist != "" && s.musicRepo != nil {
 		parsed := ParsedFilename{Artist: artist, Album: album, TrackNumber: trackNum, DiscNumber: discNum}
 		if err := s.handleMusicHierarchy(&models.Library{ID: item.LibraryID}, item, parsed); err != nil {
 			log.Printf("Music refresh: hierarchy update failed for %s: %v", item.FileName, err)
 		}
+	}
+
+	// Link genre tag from embedded metadata
+	if genre != "" && s.tagRepo != nil {
+		s.linkGenreTags(item.ID, []string{genre})
 	}
 
 	return nil

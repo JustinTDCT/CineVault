@@ -160,3 +160,32 @@ func (r *TagRepository) GetMediaTags(mediaItemID uuid.UUID) ([]*models.Tag, erro
 	}
 	return tags, rows.Err()
 }
+
+func (r *TagRepository) ListGenresByLibrary(libraryID uuid.UUID) ([]*models.Tag, error) {
+	query := `
+		SELECT t.id, t.name, t.slug, t.parent_id, t.category, t.description,
+		       t.sort_position, t.created_at,
+		       COUNT(DISTINCT mt.media_item_id) AS media_count
+		FROM tags t
+		JOIN media_tags mt ON mt.tag_id = t.id
+		JOIN media_items m ON m.id = mt.media_item_id
+		WHERE m.library_id = $1 AND t.category = 'genre'
+		GROUP BY t.id
+		ORDER BY t.name`
+	rows, err := r.db.Query(query, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tags []*models.Tag
+	for rows.Next() {
+		t := &models.Tag{}
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.ParentID,
+			&t.Category, &t.Description, &t.SortPosition, &t.CreatedAt, &t.MediaCount); err != nil {
+			return nil, err
+		}
+		tags = append(tags, t)
+	}
+	return tags, rows.Err()
+}

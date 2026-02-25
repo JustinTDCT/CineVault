@@ -49,10 +49,11 @@ type SideDataItem struct {
 
 // Disposition flags from ffprobe stream disposition.
 type Disposition struct {
-	Default    int `json:"default"`
-	Forced     int `json:"forced"`
-	Comment    int `json:"comment"`
+	Default         int `json:"default"`
+	Forced          int `json:"forced"`
+	Comment         int `json:"comment"`
 	HearingImpaired int `json:"hearing_impaired"`
+	AttachedPic     int `json:"attached_pic"`
 }
 
 // ChapterInfo represents a chapter entry from ffprobe.
@@ -80,6 +81,15 @@ func (f *FFprobe) Probe(filePath string) (*ProbeResult, error) {
 		return nil, fmt.Errorf("failed to parse ffprobe output: %w", err)
 	}
 	return &result, nil
+}
+
+func (r *ProbeResult) HasEmbeddedCoverArt() bool {
+	for _, s := range r.Streams {
+		if s.CodecType == "video" && s.Disposition.AttachedPic == 1 {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *ProbeResult) GetDurationSeconds() int {

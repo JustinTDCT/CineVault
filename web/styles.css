@@ -3332,36 +3332,72 @@ body.is-offline::after {
 }
 .cinema-skip-btn:hover { opacity: 0.9; }
 
-/* ── Phase 13: Music Mini-Player ── */
+/* ── Music Mini-Player (Overhaul) ── */
 .music-mini-player {
     position: fixed; bottom: 0; left: 0; right: 0; height: 64px;
     background: linear-gradient(to right, rgba(10,15,28,0.98), rgba(15,22,40,0.98));
     border-top: 1px solid rgba(0,217,255,0.15); display: none;
-    align-items: center; padding: 0 20px; gap: 16px; z-index: 9998;
-    backdrop-filter: blur(16px);
+    align-items: center; padding: 0 20px; gap: 12px; z-index: 9998;
+    backdrop-filter: blur(16px); flex-wrap: nowrap;
 }
-.mmp-info { flex: 1; min-width: 0; }
-.mmp-info #mmpTitle {
+.mmp-info { flex: 0 1 180px; min-width: 0; }
+.mmp-info #mmpTitle, .mmp-info [id="mmpTitle"] {
     display: block; font-weight: 600; color: var(--text-primary);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.9rem;
 }
-.mmp-info #mmpArtist {
+.mmp-info #mmpArtist, .mmp-info [id="mmpArtist"] {
     display: block; font-size: 0.78rem; color: var(--text-muted);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.mmp-controls { display: flex; gap: 8px; align-items: center; }
-.mmp-controls button {
-    background: none; border: none; color: var(--text-primary); font-size: 1.2rem;
-    cursor: pointer; padding: 4px 8px; transition: color 0.2s;
+.mmp-controls { display: flex; gap: 4px; align-items: center; }
+.mmp-ctrl-btn {
+    background: none; border: none; color: var(--text-secondary); font-size: 1.1rem;
+    cursor: pointer; padding: 4px 6px; transition: color 0.2s; border-radius: 4px;
 }
-.mmp-controls button:hover { color: var(--primary-cyan); }
+.mmp-ctrl-btn:hover { color: var(--primary-cyan); }
+.mmp-ctrl-btn.active { color: var(--primary-cyan); }
+.mmp-play-btn { font-size: 1.4rem; color: var(--text-primary); }
+.mmp-time { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; min-width: 32px; text-align: center; }
 .mmp-progress {
-    width: 200px; height: 4px; background: rgba(255,255,255,0.1);
-    border-radius: 2px; overflow: hidden;
+    flex: 1; height: 4px; background: rgba(255,255,255,0.1);
+    border-radius: 2px; overflow: hidden; cursor: pointer; min-width: 80px;
 }
+.mmp-progress:hover { height: 6px; }
 .mmp-progress-fill {
-    height: 100%; background: var(--primary-cyan); width: 0%; transition: width 0.3s;
+    height: 100%; background: var(--primary-cyan); width: 0%; transition: width 0.2s linear;
 }
+.mmp-volume-wrap { display: flex; align-items: center; gap: 4px; }
+.mmp-vol-icon { font-size: 0.9rem; color: var(--text-muted); }
+.mmp-volume {
+    width: 70px; height: 4px; background: rgba(255,255,255,0.1);
+    border-radius: 2px; overflow: hidden; cursor: pointer;
+}
+.mmp-volume-fill { height: 100%; background: var(--text-secondary); }
+
+/* Queue panel */
+.mmp-queue-panel {
+    position: fixed; bottom: 72px; right: 16px; width: 340px; max-height: 420px;
+    background: var(--bg-secondary); border: 1px solid rgba(0,217,255,0.12);
+    border-radius: 12px; overflow: hidden; z-index: 9999;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+}
+.mmp-queue-header {
+    padding: 12px 16px; font-weight: 600; font-size: 0.88rem;
+    color: var(--text-primary); border-bottom: 1px solid var(--border-subtle);
+}
+.mmp-queue-list { overflow-y: auto; max-height: 360px; }
+.mmp-queue-item {
+    display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+    cursor: pointer; transition: background 0.15s;
+}
+.mmp-queue-item:hover { background: rgba(255,255,255,0.04); }
+.mmp-queue-active { background: rgba(0,217,255,0.08); }
+.mmp-queue-num { font-size: 0.75rem; color: var(--text-muted); min-width: 24px; text-align: right; }
+.mmp-queue-title { flex: 1; font-size: 0.84rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mmp-queue-artist { font-size: 0.75rem; color: var(--text-muted); max-width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mmp-queue-remove { font-size: 1rem; color: var(--text-muted); opacity: 0; transition: opacity 0.15s; }
+.mmp-queue-item:hover .mmp-queue-remove { opacity: 1; }
+.mmp-queue-empty { padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
 
 /* Lyrics panel */
 .music-lyrics {
@@ -3373,12 +3409,93 @@ body.is-offline::after {
     white-space: pre-wrap; font-family: inherit; font-size: 0.88rem;
     color: var(--text-secondary); line-height: 1.8; margin: 0;
 }
+.lyrics-synced { display: flex; flex-direction: column; gap: 6px; }
+.lyrics-line {
+    font-size: 0.88rem; color: var(--text-muted); line-height: 1.6;
+    padding: 2px 0; transition: color 0.3s, font-weight 0.3s;
+}
+.lyrics-line-active { color: var(--primary-cyan); font-weight: 600; font-size: 0.95rem; }
+
+/* ── Album / Artist Detail Pages ── */
+.artist-detail-header, .album-detail-header {
+    display: flex; align-items: flex-start; gap: 24px; padding: 20px 0; flex-wrap: wrap;
+}
+.artist-detail-poster {
+    width: 180px; height: 180px; border-radius: 50%; object-fit: cover;
+    border: 3px solid rgba(0,217,255,0.2);
+}
+.album-detail-poster {
+    width: 200px; height: 200px; border-radius: 8px; object-fit: cover;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+.album-detail-poster-placeholder {
+    width: 200px; height: 200px; border-radius: 8px; display: flex;
+    align-items: center; justify-content: center; font-size: 4rem;
+    background: linear-gradient(135deg, rgba(26,35,50,0.8), rgba(13,27,42,0.9));
+    color: var(--text-muted);
+}
+.artist-detail-info, .album-detail-info {
+    flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 8px;
+}
+.artist-detail-actions, .album-detail-actions {
+    display: flex; gap: 8px; margin-top: 8px;
+}
+.artist-description {
+    font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6;
+    margin: 8px 0 0 0; max-width: 600px;
+}
+
+/* ── Tracklist Table ── */
+.tracklist-table {
+    width: 100%; border-collapse: collapse; margin-top: 16px;
+}
+.tracklist-table th {
+    text-align: left; font-size: 0.75rem; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.tl-num { width: 48px; text-align: center; }
+.tl-duration { width: 64px; text-align: right; }
+.tl-play { width: 40px; text-align: center; }
+.tl-artist { width: 180px; }
+.tl-row {
+    transition: background 0.15s; cursor: pointer;
+}
+.tl-row:hover { background: rgba(255,255,255,0.04); }
+.tl-row td { padding: 10px 12px; font-size: 0.88rem; color: var(--text-primary); }
+.tl-row .tl-num { color: var(--text-muted); font-size: 0.82rem; text-align: center; }
+.tl-row .tl-duration { color: var(--text-muted); font-size: 0.82rem; text-align: right; }
+.tl-row .tl-artist { color: var(--text-secondary); font-size: 0.82rem; }
+.tl-row .tl-play .btn-icon {
+    opacity: 0; font-size: 0.9rem; transition: opacity 0.15s;
+}
+.tl-row:hover .tl-play .btn-icon { opacity: 1; }
+.tl-disc-header td {
+    padding: 16px 12px 8px; font-weight: 600; font-size: 0.82rem;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+/* ── Genre Cards ── */
+.genre-card { cursor: pointer; }
+.genre-card-icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; aspect-ratio: 1; font-size: 3rem; color: var(--text-muted);
+    background: linear-gradient(135deg, rgba(30,40,60,0.8), rgba(15,25,45,0.9));
+    border-radius: 8px;
+}
 
 @media (max-width: 768px) {
-    .music-mini-player { padding: 0 12px; gap: 10px; }
-    .mmp-progress { width: 100px; }
+    .music-mini-player { padding: 0 10px; gap: 6px; height: 56px; flex-wrap: wrap; }
+    .mmp-progress { min-width: 60px; }
+    .mmp-volume-wrap { display: none; }
+    .mmp-time { display: none; }
     .sync-panel { width: 260px; right: 8px; bottom: 72px; }
     .music-lyrics { width: 260px; }
+    .mmp-queue-panel { width: calc(100vw - 32px); right: 16px; }
+    .artist-detail-poster { width: 120px; height: 120px; }
+    .album-detail-poster, .album-detail-poster-placeholder { width: 140px; height: 140px; }
+    .tl-artist { display: none; }
 }
 
 /* ── Phase 14+15: Scene Markers, EPG, Reader ── */

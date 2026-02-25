@@ -38,6 +38,7 @@ type ParsedFilename struct {
 	TMDBID      string // from NFO or inline filename [tmdbid-12345]
 	TVDBID      string // from NFO or inline filename [tvdbid-12345]
 	ASIN        string // Audible ASIN for audiobooks [asin-B08G9PRS1K]
+	Genre       string // from embedded tags (music)
 }
 
 // multiPartEntry tracks a media item that is part of a multi-part set.
@@ -924,6 +925,23 @@ func EditionFromFileVsFolder(filename, folderTitle string) string {
 	}
 
 	return "Theatrical"
+}
+
+// ──────────────────── Multi-Disc Detection ────────────────────
+
+var discFolderRe = regexp.MustCompile(`(?i)^(?:cd|disc|disk|vol(?:ume)?|part|act)\s*(\d+)$`)
+
+// parseDiscFromFolder extracts a disc number from a folder name like "Disc 1", "CD 2", etc.
+func parseDiscFromFolder(folderName string) int {
+	m := discFolderRe.FindStringSubmatch(strings.TrimSpace(folderName))
+	if m == nil {
+		return 0
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil || n < 1 || n > 99 {
+		return 0
+	}
+	return n
 }
 
 // ──────────────────── Music Hierarchy ────────────────────

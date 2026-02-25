@@ -42,6 +42,14 @@ func (s *Server) handleUpdateProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Increment play count for music tracks when playback starts
+	if req.ProgressSeconds == 0 {
+		item, _ := s.mediaRepo.GetByID(mediaID)
+		if item != nil && (item.MediaType == models.MediaTypeMusic || item.MediaType == models.MediaTypeMusicVideos) {
+			_ = s.mediaRepo.IncrementPlayCount(mediaID)
+		}
+	}
+
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: wh})
 }
 

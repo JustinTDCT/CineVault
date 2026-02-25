@@ -1,0 +1,10 @@
+ALTER TABLE media_items DROP COLUMN IF EXISTS album_artist;
+ALTER TABLE albums DROP COLUMN IF EXISTS mbid;
+ALTER TABLE albums DROP COLUMN IF EXISTS release_group_id;
+ALTER TABLE media_items DROP COLUMN IF EXISTS recording_mbid;
+ALTER TABLE media_items DROP COLUMN IF EXISTS play_count;
+ALTER TABLE media_items DROP COLUMN IF EXISTS last_played_at;
+DROP INDEX IF EXISTS idx_media_items_album_id;
+DROP INDEX IF EXISTS idx_media_items_artist_id;
+DROP INDEX IF EXISTS idx_albums_artist_id;
+DROP INDEX IF EXISTS idx_albums_mbid;

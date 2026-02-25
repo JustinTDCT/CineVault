@@ -55,7 +55,7 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	original_language, country, trailer_url,
 	poster_path, thumbnail_path, backdrop_path, logo_path,
 	tv_show_id, tv_season_id, episode_number,
-	artist_id, album_id, track_number, disc_number,
+	artist_id, album_id, track_number, disc_number, album_artist, recording_mbid,
 	author_id, book_id, chapter_number,
 	image_gallery_id, sister_group_id, phash, audio_fingerprint,
 	imdb_rating, rt_rating, audience_score,
@@ -66,6 +66,7 @@ const mediaColumns = `id, library_id, media_type, file_path, file_name, file_siz
 	metadata_locked, locked_fields, duplicate_status, preview_path, sprite_path,
 	loudness_lufs, loudness_gain_db,
 	parent_media_id, extra_type,
+	play_count, last_played_at,
 	added_at, updated_at`
 
 // prefixedMediaColumns returns mediaColumns with each column prefixed by the given alias (e.g. "m.").
@@ -90,6 +91,7 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.PosterPath, &item.ThumbnailPath, &item.BackdropPath, &item.LogoPath,
 		&item.TVShowID, &item.TVSeasonID, &item.EpisodeNumber,
 		&item.ArtistID, &item.AlbumID, &item.TrackNumber, &item.DiscNumber,
+		&item.AlbumArtist, &item.RecordingMBID,
 		&item.AuthorID, &item.BookID, &item.ChapterNumber,
 		&item.ImageGalleryID, &item.SisterGroupID, &item.Phash, &item.AudioFingerprint,
 		&item.IMDBRating, &item.RTRating, &item.AudienceScore,
@@ -100,7 +102,9 @@ func scanMediaItem(row interface{ Scan(dest ...interface{}) error }) (*models.Me
 		&item.MetadataLocked, &item.LockedFields, &item.DuplicateStatus,
 		&item.PreviewPath, &item.SpritePath,
 		&item.LoudnessLUFS, &item.LoudnessGainDB,
-		&item.ParentMediaID, &item.ExtraType, &item.AddedAt, &item.UpdatedAt,
+		&item.ParentMediaID, &item.ExtraType,
+		&item.PlayCount, &item.LastPlayedAt,
+		&item.AddedAt, &item.UpdatedAt,
 	)
 	return item, err
 }
@@ -114,7 +118,7 @@ func (r *MediaRepository) Create(item *models.MediaItem) error {
 			bitrate, framerate, audio_codec, audio_channels,
 			poster_path, thumbnail_path, backdrop_path,
 			tv_show_id, tv_season_id, episode_number,
-			artist_id, album_id, track_number, disc_number,
+			artist_id, album_id, track_number, disc_number, album_artist,
 			author_id, book_id, chapter_number,
 			image_gallery_id, sister_group_id, edition_type, sort_position,
 			source_type, hdr_format, dynamic_range,
@@ -126,11 +130,11 @@ func (r *MediaRepository) Create(item *models.MediaItem) error {
 			$21, $22, $23, $24,
 			$25, $26, $27,
 			$28, $29, $30,
-			$31, $32, $33, $34,
-			$35, $36, $37,
-			$38, $39, $40, $41,
-			$42, $43, $44,
-			$45, $46
+			$31, $32, $33, $34, $35,
+			$36, $37, $38,
+			$39, $40, $41, $42,
+			$43, $44, $45,
+			$46, $47
 		)
 		RETURNING added_at, updated_at`
 
@@ -143,7 +147,7 @@ func (r *MediaRepository) Create(item *models.MediaItem) error {
 		item.AudioCodec, item.AudioChannels,
 		item.PosterPath, item.ThumbnailPath, item.BackdropPath,
 		item.TVShowID, item.TVSeasonID, item.EpisodeNumber,
-		item.ArtistID, item.AlbumID, item.TrackNumber, item.DiscNumber,
+		item.ArtistID, item.AlbumID, item.TrackNumber, item.DiscNumber, item.AlbumArtist,
 		item.AuthorID, item.BookID, item.ChapterNumber,
 		item.ImageGalleryID, item.SisterGroupID, item.EditionType, item.SortPosition,
 		item.SourceType, item.HDRFormat, item.DynamicRange,
@@ -670,6 +674,12 @@ func (r *MediaRepository) ListUnlockedByLibrary(libraryID uuid.UUID) ([]*models.
 func (r *MediaRepository) UpdateLastScanned(id uuid.UUID) error {
 	_, err := r.db.Exec(
 		`UPDATE media_items SET last_scanned_at = CURRENT_TIMESTAMP WHERE id = $1`, id)
+	return err
+}
+
+func (r *MediaRepository) IncrementPlayCount(id uuid.UUID) error {
+	_, err := r.db.Exec(
+		`UPDATE media_items SET play_count = COALESCE(play_count, 0) + 1, last_played_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, id)
 	return err
 }
 

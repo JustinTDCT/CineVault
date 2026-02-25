@@ -188,10 +188,14 @@ type MediaItem struct {
 	TVSeasonID    *uuid.UUID `json:"tv_season_id,omitempty" db:"tv_season_id"`
 	EpisodeNumber *int       `json:"episode_number,omitempty" db:"episode_number"`
 	// Music fields
-	ArtistID    *uuid.UUID `json:"artist_id,omitempty" db:"artist_id"`
-	AlbumID     *uuid.UUID `json:"album_id,omitempty" db:"album_id"`
-	TrackNumber *int       `json:"track_number,omitempty" db:"track_number"`
-	DiscNumber  *int       `json:"disc_number,omitempty" db:"disc_number"`
+	ArtistID      *uuid.UUID `json:"artist_id,omitempty" db:"artist_id"`
+	AlbumID       *uuid.UUID `json:"album_id,omitempty" db:"album_id"`
+	TrackNumber   *int       `json:"track_number,omitempty" db:"track_number"`
+	DiscNumber    *int       `json:"disc_number,omitempty" db:"disc_number"`
+	AlbumArtist   *string    `json:"album_artist,omitempty" db:"album_artist"`
+	RecordingMBID *string    `json:"recording_mbid,omitempty" db:"recording_mbid"`
+	PlayCount     int        `json:"play_count" db:"play_count"`
+	LastPlayedAt  *time.Time `json:"last_played_at,omitempty" db:"last_played_at"`
 	// Audiobook fields
 	AuthorID      *uuid.UUID `json:"author_id,omitempty" db:"author_id"`
 	BookID        *uuid.UUID `json:"book_id,omitempty" db:"book_id"`
@@ -328,19 +332,21 @@ type Artist struct {
 }
 
 type Album struct {
-	ID           uuid.UUID  `json:"id" db:"id"`
-	ArtistID     uuid.UUID  `json:"artist_id" db:"artist_id"`
-	LibraryID    uuid.UUID  `json:"library_id" db:"library_id"`
-	Title        string     `json:"title" db:"title"`
-	SortTitle    *string    `json:"sort_title,omitempty" db:"sort_title"`
-	Year         *int       `json:"year,omitempty" db:"year"`
-	ReleaseDate  *time.Time `json:"release_date,omitempty" db:"release_date"`
-	Description  *string    `json:"description,omitempty" db:"description"`
-	Genre        *string    `json:"genre,omitempty" db:"genre"`
-	PosterPath   *string    `json:"poster_path,omitempty" db:"poster_path"`
-	SortPosition int        `json:"sort_position" db:"sort_position"`
-	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
+	ID             uuid.UUID  `json:"id" db:"id"`
+	ArtistID       uuid.UUID  `json:"artist_id" db:"artist_id"`
+	LibraryID      uuid.UUID  `json:"library_id" db:"library_id"`
+	Title          string     `json:"title" db:"title"`
+	SortTitle      *string    `json:"sort_title,omitempty" db:"sort_title"`
+	Year           *int       `json:"year,omitempty" db:"year"`
+	ReleaseDate    *time.Time `json:"release_date,omitempty" db:"release_date"`
+	Description    *string    `json:"description,omitempty" db:"description"`
+	Genre          *string    `json:"genre,omitempty" db:"genre"`
+	PosterPath     *string    `json:"poster_path,omitempty" db:"poster_path"`
+	MBID           *string    `json:"mbid,omitempty" db:"mbid"`
+	ReleaseGroupID *string    `json:"release_group_id,omitempty" db:"release_group_id"`
+	SortPosition   int        `json:"sort_position" db:"sort_position"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
 	// Aggregated
 	TrackCount int    `json:"track_count,omitempty" db:"-"`
 	ArtistName string `json:"artist_name,omitempty" db:"-"`

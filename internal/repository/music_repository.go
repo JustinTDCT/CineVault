@@ -172,9 +172,17 @@ func (r *MusicRepository) GetAlbumByID(id uuid.UUID) (*models.Album, error) {
 
 func (r *MusicRepository) ListAlbumsByArtist(artistID uuid.UUID) ([]*models.Album, error) {
 	query := `
-		SELECT id, artist_id, library_id, title, sort_title, year, release_date,
-		       description, genre, poster_path, sort_position, created_at, updated_at
-		FROM albums WHERE artist_id = $1 ORDER BY COALESCE(year, 0), COALESCE(sort_title, title)`
+		SELECT al.id, al.artist_id, al.library_id, al.title, al.sort_title, al.year,
+		       al.release_date, al.description, al.genre, al.poster_path,
+		       al.sort_position, al.created_at, al.updated_at,
+		       COUNT(m.id) AS track_count,
+		       COALESCE(ar.name, '') AS artist_name
+		FROM albums al
+		LEFT JOIN media_items m ON m.album_id = al.id
+		LEFT JOIN artists ar ON ar.id = al.artist_id
+		WHERE al.artist_id = $1
+		GROUP BY al.id, ar.name
+		ORDER BY COALESCE(al.year, 0), COALESCE(al.sort_title, al.title)`
 	rows, err := r.db.Query(query, artistID)
 	if err != nil {
 		return nil, err
@@ -186,12 +194,49 @@ func (r *MusicRepository) ListAlbumsByArtist(artistID uuid.UUID) ([]*models.Albu
 		a := &models.Album{}
 		if err := rows.Scan(&a.ID, &a.ArtistID, &a.LibraryID, &a.Title, &a.SortTitle,
 			&a.Year, &a.ReleaseDate, &a.Description, &a.Genre,
-			&a.PosterPath, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			&a.PosterPath, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt,
+			&a.TrackCount, &a.ArtistName); err != nil {
 			return nil, err
 		}
 		albums = append(albums, a)
 	}
 	return albums, rows.Err()
+}
+
+func (r *MusicRepository) ListTracksByAlbum(albumID uuid.UUID) ([]*models.MediaItem, error) {
+	query := `
+		SELECT m.id, m.library_id, m.media_type, m.file_path, m.file_name, m.file_size,
+		       m.title, m.year, m.duration_seconds, m.audio_codec, m.audio_format,
+		       m.bitrate, m.container, m.artist_id, m.album_id,
+		       m.track_number, m.disc_number, m.poster_path, m.added_at, m.updated_at,
+		       COALESCE(ar.name, '') AS artist_name,
+		       COALESCE(al.title, '') AS album_title
+		FROM media_items m
+		LEFT JOIN artists ar ON ar.id = m.artist_id
+		LEFT JOIN albums al ON al.id = m.album_id
+		WHERE m.album_id = $1
+		ORDER BY COALESCE(m.disc_number, 1), COALESCE(m.track_number, 0), m.title`
+	rows, err := r.db.Query(query, albumID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []*models.MediaItem
+	for rows.Next() {
+		m := &models.MediaItem{}
+		if err := rows.Scan(
+			&m.ID, &m.LibraryID, &m.MediaType, &m.FilePath, &m.FileName, &m.FileSize,
+			&m.Title, &m.Year, &m.DurationSeconds, &m.AudioCodec, &m.AudioFormat,
+			&m.Bitrate, &m.Container, &m.ArtistID, &m.AlbumID,
+			&m.TrackNumber, &m.DiscNumber, &m.PosterPath, &m.AddedAt, &m.UpdatedAt,
+			&m.ArtistName, &m.AlbumTitle,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, m)
+	}
+	return items, rows.Err()
 }
 
 func (r *MusicRepository) FindAlbumByTitle(artistID uuid.UUID, title string) (*models.Album, error) {
@@ -260,6 +305,178 @@ func (r *MusicRepository) UpdateAlbumPosterPath(albumID uuid.UUID, posterPath st
 	_, err := r.db.Exec(`UPDATE albums SET poster_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
 		posterPath, albumID)
 	return err
+}
+
+func (r *MusicRepository) ListRecentlyAddedTracks(libraryID uuid.UUID, limit int) ([]*models.MediaItem, error) {
+	query := `
+		SELECT m.id, m.library_id, m.media_type, m.file_path, m.file_name, m.file_size,
+		       m.title, m.year, m.duration_seconds, m.audio_codec, m.audio_format,
+		       m.bitrate, m.container, m.artist_id, m.album_id,
+		       m.track_number, m.disc_number, m.poster_path, m.added_at, m.updated_at,
+		       COALESCE(ar.name, '') AS artist_name,
+		       COALESCE(al.title, '') AS album_title
+		FROM media_items m
+		LEFT JOIN artists ar ON ar.id = m.artist_id
+		LEFT JOIN albums al ON al.id = m.album_id
+		WHERE m.library_id = $1 AND m.media_type = 'music'
+		ORDER BY m.added_at DESC
+		LIMIT $2`
+	return r.queryTracks(query, libraryID, limit)
+}
+
+func (r *MusicRepository) ListMostPlayedTracks(libraryID uuid.UUID, limit int) ([]*models.MediaItem, error) {
+	query := `
+		SELECT m.id, m.library_id, m.media_type, m.file_path, m.file_name, m.file_size,
+		       m.title, m.year, m.duration_seconds, m.audio_codec, m.audio_format,
+		       m.bitrate, m.container, m.artist_id, m.album_id,
+		       m.track_number, m.disc_number, m.poster_path, m.added_at, m.updated_at,
+		       COALESCE(ar.name, '') AS artist_name,
+		       COALESCE(al.title, '') AS album_title
+		FROM media_items m
+		LEFT JOIN artists ar ON ar.id = m.artist_id
+		LEFT JOIN albums al ON al.id = m.album_id
+		WHERE m.library_id = $1 AND m.media_type = 'music' AND m.play_count > 0
+		ORDER BY m.play_count DESC
+		LIMIT $2`
+	return r.queryTracks(query, libraryID, limit)
+}
+
+func (r *MusicRepository) ListRecentlyPlayedTracks(libraryID uuid.UUID, limit int) ([]*models.MediaItem, error) {
+	query := `
+		SELECT m.id, m.library_id, m.media_type, m.file_path, m.file_name, m.file_size,
+		       m.title, m.year, m.duration_seconds, m.audio_codec, m.audio_format,
+		       m.bitrate, m.container, m.artist_id, m.album_id,
+		       m.track_number, m.disc_number, m.poster_path, m.added_at, m.updated_at,
+		       COALESCE(ar.name, '') AS artist_name,
+		       COALESCE(al.title, '') AS album_title
+		FROM media_items m
+		LEFT JOIN artists ar ON ar.id = m.artist_id
+		LEFT JOIN albums al ON al.id = m.album_id
+		WHERE m.library_id = $1 AND m.media_type = 'music' AND m.last_played_at IS NOT NULL
+		ORDER BY m.last_played_at DESC
+		LIMIT $2`
+	return r.queryTracks(query, libraryID, limit)
+}
+
+func (r *MusicRepository) queryTracks(query string, libraryID uuid.UUID, limit int) ([]*models.MediaItem, error) {
+	rows, err := r.db.Query(query, libraryID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []*models.MediaItem
+	for rows.Next() {
+		m := &models.MediaItem{}
+		if err := rows.Scan(
+			&m.ID, &m.LibraryID, &m.MediaType, &m.FilePath, &m.FileName, &m.FileSize,
+			&m.Title, &m.Year, &m.DurationSeconds, &m.AudioCodec, &m.AudioFormat,
+			&m.Bitrate, &m.Container, &m.ArtistID, &m.AlbumID,
+			&m.TrackNumber, &m.DiscNumber, &m.PosterPath, &m.AddedAt, &m.UpdatedAt,
+			&m.ArtistName, &m.AlbumTitle,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, m)
+	}
+	return items, rows.Err()
+}
+
+func (r *MusicRepository) SearchArtists(libraryID uuid.UUID, query string, limit int) ([]*models.Artist, error) {
+	q := `
+		SELECT a.id, a.library_id, a.name, a.sort_name, a.description, a.poster_path, a.mbid,
+		       a.sort_position, a.created_at, a.updated_at,
+		       COUNT(DISTINCT al.id) AS album_count,
+		       COUNT(DISTINCT m.id) AS track_count
+		FROM artists a
+		LEFT JOIN albums al ON al.artist_id = a.id
+		LEFT JOIN media_items m ON m.artist_id = a.id
+		WHERE a.library_id = $1 AND a.name ILIKE $2
+		GROUP BY a.id
+		ORDER BY a.name LIMIT $3`
+	rows, err := r.db.Query(q, libraryID, "%"+query+"%", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var artists []*models.Artist
+	for rows.Next() {
+		a := &models.Artist{}
+		if err := rows.Scan(&a.ID, &a.LibraryID, &a.Name, &a.SortName,
+			&a.Description, &a.PosterPath, &a.MBID, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt,
+			&a.AlbumCount, &a.TrackCount); err != nil {
+			return nil, err
+		}
+		artists = append(artists, a)
+	}
+	return artists, rows.Err()
+}
+
+func (r *MusicRepository) SearchAlbums(libraryID uuid.UUID, query string, limit int) ([]*models.Album, error) {
+	q := `
+		SELECT al.id, al.artist_id, al.library_id, al.title, al.sort_title, al.year,
+		       al.release_date, al.description, al.genre, al.poster_path,
+		       al.sort_position, al.created_at, al.updated_at,
+		       COUNT(m.id) AS track_count,
+		       COALESCE(ar.name, '') AS artist_name
+		FROM albums al
+		LEFT JOIN media_items m ON m.album_id = al.id
+		LEFT JOIN artists ar ON ar.id = al.artist_id
+		WHERE al.library_id = $1 AND al.title ILIKE $2
+		GROUP BY al.id, ar.name
+		ORDER BY al.title LIMIT $3`
+	rows, err := r.db.Query(q, libraryID, "%"+query+"%", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var albums []*models.Album
+	for rows.Next() {
+		a := &models.Album{}
+		if err := rows.Scan(&a.ID, &a.ArtistID, &a.LibraryID, &a.Title, &a.SortTitle,
+			&a.Year, &a.ReleaseDate, &a.Description, &a.Genre,
+			&a.PosterPath, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt,
+			&a.TrackCount, &a.ArtistName); err != nil {
+			return nil, err
+		}
+		albums = append(albums, a)
+	}
+	return albums, rows.Err()
+}
+
+func (r *MusicRepository) SearchTracks(libraryID uuid.UUID, query string, limit int) ([]*models.MediaItem, error) {
+	q := `
+		SELECT m.id, m.library_id, m.media_type, m.file_path, m.file_name, m.file_size,
+		       m.title, m.year, m.duration_seconds, m.audio_codec, m.audio_format,
+		       m.bitrate, m.container, m.artist_id, m.album_id,
+		       m.track_number, m.disc_number, m.poster_path, m.added_at, m.updated_at,
+		       COALESCE(ar.name, '') AS artist_name,
+		       COALESCE(al.title, '') AS album_title
+		FROM media_items m
+		LEFT JOIN artists ar ON ar.id = m.artist_id
+		LEFT JOIN albums al ON al.id = m.album_id
+		WHERE m.library_id = $1 AND m.media_type = 'music' AND m.title ILIKE $2
+		ORDER BY m.title LIMIT $3`
+	rows, err := r.db.Query(q, libraryID, "%"+query+"%", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*models.MediaItem
+	for rows.Next() {
+		m := &models.MediaItem{}
+		if err := rows.Scan(
+			&m.ID, &m.LibraryID, &m.MediaType, &m.FilePath, &m.FileName, &m.FileSize,
+			&m.Title, &m.Year, &m.DurationSeconds, &m.AudioCodec, &m.AudioFormat,
+			&m.Bitrate, &m.Container, &m.ArtistID, &m.AlbumID,
+			&m.TrackNumber, &m.DiscNumber, &m.PosterPath, &m.AddedAt, &m.UpdatedAt,
+			&m.ArtistName, &m.AlbumTitle,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, m)
+	}
+	return items, rows.Err()
 }
 
 func (r *MusicRepository) ListAlbumsWithoutPosters(libraryID uuid.UUID) ([]*models.Album, error) {
