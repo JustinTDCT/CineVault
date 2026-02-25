@@ -7,6 +7,7 @@ let currentUser = null;
 const routes = {
     dashboard: () => import('./modules/dashboard.js'),
     library: () => import('./modules/library.js'),
+    'library-edit': () => import('./modules/library-edit.js'),
     'media-detail': () => import('./modules/media-detail.js'),
     player: () => import('./modules/player.js'),
     settings: () => import('./modules/settings.js'),

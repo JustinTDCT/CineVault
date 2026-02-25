@@ -15,11 +15,73 @@ export async function init(container) {
     } catch { /* defaults */ }
 
     tabs([
+        { label: 'Libraries', render: (body) => renderLibraries(body) },
         { label: 'General', render: (body) => renderGeneral(body, current) },
         { label: 'Video', render: (body) => renderVideo(body, current) },
         { label: 'Metadata', render: (body) => renderMetadata(body, current) },
         { label: 'Security', render: (body) => renderSecurity(body, current) },
     ], container);
+}
+
+const TYPE_ICONS = {
+    movies: '\uD83C\uDFAC', tv_shows: '\uD83D\uDCFA', adult_movies: '\uD83D\uDD1E',
+    adult_clips: '\uD83D\uDD1E', home_movies: '\uD83C\uDFE0', other_movies: '\uD83C\uDFAC',
+    music: '\uD83C\uDFB5', music_videos: '\uD83C\uDFB6', audiobooks: '\uD83C\uDFA7',
+    ebooks: '\uD83D\uDCDA', comic_books: '\uD83D\uDCDC',
+};
+
+async function renderLibraries(body) {
+    clear(body);
+
+    const header = el('div', { class: 'lib-list-header' },
+        el('h3', {}, 'Libraries'),
+        el('button', {
+            class: 'btn btn-primary btn-sm',
+            onClick: () => { window.location.hash = '#/library-edit/new'; },
+        }, '+ Add Library')
+    );
+    body.appendChild(header);
+
+    let libs = [];
+    try {
+        libs = await api.libraries.list();
+    } catch {
+        body.appendChild(el('div', { class: 'empty-state' },
+            el('div', { class: 'empty-state-text' }, 'Failed to load libraries')));
+        return;
+    }
+
+    if (!libs || libs.length === 0) {
+        body.appendChild(el('div', { class: 'empty-state' },
+            el('div', { class: 'empty-state-icon' }, '\uD83D\uDCC1'),
+            el('div', { class: 'empty-state-text' }, 'No libraries yet. Add one to get started.')));
+        return;
+    }
+
+    const grid = el('div', { class: 'lib-card-grid' });
+    libs.forEach(lib => {
+        const icon = TYPE_ICONS[lib.library_type] || '\uD83D\uDCC1';
+        const typeLabel = (lib.library_type || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const folderCount = Array.isArray(lib.folders) ? lib.folders.length : 0;
+
+        const card = el('div', {
+            class: 'lib-card',
+            onClick: () => { window.location.hash = `#/library-edit/${lib.id}`; },
+        },
+            el('div', { class: 'lib-card-icon' }, icon),
+            el('div', { class: 'lib-card-body' },
+                el('div', { class: 'lib-card-name' }, lib.name),
+                el('div', { class: 'lib-card-meta' },
+                    el('span', {}, typeLabel),
+                    el('span', { class: 'lib-card-dot' }, '\u00B7'),
+                    el('span', {}, `${folderCount} folder${folderCount !== 1 ? 's' : ''}`)
+                )
+            ),
+            el('div', { class: 'lib-card-arrow' }, '\u203A')
+        );
+        grid.appendChild(card);
+    });
+    body.appendChild(grid);
 }
 
 function renderGeneral(body, s) {

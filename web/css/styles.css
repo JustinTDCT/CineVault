@@ -590,7 +590,85 @@ body {
 .file-icon { font-size: 16px; min-width: 20px; }
 
 /* ══════════════════════════════════════
-   18. Empty State
+   18. Library Settings List
+   ══════════════════════════════════════ */
+.lib-list-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--sp-4);
+}
+.lib-list-header h3 { font-size: 1rem; font-weight: 700; font-family: var(--font-display); }
+
+.lib-card-grid {
+    display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.lib-card {
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-4) var(--sp-5);
+    background: var(--surface-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    cursor: pointer;
+    transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+.lib-card:hover {
+    border-color: var(--accent-border-strong);
+    box-shadow: var(--shadow-glow);
+    transform: translateX(4px);
+}
+.lib-card-icon { font-size: 1.6rem; min-width: 36px; text-align: center; }
+.lib-card-body { flex: 1; min-width: 0; }
+.lib-card-name {
+    font-size: 0.92rem; font-weight: 600; color: var(--text-primary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lib-card-meta { font-size: 0.78rem; color: var(--text-tertiary); margin-top: 2px; display: flex; align-items: center; gap: var(--sp-2); }
+.lib-card-dot { color: var(--text-muted); }
+.lib-card-arrow { font-size: 1.4rem; color: var(--text-muted); transition: color var(--transition); }
+.lib-card:hover .lib-card-arrow { color: var(--accent); }
+
+/* ══════════════════════════════════════
+   18b. Library Edit Page
+   ══════════════════════════════════════ */
+.lib-edit-layout {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: var(--sp-6);
+    align-items: start;
+}
+@media (max-width: 900px) {
+    .lib-edit-layout { grid-template-columns: 1fr; }
+}
+.lib-edit-main { display: flex; flex-direction: column; gap: var(--sp-4); }
+.lib-edit-side { display: flex; flex-direction: column; gap: var(--sp-4); }
+.lib-edit-actions { margin-top: var(--sp-2); }
+
+.form-value-display {
+    padding: var(--sp-3) var(--sp-4);
+    background: linear-gradient(135deg, rgba(26,35,50,0.4) 0%, rgba(13,27,42,0.5) 100%);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+}
+
+.folder-tags { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.folder-tag {
+    display: inline-flex; align-items: center; gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-3);
+    background: var(--accent-bg);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-pill);
+    font-size: 0.78rem; color: var(--accent);
+}
+.folder-tag-remove {
+    background: none; border: none; color: var(--text-muted);
+    font-size: 1rem; cursor: pointer; line-height: 1;
+    padding: 0; transition: color var(--transition);
+}
+.folder-tag-remove:hover { color: var(--error); }
+
+/* ══════════════════════════════════════
+   19. Empty State
    ══════════════════════════════════════ */
 .empty-state { text-align: center; padding: 80px var(--sp-6); color: var(--text-muted); }
 .empty-state-icon { font-size: 56px; margin-bottom: var(--sp-4); opacity: 0.6; }
