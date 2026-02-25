@@ -53,7 +53,12 @@ func NewServer(db *sql.DB, cfg *config.Config) *chi.Mux {
 	detector := detection.NewDetector(db, cfg.FFmpegPath)
 
 	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
-		WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		var userCount int
+		db.QueryRow("SELECT COUNT(*) FROM users").Scan(&userCount)
+		WriteJSON(w, http.StatusOK, map[string]interface{}{
+			"status":     "ok",
+			"user_count": userCount,
+		})
 	})
 
 	r.Mount("/api/auth", auth.NewHandler(db).Router())

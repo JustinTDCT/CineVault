@@ -28,7 +28,10 @@ async function request(method, path, body = null) {
         throw new ApiError(resp.status, data?.error?.code || 'UNKNOWN', msg);
     }
 
-    return data?.data ?? data;
+    if (data && typeof data === 'object' && 'data' in data) {
+        return data.data ?? [];
+    }
+    return data;
 }
 
 export class ApiError extends Error {
