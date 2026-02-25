@@ -152,6 +152,14 @@ func (h *ScanHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 
 	_ = h.libRepo.UpdateLastScan(libID)
 
+	if library.MediaType == models.MediaTypeMusic {
+		if removed, err := h.scanner.CleanupMusicDuplicates(libID); err != nil {
+			log.Printf("Job: music duplicate cleanup error: %v", err)
+		} else if removed > 0 {
+			log.Printf("Job: music cleanup removed %d duplicate albums", removed)
+		}
+	}
+
 	log.Printf("Job: scan complete - %d found, %d added", result.FilesFound, result.FilesAdded)
 	if h.notifier != nil {
 		h.notifier.Broadcast("scan:complete", map[string]interface{}{
@@ -1318,6 +1326,13 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 			updated = int(musicUpdated)
 			log.Printf("Metadata refresh: music fast path done — %d/%d tracks updated in %q",
 				updated, len(musicItems), library.Name)
+
+			// Merge duplicate albums created by featured-artist tag variants
+			if removed, cleanErr := h.scanner.CleanupMusicDuplicates(libID); cleanErr != nil {
+				log.Printf("Metadata refresh: music duplicate cleanup error: %v", cleanErr)
+			} else if removed > 0 {
+				log.Printf("Metadata refresh: removed %d duplicate albums", removed)
+			}
 
 			// Backfill album cover art for albums still missing posters
 			if h.notifier != nil {

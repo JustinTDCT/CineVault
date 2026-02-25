@@ -513,13 +513,16 @@ func (s *Scanner) processScanFile(library *models.Library, scanPath string, f sc
 			}
 
 			// Use album_artist for hierarchy, fall back to track artist.
-			// Store album_artist on the item so track-level artist is preserved.
+			// Normalize by stripping featured-artist suffixes ("feat.", "ft.",
+			// "featuring", "introducing") so all tracks on the same album
+			// resolve to one canonical artist and one album record — matching
+			// the Plex/Jellyfin model where AlbumArtist is the grouping key.
 			hierarchyArtist := tagAlbumArtist
 			if hierarchyArtist == "" {
 				hierarchyArtist = tagArtist
 			}
 			if hierarchyArtist != "" {
-				parsed.Artist = hierarchyArtist
+				parsed.Artist = normalizeArtistForGrouping(hierarchyArtist)
 			}
 			if tagAlbumArtist != "" {
 				item.AlbumArtist = &tagAlbumArtist
@@ -2419,6 +2422,26 @@ func (s *Scanner) cachedFindOrCreateAlbum(artistID, libraryID uuid.UUID, title s
 
 	s.albumCache[key] = album
 	return album, nil
+}
+
+// CleanupMusicDuplicates merges duplicate albums (same title, different
+// "feat." artist variants) and removes orphaned artist records. Returns
+// the number of duplicate albums removed.
+func (s *Scanner) CleanupMusicDuplicates(libraryID uuid.UUID) (int, error) {
+	if s.musicRepo == nil {
+		return 0, nil
+	}
+	removed, err := s.musicRepo.CleanupDuplicateAlbums(libraryID)
+	if err != nil {
+		return 0, fmt.Errorf("cleanup duplicate albums: %w", err)
+	}
+	orphaned, err := s.musicRepo.CleanupOrphanedArtists(libraryID)
+	if err != nil {
+		log.Printf("Music cleanup: orphaned artist cleanup error: %v", err)
+	} else if orphaned > 0 {
+		log.Printf("Music cleanup: removed %d orphaned artists", orphaned)
+	}
+	return removed, nil
 }
 
 // BackfillArtistImages finds artists without poster art and fetches images

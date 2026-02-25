@@ -215,7 +215,7 @@ func (r *MusicRepository) ListTracksByAlbum(albumID uuid.UUID) ([]*models.MediaI
 		       m.title, m.year, m.duration_seconds, m.audio_codec, m.audio_format,
 		       m.bitrate, m.container, m.artist_id, m.album_id,
 		       m.track_number, m.disc_number, m.poster_path, m.added_at, m.updated_at,
-		       COALESCE(ar.name, '') AS artist_name,
+		       COALESCE(m.album_artist, ar.name, '') AS artist_name,
 		       COALESCE(al.title, '') AS album_title
 		FROM media_items m
 		LEFT JOIN artists ar ON ar.id = m.artist_id
@@ -483,6 +483,84 @@ func (r *MusicRepository) SearchTracks(libraryID uuid.UUID, query string, limit 
 		items = append(items, m)
 	}
 	return items, rows.Err()
+}
+
+// CleanupDuplicateAlbums merges albums that share the same title within a
+// library but ended up under different artist records (e.g. "Onyx" vs
+// "Onyx feat. Dope D.O.D."). For each group of duplicates the album with the
+// most tracks is kept; tracks from the others are reassigned and the empty
+// albums (and orphaned artists) are removed.
+func (r *MusicRepository) CleanupDuplicateAlbums(libraryID uuid.UUID) (int, error) {
+	// Step 1: reassign tracks from duplicate albums to the primary (most-tracked) album.
+	reassign := `
+		WITH ranked AS (
+			SELECT al.id AS album_id,
+			       LOWER(al.title) AS ltitle,
+			       COUNT(m.id) AS tc,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY al.library_id, LOWER(al.title)
+			           ORDER BY COUNT(m.id) DESC, al.created_at
+			       ) AS rn
+			FROM albums al
+			LEFT JOIN media_items m ON m.album_id = al.id
+			WHERE al.library_id = $1
+			GROUP BY al.id
+		),
+		primary_map AS (
+			SELECT r2.album_id AS dup_id, p.album_id AS primary_id
+			FROM ranked r2
+			JOIN ranked p ON p.ltitle = r2.ltitle AND p.rn = 1
+			WHERE r2.rn > 1
+		)
+		UPDATE media_items
+		SET album_id = pm.primary_id, artist_id = (SELECT artist_id FROM albums WHERE id = pm.primary_id)
+		FROM primary_map pm
+		WHERE media_items.album_id = pm.dup_id`
+
+	if _, err := r.db.Exec(reassign, libraryID); err != nil {
+		return 0, fmt.Errorf("reassign tracks: %w", err)
+	}
+
+	// Step 2: delete albums that no longer have any tracks and are not the
+	// primary (rank=1) within their title group.
+	del := `
+		WITH ranked AS (
+			SELECT al.id AS album_id,
+			       COUNT(m.id) AS tc,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY al.library_id, LOWER(al.title)
+			           ORDER BY COUNT(m.id) DESC, al.created_at
+			       ) AS rn
+			FROM albums al
+			LEFT JOIN media_items m ON m.album_id = al.id
+			WHERE al.library_id = $1
+			GROUP BY al.id
+		)
+		DELETE FROM albums
+		WHERE id IN (SELECT album_id FROM ranked WHERE rn > 1 AND tc = 0)`
+
+	result, err := r.db.Exec(del, libraryID)
+	if err != nil {
+		return 0, fmt.Errorf("delete duplicate albums: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	return int(n), nil
+}
+
+// CleanupOrphanedArtists removes artist records that have no albums and no
+// tracks linked to them.
+func (r *MusicRepository) CleanupOrphanedArtists(libraryID uuid.UUID) (int, error) {
+	query := `
+		DELETE FROM artists
+		WHERE library_id = $1
+		  AND id NOT IN (SELECT DISTINCT artist_id FROM albums WHERE library_id = $1)
+		  AND id NOT IN (SELECT DISTINCT artist_id FROM media_items WHERE library_id = $1 AND artist_id IS NOT NULL)`
+	result, err := r.db.Exec(query, libraryID)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := result.RowsAffected()
+	return int(n), nil
 }
 
 func (r *MusicRepository) ListAlbumsWithoutPosters(libraryID uuid.UUID) ([]*models.Album, error) {

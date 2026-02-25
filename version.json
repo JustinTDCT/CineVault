@@ -1,6 +1,6 @@
 {
-  "version": "1.35.04",
-  "phase": 35,
+  "version": "1.36.00",
+  "phase": 36,
   "released": "2026-02-25",
-  "notes": "Fix: album art backfill now checks cache server first (23K+ cached covers), only falls back to MusicBrainz/file extraction on miss."
+  "notes": "Feature: music album deduplication — normalize album artists by stripping featured-artist suffixes (feat/ft/featuring) to group tracks into single albums like Plex/Jellyfin; auto-merge existing duplicates after scan; show per-track artist credits in tracklist."
 }

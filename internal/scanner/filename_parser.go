@@ -929,6 +929,22 @@ func EditionFromFileVsFolder(filename, folderTitle string) string {
 
 // ──────────────────── Multi-Disc Detection ────────────────────
 
+// featArtistRe matches featured-artist indicators in artist names.
+// Captures everything before the separator so the base artist can be extracted.
+var featArtistRe = regexp.MustCompile(`(?i)\s+(?:feat\.?|ft\.?|featuring|introducing)\s+`)
+
+// normalizeArtistForGrouping strips featured-artist suffixes from an artist
+// string so that "Onyx feat. A$AP Ferg & Sean Price" and "Onyx feat. Dope D.O.D."
+// both resolve to "Onyx". This mirrors the Plex/Jellyfin model where AlbumArtist
+// is the canonical grouping key and per-track credits live on the track level.
+func normalizeArtistForGrouping(name string) string {
+	loc := featArtistRe.FindStringIndex(name)
+	if loc != nil && loc[0] > 0 {
+		return strings.TrimSpace(name[:loc[0]])
+	}
+	return name
+}
+
 var discFolderRe = regexp.MustCompile(`(?i)^(?:cd|disc|disk|vol(?:ume)?|part|act)\s*(\d+)$`)
 
 // parseDiscFromFolder extracts a disc number from a folder name like "Disc 1", "CD 2", etc.
