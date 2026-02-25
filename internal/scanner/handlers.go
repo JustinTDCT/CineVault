@@ -41,7 +41,7 @@ func (h *Handler) scanLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go func() {
-		h.scanner.ScanLibrary(lib.ID, lib.Folders)
+		h.scanner.ScanLibrary(lib.ID, lib.LibraryType, lib.Folders)
 	}()
 
 	httputil.WriteJSON(w, http.StatusAccepted, map[string]string{

@@ -49,7 +49,7 @@ func NewServer(db *sql.DB, cfg *config.Config) *chi.Mux {
 
 	cacheClient := metadataPkg.NewCacheClient(cfg)
 	matcher := metadataPkg.NewMatcher(db, cfg, cacheClient, mediaRepo)
-	scan := scanner.New(db, cfg, mediaRepo)
+	scan := scanner.New(db, cfg, mediaRepo, matcher)
 	detector := detection.NewDetector(db, cfg.FFmpegPath)
 
 	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {

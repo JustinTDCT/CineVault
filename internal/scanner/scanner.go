@@ -10,21 +10,28 @@ import (
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/config"
+	"github.com/JustinTDCT/CineVault/internal/libraries"
 	"github.com/JustinTDCT/CineVault/internal/media"
 )
+
+type MetadataMatcher interface {
+	AutoMatch(item *media.MediaItem, libType libraries.LibraryType) error
+}
 
 type Scanner struct {
 	db        *sql.DB
 	cfg       *config.Config
 	mediaRepo *media.Repository
+	matcher   MetadataMatcher
 }
 
-func New(db *sql.DB, cfg *config.Config, mediaRepo *media.Repository) *Scanner {
-	return &Scanner{db: db, cfg: cfg, mediaRepo: mediaRepo}
+func New(db *sql.DB, cfg *config.Config, mediaRepo *media.Repository, matcher MetadataMatcher) *Scanner {
+	return &Scanner{db: db, cfg: cfg, mediaRepo: mediaRepo, matcher: matcher}
 }
 
-func (s *Scanner) ScanLibrary(libraryID string, folders []string) ScanResult {
+func (s *Scanner) ScanLibrary(libraryID string, libType libraries.LibraryType, folders []string) ScanResult {
 	result := ScanResult{LibraryID: libraryID, StartedAt: time.Now()}
+	log.Printf("[scanner] starting scan for library %s (%s), %d folder(s)", libraryID, libType, len(folders))
 
 	s.db.Exec(`
 		INSERT INTO scan_state (library_id, last_scan_started, status)
@@ -33,10 +40,14 @@ func (s *Scanner) ScanLibrary(libraryID string, folders []string) ScanResult {
 		libraryID)
 
 	for _, folder := range folders {
-		s.scanFolder(folder, libraryID, &result)
+		s.scanFolder(folder, libraryID, libType, &result)
 	}
 
 	result.CompletedAt = time.Now()
+	elapsed := result.CompletedAt.Sub(result.StartedAt).Round(time.Millisecond)
+	log.Printf("[scanner] scan complete for library %s: %d scanned, %d added, %d removed (%s)",
+		libraryID, result.FilesScanned, result.FilesAdded, result.FilesRemoved, elapsed)
+
 	s.db.Exec(`
 		UPDATE scan_state SET last_scan_completed=NOW(), files_scanned=$2, files_added=$3,
 		       files_removed=$4, status='idle'
@@ -46,7 +57,7 @@ func (s *Scanner) ScanLibrary(libraryID string, folders []string) ScanResult {
 	return result
 }
 
-func (s *Scanner) scanFolder(root, libraryID string, result *ScanResult) {
+func (s *Scanner) scanFolder(root, libraryID string, libType libraries.LibraryType, result *ScanResult) {
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
@@ -125,10 +136,17 @@ func (s *Scanner) scanFolder(root, libraryID string, result *ScanResult) {
 		}
 
 		if err := s.mediaRepo.Create(item); err != nil {
-			log.Printf("scanner: failed to create item for %s: %v", path, err)
+			log.Printf("[scanner] failed to create item for %s: %v", path, err)
 			return nil
 		}
 		result.FilesAdded++
+
+		if s.matcher != nil {
+			if err := s.matcher.AutoMatch(item, libType); err != nil {
+				log.Printf("[scanner] automatch failed for %q: %v", path, err)
+			}
+		}
+
 		return nil
 	})
 }
