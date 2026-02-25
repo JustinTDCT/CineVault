@@ -1,6 +1,6 @@
 {
-  "version": "1.35.01",
+  "version": "1.35.02",
   "phase": 35,
   "released": "2026-02-25",
-  "notes": "Fix: music metadata refresh now persists artist/album linkage; fix genre tag slug collisions; album detail includes artist name and track count."
+  "notes": "Perf: music refresh ~5x faster — in-memory genre cache, single UPDATE per track, RWMutex for cache concurrency."
 }

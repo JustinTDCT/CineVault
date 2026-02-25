@@ -55,10 +55,12 @@ type Scanner struct {
 	artistCache map[string]*models.Artist // key: "libraryID|artistName"
 	// albumCache avoids repeated DB lookups for the same album within a scan
 	albumCache map[string]*models.Album // key: "artistID|albumTitle"
+	// genreCache avoids per-track DB queries for genre tag resolution
+	genreCache map[string]uuid.UUID // key: lowercase name or slug → tag ID
 	// pendingMeta collects items for deferred batch cache lookup
 	pendingMeta []pendingMetaItem
 	// mu protects concurrent access during parallel enrichment
-	mu sync.Mutex
+	mu sync.RWMutex
 }
 
 // scanFile holds path info for the concurrent processing queue.
@@ -140,6 +142,7 @@ func NewScanner(ffprobePath, ffmpegPath, hwaccel string, mediaRepo *repository.M
 		scanShowsByFolder:  make(map[string]*models.TVShow),
 		artistCache:        make(map[string]*models.Artist),
 		albumCache:         make(map[string]*models.Album),
+		genreCache:         make(map[string]uuid.UUID),
 	}
 }
 
@@ -157,6 +160,7 @@ func (s *Scanner) ScanLibrary(library *models.Library, progressFn ...ProgressFun
 	// Reset per-scan caches
 	s.artistCache = make(map[string]*models.Artist)
 	s.albumCache = make(map[string]*models.Album)
+	s.genreCache = make(map[string]uuid.UUID)
 	s.pendingMeta = nil
 
 	// Determine which folders to scan: use library.Folders if available, else fall back to library.Path
@@ -2335,9 +2339,19 @@ func filterLockedExtended(lf pq.StringArray, tagline, origLang, country, trailer
 func (s *Scanner) cachedFindOrCreateArtist(libraryID uuid.UUID, name string) (*models.Artist, error) {
 	key := libraryID.String() + "|" + strings.ToLower(name)
 
+	// Fast path: read lock for cache hit
+	s.mu.RLock()
+	if cached, ok := s.artistCache[key]; ok {
+		s.mu.RUnlock()
+		return cached, nil
+	}
+	s.mu.RUnlock()
+
+	// Slow path: write lock for DB lookup/create
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Double-check after acquiring write lock
 	if cached, ok := s.artistCache[key]; ok {
 		return cached, nil
 	}
@@ -2368,9 +2382,19 @@ func (s *Scanner) cachedFindOrCreateArtist(libraryID uuid.UUID, name string) (*m
 func (s *Scanner) cachedFindOrCreateAlbum(artistID, libraryID uuid.UUID, title string, year *int) (*models.Album, error) {
 	key := artistID.String() + "|" + strings.ToLower(title)
 
+	// Fast path: read lock for cache hit
+	s.mu.RLock()
+	if cached, ok := s.albumCache[key]; ok {
+		s.mu.RUnlock()
+		return cached, nil
+	}
+	s.mu.RUnlock()
+
+	// Slow path: write lock for DB lookup/create
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Double-check after acquiring write lock
 	if cached, ok := s.albumCache[key]; ok {
 		return cached, nil
 	}
@@ -2854,15 +2878,7 @@ func (s *Scanner) RefreshMusicItem(item *models.MediaItem) error {
 		idx++
 	}
 
-	// Execute the update
-	args = append(args, item.ID)
-	query := fmt.Sprintf("UPDATE media_items SET %s WHERE id = $%d",
-		strings.Join(setClauses, ", "), idx)
-	if _, err := s.mediaRepo.DB().Exec(query, args...); err != nil {
-		return fmt.Errorf("update media item: %w", err)
-	}
-
-	// Use album_artist for hierarchy building, fall back to track artist
+	// Resolve hierarchy BEFORE the UPDATE so we can include artist_id/album_id in one query
 	artist := tagAlbumArtist
 	if artist == "" {
 		artist = tagArtist
@@ -2873,34 +2889,28 @@ func (s *Scanner) RefreshMusicItem(item *models.MediaItem) error {
 			log.Printf("Music refresh: hierarchy update failed for %s: %v", item.FileName, err)
 		}
 	}
+	if item.ArtistID != nil {
+		setClauses = append(setClauses, fmt.Sprintf("artist_id = $%d", idx))
+		args = append(args, *item.ArtistID)
+		idx++
+	}
+	if item.AlbumID != nil {
+		setClauses = append(setClauses, fmt.Sprintf("album_id = $%d", idx))
+		args = append(args, *item.AlbumID)
+		idx++
+	}
+	if tagAlbumArtist != "" {
+		setClauses = append(setClauses, fmt.Sprintf("album_artist = $%d", idx))
+		args = append(args, tagAlbumArtist)
+		idx++
+	}
 
-	// Persist artist_id/album_id linkage set by handleMusicHierarchy
-	if item.ArtistID != nil || item.AlbumID != nil {
-		var linkClauses []string
-		var linkArgs []interface{}
-		li := 1
-		if item.ArtistID != nil {
-			linkClauses = append(linkClauses, fmt.Sprintf("artist_id = $%d", li))
-			linkArgs = append(linkArgs, *item.ArtistID)
-			li++
-		}
-		if item.AlbumID != nil {
-			linkClauses = append(linkClauses, fmt.Sprintf("album_id = $%d", li))
-			linkArgs = append(linkArgs, *item.AlbumID)
-			li++
-		}
-		if tagAlbumArtist != "" {
-			linkClauses = append(linkClauses, fmt.Sprintf("album_artist = $%d", li))
-			linkArgs = append(linkArgs, tagAlbumArtist)
-			li++
-		}
-		linkClauses = append(linkClauses, "updated_at = CURRENT_TIMESTAMP")
-		linkArgs = append(linkArgs, item.ID)
-		linkQuery := fmt.Sprintf("UPDATE media_items SET %s WHERE id = $%d",
-			strings.Join(linkClauses, ", "), li)
-		if _, err := s.mediaRepo.DB().Exec(linkQuery, linkArgs...); err != nil {
-			log.Printf("Music refresh: link update failed for %s: %v", item.FileName, err)
-		}
+	// Single UPDATE for all metadata + hierarchy linkage
+	args = append(args, item.ID)
+	query := fmt.Sprintf("UPDATE media_items SET %s WHERE id = $%d",
+		strings.Join(setClauses, ", "), idx)
+	if _, err := s.mediaRepo.DB().Exec(query, args...); err != nil {
+		return fmt.Errorf("update media item: %w", err)
 	}
 
 	// Link genre tag from embedded metadata
@@ -3200,50 +3210,66 @@ func (s *Scanner) enrichWithFanart(itemID uuid.UUID, tmdbExternalID string, medi
 }
 
 // linkGenreTags creates genre tags (if they don't exist) and links them to the media item.
+// Uses an in-memory genre cache to avoid per-track DB queries.
 func (s *Scanner) linkGenreTags(itemID uuid.UUID, genres []string) {
 	for _, genre := range genres {
 		slug := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(genre, " ", "-"), "'", ""), "\"", ""))
+		nameLower := strings.ToLower(genre)
 
-		existing, _ := s.tagRepo.List("genre")
-		var tagID uuid.UUID
-		found := false
-		for _, t := range existing {
-			if strings.EqualFold(t.Name, genre) || t.Slug == slug {
-				tagID = t.ID
-				found = true
-				break
-			}
+		// Fast path: check cache with read lock
+		s.mu.RLock()
+		tagID, cached := s.genreCache[nameLower]
+		if !cached {
+			tagID, cached = s.genreCache[slug]
 		}
-		if !found {
-			tagID = uuid.New()
-			tag := &models.Tag{
-				ID:       tagID,
-				Name:     genre,
-				Slug:     slug,
-				Category: models.TagCategoryGenre,
+		s.mu.RUnlock()
+
+		if !cached {
+			// Slow path: DB lookup, then cache
+			s.mu.Lock()
+			// Double-check after acquiring write lock
+			tagID, cached = s.genreCache[nameLower]
+			if !cached {
+				tagID, cached = s.genreCache[slug]
 			}
-			if err := s.tagRepo.Create(tag); err != nil {
-				// Slug collision — find existing tag by slug
-				for _, t := range existing {
-					if t.Slug == slug {
-						tagID = t.ID
-						found = true
-						break
+			if !cached {
+				// Try DB lookup by slug
+				var dbID uuid.UUID
+				err := s.mediaRepo.DB().QueryRow(
+					`SELECT id FROM tags WHERE slug = $1 AND category = 'genre' LIMIT 1`, slug,
+				).Scan(&dbID)
+				if err == nil {
+					tagID = dbID
+					cached = true
+				} else {
+					// Create new tag
+					tagID = uuid.New()
+					tag := &models.Tag{
+						ID:       tagID,
+						Name:     genre,
+						Slug:     slug,
+						Category: models.TagCategoryGenre,
 					}
-				}
-				if !found {
-					var fallbackID uuid.UUID
-					scanErr := s.mediaRepo.DB().QueryRow(
-						`SELECT id FROM tags WHERE slug = $1 AND category = 'genre' LIMIT 1`, slug,
-					).Scan(&fallbackID)
-					if scanErr != nil {
-						log.Printf("Auto-match: genre tag %q unresolvable: %v (original: %v)", genre, scanErr, err)
-						continue
+					if createErr := s.tagRepo.Create(tag); createErr != nil {
+						// Slug collision race — re-query
+						err2 := s.mediaRepo.DB().QueryRow(
+							`SELECT id FROM tags WHERE slug = $1 AND category = 'genre' LIMIT 1`, slug,
+						).Scan(&dbID)
+						if err2 != nil {
+							s.mu.Unlock()
+							log.Printf("Auto-match: genre tag %q unresolvable: %v", genre, createErr)
+							continue
+						}
+						tagID = dbID
 					}
-					tagID = fallbackID
+					cached = true
 				}
+				s.genreCache[nameLower] = tagID
+				s.genreCache[slug] = tagID
 			}
+			s.mu.Unlock()
 		}
+
 		if err := s.tagRepo.AssignToMedia(itemID, tagID); err != nil {
 			log.Printf("Auto-match: assign genre tag %q to %s failed: %v", genre, itemID, err)
 		}
