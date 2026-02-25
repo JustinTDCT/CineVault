@@ -2544,6 +2544,8 @@ func (s *Scanner) BackfillAlbumArt(libraryID uuid.UUID) (int, error) {
 	}
 	log.Printf("Album art backfill: %d albums without covers in library %s", len(albums), libraryID)
 
+	cacheClient := s.getCacheClient()
+
 	var mbScraper *metadata.MusicBrainzScraper
 	for _, sc := range s.scrapers {
 		if mb, ok := sc.(*metadata.MusicBrainzScraper); ok {
@@ -2551,39 +2553,57 @@ func (s *Scanner) BackfillAlbumArt(libraryID uuid.UUID) (int, error) {
 			break
 		}
 	}
-	if mbScraper == nil {
-		return 0, fmt.Errorf("MusicBrainz scraper not configured")
-	}
 
 	fetched := 0
 	for _, album := range albums {
-		// Try MusicBrainz / Cover Art Archive first
 		found := false
 		query := album.Title
 		if album.ArtistName != "" {
 			query = album.ArtistName + " " + album.Title
 		}
-		matches, err := mbScraper.Search(query, models.MediaTypeMusic, album.Year)
-		if err == nil {
-			for _, m := range matches {
-				if m.PosterURL != nil && *m.PosterURL != "" {
-					filename := "album_" + album.ID.String() + ".jpg"
-					_, dlErr := metadata.DownloadPoster(*m.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
-					if dlErr != nil {
-						continue
-					}
+
+		// 1) Cache server first — no rate limiting, already has 23K+ covers
+		if !found && cacheClient != nil {
+			result := cacheClient.Lookup(album.Title, album.Year, models.MediaTypeMusic)
+			if result != nil && result.Match != nil && result.Match.PosterURL != nil && *result.Match.PosterURL != "" {
+				filename := "album_" + album.ID.String() + ".jpg"
+				_, dlErr := metadata.DownloadPoster(*result.Match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+				if dlErr == nil {
 					webPath := "/previews/posters/" + filename
 					if err := s.musicRepo.UpdateAlbumPosterPath(album.ID, webPath); err == nil {
 						fetched++
 						found = true
-						log.Printf("Album art backfill: set cover for %q (Cover Art Archive)", album.Title)
+						log.Printf("Album art backfill: set cover for %q (cache server)", album.Title)
 					}
-					break
 				}
 			}
 		}
 
-		// Fallback: try extracting embedded cover art from a track in this album
+		// 2) MusicBrainz direct (rate limited, only for cache misses)
+		if !found && mbScraper != nil {
+			matches, err := mbScraper.Search(query, models.MediaTypeMusic, album.Year)
+			if err == nil {
+				for _, m := range matches {
+					if m.PosterURL != nil && *m.PosterURL != "" {
+						filename := "album_" + album.ID.String() + ".jpg"
+						_, dlErr := metadata.DownloadPoster(*m.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+						if dlErr != nil {
+							continue
+						}
+						webPath := "/previews/posters/" + filename
+						if err := s.musicRepo.UpdateAlbumPosterPath(album.ID, webPath); err == nil {
+							fetched++
+							found = true
+							log.Printf("Album art backfill: set cover for %q (Cover Art Archive)", album.Title)
+						}
+						break
+					}
+				}
+			}
+			time.Sleep(1100 * time.Millisecond)
+		}
+
+		// 3) Fallback: extract embedded cover art from a track file
 		if !found {
 			tracks, _ := s.musicRepo.ListTracksByAlbum(album.ID)
 			for _, track := range tracks {
@@ -2601,8 +2621,6 @@ func (s *Scanner) BackfillAlbumArt(libraryID uuid.UUID) (int, error) {
 				break
 			}
 		}
-
-		time.Sleep(1100 * time.Millisecond)
 	}
 	return fetched, nil
 }
