@@ -1,0 +1,56 @@
+version: "3.8"
+
+services:
+  cinevault:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: cinevault
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      - DATABASE_URL=postgres://${DB_USER:-cinevault}:${DB_PASS:-cinevault}@db:5432/${DB_NAME:-cinevault}?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:-change-me}
+      - DATA_DIR=/data
+      - CACHE_SERVER_URL=${CACHE_SERVER_URL:-}
+      - CACHE_SERVER_API_KEY=${CACHE_SERVER_API_KEY:-}
+      - FFMPEG_PATH=ffmpeg
+      - FFPROBE_PATH=ffprobe
+      - HW_ACCEL_TYPE=${HW_ACCEL_TYPE:-qsv}
+      - MAX_TRANSCODES=${MAX_TRANSCODES:-4}
+      - DB_HOST=db
+      - DB_PORT=5432
+    volumes:
+      - ${MEDIA_DIR:-/mnt/media}:/media:ro
+      - cinevault_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    devices:
+      - /dev/dri:/dev/dri
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  db:
+    image: postgres:16-alpine
+    container_name: cinevault-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USER:-cinevault}
+      - POSTGRES_PASSWORD=${DB_PASS:-cinevault}
+      - POSTGRES_DB=${DB_NAME:-cinevault}
+    volumes:
+      - cinevault_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cinevault}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cinevault_data:
+  cinevault_pgdata:

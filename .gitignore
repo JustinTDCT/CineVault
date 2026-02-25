@@ -1,0 +1,21 @@
+# Binaries
+cinevault
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+docker/.env
+
+# Data
+/data/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
