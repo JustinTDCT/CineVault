@@ -13,7 +13,6 @@ services:
       - DATABASE_URL=postgres://${DB_USER:-cinevault}:${DB_PASS:-cinevault}@db:5432/${DB_NAME:-cinevault}?sslmode=disable
       - JWT_SECRET=${JWT_SECRET:-change-me}
       - DATA_DIR=/data
-      - CACHE_SERVER_URL=${CACHE_SERVER_URL:-}
       - CACHE_SERVER_API_KEY=${CACHE_SERVER_API_KEY:-}
       - FFMPEG_PATH=ffmpeg
       - FFPROBE_PATH=ffprobe
