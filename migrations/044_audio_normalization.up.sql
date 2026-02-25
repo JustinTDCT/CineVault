@@ -1,4 +1,0 @@
-ALTER TABLE libraries ADD COLUMN IF NOT EXISTS audio_normalization BOOLEAN NOT NULL DEFAULT false;
-
-ALTER TABLE media_items ADD COLUMN IF NOT EXISTS loudness_lufs DECIMAL(6,2);
-ALTER TABLE media_items ADD COLUMN IF NOT EXISTS loudness_gain_db DECIMAL(6,2);
