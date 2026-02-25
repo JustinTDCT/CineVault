@@ -2562,18 +2562,41 @@ func (s *Scanner) BackfillAlbumArt(libraryID uuid.UUID) (int, error) {
 			query = album.ArtistName + " " + album.Title
 		}
 
-		// 1) Cache server first — no rate limiting, already has 23K+ covers
+		// 1) Cache server first — try exact lookup, then fuzzy search
 		if !found && cacheClient != nil {
-			result := cacheClient.Lookup(album.Title, album.Year, models.MediaTypeMusic)
-			if result != nil && result.Match != nil && result.Match.PosterURL != nil && *result.Match.PosterURL != "" {
-				filename := "album_" + album.ID.String() + ".jpg"
-				_, dlErr := metadata.DownloadPoster(*result.Match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
-				if dlErr == nil {
-					webPath := "/previews/posters/" + filename
-					if err := s.musicRepo.UpdateAlbumPosterPath(album.ID, webPath); err == nil {
-						fetched++
-						found = true
-						log.Printf("Album art backfill: set cover for %q (cache server)", album.Title)
+			// Try exact alias match with artist+title, then title-only
+			for _, q := range []string{query, album.Title} {
+				result := cacheClient.Lookup(q, album.Year, models.MediaTypeMusic)
+				if result != nil && result.Match != nil && result.Match.PosterURL != nil && *result.Match.PosterURL != "" {
+					filename := "album_" + album.ID.String() + ".jpg"
+					_, dlErr := metadata.DownloadPoster(*result.Match.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+					if dlErr == nil {
+						webPath := "/previews/posters/" + filename
+						if err := s.musicRepo.UpdateAlbumPosterPath(album.ID, webPath); err == nil {
+							fetched++
+							found = true
+							log.Printf("Album art backfill: set cover for %q (cache server)", album.Title)
+						}
+					}
+					break
+				}
+			}
+			// Fuzzy search fallback if exact alias didn't match
+			if !found {
+				matches := cacheClient.Search(query, models.MediaTypeMusic, album.Year, 0.5, 3)
+				for _, m := range matches {
+					if m.PosterURL != nil && *m.PosterURL != "" {
+						filename := "album_" + album.ID.String() + ".jpg"
+						_, dlErr := metadata.DownloadPoster(*m.PosterURL, filepath.Join(s.posterDir, "posters"), filename)
+						if dlErr == nil {
+							webPath := "/previews/posters/" + filename
+							if err := s.musicRepo.UpdateAlbumPosterPath(album.ID, webPath); err == nil {
+								fetched++
+								found = true
+								log.Printf("Album art backfill: set cover for %q (cache search)", album.Title)
+							}
+						}
+						break
 					}
 				}
 			}
