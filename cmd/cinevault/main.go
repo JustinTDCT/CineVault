@@ -33,6 +33,7 @@ func main() {
 	}
 
 	cfg.MergeFromDB(database)
+	log.Printf("cache server enabled=%v, key_len=%d, url=%s", cfg.CacheServerEnabled(), len(cfg.CacheServerKey), config.CacheServerURL)
 
 	srv := api.NewServer(database, cfg)
 
