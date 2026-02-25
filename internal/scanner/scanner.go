@@ -2855,10 +2855,21 @@ func (s *Scanner) RefreshMusicItem(item *models.MediaItem) error {
 	return s.refreshMusicFullPath(item)
 }
 
-// refreshMusicFastPath links a track to its artist/album hierarchy by parsing
-// the file path. No ffprobe, no file I/O — purely string + DB operations.
+// refreshMusicFastPath links a track to its artist/album hierarchy.
+// Prefers stored album_artist tag over file path parsing for accuracy.
 func (s *Scanner) refreshMusicFastPath(item *models.MediaItem) error {
-	artistName, albumName := parseArtistAlbumFromPath(item.FilePath)
+	var artistName, albumName string
+
+	// Prefer embedded album_artist tag (already in DB) over path parsing.
+	if item.AlbumArtist != nil && *item.AlbumArtist != "" {
+		artistName = normalizeArtistForGrouping(*item.AlbumArtist)
+		albumName, _ = parseArtistAlbumFromPath(item.FilePath)
+		if albumName == "" {
+			albumName = ""
+		}
+	} else {
+		artistName, albumName = parseArtistAlbumFromPath(item.FilePath)
+	}
 	if artistName == "" {
 		return nil
 	}

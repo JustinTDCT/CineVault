@@ -485,31 +485,38 @@ func (r *MusicRepository) SearchTracks(libraryID uuid.UUID, query string, limit 
 	return items, rows.Err()
 }
 
-// CleanupDuplicateAlbums merges albums that share the same title within a
-// library but ended up under different artist records (e.g. "Onyx" vs
-// "Onyx feat. Dope D.O.D."). For each group of duplicates the album with the
-// most tracks is kept; tracks from the others are reassigned and the empty
-// albums (and orphaned artists) are removed.
+// CleanupDuplicateAlbums merges albums that share the same title and
+// normalized artist within a library but ended up under different artist
+// records (e.g. "Onyx" vs "Onyx feat. Dope D.O.D."). The artist name is
+// normalized by stripping featured-artist suffixes so that only true
+// duplicates are merged — albums with the same title from genuinely
+// different artists are left intact. For each duplicate group the album
+// with the most tracks is kept; tracks from the others are reassigned
+// and the empty albums are removed.
 func (r *MusicRepository) CleanupDuplicateAlbums(libraryID uuid.UUID) (int, error) {
 	// Step 1: reassign tracks from duplicate albums to the primary (most-tracked) album.
+	// The normalized artist key strips "feat./ft./featuring/introducing" suffixes.
 	reassign := `
 		WITH ranked AS (
 			SELECT al.id AS album_id,
 			       LOWER(al.title) AS ltitle,
+			       LOWER(REGEXP_REPLACE(ar.name, '\s+(feat\.?|ft\.?|featuring|introducing)\s+.*$', '', 'i')) AS norm_artist,
 			       COUNT(m.id) AS tc,
 			       ROW_NUMBER() OVER (
-			           PARTITION BY al.library_id, LOWER(al.title)
+			           PARTITION BY al.library_id, LOWER(al.title),
+			                        LOWER(REGEXP_REPLACE(ar.name, '\s+(feat\.?|ft\.?|featuring|introducing)\s+.*$', '', 'i'))
 			           ORDER BY COUNT(m.id) DESC, al.created_at
 			       ) AS rn
 			FROM albums al
+			LEFT JOIN artists ar ON ar.id = al.artist_id
 			LEFT JOIN media_items m ON m.album_id = al.id
 			WHERE al.library_id = $1
-			GROUP BY al.id
+			GROUP BY al.id, ar.name
 		),
 		primary_map AS (
 			SELECT r2.album_id AS dup_id, p.album_id AS primary_id
 			FROM ranked r2
-			JOIN ranked p ON p.ltitle = r2.ltitle AND p.rn = 1
+			JOIN ranked p ON p.ltitle = r2.ltitle AND p.norm_artist = r2.norm_artist AND p.rn = 1
 			WHERE r2.rn > 1
 		)
 		UPDATE media_items
@@ -522,19 +529,23 @@ func (r *MusicRepository) CleanupDuplicateAlbums(libraryID uuid.UUID) (int, erro
 	}
 
 	// Step 2: delete albums that no longer have any tracks and are not the
-	// primary (rank=1) within their title group.
+	// primary (rank=1) within their normalized artist+title group.
 	del := `
 		WITH ranked AS (
 			SELECT al.id AS album_id,
+			       LOWER(al.title) AS ltitle,
+			       LOWER(REGEXP_REPLACE(ar.name, '\s+(feat\.?|ft\.?|featuring|introducing)\s+.*$', '', 'i')) AS norm_artist,
 			       COUNT(m.id) AS tc,
 			       ROW_NUMBER() OVER (
-			           PARTITION BY al.library_id, LOWER(al.title)
+			           PARTITION BY al.library_id, LOWER(al.title),
+			                        LOWER(REGEXP_REPLACE(ar.name, '\s+(feat\.?|ft\.?|featuring|introducing)\s+.*$', '', 'i'))
 			           ORDER BY COUNT(m.id) DESC, al.created_at
 			       ) AS rn
 			FROM albums al
+			LEFT JOIN artists ar ON ar.id = al.artist_id
 			LEFT JOIN media_items m ON m.album_id = al.id
 			WHERE al.library_id = $1
-			GROUP BY al.id
+			GROUP BY al.id, ar.name
 		)
 		DELETE FROM albums
 		WHERE id IN (SELECT album_id FROM ranked WHERE rn > 1 AND tc = 0)`
