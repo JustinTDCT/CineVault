@@ -1,14 +1,20 @@
 package auth
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/JustinTDCT/CineVault/internal/config"
 	"github.com/JustinTDCT/CineVault/internal/httputil"
+	"github.com/JustinTDCT/CineVault/internal/version"
 )
 
 type Handler struct {
@@ -109,11 +115,21 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   30 * 24 * 3600,
 	})
 
-	httputil.WriteJSON(w, http.StatusCreated, map[string]interface{}{
+	cacheStatus := ""
+	if isAdmin {
+		cacheStatus = h.registerWithCacheServer(req.FullName, req.Email)
+	}
+
+	resp := map[string]interface{}{
 		"user_id":  userID,
 		"is_admin": isAdmin,
 		"token":    token,
-	})
+	}
+	if cacheStatus != "" {
+		resp["cache_registration"] = cacheStatus
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, resp)
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -217,4 +233,75 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 	})
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "logged out"})
+}
+
+func (h *Handler) registerWithCacheServer(fullName, email string) string {
+	ver := version.Load()
+	wanIP := getWanIP()
+
+	payload, _ := json.Marshal(map[string]string{
+		"app_name":    "CineVault",
+		"app_version": ver.Version,
+		"owner_name":  fullName,
+		"owner_email": email,
+		"wan_ip":      wanIP,
+	})
+
+	url := fmt.Sprintf("%s/api/v1/register", config.CacheServerURL)
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	resp, err := client.Post(url, "application/json", bytes.NewReader(payload))
+	if err != nil {
+		log.Printf("[cache-register] failed to reach cache server: %v", err)
+		return "failed"
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	var result struct {
+		Status string `json:"status"`
+		Data   struct {
+			ClientID string `json:"client_id"`
+			APIKey   string `json:"api_key"`
+			Status   string `json:"status"`
+		} `json:"data"`
+		Error *struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		log.Printf("[cache-register] invalid response from cache server: %v", err)
+		return "failed"
+	}
+
+	if resp.StatusCode != http.StatusCreated || result.Data.APIKey == "" {
+		reason := "unknown"
+		if result.Error != nil {
+			reason = result.Error.Message
+		}
+		log.Printf("[cache-register] registration rejected: %s", reason)
+		return "failed"
+	}
+
+	h.db.Exec(`INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
+		"cache_server_api_key", result.Data.APIKey)
+	h.db.Exec(`INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
+		"cache_server_enabled", "true")
+
+	log.Printf("[cache-register] registered with cache server, client_id=%s", result.Data.ClientID)
+	return "ok"
+}
+
+func getWanIP() string {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("https://api.ipify.org")
+	if err != nil {
+		log.Printf("[cache-register] failed to resolve WAN IP: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	ip, _ := io.ReadAll(resp.Body)
+	return string(ip)
 }

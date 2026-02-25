@@ -14,7 +14,6 @@ const (
 	KeyTranscoderType     = "transcoder_type"
 	KeyMaxTranscodes      = "max_transcodes"
 	KeyCacheServerEnabled = "cache_server_enabled"
-	KeyCacheServerURL     = "cache_server_url"
 	KeyCacheServerKey     = "cache_server_api_key"
 	KeyAutomatchMinPct    = "automatch_min_pct"
 	KeyManualMinPct       = "manual_min_pct"

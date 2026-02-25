@@ -70,14 +70,19 @@ function renderMetadata(body, s) {
     const card = el('div', { class: 'card' });
     card.appendChild(el('h3', { style: { marginBottom: '16px' } }, 'Metadata'));
     card.appendChild(toggle('Use Cache Server', s.cache_server_enabled === 'true', (v) => save('cache_server_enabled', String(v))));
-    card.appendChild(formRow('Cache Server URL', el('input', {
-        class: 'form-input', value: s.cache_server_url || '',
-        onChange: (e) => save('cache_server_url', e.target.value),
-    })));
-    card.appendChild(formRow('API Key', el('input', {
-        class: 'form-input', type: 'password', value: s.cache_server_api_key || '',
-        onChange: (e) => save('cache_server_api_key', e.target.value),
-    })));
+
+    const urlDisplay = el('span', { class: 'form-value', style: { color: 'var(--text-secondary)', fontSize: '0.9rem' } }, 'http://cache.cine-vault.tv:8090');
+    card.appendChild(formRow('Cache Server', urlDisplay));
+
+    const hasKey = s.cache_server_api_key && s.cache_server_api_key.length > 0;
+    const keyStatus = el('span', {
+        style: {
+            fontSize: '0.85rem',
+            color: hasKey ? 'var(--success, #4ade80)' : 'var(--error, #f87171)',
+        },
+    }, hasKey ? 'Registered' : 'Not registered');
+    card.appendChild(formRow('Status', keyStatus));
+
     card.appendChild(formRow('Automatch Min %', el('input', {
         class: 'form-input', type: 'number', value: s.automatch_min_pct || '85',
         style: { width: '80px' },

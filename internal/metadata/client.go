@@ -19,7 +19,7 @@ type CacheClient struct {
 
 func NewCacheClient(cfg *config.Config) *CacheClient {
 	return &CacheClient{
-		baseURL: cfg.CacheServerURL,
+		baseURL: config.CacheServerURL,
 		apiKey:  cfg.CacheServerKey,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,

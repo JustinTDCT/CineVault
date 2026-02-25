@@ -7,31 +7,31 @@ import (
 	"strconv"
 )
 
+const CacheServerURL = "http://cache.cine-vault.tv:8090"
+
 type Config struct {
-	Port           int
-	DatabaseURL    string
-	JWTSecret      string
-	DataDir        string
-	CacheServerURL string
+	Port          int
+	DatabaseURL   string
+	JWTSecret     string
+	DataDir       string
 	CacheServerKey string
-	FFmpegPath     string
-	FFprobePath    string
-	HWAccelType    string
-	MaxTranscodes  int
+	FFmpegPath    string
+	FFprobePath   string
+	HWAccelType   string
+	MaxTranscodes int
 }
 
 func Load() *Config {
 	return &Config{
-		Port:           envInt("PORT", 8080),
-		DatabaseURL:    env("DATABASE_URL", "postgres://cinevault:cinevault@db:5432/cinevault?sslmode=disable"),
-		JWTSecret:      env("JWT_SECRET", "change-me-in-production"),
-		DataDir:        env("DATA_DIR", "/data"),
-		CacheServerURL: env("CACHE_SERVER_URL", ""),
+		Port:          envInt("PORT", 8080),
+		DatabaseURL:   env("DATABASE_URL", "postgres://cinevault:cinevault@db:5432/cinevault?sslmode=disable"),
+		JWTSecret:     env("JWT_SECRET", "change-me-in-production"),
+		DataDir:       env("DATA_DIR", "/data"),
 		CacheServerKey: env("CACHE_SERVER_API_KEY", ""),
-		FFmpegPath:     env("FFMPEG_PATH", "ffmpeg"),
-		FFprobePath:    env("FFPROBE_PATH", "ffprobe"),
-		HWAccelType:    env("HW_ACCEL_TYPE", "cpu"),
-		MaxTranscodes:  envInt("MAX_TRANSCODES", 2),
+		FFmpegPath:    env("FFMPEG_PATH", "ffmpeg"),
+		FFprobePath:   env("FFPROBE_PATH", "ffprobe"),
+		HWAccelType:   env("HW_ACCEL_TYPE", "cpu"),
+		MaxTranscodes: envInt("MAX_TRANSCODES", 2),
 	}
 }
 
@@ -49,8 +49,6 @@ func (c *Config) MergeFromDB(db *sql.DB) {
 			continue
 		}
 		switch key {
-		case "cache_server_url":
-			c.CacheServerURL = value
 		case "cache_server_api_key":
 			c.CacheServerKey = value
 		case "hw_accel_type":
@@ -64,7 +62,7 @@ func (c *Config) MergeFromDB(db *sql.DB) {
 }
 
 func (c *Config) CacheServerEnabled() bool {
-	return c.CacheServerURL != "" && c.CacheServerKey != ""
+	return c.CacheServerKey != ""
 }
 
 func env(key, fallback string) string {
