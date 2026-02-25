@@ -2773,16 +2773,72 @@ func (s *Scanner) EnrichMatchedItem(itemID uuid.UUID, tmdbExternalID string, med
 	s.enrichWithDetails(itemID, tmdbExternalID, mediaType, lockedFields)
 }
 
-// RefreshMusicItem re-reads embedded tags (ID3/Vorbis) from the file via ffprobe
-// and updates the media item's metadata + music hierarchy. This is much faster
-// than hitting external scrapers for every track during a metadata refresh.
+// RefreshMusicItem updates a music track's metadata and hierarchy linkage.
+// Fast path: if tags already exist in DB, derives artist/album from file path
+// (zero file I/O). Full path: ffprobes the file when tags are missing.
 func (s *Scanner) RefreshMusicItem(item *models.MediaItem) error {
+	// Already fully linked — nothing to do
+	if item.ArtistID != nil && item.AlbumID != nil && item.Title != "" && item.DurationSeconds != nil {
+		return nil
+	}
+
+	// Fast path: tags exist in DB, just need hierarchy linkage
+	if item.Title != "" && item.DurationSeconds != nil && item.ArtistID == nil {
+		return s.refreshMusicFastPath(item)
+	}
+
+	// Full path: ffprobe to read tags + technical metadata
+	return s.refreshMusicFullPath(item)
+}
+
+// refreshMusicFastPath links a track to its artist/album hierarchy by parsing
+// the file path. No ffprobe, no file I/O — purely string + DB operations.
+func (s *Scanner) refreshMusicFastPath(item *models.MediaItem) error {
+	artistName, albumName := parseArtistAlbumFromPath(item.FilePath)
+	if artistName == "" {
+		return nil
+	}
+
+	setClauses := []string{"updated_at = CURRENT_TIMESTAMP"}
+	args := []interface{}{}
+	idx := 1
+
+	parsed := ParsedFilename{Artist: artistName, Album: albumName}
+	if s.musicRepo != nil {
+		if err := s.handleMusicHierarchy(&models.Library{ID: item.LibraryID}, item, parsed); err != nil {
+			log.Printf("Music refresh fast: hierarchy failed for %s: %v", item.FileName, err)
+		}
+	}
+
+	if item.ArtistID != nil {
+		setClauses = append(setClauses, fmt.Sprintf("artist_id = $%d", idx))
+		args = append(args, *item.ArtistID)
+		idx++
+	}
+	if item.AlbumID != nil {
+		setClauses = append(setClauses, fmt.Sprintf("album_id = $%d", idx))
+		args = append(args, *item.AlbumID)
+		idx++
+	}
+
+	if len(args) == 0 {
+		return nil
+	}
+
+	args = append(args, item.ID)
+	query := fmt.Sprintf("UPDATE media_items SET %s WHERE id = $%d",
+		strings.Join(setClauses, ", "), idx)
+	_, err := s.mediaRepo.DB().Exec(query, args...)
+	return err
+}
+
+// refreshMusicFullPath does a complete ffprobe to read tags + technical metadata.
+func (s *Scanner) refreshMusicFullPath(item *models.MediaItem) error {
 	probe, err := s.ffprobe.Probe(item.FilePath)
 	if err != nil {
 		return fmt.Errorf("ffprobe: %w", err)
 	}
 
-	// Update technical metadata (duration, codec, bitrate, etc.)
 	dur := probe.GetDurationSeconds()
 	ac := probe.GetAudioCodec()
 	af := probe.GetAudioFormat()
@@ -2819,7 +2875,6 @@ func (s *Scanner) RefreshMusicItem(item *models.MediaItem) error {
 		idx++
 	}
 
-	// Extract embedded tags (tags-first: prefer album_artist for hierarchy)
 	var tagArtist, tagAlbumArtist, album, genre string
 	var trackNum, discNum *int
 	if len(probe.Format.Tags) > 0 {
@@ -2878,10 +2933,13 @@ func (s *Scanner) RefreshMusicItem(item *models.MediaItem) error {
 		idx++
 	}
 
-	// Resolve hierarchy BEFORE the UPDATE so we can include artist_id/album_id in one query
+	// Resolve hierarchy — prefer embedded tags, fall back to path parsing
 	artist := tagAlbumArtist
 	if artist == "" {
 		artist = tagArtist
+	}
+	if artist == "" {
+		artist, album = parseArtistAlbumFromPath(item.FilePath)
 	}
 	if artist != "" && s.musicRepo != nil {
 		parsed := ParsedFilename{Artist: artist, Album: album, TrackNumber: trackNum, DiscNumber: discNum}
@@ -2905,7 +2963,6 @@ func (s *Scanner) RefreshMusicItem(item *models.MediaItem) error {
 		idx++
 	}
 
-	// Single UPDATE for all metadata + hierarchy linkage
 	args = append(args, item.ID)
 	query := fmt.Sprintf("UPDATE media_items SET %s WHERE id = $%d",
 		strings.Join(setClauses, ", "), idx)

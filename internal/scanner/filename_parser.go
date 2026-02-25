@@ -944,6 +944,34 @@ func parseDiscFromFolder(folderName string) int {
 	return n
 }
 
+// albumYearRe strips trailing " (YYYY)" from album folder names.
+var albumYearRe = regexp.MustCompile(`^(.+?)\s*\(\d{4}\)\s*$`)
+
+// parseArtistAlbumFromPath extracts artist and album names from the directory
+// structure without touching the filesystem. Handles both flat and disc layouts:
+//   /root/Artist/Album (Year)/File.flac
+//   /root/Artist/Album (Year)/Disk 1/File.flac
+func parseArtistAlbumFromPath(filePath string) (artist, album string) {
+	dir := filepath.Dir(filePath)
+	folderName := filepath.Base(dir)
+
+	if parseDiscFromFolder(folderName) > 0 {
+		dir = filepath.Dir(dir)
+		folderName = filepath.Base(dir)
+	}
+
+	albumFolder := folderName
+	artistFolder := filepath.Base(filepath.Dir(dir))
+
+	if m := albumYearRe.FindStringSubmatch(albumFolder); len(m) == 2 {
+		album = strings.TrimSpace(m[1])
+	} else {
+		album = albumFolder
+	}
+	artist = artistFolder
+	return
+}
+
 // ──────────────────── Music Hierarchy ────────────────────
 
 // handleMusicHierarchy finds or creates Artist and Album records from parsed filename data,

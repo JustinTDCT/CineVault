@@ -1,6 +1,6 @@
 {
-  "version": "1.35.02",
+  "version": "1.35.03",
   "phase": 35,
   "released": "2026-02-25",
-  "notes": "Perf: music refresh ~5x faster — in-memory genre cache, single UPDATE per track, RWMutex for cache concurrency."
+  "notes": "Perf: smart music refresh skips ffprobe when tags exist, derives hierarchy from path — zero file I/O for linked tracks."
 }
