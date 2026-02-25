@@ -2580,15 +2580,17 @@ func (s *Scanner) BackfillAlbumArt(libraryID uuid.UUID) (int, error) {
 	fetched := 0
 	for _, album := range albums {
 		found := false
-		query := album.Title
-		if album.ArtistName != "" {
-			query = album.ArtistName + " " + album.Title
+		cleanTitle := cleanAlbumTitle(album.Title)
+		cleanArtist := normalizeArtistForGrouping(album.ArtistName)
+		query := cleanTitle
+		if cleanArtist != "" {
+			query = cleanArtist + " " + cleanTitle
 		}
 
 		// 1) Cache server first — try exact lookup, then fuzzy search
 		if !found && cacheClient != nil {
 			// Try exact alias match with artist+title, then title-only
-			for _, q := range []string{query, album.Title} {
+			for _, q := range []string{query, cleanTitle} {
 				result := cacheClient.Lookup(q, album.Year, models.MediaTypeMusic)
 				if result != nil && result.Match != nil && result.Match.PosterURL != nil && *result.Match.PosterURL != "" {
 					filename := "album_" + album.ID.String() + ".jpg"

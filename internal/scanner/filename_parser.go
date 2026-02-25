@@ -960,6 +960,24 @@ func parseDiscFromFolder(folderName string) int {
 	return n
 }
 
+// bracketYearRe matches leading "[YYYY]" or trailing "[YYYY]" in folder-derived album titles.
+var bracketYearRe = regexp.MustCompile(`\s*\[\d{4}\]\s*`)
+
+// bracketDiscRe matches disc-count brackets like "[2 CD]", "[3 CD Edition]".
+var bracketDiscRe = regexp.MustCompile(`(?i)\s*\[\d+\s*cd[^\]]*\]`)
+
+// bracketParensYearRe matches trailing "(YYYY)" year suffixes.
+var bracketParensYearRe = regexp.MustCompile(`\s*\(\d{4}\)\s*$`)
+
+// cleanAlbumTitle strips folder-derived metadata from an album title:
+// leading/trailing "[YYYY]", "[X CD]" disc indicators, and "(YYYY)" year suffixes.
+func cleanAlbumTitle(title string) string {
+	title = bracketYearRe.ReplaceAllString(title, " ")
+	title = bracketDiscRe.ReplaceAllString(title, "")
+	title = bracketParensYearRe.ReplaceAllString(title, "")
+	return strings.TrimSpace(title)
+}
+
 // albumYearRe strips trailing " (YYYY)" from album folder names.
 var albumYearRe = regexp.MustCompile(`^(.+?)\s*\(\d{4}\)\s*$`)
 
