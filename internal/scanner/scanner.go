@@ -2874,6 +2874,35 @@ func (s *Scanner) RefreshMusicItem(item *models.MediaItem) error {
 		}
 	}
 
+	// Persist artist_id/album_id linkage set by handleMusicHierarchy
+	if item.ArtistID != nil || item.AlbumID != nil {
+		var linkClauses []string
+		var linkArgs []interface{}
+		li := 1
+		if item.ArtistID != nil {
+			linkClauses = append(linkClauses, fmt.Sprintf("artist_id = $%d", li))
+			linkArgs = append(linkArgs, *item.ArtistID)
+			li++
+		}
+		if item.AlbumID != nil {
+			linkClauses = append(linkClauses, fmt.Sprintf("album_id = $%d", li))
+			linkArgs = append(linkArgs, *item.AlbumID)
+			li++
+		}
+		if tagAlbumArtist != "" {
+			linkClauses = append(linkClauses, fmt.Sprintf("album_artist = $%d", li))
+			linkArgs = append(linkArgs, tagAlbumArtist)
+			li++
+		}
+		linkClauses = append(linkClauses, "updated_at = CURRENT_TIMESTAMP")
+		linkArgs = append(linkArgs, item.ID)
+		linkQuery := fmt.Sprintf("UPDATE media_items SET %s WHERE id = $%d",
+			strings.Join(linkClauses, ", "), li)
+		if _, err := s.mediaRepo.DB().Exec(linkQuery, linkArgs...); err != nil {
+			log.Printf("Music refresh: link update failed for %s: %v", item.FileName, err)
+		}
+	}
+
 	// Link genre tag from embedded metadata
 	if genre != "" && s.tagRepo != nil {
 		s.linkGenreTags(item.ID, []string{genre})
@@ -3173,31 +3202,48 @@ func (s *Scanner) enrichWithFanart(itemID uuid.UUID, tmdbExternalID string, medi
 // linkGenreTags creates genre tags (if they don't exist) and links them to the media item.
 func (s *Scanner) linkGenreTags(itemID uuid.UUID, genres []string) {
 	for _, genre := range genres {
-		// Look for existing tag with category=genre and matching name
+		slug := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(genre, " ", "-"), "'", ""), "\"", ""))
+
 		existing, _ := s.tagRepo.List("genre")
 		var tagID uuid.UUID
 		found := false
 		for _, t := range existing {
-			if strings.EqualFold(t.Name, genre) {
+			if strings.EqualFold(t.Name, genre) || t.Slug == slug {
 				tagID = t.ID
 				found = true
 				break
 			}
 		}
 		if !found {
-			// Create the genre tag
 			tagID = uuid.New()
 			tag := &models.Tag{
 				ID:       tagID,
 				Name:     genre,
+				Slug:     slug,
 				Category: models.TagCategoryGenre,
 			}
 			if err := s.tagRepo.Create(tag); err != nil {
-				log.Printf("Auto-match: create genre tag %q failed: %v", genre, err)
-				continue
+				// Slug collision — find existing tag by slug
+				for _, t := range existing {
+					if t.Slug == slug {
+						tagID = t.ID
+						found = true
+						break
+					}
+				}
+				if !found {
+					var fallbackID uuid.UUID
+					scanErr := s.mediaRepo.DB().QueryRow(
+						`SELECT id FROM tags WHERE slug = $1 AND category = 'genre' LIMIT 1`, slug,
+					).Scan(&fallbackID)
+					if scanErr != nil {
+						log.Printf("Auto-match: genre tag %q unresolvable: %v (original: %v)", genre, scanErr, err)
+						continue
+					}
+					tagID = fallbackID
+				}
 			}
 		}
-		// Link tag to media item
 		if err := s.tagRepo.AssignToMedia(itemID, tagID); err != nil {
 			log.Printf("Auto-match: assign genre tag %q to %s failed: %v", genre, itemID, err)
 		}

@@ -1,6 +1,6 @@
 {
-  "version": "1.35.00",
+  "version": "1.35.01",
   "phase": 35,
-  "released": "2026-02-24",
-  "notes": "Music system overhaul: tags-first scanning, tracklist UI, enhanced player, genre browsing, smart playlists, synced lyrics, multi-disc support."
+  "released": "2026-02-25",
+  "notes": "Fix: music metadata refresh now persists artist/album linkage; fix genre tag slug collisions; album detail includes artist name and track count."
 }

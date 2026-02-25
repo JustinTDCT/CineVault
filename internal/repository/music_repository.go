@@ -156,13 +156,19 @@ func (r *MusicRepository) CreateAlbum(a *models.Album) error {
 func (r *MusicRepository) GetAlbumByID(id uuid.UUID) (*models.Album, error) {
 	a := &models.Album{}
 	query := `
-		SELECT id, artist_id, library_id, title, sort_title, year, release_date,
-		       description, genre, poster_path, sort_position, created_at, updated_at
-		FROM albums WHERE id = $1`
+		SELECT al.id, al.artist_id, al.library_id, al.title, al.sort_title, al.year,
+		       al.release_date, al.description, al.genre, al.poster_path,
+		       al.sort_position, al.created_at, al.updated_at,
+		       COALESCE((SELECT COUNT(*) FROM media_items m WHERE m.album_id = al.id), 0) AS track_count,
+		       COALESCE(ar.name, '') AS artist_name
+		FROM albums al
+		LEFT JOIN artists ar ON ar.id = al.artist_id
+		WHERE al.id = $1`
 	err := r.db.QueryRow(query, id).Scan(
 		&a.ID, &a.ArtistID, &a.LibraryID, &a.Title, &a.SortTitle,
 		&a.Year, &a.ReleaseDate, &a.Description, &a.Genre,
 		&a.PosterPath, &a.SortPosition, &a.CreatedAt, &a.UpdatedAt,
+		&a.TrackCount, &a.ArtistName,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("album not found")
