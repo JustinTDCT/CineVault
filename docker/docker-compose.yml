@@ -21,7 +21,7 @@ services:
       - DB_HOST=db
       - DB_PORT=5432
     volumes:
-      - ${MEDIA_DIR:-/mnt/media}:/media:ro
+      - ${MEDIA_PATH:-/media}:/media
       - cinevault_data:/data
     depends_on:
       db:
