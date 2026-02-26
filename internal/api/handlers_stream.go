@@ -304,7 +304,11 @@ func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
 			if _, err := os.Stat(playlistPath); err == nil {
 				break
 			}
-			time.Sleep(500 * time.Millisecond)
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(500 * time.Millisecond):
+			}
 		}
 		if _, err := os.Stat(playlistPath); err != nil {
 			s.respondError(w, http.StatusAccepted, "transcoding in progress")

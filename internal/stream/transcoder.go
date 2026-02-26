@@ -403,11 +403,15 @@ func (t *Transcoder) StopSession(sessionID string) {
 	delete(t.sessions, sessionID)
 	t.mu.Unlock()
 
-	if s != nil && s.Cmd != nil && s.Cmd.Process != nil {
-		s.Cmd.Process.Kill()
+	if s == nil {
+		return
 	}
-	if s != nil {
-		os.RemoveAll(s.OutputDir)
+	if s.Cmd != nil && s.Cmd.Process != nil {
+		s.Cmd.Process.Kill()
+		s.Cmd.Wait()
+	}
+	if err := os.RemoveAll(s.OutputDir); err != nil {
+		log.Printf("Transcode cleanup: failed to remove %s: %v", s.OutputDir, err)
 	}
 }
 
@@ -439,17 +443,41 @@ func (t *Transcoder) HWAccel() string {
 
 func (t *Transcoder) CleanupExpired(maxAge time.Duration) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-
+	var expired []*Session
+	var expiredIDs []string
 	now := time.Now()
 	for id, s := range t.sessions {
 		if now.Sub(s.LastAccess) > maxAge {
-			if s.Cmd != nil && s.Cmd.Process != nil {
-				s.Cmd.Process.Kill()
-			}
-			os.RemoveAll(s.OutputDir)
+			expired = append(expired, s)
+			expiredIDs = append(expiredIDs, id)
 			delete(t.sessions, id)
-			log.Printf("Cleaned up expired session: %s", id)
 		}
 	}
+	t.mu.Unlock()
+
+	for i, s := range expired {
+		if s.Cmd != nil && s.Cmd.Process != nil {
+			s.Cmd.Process.Kill()
+			s.Cmd.Wait()
+		}
+		os.RemoveAll(s.OutputDir)
+		log.Printf("Cleaned up expired session: %s", expiredIDs[i])
+	}
+}
+
+// RunCleanupLoop starts a background goroutine that periodically cleans up
+// expired transcode sessions. Stop it by cancelling the context.
+func (t *Transcoder) RunCleanupLoop(done <-chan struct{}, maxAge time.Duration) {
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				t.CleanupExpired(maxAge)
+			}
+		}
+	}()
 }

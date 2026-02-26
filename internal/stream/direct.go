@@ -93,7 +93,9 @@ func serveRange(w http.ResponseWriter, file *os.File, fileSize int64, rangeHeade
 	}
 
 	length := end - start + 1
-	file.Seek(start, io.SeekStart)
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		return fmt.Errorf("seek to %d: %w", start, err)
+	}
 
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.FormatInt(length, 10))

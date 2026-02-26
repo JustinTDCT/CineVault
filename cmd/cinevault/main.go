@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/analytics"
 	"github.com/JustinTDCT/CineVault/internal/api"
@@ -74,6 +75,11 @@ func main() {
 		}
 	}()
 	defer jobQueue.Stop()
+
+	// Start transcode session cleanup (every 5m, expire after 30m idle)
+	transcodeCleanupStop := make(chan struct{})
+	server.Transcoder().RunCleanupLoop(transcodeCleanupStop, 30*time.Minute)
+	defer close(transcodeCleanupStop)
 
 	// Start analytics collector (system metrics every 60s)
 	collector := analytics.NewCollector(server.AnalyticsRepo(), server.Transcoder(), []string{cfg.Paths.Media})
