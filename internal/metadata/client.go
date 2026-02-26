@@ -54,17 +54,30 @@ func (c *CacheClient) Lookup(recordType string, params map[string]string) (*Look
 	}
 	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequest("GET", u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	var resp *http.Response
+	for attempt := 0; attempt < 3; attempt++ {
+		req, err := http.NewRequest("GET", u.String(), nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("cache server request: %w", err)
+		resp, err = c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("cache server request: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusTooManyRequests {
+			break
+		}
+		resp.Body.Close()
+		time.Sleep(time.Duration(2<<uint(attempt)) * time.Second)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return &LookupResult{Status: "error"}, nil
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
