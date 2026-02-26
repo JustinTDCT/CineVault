@@ -13,6 +13,7 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/api"
 	"github.com/JustinTDCT/CineVault/internal/config"
 	"github.com/JustinTDCT/CineVault/internal/db"
+	"github.com/JustinTDCT/CineVault/internal/scanner"
 	"github.com/JustinTDCT/CineVault/internal/version"
 )
 
@@ -34,6 +35,9 @@ func main() {
 
 	cfg.MergeFromDB(database)
 	log.Printf("cache server enabled=%v, key_len=%d, url=%s", cfg.CacheServerEnabled(), len(cfg.CacheServerKey), config.CacheServerURL)
+
+	scannerPreboot := scanner.New(database, cfg, nil, nil)
+	scannerPreboot.ResetStuckScans()
 
 	srv := api.NewServer(database, cfg)
 

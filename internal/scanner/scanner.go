@@ -14,6 +14,8 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/media"
 )
 
+const progressInterval = 50
+
 type MetadataMatcher interface {
 	AutoMatch(item *media.MediaItem, libType libraries.LibraryType) error
 }
@@ -29,6 +31,16 @@ func New(db *sql.DB, cfg *config.Config, mediaRepo *media.Repository, matcher Me
 	return &Scanner{db: db, cfg: cfg, mediaRepo: mediaRepo, matcher: matcher}
 }
 
+func (s *Scanner) ResetStuckScans() {
+	res, err := s.db.Exec(`UPDATE scan_state SET status='idle' WHERE status='scanning'`)
+	if err != nil {
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("[scanner] reset %d stuck scan(s) to idle", n)
+	}
+}
+
 func (s *Scanner) ScanLibrary(libraryID string, libType libraries.LibraryType, folders []string) ScanResult {
 	result := ScanResult{LibraryID: libraryID, StartedAt: time.Now()}
 	log.Printf("[scanner] starting scan for library %s (%s), %d folder(s)", libraryID, libType, len(folders))
@@ -36,17 +48,22 @@ func (s *Scanner) ScanLibrary(libraryID string, libType libraries.LibraryType, f
 	s.db.Exec(`
 		INSERT INTO scan_state (library_id, last_scan_started, status)
 		VALUES ($1, NOW(), 'scanning')
-		ON CONFLICT (library_id) DO UPDATE SET last_scan_started=NOW(), status='scanning'`,
+		ON CONFLICT (library_id) DO UPDATE SET last_scan_started=NOW(), status='scanning',
+		       files_scanned=0, files_added=0, files_removed=0`,
 		libraryID)
 
 	for _, folder := range folders {
 		s.scanFolder(folder, libraryID, libType, &result)
 	}
 
+	if s.matcher != nil {
+		s.matchUnmatched(libraryID, libType, &result)
+	}
+
 	result.CompletedAt = time.Now()
 	elapsed := result.CompletedAt.Sub(result.StartedAt).Round(time.Millisecond)
-	log.Printf("[scanner] scan complete for library %s: %d scanned, %d added, %d removed (%s)",
-		libraryID, result.FilesScanned, result.FilesAdded, result.FilesRemoved, elapsed)
+	log.Printf("[scanner] scan complete for library %s: %d scanned, %d added, %d removed, %d matched (%s)",
+		libraryID, result.FilesScanned, result.FilesAdded, result.FilesRemoved, result.FilesMatched, elapsed)
 
 	s.db.Exec(`
 		UPDATE scan_state SET last_scan_completed=NOW(), files_scanned=$2, files_added=$3,
@@ -55,6 +72,11 @@ func (s *Scanner) ScanLibrary(libraryID string, libType libraries.LibraryType, f
 		libraryID, result.FilesScanned, result.FilesAdded, result.FilesRemoved)
 
 	return result
+}
+
+func (s *Scanner) flushProgress(libraryID string, result *ScanResult) {
+	s.db.Exec(`UPDATE scan_state SET files_scanned=$2, files_added=$3 WHERE library_id=$1`,
+		libraryID, result.FilesScanned, result.FilesAdded)
 }
 
 func (s *Scanner) scanFolder(root, libraryID string, libType libraries.LibraryType, result *ScanResult) {
@@ -74,6 +96,11 @@ func (s *Scanner) scanFolder(root, libraryID string, libType libraries.LibraryTy
 		}
 
 		result.FilesScanned++
+
+		if result.FilesScanned%progressInterval == 0 {
+			log.Printf("[scanner] progress: %d scanned, %d added so far", result.FilesScanned, result.FilesAdded)
+			s.flushProgress(libraryID, result)
+		}
 
 		existing, err := s.mediaRepo.GetByFilePath(path)
 		if err == nil && existing != nil {
@@ -144,11 +171,54 @@ func (s *Scanner) scanFolder(root, libraryID string, libType libraries.LibraryTy
 		if s.matcher != nil {
 			if err := s.matcher.AutoMatch(item, libType); err != nil {
 				log.Printf("[scanner] automatch failed for %q: %v", path, err)
+			} else {
+				result.FilesMatched++
 			}
 		}
 
 		return nil
 	})
+}
+
+func (s *Scanner) matchUnmatched(libraryID string, libType libraries.LibraryType, result *ScanResult) {
+	rows, err := s.db.Query(`
+		SELECT id, library_id, title, release_year, season_number, episode_number, file_path
+		FROM media_items WHERE library_id=$1 AND cache_id IS NULL AND title IS NOT NULL`,
+		libraryID)
+	if err != nil {
+		log.Printf("[scanner] failed to query unmatched items: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var unmatched []media.MediaItem
+	for rows.Next() {
+		var m media.MediaItem
+		if err := rows.Scan(&m.ID, &m.LibraryID, &m.Title, &m.ReleaseYear,
+			&m.SeasonNumber, &m.EpisodeNumber, &m.FilePath); err != nil {
+			continue
+		}
+		unmatched = append(unmatched, m)
+	}
+
+	if len(unmatched) == 0 {
+		return
+	}
+
+	log.Printf("[scanner] matching %d unmatched items in library %s", len(unmatched), libraryID)
+	matched := 0
+	for i := range unmatched {
+		if err := s.matcher.AutoMatch(&unmatched[i], libType); err != nil {
+			log.Printf("[scanner] automatch retry failed for %q: %v", unmatched[i].FilePath, err)
+		} else {
+			matched++
+		}
+		if (i+1)%progressInterval == 0 {
+			log.Printf("[scanner] match progress: %d/%d processed, %d matched", i+1, len(unmatched), matched)
+		}
+	}
+	result.FilesMatched += matched
+	log.Printf("[scanner] unmatched sweep done: %d/%d matched", matched, len(unmatched))
 }
 
 func isHiddenDir(name string) bool {
@@ -160,6 +230,7 @@ type ScanResult struct {
 	FilesScanned int       `json:"files_scanned"`
 	FilesAdded   int       `json:"files_added"`
 	FilesRemoved int       `json:"files_removed"`
+	FilesMatched int       `json:"files_matched"`
 	StartedAt    time.Time `json:"started_at"`
 	CompletedAt  time.Time `json:"completed_at"`
 }
