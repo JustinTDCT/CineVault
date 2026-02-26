@@ -31,15 +31,27 @@ func NewCacheClient(baseURL, apiKey string) *CacheClient {
 	}
 }
 
-// ── Cache Server Response Types ──
+// ── Envelope Helper ──
 
-type cacheLookupRequest struct {
-	Title        string `json:"title"`
-	Year         *int   `json:"year,omitempty"`
-	Type         string `json:"type"`
-	FileHash     string `json:"file_hash,omitempty"`
-	IncludeAdult bool   `json:"include_adult,omitempty"`
+// apiEnvelope represents the standard { "status": "...", "data": {...} } response wrapper.
+type apiEnvelope struct {
+	Status string          `json:"status"`
+	Data   json.RawMessage `json:"data"`
 }
+
+// unwrapEnvelope decodes the standard API envelope and returns the raw data payload.
+func unwrapEnvelope(resp *http.Response) (json.RawMessage, error) {
+	var env apiEnvelope
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		return nil, fmt.Errorf("decode envelope: %w", err)
+	}
+	if env.Status != "ok" {
+		return nil, fmt.Errorf("api returned status %q", env.Status)
+	}
+	return env.Data, nil
+}
+
+// ── Cache Server Response Types ──
 
 type cacheEntry struct {
 	TMDBID          int      `json:"tmdb_id"`
@@ -93,7 +105,7 @@ type cacheEntry struct {
 	Runtimes          *string `json:"runtimes,omitempty"`              // [{"source":"tmdb","minutes":137}]
 	FieldSources      *string `json:"field_sources,omitempty"`         // {"title":"tmdb","description":"tvdb"}
 	// Cache server local image paths
-	PosterPath  *string `json:"poster_path,omitempty"`
+	PosterPath   *string `json:"poster_path,omitempty"`
 	BackdropPath *string `json:"backdrop_path,omitempty"`
 	// Enrichment flags
 	EditionsDiscovered  bool `json:"editions_discovered"`
@@ -118,36 +130,6 @@ type cacheLookupResponse struct {
 	Entry             *cacheEntry           `json:"entry,omitempty"`
 	Source            string                `json:"source"`
 	AvailableEditions []cacheEditionSummary `json:"available_editions,omitempty"`
-}
-
-type cacheContributeRequest struct {
-	TMDBID           int      `json:"tmdb_id"`
-	IMDBID           *string  `json:"imdb_id,omitempty"`
-	MediaType        string   `json:"media_type"`
-	Title            string   `json:"title"`
-	OriginalTitle    *string  `json:"original_title,omitempty"`
-	Year             *int     `json:"year,omitempty"`
-	ReleaseDate      *string  `json:"release_date,omitempty"`
-	Description      *string  `json:"description,omitempty"`
-	PosterURL        *string  `json:"poster_url,omitempty"`
-	BackdropURL      *string  `json:"backdrop_url,omitempty"`
-	Genres           *string  `json:"genres,omitempty"`
-	ContentRating    *string  `json:"content_rating,omitempty"`
-	CastCrew         *string  `json:"cast_crew,omitempty"`
-	Runtime          *int     `json:"runtime,omitempty"`
-	Tagline          *string  `json:"tagline,omitempty"`
-	OriginalLanguage *string  `json:"original_language,omitempty"`
-	Country          *string  `json:"country,omitempty"`
-	TrailerURL       *string  `json:"trailer_url,omitempty"`
-	LogoURL          *string  `json:"logo_url,omitempty"`
-	BannerURL        *string  `json:"banner_url,omitempty"`
-	TVDBID           *int     `json:"tvdb_id,omitempty"`
-	CollectionID     *int     `json:"collection_id,omitempty"`
-	CollectionName   *string  `json:"collection_name,omitempty"`
-	IMDBRating       *float64 `json:"imdb_rating,omitempty"`
-	RTCriticScore    *int     `json:"rt_critic_score,omitempty"`
-	RTAudienceScore  *int     `json:"rt_audience_score,omitempty"`
-	Keywords         *string  `json:"keywords,omitempty"`
 }
 
 // ── Cache Lookup Result ──
@@ -232,17 +214,19 @@ type EditionSummary struct {
 
 // ── Lookup ──
 
-// mediaTypeToCacheType maps CineVault media types to cache server media types.
-func mediaTypeToCacheType(mediaType models.MediaType) string {
+// mediaTypeToURLType maps CineVault media types to cache server URL path types.
+func mediaTypeToURLType(mediaType models.MediaType) string {
 	switch mediaType {
 	case models.MediaTypeTVShows:
-		return "tv"
+		return "tv_show"
 	case models.MediaTypeMusic:
-		return "music"
+		return "music_track"
 	case models.MediaTypeMusicVideos:
 		return "music_video"
 	case models.MediaTypeAudiobooks:
 		return "audiobook"
+	case models.MediaTypeAdultMovies:
+		return "adult_movie"
 	default:
 		return "movie"
 	}
@@ -251,28 +235,20 @@ func mediaTypeToCacheType(mediaType models.MediaType) string {
 // Lookup queries the cache server for metadata. Returns nil if the cache
 // server is unreachable or returns a miss.
 func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType) *CacheLookupResult {
-	cacheType := mediaTypeToCacheType(mediaType)
+	urlType := mediaTypeToURLType(mediaType)
 
-	reqBody := cacheLookupRequest{
-		Title:        title,
-		Year:         year,
-		Type:         cacheType,
-		IncludeAdult: mediaType == models.MediaTypeAdultMovies,
+	reqURL := fmt.Sprintf("%s/api/v1/lookup/%s?title=%s",
+		c.baseURL, urlType, url.QueryEscape(title))
+	if year != nil && *year > 0 {
+		reqURL += fmt.Sprintf("&year=%d", *year)
 	}
 
-	bodyBytes, err := json.Marshal(reqBody)
-	if err != nil {
-		log.Printf("[cache-client] marshal error: %v", err)
-		return nil
-	}
-
-	req, err := http.NewRequest("POST", c.baseURL+"/api/v1/lookup", bytes.NewReader(bodyBytes))
+	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
 		log.Printf("[cache-client] request error: %v", err)
 		return nil
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", c.apiKey)
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -286,13 +262,52 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 		return nil
 	}
 
-	var lookupResp cacheLookupResponse
-	if err := json.NewDecoder(resp.Body).Decode(&lookupResp); err != nil {
+	// Read cache status and confidence from response headers
+	cacheStatus := resp.Header.Get("X-Cache-Status")
+	confidence := 0.0
+	if confStr := resp.Header.Get("X-Match-Confidence"); confStr != "" {
+		if parsed, err := strconv.ParseFloat(confStr, 64); err == nil {
+			confidence = parsed
+		}
+	}
+
+	// Unwrap the { "status": "ok", "data": {...} } envelope
+	data, err := unwrapEnvelope(resp)
+	if err != nil {
+		log.Printf("[cache-client] envelope error: %v", err)
+		return nil
+	}
+
+	// Data contains the record fields directly (no nested "entry")
+	var entry cacheEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
 		log.Printf("[cache-client] decode error: %v", err)
 		return nil
 	}
 
-	return c.convertCacheResponse(&lookupResp)
+	if entry.Title == "" && entry.TMDBID == 0 {
+		return nil
+	}
+
+	// Derive source from entry or cache header
+	source := entry.Source
+	if source == "" {
+		if cacheStatus == "hit" {
+			source = "hit"
+		} else {
+			source = "tmdb"
+		}
+	}
+
+	// Construct a cacheLookupResponse so convertCacheResponse can be reused
+	lookupResp := &cacheLookupResponse{
+		Hit:        true,
+		Confidence: confidence,
+		Entry:      &entry,
+		Source:     source,
+	}
+
+	return c.convertCacheResponse(lookupResp)
 }
 
 // BatchLookupItem holds lookup parameters for a single item in a batch.
@@ -302,66 +317,20 @@ type BatchLookupItem struct {
 	MediaType models.MediaType
 }
 
-// BatchLookup queries the cache server for multiple items in one HTTP call.
-// Returns results in the same order as input; nil entries indicate misses.
+// BatchLookup queries the cache server for multiple items.
+// The batch endpoint is not available in the new cache-server API;
+// items are looked up individually.
 func (c *CacheClient) BatchLookup(items []BatchLookupItem) []*CacheLookupResult {
 	if len(items) == 0 {
 		return nil
 	}
 
-	type batchReq struct {
-		Items []cacheLookupRequest `json:"items"`
-	}
-	type batchResp struct {
-		Results []cacheLookupResponse `json:"results"`
-	}
+	log.Printf("[cache-client] DEPRECATED: BatchLookup — using sequential individual lookups (%d items)", len(items))
 
 	results := make([]*CacheLookupResult, len(items))
-	const batchSize = 50
-
-	for i := 0; i < len(items); i += batchSize {
-		end := i + batchSize
-		if end > len(items) {
-			end = len(items)
-		}
-
-		var br batchReq
-		for _, it := range items[i:end] {
-			br.Items = append(br.Items, cacheLookupRequest{
-				Title:        it.Title,
-				Year:         it.Year,
-				Type:         mediaTypeToCacheType(it.MediaType),
-				IncludeAdult: it.MediaType == models.MediaTypeAdultMovies,
-			})
-		}
-
-		bodyBytes, err := json.Marshal(br)
-		if err != nil {
-			continue
-		}
-
-		req, err := http.NewRequest("POST", c.baseURL+"/api/v1/lookup/batch", bytes.NewReader(bodyBytes))
-		if err != nil {
-			continue
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-API-Key", c.apiKey)
-
-		resp, err := c.client.Do(req)
-		if err != nil {
-			log.Printf("[cache-client] batch lookup failed: %v", err)
-			continue
-		}
-
-		var bResp batchResp
-		json.NewDecoder(resp.Body).Decode(&bResp)
-		resp.Body.Close()
-
-		for j, lr := range bResp.Results {
-			results[i+j] = c.convertCacheResponse(&lr)
-		}
+	for i, it := range items {
+		results[i] = c.Lookup(it.Title, it.Year, it.MediaType)
 	}
-
 	return results
 }
 
@@ -551,71 +520,10 @@ type cacheSearchResult struct {
 }
 
 // Search queries the cache server's search endpoint and returns multiple matches.
-// Used for manual identification where the user picks from several options.
+// Not available in the new cache-server API — returns empty results.
 func (c *CacheClient) Search(query string, mediaType models.MediaType, year *int, minConfidence float64, maxResults int) []*models.MetadataMatch {
-	cacheType := mediaTypeToCacheType(mediaType)
-
-	reqURL := fmt.Sprintf("%s/api/v1/search?q=%s&type=%s&max_results=%d&min_confidence=%.2f",
-		c.baseURL, url.QueryEscape(query), cacheType, maxResults, minConfidence)
-	if year != nil && *year > 0 {
-		reqURL += fmt.Sprintf("&year=%d", *year)
-	}
-
-	req, err := http.NewRequest("GET", reqURL, nil)
-	if err != nil {
-		log.Printf("[cache-client] search request error: %v", err)
-		return nil
-	}
-	req.Header.Set("X-API-Key", c.apiKey)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		log.Printf("[cache-client] search unreachable: %v", err)
-		return nil
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		log.Printf("[cache-client] search returned %d", resp.StatusCode)
-		return nil
-	}
-
-	var results []cacheSearchResult
-	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
-		log.Printf("[cache-client] search decode error: %v", err)
-		return nil
-	}
-
-	var matches []*models.MetadataMatch
-	for _, r := range results {
-		var yr *int
-		if r.Year > 0 {
-			y := r.Year
-			yr = &y
-		}
-		var desc *string
-		if r.Overview != "" {
-			desc = &r.Overview
-		}
-		rating := r.VoteAverage
-
-		conf := r.Confidence
-		if conf == 0 {
-			conf = titleSimilarity(query, r.Title)
-		}
-
-		matches = append(matches, &models.MetadataMatch{
-			Source:      r.Source,
-			ExternalID:  fmt.Sprintf("%d", r.TMDBID),
-			Title:       r.Title,
-			Year:        yr,
-			Description: desc,
-			PosterURL:   r.PosterURL,
-			Rating:      &rating,
-			Confidence:  conf,
-		})
-	}
-	return matches
+	log.Printf("[cache-client] search not available in new cache-server API (query=%q)", query)
+	return nil
 }
 
 // ── External ID helpers ──
@@ -815,144 +723,9 @@ type ContributeExtras struct {
 	MediaType models.MediaType
 }
 
-// Contribute pushes a locally-fetched metadata result back to the cache server
-// so other instances can benefit. Supports TMDB, MusicBrainz, and OpenLibrary sources.
-// The optional extras parameter allows sending cast/crew, runtime, and ratings.
+// Contribute is a no-op — the new cache-server auto-fetches metadata.
 func (c *CacheClient) Contribute(match *models.MetadataMatch, extras ...ContributeExtras) {
-	if match == nil || match.ExternalID == "" {
-		return
-	}
-
-	// Only contribute sources the cache server understands
-	switch match.Source {
-	case "tmdb", "musicbrainz", "openlibrary":
-		// OK
-	default:
-		return
-	}
-
-	tmdbID, err := strconv.Atoi(match.ExternalID)
-	if err != nil {
-		// For non-numeric IDs (MusicBrainz UUIDs, OpenLibrary keys), use 0
-		tmdbID = 0
-	}
-
-	var genresJSON *string
-	if len(match.Genres) > 0 {
-		data, _ := json.Marshal(match.Genres)
-		s := string(data)
-		genresJSON = &s
-	}
-
-	// Map source to cache server media type
-	mediaType := "movie"
-	// Check extras first for explicit media type override (e.g. TV shows via TMDB)
-	if len(extras) > 0 && extras[0].MediaType != "" {
-		mediaType = mediaTypeToCacheType(extras[0].MediaType)
-	} else {
-		switch match.Source {
-		case "musicbrainz":
-			mediaType = "music"
-		case "openlibrary":
-			mediaType = "audiobook"
-		}
-	}
-
-	req := cacheContributeRequest{
-		TMDBID:           tmdbID,
-		MediaType:        mediaType,
-		Title:            match.Title,
-		Year:             match.Year,
-		Description:      match.Description,
-		PosterURL:        match.PosterURL,
-		BackdropURL:      match.BackdropURL,
-		Genres:           genresJSON,
-		ContentRating:    match.ContentRating,
-		Tagline:          match.Tagline,
-		OriginalLanguage: match.OriginalLanguage,
-		Country:          match.Country,
-		TrailerURL:       match.TrailerURL,
-		CollectionID:     match.CollectionID,
-		CollectionName:   match.CollectionName,
-	}
-	if match.IMDBId != "" {
-		req.IMDBID = &match.IMDBId
-	}
-
-	// Apply extras if provided
-	if len(extras) > 0 {
-		ex := extras[0]
-		req.CastCrew = ex.CastCrewJSON
-		req.Runtime = ex.Runtime
-		req.IMDBRating = ex.IMDBRating
-		req.RTCriticScore = ex.RTCriticScore
-		req.RTAudienceScore = ex.RTAudienceScore
-		if ex.Tagline != nil {
-			req.Tagline = ex.Tagline
-		}
-		if ex.OriginalLanguage != nil {
-			req.OriginalLanguage = ex.OriginalLanguage
-		}
-		if ex.Country != nil {
-			req.Country = ex.Country
-		}
-		if ex.TrailerURL != nil {
-			req.TrailerURL = ex.TrailerURL
-		}
-		if ex.LogoURL != nil {
-			req.LogoURL = ex.LogoURL
-		}
-		if ex.BannerURL != nil {
-			req.BannerURL = ex.BannerURL
-		}
-		if ex.CollectionID != nil {
-			req.CollectionID = ex.CollectionID
-		}
-		if ex.CollectionName != nil {
-			req.CollectionName = ex.CollectionName
-		}
-		if ex.BackdropURL != nil {
-			req.BackdropURL = ex.BackdropURL
-		}
-		if ex.Keywords != nil {
-			req.Keywords = ex.Keywords
-		}
-		if ex.OriginalTitle != nil {
-			req.OriginalTitle = ex.OriginalTitle
-		}
-		if ex.ReleaseDate != nil {
-			req.ReleaseDate = ex.ReleaseDate
-		}
-		if ex.TVDBID != nil {
-			req.TVDBID = ex.TVDBID
-		}
-	}
-
-	// Contribute keywords from match if extras didn't provide them
-	if req.Keywords == nil && len(match.Keywords) > 0 {
-		data, _ := json.Marshal(match.Keywords)
-		s := string(data)
-		req.Keywords = &s
-	}
-
-	bodyBytes, _ := json.Marshal(req)
-	httpReq, err := http.NewRequest("POST", c.baseURL+"/api/v1/contribute", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("X-API-Key", c.apiKey)
-
-	resp, err := c.client.Do(httpReq)
-	if err != nil {
-		log.Printf("[cache-client] contribute failed: %v", err)
-		return
-	}
-	resp.Body.Close()
-
-	if resp.StatusCode == 200 || resp.StatusCode == 201 {
-		log.Printf("[cache-client] contributed: %s (%s)", match.Title, match.ExternalID)
-	}
+	log.Printf("[cache-client] contribute not needed with new cache-server")
 }
 
 // ── Phase 6: Cache Integration Endpoints ──
@@ -1009,99 +782,28 @@ type CacheCollection struct {
 	MemberIDs    *string `json:"member_ids,omitempty"`
 }
 
-// GetTVSeason fetches season data from the cache server.
+// GetTVSeason — not yet available in the new cache-server API.
 func (c *CacheClient) GetTVSeason(tmdbID, seasonNumber int) (*CacheTVSeason, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/tv/%d/season/%d", c.baseURL, tmdbID, seasonNumber)
-	req, _ := http.NewRequest("GET", reqURL, nil)
-	req.Header.Set("X-API-Key", c.apiKey)
-	addInstanceVersion(req)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("cache tv season returned %d", resp.StatusCode)
-	}
-
-	var season CacheTVSeason
-	if err := json.NewDecoder(resp.Body).Decode(&season); err != nil {
-		return nil, err
-	}
-	return &season, nil
+	log.Printf("[cache-client] GetTVSeason not available in new cache-server API")
+	return nil, nil
 }
 
-// GetTVSeasons fetches all seasons from the cache server.
+// GetTVSeasons — not yet available in the new cache-server API.
 func (c *CacheClient) GetTVSeasons(tmdbID int, includeEpisodes bool) ([]CacheTVSeason, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/tv/%d/seasons", c.baseURL, tmdbID)
-	if includeEpisodes {
-		reqURL += "?include_episodes=true"
-	}
-	req, _ := http.NewRequest("GET", reqURL, nil)
-	req.Header.Set("X-API-Key", c.apiKey)
-	addInstanceVersion(req)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("cache tv seasons returned %d", resp.StatusCode)
-	}
-
-	var seasons []CacheTVSeason
-	if err := json.NewDecoder(resp.Body).Decode(&seasons); err != nil {
-		return nil, err
-	}
-	return seasons, nil
+	log.Printf("[cache-client] GetTVSeasons not available in new cache-server API")
+	return nil, nil
 }
 
-// GetPerformer fetches performer data from the cache server.
+// GetPerformer — not yet available in the new cache-server API.
 func (c *CacheClient) GetPerformer(tmdbID int) (*CachePerformer, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/performer/%d", c.baseURL, tmdbID)
-	req, _ := http.NewRequest("GET", reqURL, nil)
-	req.Header.Set("X-API-Key", c.apiKey)
-	addInstanceVersion(req)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("cache performer returned %d", resp.StatusCode)
-	}
-
-	var performer CachePerformer
-	if err := json.NewDecoder(resp.Body).Decode(&performer); err != nil {
-		return nil, err
-	}
-	return &performer, nil
+	log.Printf("[cache-client] GetPerformer not available in new cache-server API")
+	return nil, nil
 }
 
-// GetCollection fetches collection data from the cache server.
+// GetCollection — not yet available in the new cache-server API.
 func (c *CacheClient) GetCollection(tmdbID int) (*CacheCollection, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/collection/%d", c.baseURL, tmdbID)
-	req, _ := http.NewRequest("GET", reqURL, nil)
-	req.Header.Set("X-API-Key", c.apiKey)
-	addInstanceVersion(req)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("cache collection returned %d", resp.StatusCode)
-	}
-
-	var coll CacheCollection
-	if err := json.NewDecoder(resp.Body).Decode(&coll); err != nil {
-		return nil, err
-	}
-	return &coll, nil
+	log.Printf("[cache-client] GetCollection not available in new cache-server API")
+	return nil, nil
 }
 
 // CollectionArtwork holds poster and backdrop artwork items for a collection.
@@ -1117,27 +819,10 @@ type CollectionArtworkItem struct {
 	Path   string `json:"path,omitempty"`
 }
 
-// GetCollectionArtwork fetches all artwork variants for a collection from the cache server.
+// GetCollectionArtwork — not yet available in the new cache-server API.
 func (c *CacheClient) GetCollectionArtwork(tmdbID int) (*CollectionArtwork, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/collection/%d/artwork", c.baseURL, tmdbID)
-	req, _ := http.NewRequest("GET", reqURL, nil)
-	req.Header.Set("X-API-Key", c.apiKey)
-	addInstanceVersion(req)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("cache collection artwork returned %d", resp.StatusCode)
-	}
-
-	var artwork CollectionArtwork
-	if err := json.NewDecoder(resp.Body).Decode(&artwork); err != nil {
-		return nil, err
-	}
-	return &artwork, nil
+	log.Printf("[cache-client] GetCollectionArtwork not available in new cache-server API")
+	return nil, nil
 }
 
 // ── Edition Metadata ──
@@ -1167,117 +852,22 @@ type CacheEdition struct {
 	VerificationSource *string  `json:"verification_source,omitempty"`
 }
 
-type cacheEditionEnrichRequest struct {
-	TMDBID      int    `json:"tmdb_id"`
-	Title       string `json:"title"`
-	Year        *int   `json:"year,omitempty"`
-	EditionType string `json:"edition_type"`
-}
-
-type cacheEditionResponse struct {
-	Hit     bool          `json:"hit"`
-	Edition *CacheEdition `json:"edition,omitempty"`
-	Source  string        `json:"source"`
-}
-
-// FetchEditionMetadata requests edition-specific metadata from the cache server.
-// If not cached, the cache server will generate it via OpenAI and cache it for future use.
+// FetchEditionMetadata — not yet available in the new cache-server API.
 func (c *CacheClient) FetchEditionMetadata(tmdbID int, title string, year *int, editionType string) (*CacheEdition, error) {
-	reqBody := cacheEditionEnrichRequest{
-		TMDBID:      tmdbID,
-		Title:       title,
-		Year:        year,
-		EditionType: editionType,
-	}
-
-	bodyBytes, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("marshal edition request: %w", err)
-	}
-
-	req, err := http.NewRequest("POST", c.baseURL+"/api/v1/edition/enrich", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, fmt.Errorf("create edition request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Key", c.apiKey)
-	addInstanceVersion(req)
-
-	// Edition enrichment can take longer (OpenAI call), use extended timeout
-	editionClient := &http.Client{Timeout: 90 * time.Second}
-	resp, err := editionClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("edition request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("edition enrich returned %d", resp.StatusCode)
-	}
-
-	var edResp cacheEditionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&edResp); err != nil {
-		return nil, fmt.Errorf("decode edition response: %w", err)
-	}
-
-	if edResp.Edition == nil {
-		return nil, fmt.Errorf("no edition data returned")
-	}
-
-	log.Printf("[cache-client] edition metadata: %s — %s (source: %s)", title, editionType, edResp.Source)
-	return edResp.Edition, nil
+	log.Printf("[cache-client] FetchEditionMetadata not available in new cache-server API")
+	return nil, nil
 }
 
-// GetEdition fetches cached edition metadata without triggering enrichment.
+// GetEdition — not yet available in the new cache-server API.
 func (c *CacheClient) GetEdition(tmdbID int, editionType string) (*CacheEdition, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/edition/%d/%s", c.baseURL, tmdbID, editionType)
-	req, err := http.NewRequest("GET", reqURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("X-API-Key", c.apiKey)
-	addInstanceVersion(req)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("edition returned %d", resp.StatusCode)
-	}
-
-	var edition CacheEdition
-	if err := json.NewDecoder(resp.Body).Decode(&edition); err != nil {
-		return nil, err
-	}
-	return &edition, nil
+	log.Printf("[cache-client] GetEdition not available in new cache-server API")
+	return nil, nil
 }
 
-// ListEditions fetches all cached editions for a TMDB ID.
+// ListEditions — not yet available in the new cache-server API.
 func (c *CacheClient) ListEditions(tmdbID int) ([]CacheEdition, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/editions/%d", c.baseURL, tmdbID)
-	req, err := http.NewRequest("GET", reqURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("X-API-Key", c.apiKey)
-	addInstanceVersion(req)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("editions list returned %d", resp.StatusCode)
-	}
-
-	var editions []CacheEdition
-	if err := json.NewDecoder(resp.Body).Decode(&editions); err != nil {
-		return nil, err
-	}
-	return editions, nil
+	log.Printf("[cache-client] ListEditions not available in new cache-server API")
+	return nil, nil
 }
 
 // BatchContributeItem matches the cache server's batch contribute item format.
@@ -1312,61 +902,10 @@ type BatchContributeItem struct {
 	FileHash         *string  `json:"file_hash,omitempty"`
 }
 
-type batchContributeRequest struct {
-	Items []BatchContributeItem `json:"items"`
-}
-
-type batchContributeResponse struct {
-	Succeeded int      `json:"succeeded"`
-	Failed    int      `json:"failed"`
-	Errors    []string `json:"errors,omitempty"`
-}
-
-// ContributeBatch sends multiple contributions in a single request.
-// Items are sent in groups of batchSize (max 100 per cache server limit).
+// ContributeBatch is a no-op — the new cache-server auto-fetches metadata.
 func (c *CacheClient) ContributeBatch(items []BatchContributeItem) (succeeded, failed int) {
-	if len(items) == 0 {
-		return 0, 0
-	}
-
-	batchSize := 100
-	for i := 0; i < len(items); i += batchSize {
-		end := i + batchSize
-		if end > len(items) {
-			end = len(items)
-		}
-
-		batch := batchContributeRequest{Items: items[i:end]}
-		bodyBytes, _ := json.Marshal(batch)
-
-		req, err := http.NewRequest("POST", c.baseURL+"/api/v1/contribute/batch", bytes.NewReader(bodyBytes))
-		if err != nil {
-			failed += end - i
-			continue
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-API-Key", c.apiKey)
-		addInstanceVersion(req)
-
-		resp, err := c.client.Do(req)
-		if err != nil {
-			log.Printf("[cache-client] batch contribute failed: %v", err)
-			failed += end - i
-			continue
-		}
-
-		var batchResp batchContributeResponse
-		json.NewDecoder(resp.Body).Decode(&batchResp)
-		resp.Body.Close()
-
-		succeeded += batchResp.Succeeded
-		failed += batchResp.Failed
-	}
-
-	if succeeded > 0 {
-		log.Printf("[cache-client] batch contributed: %d succeeded, %d failed", succeeded, failed)
-	}
-	return
+	log.Printf("[cache-client] contribute not needed with new cache-server")
+	return 0, 0
 }
 
 // addInstanceVersion adds the X-Instance-Version header from the app version.
@@ -1398,17 +937,16 @@ const CacheServerURL = "http://cache.cine-vault.tv:8090"
 var resolvedCacheURL = CacheServerURL
 
 type cacheRegisterRequest struct {
-	Name      string  `json:"name"`
-	Version   *string `json:"version,omitempty"`
-	Email     *string `json:"email,omitempty"`
-	FirstName *string `json:"first_name,omitempty"`
-	LastName  *string `json:"last_name,omitempty"`
-	IP        *string `json:"ip,omitempty"`
+	AppName    string  `json:"app_name"`
+	AppVersion *string `json:"app_version,omitempty"`
+	OwnerName  *string `json:"owner_name,omitempty"`
+	OwnerEmail *string `json:"owner_email,omitempty"`
+	WanIP      *string `json:"wan_ip,omitempty"`
 }
 
 type cacheRegisterResponse struct {
-	InstanceID string `json:"instance_id"`
-	APIKey     string `json:"api_key"`
+	ClientID string `json:"client_id"`
+	APIKey   string `json:"api_key"`
 }
 
 // readVersion tries to read the application version from version.json.
@@ -1429,16 +967,14 @@ func readVersion() *string {
 // Register sends a registration request to the cache server and returns the API key.
 func Register() (string, error) {
 	ver := readVersion()
-	firstName := "Justin"
-	lastName := "Dube"
+	ownerName := "Justin Dube"
 	email := "justin@thedubes.net"
 
 	reqBody := cacheRegisterRequest{
-		Name:      "CineVault",
-		Version:   ver,
-		FirstName: &firstName,
-		LastName:  &lastName,
-		Email:     &email,
+		AppName:    "CineVault",
+		AppVersion: ver,
+		OwnerName:  &ownerName,
+		OwnerEmail: &email,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -1457,8 +993,14 @@ func Register() (string, error) {
 		return "", fmt.Errorf("registration failed with status %d", resp.StatusCode)
 	}
 
+	// Unwrap the { "status": "ok", "data": {...} } envelope
+	data, err := unwrapEnvelope(resp)
+	if err != nil {
+		return "", fmt.Errorf("registration envelope error: %w", err)
+	}
+
 	var regResp cacheRegisterResponse
-	if err := json.NewDecoder(resp.Body).Decode(&regResp); err != nil {
+	if err := json.Unmarshal(data, &regResp); err != nil {
 		return "", fmt.Errorf("decode register response: %w", err)
 	}
 
@@ -1466,7 +1008,7 @@ func Register() (string, error) {
 		return "", fmt.Errorf("server returned empty API key")
 	}
 
-	log.Printf("[cache-client] registered with cache server, instance_id=%s", regResp.InstanceID)
+	log.Printf("[cache-client] registered with cache server, client_id=%s", regResp.ClientID)
 	return regResp.APIKey, nil
 }
 
@@ -1638,32 +1180,8 @@ type CacheMusicArtist struct {
 	PhotoPath *string `json:"photo_path,omitempty"`
 }
 
-// LookupMusicArtist requests a music artist from the cache server by MBID.
-// The cache server will fetch from fanart.tv on miss.
+// LookupMusicArtist — not yet available in the new cache-server API.
 func (c *CacheClient) LookupMusicArtist(mbid, name string) *CacheMusicArtist {
-	if c == nil || mbid == "" {
-		return nil
-	}
-	reqURL := fmt.Sprintf("%s/api/v1/music-artist/%s?name=%s", c.baseURL, mbid, url.QueryEscape(name))
-	req, err := http.NewRequest("GET", reqURL, nil)
-	if err != nil {
-		return nil
-	}
-	req.Header.Set("X-API-Key", c.apiKey)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil
-	}
-
-	var artist CacheMusicArtist
-	if err := json.NewDecoder(resp.Body).Decode(&artist); err != nil {
-		return nil
-	}
-	return &artist
+	log.Printf("[cache-client] LookupMusicArtist not available in new cache-server API")
+	return nil
 }
