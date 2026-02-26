@@ -120,9 +120,11 @@ func (s *TMDBScraper) tmdbSearch(query string, mediaType models.MediaType, year 
 		}
 		var resultYear *int
 		if len(dateStr) >= 4 {
-			y := 0
+			var y int
 			fmt.Sscanf(dateStr[:4], "%d", &y)
-			resultYear = &y
+			if y >= 1900 && y <= 2100 {
+				resultYear = &y
+			}
 		}
 		overview := r.Overview
 		var posterURL *string
@@ -231,9 +233,11 @@ func (s *TMDBScraper) GetDetails(externalID string) (*models.MetadataMatch, erro
 
 	var year *int
 	if len(r.ReleaseDate) >= 4 {
-		y := 0
+		var y int
 		fmt.Sscanf(r.ReleaseDate[:4], "%d", &y)
-		year = &y
+		if y >= 1900 && y <= 2100 {
+			year = &y
+		}
 	}
 	overview := r.Overview
 	var posterURL *string
@@ -351,9 +355,11 @@ func (s *TMDBScraper) GetDetailsWithCredits(externalID string) (*DetailsWithCred
 
 	var year *int
 	if len(r.ReleaseDate) >= 4 {
-		y := 0
+		var y int
 		fmt.Sscanf(r.ReleaseDate[:4], "%d", &y)
-		year = &y
+		if y >= 1900 && y <= 2100 {
+			year = &y
+		}
 	}
 	overview := r.Overview
 	var posterURL *string
@@ -498,9 +504,11 @@ func (s *TMDBScraper) GetTVDetails(externalID string) (*models.MetadataMatch, er
 
 	var year *int
 	if len(r.FirstAirDate) >= 4 {
-		y := 0
+		var y int
 		fmt.Sscanf(r.FirstAirDate[:4], "%d", &y)
-		year = &y
+		if y >= 1900 && y <= 2100 {
+			year = &y
+		}
 	}
 	overview := r.Overview
 	var posterURL *string

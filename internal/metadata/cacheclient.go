@@ -396,7 +396,9 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 	// Parse genres from JSON string
 	if entry.Genres != nil && *entry.Genres != "" {
 		var genres []string
-		if err := json.Unmarshal([]byte(*entry.Genres), &genres); err == nil {
+		if err := json.Unmarshal([]byte(*entry.Genres), &genres); err != nil {
+			log.Printf("[cache-client] genres JSON parse error for %q: %v", entry.Title, err)
+		} else {
 			match.Genres = genres
 			result.Genres = genres
 		}
@@ -405,7 +407,9 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 	// Parse keywords from JSON string
 	if entry.Keywords != nil && *entry.Keywords != "" {
 		var keywords []string
-		if err := json.Unmarshal([]byte(*entry.Keywords), &keywords); err == nil {
+		if err := json.Unmarshal([]byte(*entry.Keywords), &keywords); err != nil {
+			log.Printf("[cache-client] keywords JSON parse error for %q: %v", entry.Title, err)
+		} else {
 			match.Keywords = keywords
 			result.Keywords = keywords
 		}
@@ -492,7 +496,9 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 			// Parse known resolutions from JSON string
 			if ae.KnownResolutions != nil && *ae.KnownResolutions != "" {
 				var resolutions []string
-				if err := json.Unmarshal([]byte(*ae.KnownResolutions), &resolutions); err == nil {
+				if err := json.Unmarshal([]byte(*ae.KnownResolutions), &resolutions); err != nil {
+					log.Printf("[cache-client] edition resolutions JSON parse error: %v", err)
+				} else {
 					es.KnownResolutions = resolutions
 				}
 			}
