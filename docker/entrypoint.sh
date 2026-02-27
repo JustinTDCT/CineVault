@@ -1,21 +1,28 @@
 #!/bin/sh
 set -e
 
-DB_HOST="${DB_HOST:-db}"
-DB_PORT="${DB_PORT:-5432}"
+echo "╔══════════════════════════════════════╗"
+echo "║         CineVault v0.9.0             ║"
+echo "║    Waiting for services...           ║"
+echo "╚══════════════════════════════════════╝"
 
-echo "CineVault v2 starting..."
-echo "Waiting for database at ${DB_HOST}:${DB_PORT}..."
-
-i=0
-while ! nc -z "$DB_HOST" "$DB_PORT" 2>/dev/null; do
-    i=$((i + 1))
-    if [ "$i" -ge 30 ]; then
-        echo "Database not ready after 30 attempts, starting anyway..."
-        break
-    fi
-    sleep 2
+# Wait for PostgreSQL
+until PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c '\q' 2>/dev/null; do
+  echo "Waiting for PostgreSQL at $DB_HOST:${DB_PORT:-5432}..."
+  sleep 2
 done
+echo "PostgreSQL is ready."
 
-echo "Database ready, starting application..."
-exec /app/cinevault "$@"
+# Auto-apply migrations in order
+echo "Applying migrations..."
+if [ -d /app/migrations ]; then
+  for f in $(ls /app/migrations/*.up.sql 2>/dev/null | sort); do
+    echo "  -> $(basename "$f")"
+    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f "$f" 2>&1 \
+      | grep -v "already exists\|duplicate key\|ERROR\|NOTICE" || true
+  done
+fi
+echo "Migrations complete."
+
+echo "Starting CineVault..."
+exec "$@"

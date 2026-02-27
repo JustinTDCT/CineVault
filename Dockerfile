@@ -1,3 +1,4 @@
+# ── Build stage ──
 FROM golang:1.24-alpine AS builder
 
 RUN apk add --no-cache git
@@ -5,21 +6,54 @@ RUN apk add --no-cache git
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
+
 COPY . .
-RUN CGO_ENABLED=0 go build -o cinevault ./cmd/cinevault
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o cinevault ./cmd/cinevault/
 
-FROM alpine:3.21
+# ── Runtime stage (Debian for Jellyfin FFmpeg hw-accel support) ──
+FROM debian:bookworm-slim
 
-RUN apk add --no-cache ca-certificates ffmpeg tzdata netcat-openbsd
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl gnupg ca-certificates tzdata postgresql-client && \
+    mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key \
+      | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/jellyfin.gpg arch=amd64] https://repo.jellyfin.org/debian bookworm main" \
+      > /etc/apt/sources.list.d/jellyfin.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        jellyfin-ffmpeg7 \
+        intel-media-va-driver \
+        mesa-va-drivers \
+        vainfo && \
+    apt-get purge -y curl gnupg && \
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Copy binary
 COPY --from=builder /build/cinevault .
-COPY --from=builder /build/migrations ./migrations
-COPY --from=builder /build/web ./web
+
+# Copy version metadata
 COPY --from=builder /build/version.json .
-COPY --from=builder /build/docker/entrypoint.sh .
-RUN chmod +x /app/entrypoint.sh
+
+# Copy web assets
+COPY --from=builder /build/web ./web
+
+# Copy migrations (for init)
+COPY --from=builder /build/migrations ./migrations
+
+# Copy entrypoint
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Create directories for previews/thumbnails/transcodes
+RUN mkdir -p /previews /thumbnails /data
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["./cinevault"]

@@ -1,21 +1,68 @@
 # Binaries
-/cinevault
 *.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/cinevault
+*.test
+*.out
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
+# Go workspace
+go.work
+go.work.sum
+
+# Dependencies
+vendor/
 
 # Environment
 .env
-docker/.env
+.env.local
+.env.production
 
-# Data
-/data/
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
 *.log
+logs/
+
+# Media files
+media/
+test-media/
+/previews/
+/thumbnails/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Cursor
+.cursor/
+.cursor-server/
+.cursorrules
+
+# Internal docs
+DESIGN.md
+CINEVAULT_DESIGN.md
+
+# Docker build artifacts
+.docker/
+
+# Backups
+*.tar.gz
+*.bak
+*.backup
+
+# Misc
+*.tmp
+tmp/

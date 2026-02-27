@@ -1,0 +1,525 @@
+package api
+
+import (
+	"database/sql"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/JustinTDCT/CineVault/internal/models"
+	"github.com/JustinTDCT/CineVault/internal/stream"
+	"github.com/google/uuid"
+)
+
+// ──────────────────── Stream Handlers ────────────────────
+
+func (s *Server) handleStreamMaster(w http.ResponseWriter, r *http.Request) {
+	mediaID, err := uuid.Parse(r.PathValue("mediaId"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media id")
+		return
+	}
+
+	media, err := s.mediaRepo.GetByID(mediaID)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "media not found")
+		return
+	}
+
+	var qualities []string
+	height := 0
+	if media.Height != nil {
+		height = normalizeResolution(*media.Height)
+	}
+	for _, q := range []string{"360p", "480p", "720p", "1080p", "4K"} {
+		if stream.Qualities[q].Height <= height || height == 0 {
+			qualities = append(qualities, q)
+		}
+	}
+	if len(qualities) == 0 {
+		qualities = []string{"720p"}
+	}
+
+	playlist := s.transcoder.GenerateMasterPlaylist(mediaID.String(), media.FilePath, qualities)
+
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(playlist))
+}
+
+// handleStreamInfo returns media stream info as JSON
+func (s *Server) handleStreamInfo(w http.ResponseWriter, r *http.Request) {
+	mediaID, err := uuid.Parse(r.PathValue("mediaId"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media id")
+		return
+	}
+
+	media, err := s.mediaRepo.GetByID(mediaID)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "media not found")
+		return
+	}
+
+	height := 0
+	if media.Height != nil {
+		height = *media.Height
+	}
+	width := 0
+	if media.Width != nil {
+		width = *media.Width
+	}
+
+	standardHeight := normalizeResolution(height)
+
+	var transcodeQualities []string
+	for _, q := range []string{"360p", "480p", "720p", "1080p", "4K"} {
+		if stream.Qualities[q].Height <= standardHeight || height == 0 {
+			transcodeQualities = append(transcodeQualities, q)
+		}
+	}
+
+	needsRemux := stream.NeedsRemux(media.FilePath)
+
+	codec := ""
+	if media.Codec != nil {
+		codec = *media.Codec
+	}
+	container := ""
+	if media.Container != nil {
+		container = *media.Container
+	}
+
+	nativeRes := ""
+	if standardHeight > 0 {
+		nativeRes = fmt.Sprintf("%dp", standardHeight)
+	}
+
+	audioCodec := ""
+	if media.AudioCodec != nil {
+		audioCodec = *media.AudioCodec
+	}
+
+	duration := 0
+	if media.DurationSeconds != nil {
+		duration = *media.DurationSeconds
+	}
+
+	// Fetch subtitle tracks, audio tracks, and chapters
+	var subtitles interface{} = []interface{}{}
+	var audioTracks interface{} = []interface{}{}
+	var chapters interface{} = []interface{}{}
+
+	if s.tracksRepo != nil {
+		if subs, err := s.tracksRepo.GetSubtitlesByMediaID(mediaID); err == nil && len(subs) > 0 {
+			subtitles = subs
+		}
+		if tracks, err := s.tracksRepo.GetAudioTracksByMediaID(mediaID); err == nil && len(tracks) > 0 {
+			audioTracks = tracks
+		}
+		if chaps, err := s.tracksRepo.GetChaptersByMediaID(mediaID); err == nil && len(chaps) > 0 {
+			chapters = chaps
+		}
+	}
+
+	// HDR info
+	hdrFormat := ""
+	dynamicRange := "SDR"
+	if media.HDRFormat != nil {
+		hdrFormat = *media.HDRFormat
+		dynamicRange = "HDR"
+	}
+	if media.DynamicRange != "" {
+		dynamicRange = media.DynamicRange
+	}
+
+	// Audio normalization: include gain for client-side direct play normalization
+	var loudnessGainDB *float64
+	if media.LoudnessGainDB != nil {
+		lib, libErr := s.libRepo.GetByID(media.LibraryID)
+		if libErr == nil && lib.AudioNormalization {
+			loudnessGainDB = media.LoudnessGainDB
+		}
+	}
+
+	data := map[string]interface{}{
+		"media_id":            mediaID.String(),
+		"width":               width,
+		"height":              height,
+		"native_resolution":   nativeRes,
+		"codec":               codec,
+		"audio_codec":         audioCodec,
+		"container":           container,
+		"direct_playable":     true,
+		"needs_remux":         needsRemux,
+		"duration_seconds":    duration,
+		"transcode_qualities": transcodeQualities,
+		"subtitles":           subtitles,
+		"audio_tracks":        audioTracks,
+		"chapters":            chapters,
+		"hdr_format":          hdrFormat,
+		"dynamic_range":       dynamicRange,
+	}
+	if loudnessGainDB != nil {
+		data["loudness_gain_db"] = *loudnessGainDB
+	}
+
+	// Music video overlay metadata (artist, album, label, year)
+	if media.MediaType == "music_videos" {
+		mvMeta := map[string]interface{}{
+			"song_title": media.Title,
+		}
+		if media.Year != nil {
+			mvMeta["year"] = *media.Year
+		}
+		if media.ArtistID != nil {
+			if artist, err := s.musicRepo.GetArtistByID(*media.ArtistID); err == nil {
+				mvMeta["artist_name"] = artist.Name
+			}
+		}
+		if media.AlbumID != nil {
+			if album, err := s.musicRepo.GetAlbumByID(*media.AlbumID); err == nil {
+				mvMeta["album_title"] = album.Title
+			}
+		}
+		if studios, err := s.studioRepo.GetMediaStudios(mediaID); err == nil {
+			for _, st := range studios {
+				if st.StudioType == "label" {
+					mvMeta["record_label"] = st.Name
+					break
+				}
+			}
+		}
+		data["music_video"] = mvMeta
+	}
+
+	s.respondJSON(w, http.StatusOK, Response{
+		Success: true,
+		Data:    data,
+	})
+}
+
+func (s *Server) handleStreamSegment(w http.ResponseWriter, r *http.Request) {
+	mediaID := r.PathValue("mediaId")
+	quality := r.PathValue("quality")
+	segmentFile := r.PathValue("segment")
+
+	sessionKey := fmt.Sprintf("%s-%s", mediaID, quality)
+	session := s.transcoder.GetSession(sessionKey)
+
+	if session == nil {
+		mid, err := uuid.Parse(mediaID)
+		if err != nil {
+			s.respondError(w, http.StatusBadRequest, "invalid media id")
+			return
+		}
+		media, err := s.mediaRepo.GetByID(mid)
+		if err != nil {
+			s.respondError(w, http.StatusNotFound, "media not found")
+			return
+		}
+
+		userID := s.getUserID(r)
+
+		// Build transcode options from query params
+		tcOpts := stream.TranscodeOptions{AudioStreamIndex: -1, SubtitleIndex: -1}
+		if audioParam := r.URL.Query().Get("audio"); audioParam != "" {
+			if idx, err := strconv.Atoi(audioParam); err == nil {
+				tcOpts.AudioStreamIndex = idx
+				if s.tracksRepo != nil {
+					if track, err := s.tracksRepo.GetAudioTrackByIndex(mid, idx); err == nil {
+						tcOpts.AudioCodec = track.Codec
+						tcOpts.AudioChannels = track.Channels
+					}
+				}
+			}
+		}
+		if subParam := r.URL.Query().Get("subtitle"); subParam != "" {
+			if idx, err := strconv.Atoi(subParam); err == nil {
+				tcOpts.SubtitleIndex = idx
+				tcOpts.BurnSubtitles = r.URL.Query().Get("burn") == "true"
+				if s.tracksRepo != nil {
+					if sub, err := s.tracksRepo.GetSubtitleByStreamIndex(mid, idx); err == nil {
+						tcOpts.SubtitleFormat = sub.Format
+					}
+				}
+			}
+		}
+		if r.URL.Query().Get("hdr") == "false" {
+			tcOpts.HDRToSDR = true
+		}
+		if startParam := r.URL.Query().Get("start"); startParam != "" {
+			if parsed, err := strconv.ParseFloat(startParam, 64); err == nil {
+				tcOpts.StartSeconds = parsed
+			}
+		}
+		if r.URL.Query().Get("codec") == "hevc" {
+			tcOpts.Codec = "hevc"
+		}
+
+		// Audio normalization gain
+		if media.LoudnessGainDB != nil {
+			if lib, libErr := s.libRepo.GetByID(media.LibraryID); libErr == nil && lib.AudioNormalization {
+				tcOpts.GainDB = *media.LoudnessGainDB
+			}
+		}
+
+		sess, err := s.transcoder.StartTranscode(mediaID, userID.String(), media.FilePath, quality, tcOpts)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, "transcode failed: "+err.Error())
+			return
+		}
+		session = sess
+
+		// Record a transcode stream session
+		if s.analyticsRepo != nil {
+			q := quality
+			pt := models.PlaybackTranscode
+			ssRec := &models.StreamSession{
+				UserID:       userID,
+				MediaItemID:  mid,
+				PlaybackType: pt,
+				Quality:      &q,
+				Codec:        media.Codec,
+				Resolution:   media.Resolution,
+				Container:    media.Container,
+			}
+			if ua := r.UserAgent(); ua != "" {
+				ssRec.ClientInfo = &ua
+			}
+			if err := s.analyticsRepo.CreateStreamSession(ssRec); err != nil {
+				log.Printf("Analytics: failed to create transcode stream session: %v", err)
+			}
+		}
+	}
+
+	if strings.HasSuffix(segmentFile, ".m3u8") {
+		playlistPath := filepath.Join(session.OutputDir, "stream.m3u8")
+		for i := 0; i < 20; i++ {
+			if _, err := os.Stat(playlistPath); err == nil {
+				break
+			}
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(500 * time.Millisecond):
+			}
+		}
+		if _, err := os.Stat(playlistPath); err != nil {
+			s.respondError(w, http.StatusAccepted, "transcoding in progress")
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		http.ServeFile(w, r, playlistPath)
+		return
+	}
+
+	segPath := filepath.Join(session.OutputDir, segmentFile)
+	if _, err := os.Stat(segPath); err != nil {
+		s.respondError(w, http.StatusNotFound, "segment not ready")
+		return
+	}
+
+	if strings.HasSuffix(segmentFile, ".mp4") {
+		w.Header().Set("Content-Type", "video/mp4")
+	} else {
+		w.Header().Set("Content-Type", "video/mp2t")
+	}
+	http.ServeFile(w, r, segPath)
+}
+
+// handleStreamDirect handles direct play and on-the-fly MPEGTS remuxing.
+// Native formats (MP4/WebM): served directly with range request support (native seeking).
+// Non-native formats (MKV/AVI): remuxed to MPEG-TS on-the-fly (Plex-style direct stream).
+//   - Video copied as-is (no re-encoding)
+//   - Audio transcoded to AAC if needed (DTS, AC3, etc.)
+//   - Frontend uses mpegts.js for MPEG-TS playback via MSE
+func (s *Server) handleStreamDirect(w http.ResponseWriter, r *http.Request) {
+	mediaID, err := uuid.Parse(r.PathValue("mediaId"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid media id")
+		return
+	}
+
+	media, err := s.mediaRepo.GetByID(mediaID)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "media not found")
+		return
+	}
+
+	// Parse optional seek position (in seconds)
+	startSeconds := 0.0
+	if startParam := r.URL.Query().Get("start"); startParam != "" {
+		if parsed, err := strconv.ParseFloat(startParam, 64); err == nil && parsed > 0 {
+			startSeconds = parsed
+		}
+	}
+
+	// Enforce per-user streaming limits (P15-04)
+	userID := s.getUserID(r)
+	if userID != uuid.Nil {
+		var maxStreams int
+		s.db.QueryRow("SELECT max_simultaneous_streams FROM users WHERE id = $1", userID).Scan(&maxStreams)
+		if maxStreams > 0 {
+			var activeCount int
+			s.db.QueryRow("SELECT COUNT(*) FROM stream_sessions WHERE user_id = $1 AND ended_at IS NULL", userID).Scan(&activeCount)
+			if activeCount >= maxStreams {
+				s.respondError(w, http.StatusTooManyRequests, "maximum simultaneous streams reached")
+				return
+			}
+		}
+	}
+
+	// Determine playback type and record stream session
+	playbackType := models.PlaybackDirectPlay
+	if stream.NeedsRemux(media.FilePath) {
+		playbackType = models.PlaybackDirectStream
+	}
+
+	var sessionRecord *models.StreamSession
+	if s.analyticsRepo != nil {
+		sessionRecord = &models.StreamSession{
+			UserID:       userID,
+			MediaItemID:  mediaID,
+			PlaybackType: playbackType,
+			Codec:        media.Codec,
+			Resolution:   media.Resolution,
+			Container:    media.Container,
+		}
+		if ua := r.UserAgent(); ua != "" {
+			sessionRecord.ClientInfo = &ua
+		}
+		if err := s.analyticsRepo.CreateStreamSession(sessionRecord); err != nil {
+			log.Printf("Analytics: failed to create stream session: %v", err)
+		}
+	}
+	startTime := time.Now()
+
+	// Non-native formats: remux to MPEG-TS on-the-fly (Plex direct stream)
+	if stream.NeedsRemux(media.FilePath) {
+		audioCodec := ""
+		if media.AudioCodec != nil {
+			audioCodec = *media.AudioCodec
+		}
+
+		// Parse optional audio track selection
+		remuxOpts := stream.RemuxOptions{AudioStreamIndex: -1, AudioCodec: audioCodec}
+		if audioParam := r.URL.Query().Get("audio"); audioParam != "" {
+			if idx, err := strconv.Atoi(audioParam); err == nil && idx >= 0 {
+				remuxOpts.AudioStreamIndex = idx
+				if s.tracksRepo != nil {
+					if track, err := s.tracksRepo.GetAudioTrackByIndex(mediaID, idx); err == nil {
+						remuxOpts.AudioCodec = track.Codec
+						remuxOpts.AudioChannels = track.Channels
+					}
+				}
+			}
+		}
+
+		// Audio normalization gain
+		if media.LoudnessGainDB != nil {
+			if lib, libErr := s.libRepo.GetByID(media.LibraryID); libErr == nil && lib.AudioNormalization {
+				remuxOpts.GainDB = *media.LoudnessGainDB
+			}
+		}
+
+		if err := stream.ServeRemuxedMPEGTS(r.Context(), w, s.config.FFmpeg.FFmpegPath, media.FilePath, audioCodec, startSeconds, remuxOpts); err != nil {
+			if r.Context().Err() == nil {
+				s.respondError(w, http.StatusInternalServerError, "remux failed: "+err.Error())
+			}
+		}
+		// End session
+		if s.analyticsRepo != nil && sessionRecord != nil {
+			dur := int(time.Since(startTime).Seconds())
+			_ = s.analyticsRepo.EndStreamSession(sessionRecord.ID, 0, dur)
+		}
+		return
+	}
+
+	// Native browser format (MP4/WebM) — serve directly with range support
+	if err := stream.ServeDirectFile(w, r, media.FilePath); err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+	}
+	// End session
+	if s.analyticsRepo != nil && sessionRecord != nil {
+		dur := int(time.Since(startTime).Seconds())
+		_ = s.analyticsRepo.EndStreamSession(sessionRecord.ID, 0, dur)
+	}
+}
+
+// handleStreamSubtitle serves a subtitle track as WebVTT.
+// GET /api/v1/stream/{mediaId}/subtitles/{id}
+func (s *Server) handleStreamSubtitle(w http.ResponseWriter, r *http.Request) {
+	subtitleID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid subtitle id")
+		return
+	}
+
+	sub, err := s.tracksRepo.GetSubtitleByID(subtitleID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			s.respondError(w, http.StatusNotFound, "subtitle not found")
+		} else {
+			s.respondError(w, http.StatusInternalServerError, "failed to fetch subtitle")
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+
+	if sub.Source == models.SubtitleSourceExternal && sub.FilePath != nil {
+		// External subtitle file: convert to WebVTT on-the-fly
+		if err := stream.ServeSubtitleFile(w, *sub.FilePath, sub.Format); err != nil {
+			log.Printf("Subtitle serve error: %v", err)
+			s.respondError(w, http.StatusInternalServerError, "failed to convert subtitle")
+		}
+		return
+	}
+
+	// Embedded subtitle: extract from media file via FFmpeg
+	if sub.StreamIndex == nil {
+		s.respondError(w, http.StatusInternalServerError, "embedded subtitle missing stream index")
+		return
+	}
+
+	// Get the media item to find the file path
+	media, err := s.mediaRepo.GetByID(sub.MediaItemID)
+	if err != nil {
+		s.respondError(w, http.StatusNotFound, "media not found")
+		return
+	}
+
+	vtt, err := stream.ExtractEmbeddedSubtitle(s.config.FFmpeg.FFmpegPath, media.FilePath, *sub.StreamIndex)
+	if err != nil {
+		log.Printf("Embedded subtitle extraction error: %v", err)
+		s.respondError(w, http.StatusInternalServerError, "failed to extract subtitle")
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(vtt))
+}
+
+// normalizeResolution maps actual pixel heights to standard resolution labels
+func normalizeResolution(height int) int {
+	if height <= 0 {
+		return 0
+	}
+	standards := []int{360, 480, 720, 1080, 2160}
+	for _, s := range standards {
+		if height >= s-s*15/100 && height <= s+s*15/100 {
+			return s
+		}
+	}
+	if height > 1080 && height < 2160 {
+		return 1080
+	}
+	return height
+}

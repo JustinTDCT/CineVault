@@ -1,82 +1,122 @@
 package config
 
 import (
-	"database/sql"
-	"log"
+	"fmt"
 	"os"
 	"strconv"
 )
 
-const CacheServerURL = "http://cache.cine-vault.tv:8090"
-
 type Config struct {
-	Port          int
-	DatabaseURL   string
-	JWTSecret     string
-	DataDir       string
-	CacheServerKey string
-	FFmpegPath    string
-	FFprobePath   string
-	HWAccelType   string
-	MaxTranscodes int
+	Database   DatabaseConfig
+	Redis      RedisConfig
+	Server     ServerConfig
+	JWT        JWTConfig
+	Paths      PathsConfig
+	FFmpeg     FFmpegConfig
+	TMDBAPIKey string
 }
 
-func Load() *Config {
+type DatabaseConfig struct {
+	Host     string
+	Port     int
+	User     string
+	Password string
+	DBName   string
+	SSLMode  string
+}
+
+type RedisConfig struct {
+	Host     string
+	Port     int
+	Password string
+}
+
+type ServerConfig struct {
+	Host string
+	Port int
+}
+
+type JWTConfig struct {
+	Secret           string
+	ExpiresIn        string
+	RefreshExpiresIn string
+}
+
+type PathsConfig struct {
+	Media     string
+	Preview   string
+	Thumbnail string
+}
+
+type FFmpegConfig struct {
+	FFmpegPath  string
+	FFprobePath string
+	HWAccel     string
+}
+
+func Load() (*Config, error) {
 	return &Config{
-		Port:          envInt("PORT", 8080),
-		DatabaseURL:   env("DATABASE_URL", "postgres://cinevault:cinevault@db:5432/cinevault?sslmode=disable"),
-		JWTSecret:     env("JWT_SECRET", "change-me-in-production"),
-		DataDir:       env("DATA_DIR", "/data"),
-		CacheServerKey: env("CACHE_SERVER_API_KEY", ""),
-		FFmpegPath:    env("FFMPEG_PATH", "ffmpeg"),
-		FFprobePath:   env("FFPROBE_PATH", "ffprobe"),
-		HWAccelType:   env("HW_ACCEL_TYPE", "cpu"),
-		MaxTranscodes: envInt("MAX_TRANSCODES", 2),
-	}
+		Database: DatabaseConfig{
+			Host:     getEnv("DB_HOST", "localhost"),
+			Port:     getEnvInt("DB_PORT", 5432),
+			User:     getEnv("DB_USER", "cinevault"),
+			Password: getEnv("DB_PASSWORD", "cinevault_dev_pass"),
+			DBName:   getEnv("DB_NAME", "cinevault"),
+			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+		},
+		Redis: RedisConfig{
+			Host:     getEnv("REDIS_HOST", "localhost"),
+			Port:     getEnvInt("REDIS_PORT", 6379),
+			Password: getEnv("REDIS_PASSWORD", ""),
+		},
+		Server: ServerConfig{
+			Host: getEnv("SERVER_HOST", "0.0.0.0"),
+			Port: getEnvInt("SERVER_PORT", 8080),
+		},
+		JWT: JWTConfig{
+			Secret:           getEnv("JWT_SECRET", "your-secret-key-change-in-production"),
+			ExpiresIn:        getEnv("JWT_EXPIRES_IN", "24h"),
+			RefreshExpiresIn: getEnv("JWT_REFRESH_EXPIRES_IN", "168h"),
+		},
+		Paths: PathsConfig{
+			Media:     getEnv("MEDIA_PATH", "/media"),
+			Preview:   getEnv("PREVIEW_PATH", "/previews"),
+			Thumbnail: getEnv("THUMBNAIL_PATH", "/thumbnails"),
+		},
+		FFmpeg: FFmpegConfig{
+			FFmpegPath:  getEnv("FFMPEG_PATH", "/usr/lib/jellyfin-ffmpeg/ffmpeg"),
+			FFprobePath: getEnv("FFPROBE_PATH", "/usr/lib/jellyfin-ffmpeg/ffprobe"),
+			HWAccel:     getEnv("FFMPEG_HWACCEL", "auto"),
+		},
+		TMDBAPIKey: getEnv("TMDB_API_KEY", "ca12f0b4ddc375cc34dd9ae9e4fe94e0"),
+	}, nil
 }
 
-func (c *Config) MergeFromDB(db *sql.DB) {
-	rows, err := db.Query("SELECT key, value FROM settings")
-	if err != nil {
-		log.Printf("config: skipping DB merge: %v", err)
-		return
-	}
-	defer rows.Close()
+func (c *DatabaseConfig) ConnectionString() string {
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode)
+}
 
-	for rows.Next() {
-		var key, value string
-		if err := rows.Scan(&key, &value); err != nil {
-			continue
+func (c *RedisConfig) Address() string {
+	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+func (c *ServerConfig) Address() string {
+	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intVal, err := strconv.Atoi(value); err == nil {
+			return intVal
 		}
-		switch key {
-		case "cache_server_api_key":
-			c.CacheServerKey = value
-		case "hw_accel_type":
-			c.HWAccelType = value
-		case "max_transcodes":
-			if v, err := strconv.Atoi(value); err == nil {
-				c.MaxTranscodes = v
-			}
-		}
 	}
-}
-
-func (c *Config) CacheServerEnabled() bool {
-	return c.CacheServerKey != ""
-}
-
-func env(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
-func envInt(key string, fallback int) int {
-	if v := os.Getenv(key); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			return i
-		}
-	}
-	return fallback
+	return defaultValue
 }

@@ -2,24 +2,32 @@ package version
 
 import (
 	"encoding/json"
-	"log"
 	"os"
+	"sync"
 )
 
+// Info holds version metadata from version.json
 type Info struct {
-	Version string `json:"version"`
+	Version  string `json:"version"`
+	Phase    int    `json:"phase"`
+	Released string `json:"released"`
+	Notes    string `json:"notes"`
 }
 
-func Load() Info {
-	data, err := os.ReadFile("version.json")
-	if err != nil {
-		log.Printf("warning: could not read version.json: %v", err)
-		return Info{Version: "0.0.0"}
-	}
-	var info Info
-	if err := json.Unmarshal(data, &info); err != nil {
-		log.Printf("warning: could not parse version.json: %v", err)
-		return Info{Version: "0.0.0"}
-	}
-	return info
+var (
+	current Info
+	once    sync.Once
+)
+
+// Get returns the current version info, reading from version.json on first call.
+func Get() Info {
+	once.Do(func() {
+		data, err := os.ReadFile("version.json")
+		if err != nil {
+			current = Info{Version: "0.0.00", Phase: 0}
+			return
+		}
+		json.Unmarshal(data, &current)
+	})
+	return current
 }

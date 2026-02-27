@@ -1,0 +1,2 @@
+ALTER TABLE user_display_preferences
+ADD COLUMN IF NOT EXISTS region VARCHAR(10) NOT NULL DEFAULT '';

@@ -1,0 +1,11 @@
+# CineVault Docker ignores
+cinevault
+*.exe
+*.test
+*.out
+.git
+.gitignore
+.cursor
+.env
+*.md
+!README.md

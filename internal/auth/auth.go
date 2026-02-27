@@ -1,99 +1,111 @@
 package auth
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
-	"strings"
 	"time"
 	"unicode"
 
+	"github.com/JustinTDCT/CineVault/internal/models"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrTokenExpired       = errors.New("token expired")
-	ErrWeakPassword       = errors.New("password does not meet requirements")
+	ErrInvalidToken       = errors.New("invalid token")
+	ErrWeakPassword       = errors.New("password must be at least 8 characters with uppercase, lowercase, and a digit")
 )
 
-type TokenClaims struct {
-	UserID  string `json:"user_id"`
-	IsAdmin bool   `json:"is_admin"`
-	Exp     int64  `json:"exp"`
+type Claims struct {
+	UserID   uuid.UUID       `json:"user_id"`
+	Username string          `json:"username"`
+	Role     models.UserRole `json:"role"`
+	jwt.RegisteredClaims
 }
 
-func HashPassword(password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+type Auth struct {
+	jwtSecret []byte
+	expiresIn time.Duration
+}
+
+func NewAuth(secret string, expiresIn string) (*Auth, error) {
+	duration, err := time.ParseDuration(expiresIn)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return string(hash), nil
+	return &Auth{jwtSecret: []byte(secret), expiresIn: duration}, nil
 }
 
-func CheckPassword(hash, password string) bool {
-	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
-}
-
-func GenerateToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}
-
-func ValidatePassword(password string, minLength int, requireComplexity bool) error {
-	if len(password) < minLength {
+// ValidatePassword checks password complexity: min 8 chars, upper, lower, digit.
+func ValidatePassword(password string) error {
+	if len(password) < 8 {
 		return ErrWeakPassword
 	}
-
-	if !requireComplexity {
-		return nil
-	}
-
-	var hasUpper, hasLower, hasDigit, hasSymbol bool
-	for _, ch := range password {
+	var hasUpper, hasLower, hasDigit bool
+	for _, c := range password {
 		switch {
-		case unicode.IsUpper(ch):
+		case unicode.IsUpper(c):
 			hasUpper = true
-		case unicode.IsLower(ch):
+		case unicode.IsLower(c):
 			hasLower = true
-		case unicode.IsDigit(ch):
+		case unicode.IsDigit(c):
 			hasDigit = true
-		case unicode.IsPunct(ch) || unicode.IsSymbol(ch):
-			hasSymbol = true
 		}
 	}
-
-	met := 0
-	for _, ok := range []bool{hasUpper, hasLower, hasDigit, hasSymbol} {
-		if ok {
-			met++
-		}
-	}
-	if met < 3 {
+	if !hasUpper || !hasLower || !hasDigit {
 		return ErrWeakPassword
 	}
 	return nil
 }
 
-func ValidatePIN(pin string, minLength int) bool {
-	if len(pin) < minLength {
-		return false
+func (a *Auth) HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(bytes), err
+}
+
+func (a *Auth) VerifyPassword(hashedPassword, password string) error {
+	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
+}
+
+func (a *Auth) GenerateToken(user *models.User) (string, error) {
+	claims := &Claims{
+		UserID:   user.ID,
+		Username: user.Username,
+		Role:     user.Role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(a.expiresIn)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
 	}
-	for _, ch := range pin {
-		if !unicode.IsDigit(ch) {
-			return false
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(a.jwtSecret)
+}
+
+func (a *Auth) ValidateToken(tokenString string) (*Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, ErrInvalidToken
 		}
+		return a.jwtSecret, nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
-	return true
+
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, ErrInvalidToken
 }
 
-func NormalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
-}
-
-func IsTokenExpired(exp int64) bool {
-	return time.Now().Unix() > exp
+func (a *Auth) CheckPermission(userRole models.UserRole, requiredRole models.UserRole) bool {
+	roleHierarchy := map[models.UserRole]int{
+		models.RoleGuest: 1,
+		models.RoleUser:  2,
+		models.RoleAdmin: 3,
+	}
+	return roleHierarchy[userRole] >= roleHierarchy[requiredRole]
 }
