@@ -1,6 +1,6 @@
 {
-  "version": "1.37.01",
-  "phase": 37,
+  "version": "1.38.00",
+  "phase": 38,
   "released": "2026-02-28",
-  "notes": "Feature: deferred edition re-query — cache server discovers movie editions via OpenAI in the background; app periodically re-checks pending items and stores edition data when available."
+  "notes": "Feature: tiered TMDB search scoring with year as a scoring signal; edition pass-through from filename parser to cache server for post-match enrichment."
 }

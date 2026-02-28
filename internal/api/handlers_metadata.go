@@ -877,7 +877,7 @@ func (s *Server) handleGetMediaArtwork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := cacheClient.Lookup(media.Title, media.Year, media.MediaType)
+	result := cacheClient.Lookup(media.Title, media.Year, media.MediaType, media.EditionType)
 	if result == nil || result.Match == nil {
 		log.Printf("[artwork] lookup miss for %q (year=%v type=%s)", media.Title, media.Year, media.MediaType)
 		s.respondError(w, http.StatusNotFound, "no cache data found")
@@ -1130,7 +1130,7 @@ func (s *Server) findCollectionTMDBID(coll *models.Collection) int {
 		if err != nil || media == nil || media.MediaType != models.MediaTypeMovies {
 			continue
 		}
-		result := cacheClient.Lookup(media.Title, media.Year, media.MediaType)
+		result := cacheClient.Lookup(media.Title, media.Year, media.MediaType, media.EditionType)
 		if result != nil && result.Match != nil && result.Match.CollectionID != nil && *result.Match.CollectionID > 0 {
 			return *result.Match.CollectionID
 		}

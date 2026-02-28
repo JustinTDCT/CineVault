@@ -114,6 +114,8 @@ type cacheEntry struct {
 	BackdropsDownloaded bool `json:"backdrops_downloaded"`
 	// AI-discovered editions (from cache server JSONB metadata)
 	AvailableEditions []cacheAvailableEdition `json:"available_editions,omitempty"`
+	// Edition matched by cache server when edition param was sent
+	MatchedEdition *MatchedEditionInfo `json:"matched_edition,omitempty"`
 }
 
 type cacheAvailableEdition struct {
@@ -189,6 +191,10 @@ type CacheLookupResult struct {
 	// AvailableEditions lists known alternate editions (AI-discovered)
 	AvailableEditions []EditionSummary
 
+	// MatchedEdition is the edition matched by the cache server when an
+	// edition param was sent with the lookup request.
+	MatchedEdition *MatchedEditionInfo
+
 	// ── New unified metadata fields ──
 
 	// Metacritic score from OMDb
@@ -228,6 +234,22 @@ type EditionSummary struct {
 	VerificationSource *string  `json:"verification_source,omitempty"`
 }
 
+// MatchedEditionInfo holds edition data returned by the cache server when
+// the requested edition matched one of the record's available editions.
+type MatchedEditionInfo struct {
+	EditionType       string   `json:"edition_type"`
+	Description       string   `json:"description,omitempty"`
+	EditionTitle      string   `json:"edition_title,omitempty"`
+	RuntimeMinutes    *int     `json:"runtime_minutes,omitempty"`
+	AdditionalRuntime *int     `json:"additional_runtime_minutes,omitempty"`
+	EditionYear       *int     `json:"edition_release_year,omitempty"`
+	ContentSummary    string   `json:"new_content_summary,omitempty"`
+	KnownResolutions  []string `json:"known_resolutions,omitempty"`
+	ContentRating     string   `json:"content_rating,omitempty"`
+	Verified          bool     `json:"verified"`
+	Source            string   `json:"source"`
+}
+
 // rawToString converts json.RawMessage to *string for pass-through storage.
 func rawToString(raw json.RawMessage) *string {
 	if len(raw) == 0 || string(raw) == "null" {
@@ -258,14 +280,18 @@ func mediaTypeToURLType(mediaType models.MediaType) string {
 }
 
 // Lookup queries the cache server for metadata. Returns nil if the cache
-// server is unreachable or returns a miss.
-func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType) *CacheLookupResult {
+// server is unreachable or returns a miss. An optional edition string can be
+// provided to request edition enrichment from the cache server.
+func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType, edition ...string) *CacheLookupResult {
 	urlType := mediaTypeToURLType(mediaType)
 
 	reqURL := fmt.Sprintf("%s/api/v1/lookup/%s?title=%s",
 		c.baseURL, urlType, url.QueryEscape(title))
 	if year != nil && *year > 0 {
 		reqURL += fmt.Sprintf("&year=%d", *year)
+	}
+	if len(edition) > 0 && edition[0] != "" {
+		reqURL += "&edition=" + url.QueryEscape(edition[0])
 	}
 
 	req, err := http.NewRequest("GET", reqURL, nil)
@@ -590,6 +616,10 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 			editions = append(editions, es)
 		}
 		result.AvailableEditions = editions
+	}
+
+	if entry.MatchedEdition != nil {
+		result.MatchedEdition = entry.MatchedEdition
 	}
 
 	return result

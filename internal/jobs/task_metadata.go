@@ -143,7 +143,7 @@ func (h *MetadataScrapeHandler) ProcessTask(ctx context.Context, t *asynq.Task) 
 
 		// ── Try cache server first ──
 		if cacheClient != nil {
-			result := cacheClient.Lookup(query, yearHint, item.MediaType)
+			result := cacheClient.Lookup(query, yearHint, item.MediaType, item.EditionType)
 			if result != nil && result.Match != nil {
 				best := result.Match
 
@@ -681,7 +681,7 @@ func (h *MetadataRefreshHandler) ProcessTask(ctx context.Context, t *asynq.Task)
 		matched := false
 
 		if cacheClient != nil {
-			result := cacheClient.Lookup(query, yearHint, item.MediaType)
+			result := cacheClient.Lookup(query, yearHint, item.MediaType, item.EditionType)
 			if result != nil && result.Match != nil {
 				best := result.Match
 

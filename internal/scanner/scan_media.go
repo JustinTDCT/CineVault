@@ -150,7 +150,7 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 	// ── Cache server is sole source when enabled ──
 	cacheClient := s.getCacheClient()
 	if cacheClient != nil {
-		result := cacheClient.Lookup(searchQuery, item.Year, item.MediaType)
+		result := cacheClient.Lookup(searchQuery, item.Year, item.MediaType, item.EditionType)
 		if result != nil && result.Match != nil {
 			log.Printf("Re-enrich: %q → %q (source=cache/%s)", item.Title, result.Match.Title, result.Source)
 
