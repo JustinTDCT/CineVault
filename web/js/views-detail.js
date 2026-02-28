@@ -37,13 +37,26 @@ async function loadMediaDetail(id) {
     if (m.content_ratings_json) {
         try {
             const cr = JSON.parse(m.content_ratings_json);
-            let entries = Object.entries(cr);
-            if (_userRegion) {
-                entries = entries.filter(([country]) => country === _userRegion);
+            let pairs = [];
+            if (Array.isArray(cr)) {
+                const seen = {};
+                cr.forEach(item => {
+                    const region = item.region || item.country || '';
+                    const rating = item.rating || '';
+                    if (region && rating && !seen[region]) {
+                        seen[region] = true;
+                        pairs.push([region, rating]);
+                    }
+                });
+            } else {
+                pairs = Object.entries(cr);
             }
-            if (entries.length > 0) {
+            if (_userRegion) {
+                pairs = pairs.filter(([country]) => country === _userRegion);
+            }
+            if (pairs.length > 0) {
                 countryRatingsHTML = '<div class="multi-rating-row">';
-                entries.forEach(([country, rating]) => {
+                pairs.forEach(([country, rating]) => {
                     countryRatingsHTML += `<span class="rating-country-badge"><span class="country-code">${country}</span> ${rating}</span>`;
                 });
                 countryRatingsHTML += '</div>';
