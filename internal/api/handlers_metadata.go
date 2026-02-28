@@ -86,15 +86,16 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 
 	cacheClient := s.getCacheClient()
 	if cacheClient != nil {
-		// Cache enabled: delegate scoring, filtering, and TMDB fallback
-		// entirely to the cache server. Pass thresholds so it returns
-		// ready-to-use results.
 		filtered = cacheClient.Search(query, media.MediaType, fileYear,
 			matchCfg.MinConfidence, matchCfg.MaxResults)
 		log.Printf("Identify: cache search for %q returned %d results (min=%.2f max=%d)",
 			query, len(filtered), matchCfg.MinConfidence, matchCfg.MaxResults)
-	} else {
-		// Cache disabled: query scrapers directly using app-side API keys.
+	}
+
+	if len(filtered) == 0 {
+		if cacheClient != nil {
+			log.Printf("Identify: cache returned 0 results for %q, falling back to direct scrapers", query)
+		}
 		scrapers := metadata.ScrapersForMediaType(s.scrapers, media.MediaType)
 		if len(scrapers) == 0 {
 			scrapers = s.scrapers
@@ -110,7 +111,6 @@ func (s *Server) handleIdentifyMedia(w http.ResponseWriter, r *http.Request) {
 			allMatches = append(allMatches, matches...)
 		}
 
-		// Year-aware scoring (local, only when cache is disabled)
 		if fileYear != nil && *fileYear > 0 {
 			for _, m := range allMatches {
 				if m.Year != nil {
