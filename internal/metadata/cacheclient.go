@@ -65,8 +65,8 @@ type cacheEntry struct {
 	Description     *string  `json:"description,omitempty"`
 	PosterURL       *string  `json:"poster_url,omitempty"`
 	BackdropURL     *string  `json:"backdrop_url,omitempty"`
-	Genres          *string  `json:"genres,omitempty"`
-	CastCrew        *string  `json:"cast_crew,omitempty"`
+	Genres          json.RawMessage `json:"genres,omitempty"`
+	CastCrew        json.RawMessage `json:"cast_crew,omitempty"`
 	ContentRating   *string  `json:"content_rating,omitempty"`
 	Runtime         *int     `json:"runtime,omitempty"`
 	// Extended metadata
@@ -83,10 +83,10 @@ type cacheEntry struct {
 	Source     string  `json:"source,omitempty"`
 	ExternalID *string `json:"external_id,omitempty"`
 	// Multi-source aggregated arrays
-	PosterURLs   *string `json:"poster_urls,omitempty"`
-	BackdropURLs *string `json:"backdrop_urls,omitempty"`
-	Descriptions *string `json:"descriptions,omitempty"`
-	LogoURLs     *string `json:"logo_urls,omitempty"`
+	PosterURLs   json.RawMessage `json:"poster_urls,omitempty"`
+	BackdropURLs json.RawMessage `json:"backdrop_urls,omitempty"`
+	Descriptions json.RawMessage `json:"descriptions,omitempty"`
+	LogoURLs     json.RawMessage `json:"logo_urls,omitempty"`
 	// Ratings
 	IMDBRating      *float64 `json:"imdb_rating,omitempty"`
 	RTCriticScore   *int     `json:"rt_critic_score,omitempty"`
@@ -95,15 +95,15 @@ type cacheEntry struct {
 	OMDbEnriched    bool     `json:"omdb_enriched"`
 	FanartEnriched  bool     `json:"fanart_enriched"`
 	// Keywords from TMDB
-	Keywords *string `json:"keywords,omitempty"`
+	Keywords json.RawMessage `json:"keywords,omitempty"`
 	// Extended ratings and certifications
-	ContentRatings *string `json:"content_ratings,omitempty"` // {"US":"PG-13","GB":"12A"}
+	ContentRatings json.RawMessage `json:"content_ratings,omitempty"`
 	// Multi-source field arrays (JSON)
-	Taglines          *string `json:"taglines,omitempty"`              // [{"source":"tmdb","text":"..."}]
-	ContentRatingsAll *string `json:"content_ratings_multi,omitempty"` // [{"source":"tmdb","country":"US","rating":"PG-13"}]
-	Trailers          *string `json:"trailers,omitempty"`              // [{"source":"tmdb","url":"...","name":"..."}]
-	Runtimes          *string `json:"runtimes,omitempty"`              // [{"source":"tmdb","minutes":137}]
-	FieldSources      *string `json:"field_sources,omitempty"`         // {"title":"tmdb","description":"tvdb"}
+	Taglines          json.RawMessage `json:"taglines,omitempty"`
+	ContentRatingsAll json.RawMessage `json:"content_ratings_multi,omitempty"`
+	Trailers          json.RawMessage `json:"trailers,omitempty"`
+	Runtimes          json.RawMessage `json:"runtimes,omitempty"`
+	FieldSources      json.RawMessage `json:"field_sources,omitempty"`
 	// Cache server local image paths
 	PosterPath   *string `json:"poster_path,omitempty"`
 	BackdropPath *string `json:"backdrop_path,omitempty"`
@@ -226,6 +226,15 @@ type EditionSummary struct {
 	ContentRating      *string  `json:"content_rating,omitempty"`
 	Verified           bool     `json:"verified"`
 	VerificationSource *string  `json:"verification_source,omitempty"`
+}
+
+// rawToString converts json.RawMessage to *string for pass-through storage.
+func rawToString(raw json.RawMessage) *string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	s := string(raw)
+	return &s
 }
 
 // ── Lookup ──
@@ -436,17 +445,17 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 	}
 
 	// Use preferred description from multi-source array if available
-	match.Description = pickPreferred(entry.Descriptions, metadataSource, entry.Description)
+	match.Description = pickPreferred(rawToString(entry.Descriptions), metadataSource, entry.Description)
 
 	// Use preferred poster from multi-source array if available
-	match.PosterURL = pickPreferredURL(entry.PosterURLs, metadataSource, entry.PosterURL)
+	match.PosterURL = pickPreferredURL(rawToString(entry.PosterURLs), metadataSource, entry.PosterURL)
 	if match.PosterURL == nil && entry.PosterPath != nil && *entry.PosterPath != "" {
 		url := CacheImageURL(*entry.PosterPath)
 		match.PosterURL = &url
 	}
 
 	// Use preferred backdrop
-	match.BackdropURL = pickPreferredURL(entry.BackdropURLs, metadataSource, entry.BackdropURL)
+	match.BackdropURL = pickPreferredURL(rawToString(entry.BackdropURLs), metadataSource, entry.BackdropURL)
 	if match.BackdropURL == nil && entry.BackdropPath != nil && *entry.BackdropPath != "" {
 		url := CacheImageURL(*entry.BackdropPath)
 		match.BackdropURL = &url
@@ -467,10 +476,10 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 	match.CollectionID = entry.CollectionID
 	match.CollectionName = entry.CollectionName
 
-	// Parse genres from JSON string
-	if entry.Genres != nil && *entry.Genres != "" {
+	// Parse genres from JSON
+	if len(entry.Genres) > 0 && string(entry.Genres) != "null" {
 		var genres []string
-		if err := json.Unmarshal([]byte(*entry.Genres), &genres); err != nil {
+		if err := json.Unmarshal(entry.Genres, &genres); err != nil {
 			log.Printf("[cache-client] genres JSON parse error for %q: %v", entry.Title, err)
 		} else {
 			match.Genres = genres
@@ -478,10 +487,10 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 		}
 	}
 
-	// Parse keywords from JSON string
-	if entry.Keywords != nil && *entry.Keywords != "" {
+	// Parse keywords from JSON
+	if len(entry.Keywords) > 0 && string(entry.Keywords) != "null" {
 		var keywords []string
-		if err := json.Unmarshal([]byte(*entry.Keywords), &keywords); err != nil {
+		if err := json.Unmarshal(entry.Keywords, &keywords); err != nil {
 			log.Printf("[cache-client] keywords JSON parse error for %q: %v", entry.Title, err)
 		} else {
 			match.Keywords = keywords
@@ -492,7 +501,7 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 	result.Match = match
 
 	// Pass through cast/crew JSON so scanner can use it directly
-	result.CastCrewJSON = entry.CastCrew
+	result.CastCrewJSON = rawToString(entry.CastCrew)
 
 	// Pass through runtime
 	result.Runtime = entry.Runtime
@@ -525,22 +534,22 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 	// ── New unified metadata fields ──
 
 	// Multi-country content ratings
-	result.ContentRatingsJSON = entry.ContentRatings
-	result.ContentRatingsAll = entry.ContentRatingsAll
+	result.ContentRatingsJSON = rawToString(entry.ContentRatings)
+	result.ContentRatingsAll = rawToString(entry.ContentRatingsAll)
 
 	// Multi-source arrays (raw JSON pass-through for storage)
-	result.TaglinesJSON = entry.Taglines
-	result.TrailersJSON = entry.Trailers
-	result.DescriptionsJSON = entry.Descriptions
+	result.TaglinesJSON = rawToString(entry.Taglines)
+	result.TrailersJSON = rawToString(entry.Trailers)
+	result.DescriptionsJSON = rawToString(entry.Descriptions)
 
 	// Enrichment status
 	result.EditionsDiscovered = entry.EditionsDiscovered
 	result.AllSourcesScraped = entry.AllSourcesScraped
 
 	// Parse artwork URL arrays from JSON — cache server sends objects with source/url/path
-	result.AllPosterURLs = parseArtworkURLArray(entry.PosterURLs)
-	result.AllBackdropURLs = parseArtworkURLArray(entry.BackdropURLs)
-	result.AllLogoURLs = parseArtworkURLArray(entry.LogoURLs)
+	result.AllPosterURLs = parseArtworkURLArray(rawToString(entry.PosterURLs))
+	result.AllBackdropURLs = parseArtworkURLArray(rawToString(entry.BackdropURLs))
+	result.AllLogoURLs = parseArtworkURLArray(rawToString(entry.LogoURLs))
 
 	// Cache server local image paths
 	result.CacheServerPosterPath = entry.PosterPath
@@ -548,8 +557,9 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 
 	// Extract artist/album from MusicBrainz cache entries for music hierarchy
 	if metadataSource == "musicbrainz" {
-		match.ArtistName = extractArtistFromCastCrew(entry.CastCrew)
-		match.ArtistMBID = extractArtistMBIDFromCastCrew(entry.CastCrew)
+		ccStr := rawToString(entry.CastCrew)
+		match.ArtistName = extractArtistFromCastCrew(ccStr)
+		match.ArtistMBID = extractArtistMBIDFromCastCrew(ccStr)
 		if entry.OriginalTitle != nil && *entry.OriginalTitle != "" {
 			match.AlbumTitle = *entry.OriginalTitle
 		}
