@@ -1054,10 +1054,81 @@ func (c *CacheClient) GetEdition(tmdbID int, editionType string) (*CacheEdition,
 	return nil, nil
 }
 
-// ListEditions — not yet available in the new cache-server API.
+// ListEditions fetches available editions for a movie from the cache server
+// by looking up the record via TMDB ID and extracting its edition metadata.
 func (c *CacheClient) ListEditions(tmdbID int) ([]CacheEdition, error) {
-	log.Printf("[cache-client] ListEditions not available in new cache-server API")
-	return nil, nil
+	reqURL := fmt.Sprintf("%s/api/v1/lookup/movie?tmdb_id=%d", c.baseURL, tmdbID)
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cache unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("cache returned %d", resp.StatusCode)
+	}
+
+	data, err := unwrapEnvelope(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+
+	edArr, ok := raw["available_editions"].([]interface{})
+	if !ok || len(edArr) == 0 {
+		return nil, nil
+	}
+
+	var editions []CacheEdition
+	for _, item := range edArr {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		ce := CacheEdition{
+			TMDBID:  tmdbID,
+			Source:  stringVal(m, "source"),
+			Verified: boolVal(m, "verified"),
+		}
+		if v := stringVal(m, "edition_type"); v != "" {
+			ce.EditionType = v
+		}
+		if v := stringVal(m, "edition_title"); v != "" {
+			ce.EditionTitle = &v
+		}
+		if v := stringVal(m, "description"); v != "" {
+			ce.Overview = &v
+		}
+		if v := intVal(m, "runtime_minutes"); v > 0 {
+			ce.Runtime = &v
+		}
+		if v := intVal(m, "additional_runtime_minutes"); v > 0 {
+			ce.AdditionalRuntime = &v
+		}
+		if v := intVal(m, "edition_release_year"); v > 0 {
+			ce.EditionReleaseYear = &v
+		}
+		if v := stringVal(m, "new_content_summary"); v != "" {
+			ce.NewContentSummary = &v
+		}
+		if v := stringVal(m, "content_rating"); v != "" {
+			ce.ContentRating = &v
+		}
+		editions = append(editions, ce)
+	}
+
+	log.Printf("[cache-client] ListEditions tmdb=%d → %d edition(s)", tmdbID, len(editions))
+	return editions, nil
 }
 
 // BatchContributeItem matches the cache server's batch contribute item format.
@@ -1374,4 +1445,34 @@ type CacheMusicArtist struct {
 func (c *CacheClient) LookupMusicArtist(mbid, name string) *CacheMusicArtist {
 	log.Printf("[cache-client] LookupMusicArtist not available in new cache-server API")
 	return nil
+}
+
+func stringVal(m map[string]interface{}, key string) string {
+	if v, ok := m[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+func intVal(m map[string]interface{}, key string) int {
+	if v, ok := m[key]; ok {
+		switch n := v.(type) {
+		case float64:
+			return int(n)
+		case int:
+			return n
+		}
+	}
+	return 0
+}
+
+func boolVal(m map[string]interface{}, key string) bool {
+	if v, ok := m[key]; ok {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+	}
+	return false
 }
