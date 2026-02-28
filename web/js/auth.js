@@ -350,8 +350,7 @@ async function loadSidebarCounts() {
             item.dataset.view = 'library';
             item.dataset.id = lib.id;
             item.innerHTML = `<span class="nav-icon">${icon}</span><span class="nav-lib-info"><span class="nav-lib-name">${lib.name}</span><span class="nav-lib-count" id="badge-lib-${lib.id}"></span></span><span class="nav-lib-dots" data-lib-id="${lib.id}" title="Library options">&#8943;</span>`;
-            item.querySelector('.nav-lib-info').addEventListener('click', () => navigate('library', lib.id));
-            item.querySelector('.nav-icon').addEventListener('click', () => navigate('library', lib.id));
+            item.addEventListener('click', () => navigate('library', lib.id));
             const dotsBtn = item.querySelector('.nav-lib-dots');
             dotsBtn.addEventListener('click', (e) => { e.stopPropagation(); openLibCtxMenu(lib.id, dotsBtn); });
             nav.appendChild(item);
