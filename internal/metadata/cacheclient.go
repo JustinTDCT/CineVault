@@ -630,39 +630,89 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 // cacheSearchResult mirrors the cache server's SearchResult model.
 type cacheSearchResult struct {
 	TMDBID      int     `json:"tmdb_id"`
-	MediaType   string  `json:"media_type"`
 	Title       string  `json:"title"`
-	Year        int     `json:"year,omitempty"`
+	Year        *int    `json:"year,omitempty"`
 	Overview    string  `json:"overview,omitempty"`
-	PosterURL   *string `json:"poster_url,omitempty"`
+	PosterPath  string  `json:"poster_path,omitempty"`
 	VoteAverage float64 `json:"vote_average,omitempty"`
-	Source      string  `json:"source"`
-	Confidence  float64 `json:"confidence,omitempty"`
+	Confidence  float64 `json:"confidence"`
 }
 
-// Search queries the cache server for matches using the Lookup endpoint.
-// Returns results that meet the minConfidence threshold, up to maxResults.
+type cacheSearchResponse struct {
+	Results []cacheSearchResult `json:"results"`
+}
+
+// Search queries the cache server's multi-result search endpoint and returns
+// all results above minConfidence, up to maxResults. This mirrors the
+// Jellyfin/Plex approach of returning multiple candidates for user selection.
 func (c *CacheClient) Search(query string, mediaType models.MediaType, year *int, minConfidence float64, maxResults int) []*models.MetadataMatch {
-	result := c.Lookup(query, year, mediaType)
-	if result == nil || result.Match == nil {
-		log.Printf("[cache-client] search lookup miss for %q", query)
+	urlType := mediaTypeToURLType(mediaType)
+
+	reqURL := fmt.Sprintf("%s/api/v1/search/%s?title=%s&max=%d",
+		c.baseURL, urlType, url.QueryEscape(query), maxResults)
+	if year != nil && *year > 0 {
+		reqURL += fmt.Sprintf("&year=%d", *year)
+	}
+
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		log.Printf("[cache-client] search request error: %v", err)
+		return nil
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		log.Printf("[cache-client] search unreachable: %v", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		log.Printf("[cache-client] search returned %d for %q", resp.StatusCode, query)
 		return nil
 	}
 
-	if result.Match.Confidence < minConfidence {
-		log.Printf("[cache-client] search result for %q below threshold (%.2f < %.2f)",
-			query, result.Match.Confidence, minConfidence)
+	data, err := unwrapEnvelope(resp)
+	if err != nil {
+		log.Printf("[cache-client] search envelope error: %v", err)
 		return nil
 	}
 
-	matches := []*models.MetadataMatch{result.Match}
-
-	if maxResults > 0 && len(matches) > maxResults {
-		matches = matches[:maxResults]
+	var searchResp cacheSearchResponse
+	if err := json.Unmarshal(data, &searchResp); err != nil {
+		log.Printf("[cache-client] search decode error: %v", err)
+		return nil
 	}
 
-	log.Printf("[cache-client] search for %q returned %d result(s) at %.2f confidence",
-		query, len(matches), result.Match.Confidence)
+	var matches []*models.MetadataMatch
+	for _, sr := range searchResp.Results {
+		if sr.Confidence < minConfidence {
+			continue
+		}
+
+		m := &models.MetadataMatch{
+			Source:     "tmdb",
+			ExternalID: fmt.Sprintf("%d", sr.TMDBID),
+			Title:      sr.Title,
+			Year:       sr.Year,
+			Confidence: sr.Confidence,
+		}
+		if sr.Overview != "" {
+			m.Description = &sr.Overview
+		}
+		if sr.PosterPath != "" {
+			posterURL := "https://image.tmdb.org/t/p/w500" + sr.PosterPath
+			m.PosterURL = &posterURL
+		}
+		if sr.VoteAverage > 0 {
+			m.Rating = &sr.VoteAverage
+		}
+		matches = append(matches, m)
+	}
+
+	log.Printf("[cache-client] search for %q returned %d result(s) (of %d from server)",
+		query, len(matches), len(searchResp.Results))
 	return matches
 }
 

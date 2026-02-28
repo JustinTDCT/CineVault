@@ -1,5 +1,5 @@
 {
-  "version": "1.38.00",
+  "version": "1.39.00",
   "phase": 38,
   "released": "2026-02-28",
   "notes": "Feature: tiered TMDB search scoring with year as a scoring signal; edition pass-through from filename parser to cache server for post-match enrichment."
