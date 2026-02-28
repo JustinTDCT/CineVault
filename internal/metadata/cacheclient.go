@@ -525,11 +525,30 @@ type cacheSearchResult struct {
 	Confidence  float64 `json:"confidence,omitempty"`
 }
 
-// Search queries the cache server's search endpoint and returns multiple matches.
-// Not available in the new cache-server API — returns empty results.
+// Search queries the cache server for matches using the Lookup endpoint.
+// Returns results that meet the minConfidence threshold, up to maxResults.
 func (c *CacheClient) Search(query string, mediaType models.MediaType, year *int, minConfidence float64, maxResults int) []*models.MetadataMatch {
-	log.Printf("[cache-client] search not available in new cache-server API (query=%q)", query)
-	return nil
+	result := c.Lookup(query, year, mediaType)
+	if result == nil || result.Match == nil {
+		log.Printf("[cache-client] search lookup miss for %q", query)
+		return nil
+	}
+
+	if result.Match.Confidence < minConfidence {
+		log.Printf("[cache-client] search result for %q below threshold (%.2f < %.2f)",
+			query, result.Match.Confidence, minConfidence)
+		return nil
+	}
+
+	matches := []*models.MetadataMatch{result.Match}
+
+	if maxResults > 0 && len(matches) > maxResults {
+		matches = matches[:maxResults]
+	}
+
+	log.Printf("[cache-client] search for %q returned %d result(s) at %.2f confidence",
+		query, len(matches), result.Match.Confidence)
+	return matches
 }
 
 // ── External ID helpers ──
