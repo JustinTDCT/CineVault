@@ -151,6 +151,8 @@ func (s *Server) handleHouseholdSwitch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.recordSession(target.ID, token, r)
+
 	target.PasswordHash = ""
 	s.respondJSON(w, http.StatusOK, Response{
 		Success: true,
