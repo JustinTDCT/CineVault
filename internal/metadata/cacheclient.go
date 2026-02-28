@@ -995,7 +995,7 @@ func Register() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 201 {
+	if resp.StatusCode != 201 && resp.StatusCode != 200 {
 		return "", fmt.Errorf("registration failed with status %d", resp.StatusCode)
 	}
 
