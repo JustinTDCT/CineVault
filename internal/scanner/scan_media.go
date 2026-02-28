@@ -918,6 +918,12 @@ func (s *Scanner) storeUnifiedCacheFields(itemID uuid.UUID, result *metadata.Cac
 	if result.DescriptionsJSON != nil {
 		_ = s.mediaRepo.UpdateField(itemID, "descriptions_json", *result.DescriptionsJSON)
 	}
+
+	if !result.EditionsDiscovered {
+		_ = s.mediaRepo.SetEditionsPending(itemID, true)
+	} else {
+		_ = s.mediaRepo.SetEditionsPending(itemID, false)
+	}
 }
 
 // parseCacheCredits delegates to metadata.ParseCacheCredits.

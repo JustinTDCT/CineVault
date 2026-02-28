@@ -112,6 +112,22 @@ type cacheEntry struct {
 	AllSourcesScraped   bool `json:"all_sources_scraped"`
 	PostersDownloaded   bool `json:"posters_downloaded"`
 	BackdropsDownloaded bool `json:"backdrops_downloaded"`
+	// AI-discovered editions (from cache server JSONB metadata)
+	AvailableEditions []cacheAvailableEdition `json:"available_editions,omitempty"`
+}
+
+type cacheAvailableEdition struct {
+	EditionType    string   `json:"edition_type"`
+	Description    string   `json:"description,omitempty"`
+	EditionTitle   string   `json:"edition_title,omitempty"`
+	ContentSummary string   `json:"new_content_summary,omitempty"`
+	ContentRating  string   `json:"content_rating,omitempty"`
+	KnownRes       []string `json:"known_resolutions,omitempty"`
+	RuntimeMin     *int     `json:"runtime_minutes,omitempty"`
+	AdditionalMin  *int     `json:"additional_runtime_minutes,omitempty"`
+	EditionYear    *int     `json:"edition_release_year,omitempty"`
+	Verified       bool     `json:"verified"`
+	Source         string   `json:"source"`
 }
 
 type cacheEditionSummary struct {
@@ -310,6 +326,64 @@ func (c *CacheClient) Lookup(title string, year *int, mediaType models.MediaType
 	return c.convertCacheResponse(lookupResp)
 }
 
+// LookupByTMDB queries the cache server by TMDB ID. Used for deferred
+// edition re-queries where the TMDB ID is already known.
+func (c *CacheClient) LookupByTMDB(tmdbID int, mediaType models.MediaType) *CacheLookupResult {
+	urlType := mediaTypeToURLType(mediaType)
+	reqURL := fmt.Sprintf("%s/api/v1/lookup/%s?tmdb_id=%d", c.baseURL, urlType, tmdbID)
+
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		log.Printf("[cache-client] tmdb lookup request error: %v", err)
+		return nil
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		log.Printf("[cache-client] tmdb lookup unreachable: %v", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		log.Printf("[cache-client] tmdb lookup returned %d", resp.StatusCode)
+		return nil
+	}
+
+	confidence := 0.0
+	if confStr := resp.Header.Get("X-Match-Confidence"); confStr != "" {
+		if parsed, err := strconv.ParseFloat(confStr, 64); err == nil {
+			confidence = parsed
+		}
+	}
+
+	data, err := unwrapEnvelope(resp)
+	if err != nil {
+		log.Printf("[cache-client] tmdb lookup envelope error: %v", err)
+		return nil
+	}
+
+	var entry cacheEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		log.Printf("[cache-client] tmdb lookup decode error: %v", err)
+		return nil
+	}
+
+	if entry.Title == "" && entry.TMDBID == 0 {
+		return nil
+	}
+
+	lookupResp := &cacheLookupResponse{
+		Hit:        true,
+		Confidence: confidence,
+		Entry:      &entry,
+		Source:     "hit",
+	}
+
+	return c.convertCacheResponse(lookupResp)
+}
+
 // BatchLookupItem holds lookup parameters for a single item in a batch.
 type BatchLookupItem struct {
 	Title     string
@@ -481,26 +555,27 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 		}
 	}
 
-	// Pass through available editions (AI-discovered) with enriched fields
-	if len(lookupResp.AvailableEditions) > 0 {
-		editions := make([]EditionSummary, 0, len(lookupResp.AvailableEditions))
-		for _, ae := range lookupResp.AvailableEditions {
-			es := EditionSummary{
-				EditionType:        ae.EditionType,
-				EditionTitle:       ae.EditionTitle,
-				Source:             ae.Source,
-				ContentRating:      ae.ContentRating,
-				Verified:           ae.Verified,
-				VerificationSource: ae.VerificationSource,
+	// Build available editions from the flattened cache entry data
+	if len(entry.AvailableEditions) > 0 {
+		editions := make([]EditionSummary, 0, len(entry.AvailableEditions))
+		for _, ae := range entry.AvailableEditions {
+			title := ae.EditionTitle
+			var titlePtr *string
+			if title != "" {
+				titlePtr = &title
 			}
-			// Parse known resolutions from JSON string
-			if ae.KnownResolutions != nil && *ae.KnownResolutions != "" {
-				var resolutions []string
-				if err := json.Unmarshal([]byte(*ae.KnownResolutions), &resolutions); err != nil {
-					log.Printf("[cache-client] edition resolutions JSON parse error: %v", err)
-				} else {
-					es.KnownResolutions = resolutions
-				}
+			cr := ae.ContentRating
+			var crPtr *string
+			if cr != "" {
+				crPtr = &cr
+			}
+			es := EditionSummary{
+				EditionType:      ae.EditionType,
+				EditionTitle:     titlePtr,
+				Source:           ae.Source,
+				KnownResolutions: ae.KnownRes,
+				ContentRating:    crPtr,
+				Verified:         ae.Verified,
 			}
 			editions = append(editions, es)
 		}

@@ -453,3 +453,43 @@ func (r *MediaRepository) BulkUpdateFields(ids []uuid.UUID, fields map[string]in
 	_, err := r.db.Exec(query, args...)
 	return err
 }
+
+// SetEditionsPending updates the editions_pending flag for a media item.
+func (r *MediaRepository) SetEditionsPending(id uuid.UUID, pending bool) error {
+	_, err := r.db.Exec(
+		`UPDATE media_items SET editions_pending = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+		pending, id)
+	return err
+}
+
+// EditionsPendingItem holds the minimal fields needed for edition re-query.
+type EditionsPendingItem struct {
+	ID          uuid.UUID
+	Title       string
+	ExternalIDs *string
+	MediaType   string
+}
+
+// GetEditionsPendingItems returns media items that need edition re-querying.
+func (r *MediaRepository) GetEditionsPendingItems(limit int) ([]EditionsPendingItem, error) {
+	rows, err := r.db.Query(`
+		SELECT id, title, external_ids, media_type
+		FROM media_items
+		WHERE editions_pending = true
+		ORDER BY updated_at ASC
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []EditionsPendingItem
+	for rows.Next() {
+		var item EditionsPendingItem
+		if err := rows.Scan(&item.ID, &item.Title, &item.ExternalIDs, &item.MediaType); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}

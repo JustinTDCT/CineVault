@@ -132,6 +132,11 @@ func main() {
 	scanScheduler.Start()
 	defer scanScheduler.Stop()
 
+	// Start edition re-query worker (every 5m)
+	editionWorker := scheduler.NewEditionWorker(server.MediaRepo(), server.SettingsRepo())
+	editionWorker.Start()
+	defer editionWorker.Stop()
+
 	addr := cfg.Server.Address()
 	log.Printf("Server starting on http://%s\n", addr)
 	log.Printf("WebSocket available at ws://%s/api/v1/ws\n", addr)

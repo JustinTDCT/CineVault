@@ -247,6 +247,8 @@ type MediaItem struct {
 	DuplicateStatus  string          `json:"duplicate_status" db:"duplicate_status"`
 	PreviewPath      *string         `json:"preview_path,omitempty" db:"preview_path"`
 	SpritePath       *string         `json:"sprite_path,omitempty" db:"sprite_path"`
+	// Deferred edition re-query flag
+	EditionsPending  bool            `json:"editions_pending" db:"editions_pending"`
 	// Audio normalization (EBU R128)
 	LoudnessLUFS     *float64        `json:"loudness_lufs,omitempty" db:"loudness_lufs"`
 	LoudnessGainDB   *float64        `json:"loudness_gain_db,omitempty" db:"loudness_gain_db"`

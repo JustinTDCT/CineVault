@@ -1,6 +1,6 @@
 {
-  "version": "1.36.00",
-  "phase": 36,
-  "released": "2026-02-25",
-  "notes": "Feature: music album deduplication — normalize album artists by stripping featured-artist suffixes (feat/ft/featuring) to group tracks into single albums like Plex/Jellyfin; auto-merge existing duplicates after scan; show per-track artist credits in tracklist."
+  "version": "1.37.00",
+  "phase": 37,
+  "released": "2026-02-28",
+  "notes": "Feature: deferred edition re-query — cache server discovers movie editions via OpenAI in the background; app periodically re-checks pending items and stores edition data when available."
 }
