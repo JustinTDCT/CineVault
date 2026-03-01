@@ -1,6 +1,6 @@
 {
-  "version": "1.39.01",
+  "version": "1.40.00",
   "phase": 38,
   "released": "2026-03-01",
-  "notes": "Fix: series detail page showing no movies due to column mismatch in ListItemsRich scan."
+  "notes": "Feature: reorganized settings into consolidated sections — Settings, Video, MetaData, Users, Security."
 }

@@ -810,7 +810,7 @@ func (s *Server) handleGetSystemSettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// Mask sensitive keys for display
-	for _, sensitiveKey := range []string{"omdb_api_key", "tvdb_api_key", "fanart_api_key"} {
+	for _, sensitiveKey := range []string{"omdb_api_key", "tvdb_api_key", "fanart_api_key", "tmdb_api_key"} {
 		if val, ok := settings[sensitiveKey]; ok && len(val) > 4 {
 			settings[sensitiveKey] = val[:4] + strings.Repeat("*", len(val)-4)
 		}
@@ -820,8 +820,9 @@ func (s *Server) handleGetSystemSettings(w http.ResponseWriter, r *http.Request)
 	if val, ok := settings["cache_server_api_key"]; ok && val != "" {
 		settings["cache_server_api_key"] = "registered"
 	}
-	// Never expose the internal cache URL to the frontend
+	// Never expose the internal cache URL or HTTPS private key to the frontend
 	delete(settings, "cache_server_url")
+	delete(settings, "https_private_key")
 	s.respondJSON(w, http.StatusOK, Response{Success: true, Data: settings})
 }
 
@@ -833,7 +834,7 @@ func (s *Server) handleUpdateSystemSettings(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Sensitive keys that get masked – skip update if the value is still masked
-	sensitiveKeys := map[string]bool{"omdb_api_key": true, "tvdb_api_key": true, "fanart_api_key": true}
+	sensitiveKeys := map[string]bool{"omdb_api_key": true, "tvdb_api_key": true, "fanart_api_key": true, "tmdb_api_key": true}
 	// Internal keys that the frontend should never overwrite
 	internalKeys := map[string]bool{"cache_server_api_key": true, "cache_server_url": true}
 

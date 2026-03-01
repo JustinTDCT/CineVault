@@ -20,23 +20,15 @@
             </a>
             <div class="settings-logo">Settings</div>
 
-            <div class="settings-nav-label">General</div>
-            <div class="settings-nav-item" data-section="global">
-                <span class="settings-nav-icon">&#9881;</span><span>Global Settings</span>
+            <div class="settings-nav-label">System</div>
+            <div class="settings-nav-item active" data-section="settings">
+                <span class="settings-nav-icon">&#9881;</span><span>Settings</span>
             </div>
-
-            <div class="settings-nav-label">Playback</div>
-            <div class="settings-nav-item active" data-section="video">
+            <div class="settings-nav-item" data-section="video">
                 <span class="settings-nav-icon">&#127916;</span><span>Video</span>
             </div>
-            <div class="settings-nav-item" data-section="skip">
-                <span class="settings-nav-icon">&#9193;</span><span>Skip</span>
-            </div>
-            <div class="settings-nav-item" data-section="transcoder">
-                <span class="settings-nav-icon">&#9881;</span><span>Transcoder</span>
-            </div>
-            <div class="settings-nav-item admin-only" data-section="cinema">
-                <span class="settings-nav-icon">&#127910;</span><span>Cinema Mode</span>
+            <div class="settings-nav-item" data-section="metadata">
+                <span class="settings-nav-icon">&#128196;</span><span>MetaData</span>
             </div>
 
             <div class="settings-nav-label">Access</div>
@@ -46,19 +38,10 @@
             <div class="settings-nav-item" data-section="security">
                 <span class="settings-nav-icon">&#128274;</span><span>Security</span>
             </div>
-            <div class="settings-nav-item" data-section="experience">
-                <span class="settings-nav-icon">&#127912;</span><span>Experience</span>
-            </div>
-            <div class="settings-nav-item admin-only" data-section="admin">
-                <span class="settings-nav-icon">&#9881;</span><span>Admin Panel</span>
-            </div>
 
             <div class="settings-nav-label">Content</div>
             <div class="settings-nav-item" data-section="libraries">
                 <span class="settings-nav-icon">&#128218;</span><span>Libraries</span>
-            </div>
-            <div class="settings-nav-item" data-section="metadata">
-                <span class="settings-nav-icon">&#128196;</span><span>Metadata</span>
             </div>
             <div class="settings-nav-item admin-only" data-section="duplicates">
                 <span class="settings-nav-icon">&#128257;</span><span>Duplicates</span>
@@ -68,6 +51,9 @@
             </div>
 
             <div class="settings-nav-label admin-only-label">Advanced</div>
+            <div class="settings-nav-item admin-only" data-section="cinema">
+                <span class="settings-nav-icon">&#127910;</span><span>Cinema Mode</span>
+            </div>
             <div class="settings-nav-item admin-only" data-section="dlna">
                 <span class="settings-nav-icon">&#128225;</span><span>DLNA</span>
             </div>
@@ -85,6 +71,9 @@
             </div>
             <div class="settings-nav-item admin-only" data-section="import">
                 <span class="settings-nav-icon">&#128229;</span><span>Import</span>
+            </div>
+            <div class="settings-nav-item admin-only" data-section="admin">
+                <span class="settings-nav-icon">&#128736;</span><span>Admin Panel</span>
             </div>
 
             <div class="sidebar-footer" id="sidebarFooter"></div>
@@ -164,7 +153,7 @@
 
     function getInitialSection() {
         const hash = window.location.hash.replace('#', '');
-        return hash || 'video';
+        return hash || 'settings';
     }
 
     // ──── Section Navigation ────
@@ -175,14 +164,11 @@
         window.location.hash = section;
 
         switch(section) {
-            case 'global': loadGlobalSettingsSection(); break;
+            case 'settings': loadSettingsSection(); break;
             case 'video': loadVideoSection(); break;
-            case 'skip': loadSkipSection(); break;
-            case 'transcoder': loadTranscoderSection(); break;
             case 'cinema': loadCinemaSection(); break;
             case 'users': loadUsersSection(); break;
             case 'security': loadSecuritySection(); break;
-            case 'experience': loadExperienceSection(); break;
             case 'libraries': loadLibrariesSection(); break;
             case 'metadata': loadMetadataSection(); break;
             case 'duplicates': loadDuplicatesSection(); break;
@@ -194,7 +180,7 @@
             case 'apikeys': loadAPIKeysSection(); break;
             case 'backup': loadBackupSection(); break;
             case 'import': loadImportSection(); break;
-            default: loadVideoSection();
+            default: loadSettingsSection();
         }
     }
 
@@ -202,7 +188,7 @@
         item.addEventListener('click', () => navigateSection(item.dataset.section));
     });
 
-    // ──── Global Settings Section ────
+    // ──── Settings Section (consolidated) ────
     const REGION_OPTIONS = [
         {code:'',name:'All Regions (Show All)'},
         {code:'AU',name:'Australia'},{code:'AT',name:'Austria'},{code:'BR',name:'Brazil'},
@@ -221,83 +207,136 @@
         {code:'TW',name:'Taiwan'},{code:'US',name:'United States'},{code:'ZA',name:'South Africa'}
     ];
 
-    async function loadGlobalSettingsSection() {
+    async function loadSettingsSection() {
         const mc = document.getElementById('settingsContent');
-        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Global Settings</h2></div>
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Settings</h2></div>
             <p class="section-desc">Configure global preferences that apply across CineVault.</p>
-            <div class="settings-card" style="max-width:600px;">
+            <div class="settings-grid" id="settingsGrid"><div class="spinner"></div></div>`;
+
+        const [genRes, sysRes] = await Promise.all([
+            api('GET', '/settings/general'),
+            api('GET', '/settings/system')
+        ]);
+        const gen = genRes.success ? genRes.data : {};
+        const sys = sysRes.success ? sysRes.data : {};
+        const dupEnabled = sys.find_duplicates_enabled !== 'false';
+        const introEnabled = sys.login_intro_enabled !== 'false';
+        const introMuted = sys.login_intro_muted === 'true';
+
+        document.getElementById('settingsGrid').innerHTML = `
+            <div class="settings-card full-width">
                 <h3>&#127760; Region</h3>
-                <p class="section-desc">Select your region to display only the content rating relevant to your country on media detail pages.</p>
+                <p class="settings-helper" style="margin-bottom:14px;">Select your region to display only the content rating relevant to your country on media detail pages.</p>
                 <div class="form-group">
                     <label for="regionSelect">Preferred Region</label>
                     <select id="regionSelect">
                         ${REGION_OPTIONS.map(r => '<option value="'+r.code+'">'+r.name+(r.code?' ('+r.code+')':'')+'</option>').join('')}
                     </select>
                 </div>
-                <button class="btn-primary" onclick="saveGeneralSettings()">Save</button>
-            </div>`;
-        try {
-            const res = await api('GET', '/settings/general');
-            if (res.success && res.data) {
-                document.getElementById('regionSelect').value = res.data.region || '';
-            }
-        } catch(e) {}
-    }
-
-    async function saveGeneralSettings() {
-        const region = document.getElementById('regionSelect').value;
-        const res = await api('PUT', '/settings/general', { region });
-        if (res.success) {
-            toast('Global settings saved');
-        } else {
-            toast(res.error || 'Failed to save settings', 'error');
-        }
-    }
-
-    // ──── Video Section ────
-    async function loadVideoSection() {
-        const mc = document.getElementById('settingsContent');
-        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Video</h2></div>
-            <p class="section-desc">Configure playback preferences and video quality settings.</p>
-            <div id="videoGenerationCards"></div>
-            <div class="settings-grid" id="videoGrid"><div class="spinner"></div></div>`;
-
-        // Load system settings for generation toggles
-        const sysSett = await api('GET', '/settings/system');
-        const sys = sysSett.success ? sysSett.data : {};
-        const previewsEnabled = sys.create_previews_enabled !== 'false';
-        const thumbnailsEnabled = sys.create_timeline_thumbnails_enabled !== 'false';
-
-        document.getElementById('videoGenerationCards').innerHTML = `
-            <div class="settings-card full-width" style="margin-bottom:20px;">
-                <h3>Media Generation</h3>
-                <p class="settings-warning-note">&#9888; These features generate additional files for each video in your libraries and can consume significant disk space on your server.</p>
-                <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-                    <div>
-                        <label class="toggle-label" style="margin-bottom:0;">
-                            <span class="toggle-switch"><input type="checkbox" id="setCreatePreviews" ${previewsEnabled?'checked':''} onchange="saveVideoGenerationSetting('create_previews_enabled', this.checked)"><span class="toggle-slider"></span></span>
-                            Create Previews
-                        </label>
-                        <p style="color:#8a9bae;font-size:0.8rem;margin:4px 0 0 0;">Generate short video preview clips for hover playback, similar to StashApp. Runs automatically during library scans.</p>
-                    </div>
-                </div>
+            </div>
+            ${currentUser?.role === 'admin' ? `
+            <div class="settings-card full-width">
+                <h3>&#128257; Duplicates</h3>
                 <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">
                     <div>
                         <label class="toggle-label" style="margin-bottom:0;">
-                            <span class="toggle-switch"><input type="checkbox" id="setCreateTimeline" ${thumbnailsEnabled?'checked':''} onchange="saveVideoGenerationSetting('create_timeline_thumbnails_enabled', this.checked)"><span class="toggle-slider"></span></span>
-                            Create Timeline Thumbnails
+                            <span class="toggle-switch"><input type="checkbox" id="setFindDups" ${dupEnabled?'checked':''} onchange="saveSettingsToggle('find_duplicates_enabled', this.checked)"><span class="toggle-slider"></span></span>
+                            Find Duplicates
                         </label>
-                        <p style="color:#8a9bae;font-size:0.8rem;margin:4px 0 0 0;">Generate sprite sheet thumbnails used when scrubbing through a video's timeline. Runs automatically during library scans.</p>
+                        <p class="settings-helper" style="margin:4px 0 0 0;">When enabled, perceptual hash analysis runs after library scans to detect duplicate media.</p>
                     </div>
                 </div>
+            </div>
+            <div class="settings-card full-width">
+                <h3>&#127912; Application Intro</h3>
+                <p class="settings-helper" style="margin-bottom:14px;">Control the cinematic intro that plays after login on each new session.</p>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setIntroSkip" ${introEnabled?'':'checked'} onchange="saveSettingsToggle('login_intro_enabled', !this.checked)"><span class="toggle-slider"></span></span>
+                        Skip Application Intro
+                    </label>
+                </div>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setIntroMuted" ${introMuted?'checked':''} onchange="saveSettingsToggle('login_intro_muted', this.checked)"><span class="toggle-slider"></span></span>
+                        Silent Application Intro
+                    </label>
+                </div>
+                <p class="settings-helper">Mute the intro video audio when it plays.</p>
+            </div>` : ''}
+            <div style="grid-column:1/-1;text-align:right;">
+                <button class="btn-primary" onclick="saveSettingsGeneral()">Save</button>
             </div>`;
 
-        const prefs = await api('GET', '/settings/playback');
-        const p = prefs.success ? prefs.data : { playback_mode: 'always_ask', preferred_quality: '1080p', auto_play_next: true };
+        document.getElementById('regionSelect').value = gen.region || '';
+    }
+
+    async function saveSettingsGeneral() {
+        const region = document.getElementById('regionSelect').value;
+        const res = await api('PUT', '/settings/general', { region });
+        if (res.success) toast('Settings saved');
+        else toast(res.error || 'Failed to save settings', 'error');
+    }
+
+    async function saveSettingsToggle(key, enabled) {
+        const settings = {};
+        settings[key] = enabled ? 'true' : 'false';
+        const d = await api('PUT', '/settings/system', settings);
+        const labels = {
+            find_duplicates_enabled: 'Find Duplicates',
+            login_intro_enabled: enabled ? 'Application Intro enabled' : 'Application Intro disabled',
+            login_intro_muted: enabled ? 'Intro audio muted' : 'Intro audio enabled'
+        };
+        if (d.success) toast(labels[key] || (enabled ? 'Enabled' : 'Disabled'));
+        else toast(d.error || 'Failed to save setting', 'error');
+    }
+
+    // ──── Video Section (consolidated: Quality, Skip, Transcoder) ────
+    const QUALITY_OPTIONS = [
+        {value:'original',label:'Original (Direct Play)'},
+        {value:'4K-120',label:'4K - 120 Mbps'},
+        {value:'4K-80',label:'4K - 80 Mbps'},
+        {value:'1080p-20',label:'1080p - 20 Mbps'},
+        {value:'1080p-12',label:'1080p - 12 Mbps'},
+        {value:'1080p-10',label:'1080p - 10 Mbps'},
+        {value:'720p-8',label:'720p - 8 Mbps'},
+        {value:'720p-4',label:'720p - 4 Mbps'},
+        {value:'480p-3',label:'480p - 3 Mbps'},
+        {value:'480p-2',label:'480p - 2 Mbps'},
+        {value:'360p-1.5',label:'360p - 1.5 Mbps'},
+        {value:'240p-0.42',label:'240p - 420 Kbps'}
+    ];
+
+    async function loadVideoSection() {
+        const mc = document.getElementById('settingsContent');
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Video</h2></div>
+            <p class="section-desc">Configure playback quality, skip behavior, and transcoding settings.</p>
+            <div class="settings-grid" id="videoGrid"><div class="spinner"></div></div>`;
+
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        const [playRes, skipRes, sysRes] = await Promise.all([
+            api('GET', '/settings/playback'),
+            api('GET', '/settings/skip'),
+            api('GET', '/settings/system')
+        ]);
+        const p = playRes.success ? playRes.data : { playback_mode: 'always_ask', preferred_quality: 'original', auto_play_next: true };
+        const sk = skipRes.success ? skipRes.data : { skip_intros: false, skip_credits: false, skip_recaps: false, show_skip_button: true };
+        const sys = sysRes.success ? sysRes.data : {};
+        const previewsEnabled = sys.create_previews_enabled !== 'false';
+        const thumbnailsEnabled = sys.create_timeline_thumbnails_enabled !== 'false';
+        const hwAccel = sys.hw_accel || 'none';
+        const maxTranscodes = sys.max_simultaneous_transcodes || '2';
+        const threadCount = sys.transcode_thread_count || '0';
 
         document.getElementById('videoGrid').innerHTML = `
-            <div class="settings-card">
-                <h3>Playback Preferences</h3>
+            <div class="settings-card full-width">
+                <h3>Default Quality</h3>
+                <p class="settings-helper" style="margin-bottom:14px;">Select the default streaming quality. Original plays the file as-is without transcoding.</p>
+                <div class="form-group"><label>Preferred Quality</label>
+                    <select id="setPbQuality">
+                        ${QUALITY_OPTIONS.map(q => '<option value="'+q.value+'" '+(p.preferred_quality===q.value?'selected':'')+'>'+q.label+'</option>').join('')}
+                    </select>
+                </div>
                 <div class="form-group"><label>Edition Playback Mode</label>
                     <select id="setPbMode">
                         <option value="always_ask" ${p.playback_mode==='always_ask'?'selected':''}>Always Ask</option>
@@ -307,82 +346,58 @@
                         <option value="last_played" ${p.playback_mode==='last_played'?'selected':''}>Last Played</option>
                     </select>
                 </div>
-                <div class="form-group"><label>Preferred Quality</label>
-                    <select id="setPbQuality">
-                        <option value="360p" ${p.preferred_quality==='360p'?'selected':''}>360p</option>
-                        <option value="480p" ${p.preferred_quality==='480p'?'selected':''}>480p</option>
-                        <option value="720p" ${p.preferred_quality==='720p'?'selected':''}>720p</option>
-                        <option value="1080p" ${p.preferred_quality==='1080p'?'selected':''}>1080p</option>
-                        <option value="4K" ${p.preferred_quality==='4K'?'selected':''}>4K</option>
-                    </select>
-                </div>
                 <div class="form-group"><label><input type="checkbox" id="setPbAutoPlay" ${p.auto_play_next?'checked':''}> Auto-play next episode</label></div>
-                <button class="btn-primary" onclick="savePlaybackPrefs()">Save</button>
-            </div>`;
-    }
-
-    async function saveVideoGenerationSetting(key, enabled) {
-        const settings = {};
-        settings[key] = enabled ? 'true' : 'false';
-        const d = await api('PUT', '/settings/system', settings);
-        const label = key === 'create_previews_enabled' ? 'Create Previews' : 'Create Timeline Thumbnails';
-        if (d.success) toast(label + (enabled ? ' enabled' : ' disabled'));
-        else toast(d.error || 'Failed to save setting', 'error');
-    }
-
-    async function savePlaybackPrefs() {
-        const d = await api('PUT', '/settings/playback', {
-            playback_mode: document.getElementById('setPbMode').value,
-            preferred_quality: document.getElementById('setPbQuality').value,
-            auto_play_next: document.getElementById('setPbAutoPlay').checked
-        });
-        if (d.success) toast('Playback settings saved!'); else toast(d.error, 'error');
-    }
-
-    // ──── Transcoder Section ────
-    async function loadTranscoderSection() {
-        const mc = document.getElementById('settingsContent');
-        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Transcoder</h2></div>
-            <p class="section-desc">Configure hardware acceleration and transcoding quality preferences.</p>
-            <div class="settings-grid" id="transcoderGrid"><div class="spinner"></div></div>`;
-
-        if (currentUser?.role !== 'admin') {
-            document.getElementById('transcoderGrid').innerHTML = `<div class="settings-card">
-                <h3>Access Restricted</h3>
-                <p style="color:#8a9bae;">Only administrators can configure transcoder settings.</p>
-            </div>`;
-            return;
-        }
-
-        const sysSett = await api('GET', '/settings/system');
-        const sys = sysSett.success ? sysSett.data : {};
-        const hwAccel = sys.hw_accel || 'none';
-        const maxTranscodes = sys.max_simultaneous_transcodes || '2';
-        const defaultQuality = sys.transcode_default_quality || '1080p';
-        const threadCount = sys.transcode_thread_count || '0';
-
-        document.getElementById('transcoderGrid').innerHTML = `
-            <div class="settings-card full-width">
-                <h3>Hardware Acceleration</h3>
-                <p class="settings-helper" style="margin-bottom:16px;">Select the hardware encoder to use for transcoding. Requires compatible GPU drivers.</p>
-                <div class="form-group"><label>Hardware Encoder</label>
-                    <select id="setHwAccel">
-                        <option value="none" ${hwAccel==='none'?'selected':''}>None (Software / libx264)</option>
-                        <option value="nvenc" ${hwAccel==='nvenc'?'selected':''}>NVIDIA NVENC</option>
-                        <option value="qsv" ${hwAccel==='qsv'?'selected':''}>Intel Quick Sync (QSV)</option>
-                        <option value="vaapi" ${hwAccel==='vaapi'?'selected':''}>VA-API (Linux)</option>
-                    </select>
+                <div style="text-align:right;margin-top:12px;">
+                    <button class="btn-primary" onclick="savePlaybackPrefs()">Save</button>
                 </div>
             </div>
             <div class="settings-card full-width">
-                <h3>Transcode Defaults</h3>
-                <div class="form-group"><label>Default Quality</label>
-                    <select id="setTranscodeQuality">
-                        <option value="360p" ${defaultQuality==='360p'?'selected':''}>360p</option>
-                        <option value="480p" ${defaultQuality==='480p'?'selected':''}>480p</option>
-                        <option value="720p" ${defaultQuality==='720p'?'selected':''}>720p</option>
-                        <option value="1080p" ${defaultQuality==='1080p'?'selected':''}>1080p</option>
-                        <option value="4K" ${defaultQuality==='4K'?'selected':''}>4K</option>
+                <h3>Skip</h3>
+                <p class="settings-helper" style="margin-bottom:16px;">When a skip segment is detected, a button appears on the player. Enable auto-skip to skip automatically.</p>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setShowSkipBtn" ${sk.show_skip_button?'checked':''}><span class="toggle-slider"></span></span>
+                        Show Skip Button
+                    </label>
+                </div>
+                <div style="margin-left:8px;">
+                    <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+                        <label class="toggle-label" style="margin-bottom:0;">
+                            <span class="toggle-switch"><input type="checkbox" id="setSkipIntros" ${sk.skip_intros?'checked':''}><span class="toggle-slider"></span></span>
+                            Auto-skip Intro
+                        </label>
+                    </div>
+                    <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+                        <label class="toggle-label" style="margin-bottom:0;">
+                            <span class="toggle-switch"><input type="checkbox" id="setSkipCredits" ${sk.skip_credits?'checked':''}><span class="toggle-slider"></span></span>
+                            Auto-skip Credits
+                        </label>
+                    </div>
+                    <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
+                        <label class="toggle-label" style="margin-bottom:0;">
+                            <span class="toggle-switch"><input type="checkbox" id="setSkipRecaps" ${sk.skip_recaps?'checked':''}><span class="toggle-slider"></span></span>
+                            Auto-skip Recaps
+                        </label>
+                    </div>
+                </div>
+                <div style="text-align:right;margin-top:12px;">
+                    <button class="btn-primary" onclick="saveSkipPrefs()">Save</button>
+                </div>
+            </div>
+            ${isAdmin ? `<div class="settings-card full-width">
+                <h3>Detect Segments</h3>
+                <p class="settings-helper" style="margin-bottom:16px;">Run skip detection on libraries to identify intros, credits, recaps, and anime OP/ED sequences.</p>
+                <div id="skipDetectLibList"><div class="spinner"></div></div>
+            </div>` : ''}
+            ${isAdmin ? `<div class="settings-card full-width">
+                <h3>Transcoder</h3>
+                <p class="settings-helper" style="margin-bottom:16px;">Configure hardware acceleration and transcoding limits.</p>
+                <div class="form-group"><label>Type</label>
+                    <select id="setHwAccel">
+                        <option value="none" ${hwAccel==='none'?'selected':''}>CPU / Software (libx264)</option>
+                        <option value="qsv" ${hwAccel==='qsv'?'selected':''}>Intel Quick Sync (QSV)</option>
+                        <option value="nvenc" ${hwAccel==='nvenc'?'selected':''}>NVIDIA CUDA (NVENC)</option>
+                        <option value="vaapi" ${hwAccel==='vaapi'?'selected':''}>VA-API (Linux)</option>
                     </select>
                 </div>
                 <div class="form-group"><label>Max Simultaneous Transcodes</label>
@@ -405,17 +420,58 @@
                     </select>
                     <p class="settings-helper">0 = auto-detect CPU threads. Only applies to software encoding.</p>
                 </div>
-            </div>
-            <div style="grid-column:1/-1;text-align:right;">
-                <button class="btn-primary" onclick="saveTranscoderSettings()">Save</button>
-            </div>`;
+                <div style="text-align:right;margin-top:12px;">
+                    <button class="btn-primary" onclick="saveTranscoderSettings()">Save</button>
+                </div>
+            </div>` : ''}
+            ${isAdmin ? `<div class="settings-card full-width">
+                <h3>Media Generation</h3>
+                <p class="settings-warning-note">&#9888; These features generate additional files for each video and can consume significant disk space.</p>
+                <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                    <div>
+                        <label class="toggle-label" style="margin-bottom:0;">
+                            <span class="toggle-switch"><input type="checkbox" id="setCreatePreviews" ${previewsEnabled?'checked':''} onchange="saveVideoGenerationSetting('create_previews_enabled', this.checked)"><span class="toggle-slider"></span></span>
+                            Create Previews
+                        </label>
+                        <p class="settings-helper" style="margin:4px 0 0 0;">Generate short video preview clips for hover playback. Runs during library scans.</p>
+                    </div>
+                </div>
+                <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">
+                    <div>
+                        <label class="toggle-label" style="margin-bottom:0;">
+                            <span class="toggle-switch"><input type="checkbox" id="setCreateTimeline" ${thumbnailsEnabled?'checked':''} onchange="saveVideoGenerationSetting('create_timeline_thumbnails_enabled', this.checked)"><span class="toggle-slider"></span></span>
+                            Create Timeline Thumbnails
+                        </label>
+                        <p class="settings-helper" style="margin:4px 0 0 0;">Generate sprite sheet thumbnails for video timeline scrubbing. Runs during library scans.</p>
+                    </div>
+                </div>
+            </div>` : ''}`;
+
+        if (isAdmin) loadSkipDetectLibraries();
+    }
+
+    async function saveVideoGenerationSetting(key, enabled) {
+        const settings = {};
+        settings[key] = enabled ? 'true' : 'false';
+        const d = await api('PUT', '/settings/system', settings);
+        const label = key === 'create_previews_enabled' ? 'Create Previews' : 'Create Timeline Thumbnails';
+        if (d.success) toast(label + (enabled ? ' enabled' : ' disabled'));
+        else toast(d.error || 'Failed to save setting', 'error');
+    }
+
+    async function savePlaybackPrefs() {
+        const d = await api('PUT', '/settings/playback', {
+            playback_mode: document.getElementById('setPbMode').value,
+            preferred_quality: document.getElementById('setPbQuality').value,
+            auto_play_next: document.getElementById('setPbAutoPlay').checked
+        });
+        if (d.success) toast('Playback settings saved!'); else toast(d.error, 'error');
     }
 
     async function saveTranscoderSettings() {
         const settings = {
             hw_accel: document.getElementById('setHwAccel').value,
             max_simultaneous_transcodes: document.getElementById('setMaxTranscodes').value,
-            transcode_default_quality: document.getElementById('setTranscodeQuality').value,
             transcode_thread_count: document.getElementById('setThreadCount').value
         };
         const d = await api('PUT', '/settings/system', settings);
@@ -522,58 +578,135 @@
         else toast(d.error || 'Failed to delete user', 'error');
     }
 
-    // ──── Security Section ────
+    // ──── Security Section (consolidated: HTTPS, Fast Login, Password) ────
     async function loadSecuritySection() {
         const mc = document.getElementById('settingsContent');
         mc.innerHTML = `<div class="section-header"><h2 class="section-title">Security</h2></div>
-            <p class="section-desc">Configure PIN protection and security settings for your CineVault instance.</p>
+            <p class="section-desc">Configure HTTPS, login methods, and password policies for your CineVault instance.</p>
             <div class="settings-grid" id="securityGrid"><div class="spinner"></div></div>`;
 
-        let html = `
-            <div class="settings-card">
-                <h3>Fast Login PIN</h3>
-                <p class="settings-helper" style="margin-bottom:14px;">Set a numeric PIN for quick login via the Fast Login screen.</p>
-                <div class="form-group">
-                    <label>PIN</label>
-                    <div style="display:flex;gap:10px;">
-                        <input type="password" id="setMyPin" placeholder="Enter PIN" style="flex:1;" inputmode="numeric" maxlength="10">
-                        <button class="btn-primary btn-small" onclick="saveMyPin()">Set PIN</button>
-                    </div>
-                </div>
-            </div>`;
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        const sysSett = isAdmin ? await api('GET', '/settings/system') : { success: false };
+        const sys = sysSett.success ? sysSett.data : {};
+        const httpsEnabled = sys.https_enabled === 'true';
+        const fastLoginEnabled = sys.fast_login_enabled !== 'false';
+        const fastLoginPinLen = sys.fast_login_pin_length || '4';
+        const pwMinLen = sys.password_min_length || '8';
+        const pwComplexity = sys.password_complexity_enabled === 'true';
 
-        if (currentUser?.role === 'admin') {
-            const sysSett = await api('GET', '/settings/system');
-            const sys = sysSett.success ? sysSett.data : {};
-            const fastLoginEnabled = sys.fast_login_enabled !== 'false';
-            const fastLoginPinLen = sys.fast_login_pin_length || '4';
+        let html = '';
+
+        if (isAdmin) {
             html += `
-            <div class="settings-card">
-                <h3>Fast Login</h3>
+            <div class="settings-card full-width">
+                <h3>&#128274; HTTPS</h3>
+                <p class="settings-helper" style="margin-bottom:14px;">Enable HTTPS to encrypt all traffic between clients and your CineVault server.</p>
                 <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
                     <label class="toggle-label" style="margin-bottom:0;">
-                        <span class="toggle-switch"><input type="checkbox" id="setFastLoginEnabled" ${fastLoginEnabled?'checked':''}><span class="toggle-slider"></span></span>
-                        Use Fast Login
+                        <span class="toggle-switch"><input type="checkbox" id="setHttpsEnabled" ${httpsEnabled?'checked':''} onchange="toggleHttpsFields()"><span class="toggle-slider"></span></span>
+                        Enable HTTPS
                     </label>
                 </div>
-                <p class="settings-helper" style="margin-bottom:16px;">Display user icons and have them enter a PIN instead of login name and password.</p>
-                <div class="form-group">
-                    <label>Fast Login PIN Length</label>
-                    <select id="setFastLoginPinLen">
-                        <option value="4" ${fastLoginPinLen==='4'?'selected':''}>4 digits</option>
-                        <option value="5" ${fastLoginPinLen==='5'?'selected':''}>5 digits</option>
-                        <option value="6" ${fastLoginPinLen==='6'?'selected':''}>6 digits</option>
-                        <option value="8" ${fastLoginPinLen==='8'?'selected':''}>8 digits</option>
-                    </select>
-                    <p class="settings-helper">The length of the PIN number for the user if using Fast Login.</p>
-                </div>
-                <div style="text-align:right;margin-top:16px;">
-                    <button class="btn-primary" onclick="saveSecuritySettings()">Save</button>
+                <div id="httpsFields" style="${httpsEnabled?'':'display:none;'}">
+                    <div class="form-group">
+                        <label>Private Key (PEM)</label>
+                        <textarea id="setHttpsKey" rows="4" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----" style="font-family:monospace;font-size:0.8rem;resize:vertical;">${sys.https_private_key||''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Certificate (PEM)</label>
+                        <textarea id="setHttpsCert" rows="4" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----" style="font-family:monospace;font-size:0.8rem;resize:vertical;">${sys.https_certificate||''}</textarea>
+                    </div>
                 </div>
             </div>`;
         }
 
+        html += `
+            <div class="settings-card full-width">
+                <h3>&#128273; Fast User Switching</h3>
+                <p class="settings-helper" style="margin-bottom:14px;">Allow users to switch accounts quickly using a PIN instead of username and password.</p>`;
+
+        if (isAdmin) {
+            html += `
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setFastLoginEnabled" ${fastLoginEnabled?'checked':''} onchange="toggleFastLoginFields()"><span class="toggle-slider"></span></span>
+                        Allow Fast User Switching
+                    </label>
+                </div>
+                <div id="fastLoginFields" style="${fastLoginEnabled?'':'display:none;'}">
+                    <div class="form-group">
+                        <label>Minimum PIN Code Length</label>
+                        <select id="setFastLoginPinLen">
+                            <option value="4" ${fastLoginPinLen==='4'?'selected':''}>4 digits</option>
+                            <option value="5" ${fastLoginPinLen==='5'?'selected':''}>5 digits</option>
+                            <option value="6" ${fastLoginPinLen==='6'?'selected':''}>6 digits</option>
+                            <option value="8" ${fastLoginPinLen==='8'?'selected':''}>8 digits</option>
+                        </select>
+                    </div>
+                </div>`;
+        }
+
+        html += `
+                <div class="form-group" style="margin-top:16px;">
+                    <label>Your PIN</label>
+                    <div style="display:flex;gap:10px;">
+                        <input type="password" id="setMyPin" placeholder="Enter PIN" style="flex:1;max-width:200px;" inputmode="numeric" maxlength="10">
+                        <button class="btn-primary btn-small" onclick="saveMyPin()">Set PIN</button>
+                    </div>
+                    <p class="settings-helper">Set a numeric PIN for quick login via the Fast Login screen.</p>
+                </div>
+            </div>`;
+
+        if (isAdmin) {
+            html += `
+            <div class="settings-card full-width">
+                <h3>&#128272; Password Restrictions</h3>
+                <p class="settings-helper" style="margin-bottom:14px;">Configure minimum password requirements for all user accounts.</p>
+                <div class="form-group">
+                    <label>Minimum Length</label>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <input type="number" id="setPwMinLen" value="${pwMinLen}" min="4" max="32" step="1" style="width:80px;">
+                        <span style="color:#5a6a7f;font-size:0.85rem;">characters</span>
+                    </div>
+                </div>
+                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                    <label class="toggle-label" style="margin-bottom:0;">
+                        <span class="toggle-switch"><input type="checkbox" id="setPwComplexity" ${pwComplexity?'checked':''} onchange="toggleComplexityInfo()"><span class="toggle-slider"></span></span>
+                        Require Complexity
+                    </label>
+                </div>
+                <div id="complexityInfo" style="${pwComplexity?'':'display:none;'}padding:12px;background:rgba(0,217,255,0.05);border:1px solid rgba(0,217,255,0.15);border-radius:8px;">
+                    <p style="color:#8a9bae;font-size:0.82rem;margin:0;">Password must contain at least <strong style="color:#00D9FF;">3 of 4</strong> character types:</p>
+                    <ul style="color:#8a9bae;font-size:0.82rem;margin:8px 0 0 0;padding-left:20px;">
+                        <li>Uppercase letter (A-Z)</li>
+                        <li>Lowercase letter (a-z)</li>
+                        <li>Number (0-9)</li>
+                        <li>Symbol (!@#$%...)</li>
+                    </ul>
+                </div>
+            </div>`;
+        }
+
+        html += `<div style="grid-column:1/-1;text-align:right;">
+            <button class="btn-primary" onclick="saveSecuritySettings()">Save</button>
+        </div>`;
+
         document.getElementById('securityGrid').innerHTML = html;
+    }
+
+    function toggleHttpsFields() {
+        const show = document.getElementById('setHttpsEnabled').checked;
+        document.getElementById('httpsFields').style.display = show ? '' : 'none';
+    }
+
+    function toggleFastLoginFields() {
+        const show = document.getElementById('setFastLoginEnabled').checked;
+        document.getElementById('fastLoginFields').style.display = show ? '' : 'none';
+    }
+
+    function toggleComplexityInfo() {
+        const show = document.getElementById('setPwComplexity').checked;
+        document.getElementById('complexityInfo').style.display = show ? '' : 'none';
     }
 
     async function saveMyPin() {
@@ -586,122 +719,37 @@
 
     async function saveSecuritySettings() {
         const settings = {};
-        const flEnabledEl = document.getElementById('setFastLoginEnabled');
-        if (flEnabledEl) settings.fast_login_enabled = flEnabledEl.checked ? 'true' : 'false';
-        const flPinLenEl = document.getElementById('setFastLoginPinLen');
-        if (flPinLenEl) settings.fast_login_pin_length = flPinLenEl.value;
+        const isAdmin = currentUser && currentUser.role === 'admin';
+
+        if (isAdmin) {
+            const httpsEl = document.getElementById('setHttpsEnabled');
+            if (httpsEl) settings.https_enabled = httpsEl.checked ? 'true' : 'false';
+            const httpsKeyEl = document.getElementById('setHttpsKey');
+            if (httpsKeyEl && httpsKeyEl.value.trim()) settings.https_private_key = httpsKeyEl.value.trim();
+            const httpsCertEl = document.getElementById('setHttpsCert');
+            if (httpsCertEl && httpsCertEl.value.trim()) settings.https_certificate = httpsCertEl.value.trim();
+
+            const flEnabledEl = document.getElementById('setFastLoginEnabled');
+            if (flEnabledEl) settings.fast_login_enabled = flEnabledEl.checked ? 'true' : 'false';
+            const flPinLenEl = document.getElementById('setFastLoginPinLen');
+            if (flPinLenEl) settings.fast_login_pin_length = flPinLenEl.value;
+
+            const pwMinLenEl = document.getElementById('setPwMinLen');
+            if (pwMinLenEl) settings.password_min_length = pwMinLenEl.value;
+            const pwComplexEl = document.getElementById('setPwComplexity');
+            if (pwComplexEl) settings.password_complexity_enabled = pwComplexEl.checked ? 'true' : 'false';
+        }
+
+        if (Object.keys(settings).length === 0) {
+            toast('No changes to save');
+            return;
+        }
+
         const d = await api('PUT', '/settings/system', settings);
         if (d.success) toast('Security settings saved!'); else toast(d.error, 'error');
     }
 
-    // ──── Experience Section ────
-    async function loadExperienceSection() {
-        const mc = document.getElementById('settingsContent');
-        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Experience</h2></div>
-            <p class="section-desc">Customize login behavior and user experience preferences.</p>
-            <div class="settings-grid" id="experienceGrid"><div class="spinner"></div></div>`;
-
-        if (currentUser?.role !== 'admin') {
-            document.getElementById('experienceGrid').innerHTML = `<div class="settings-card">
-                <h3>Access Restricted</h3>
-                <p style="color:#8a9bae;">Only administrators can configure experience settings.</p>
-            </div>`;
-            return;
-        }
-
-        const sysSett = await api('GET', '/settings/system');
-        const sys = sysSett.success ? sysSett.data : {};
-        const introEnabled = sys.login_intro_enabled !== 'false';
-        const introMuted = sys.login_intro_muted === 'true';
-
-        document.getElementById('experienceGrid').innerHTML = `
-            <div class="settings-card full-width">
-                <h3>Login Intro</h3>
-                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
-                    <label class="toggle-label" style="margin-bottom:0;">
-                        <span class="toggle-switch"><input type="checkbox" id="setIntroSkip" ${introEnabled?'':'checked'}><span class="toggle-slider"></span></span>
-                        Skip Intro on Login
-                    </label>
-                </div>
-                <p class="settings-helper" style="margin-bottom:16px;">When disabled, a cinematic intro plays after login on each new session.</p>
-                <div class="form-group" style="display:flex;align-items:center;gap:16px;">
-                    <label class="toggle-label" style="margin-bottom:0;">
-                        <span class="toggle-switch"><input type="checkbox" id="setIntroMuted" ${introMuted?'checked':''}><span class="toggle-slider"></span></span>
-                        No Audio on Intro
-                    </label>
-                </div>
-                <p class="settings-helper">Mute the intro video audio. When disabled, audio plays with the intro.</p>
-                <div style="text-align:right;margin-top:20px;">
-                    <button class="btn-primary" onclick="saveExperienceSettings()">Save</button>
-                </div>
-            </div>`;
-    }
-
-    async function saveExperienceSettings() {
-        const settings = {};
-        const introSkipEl = document.getElementById('setIntroSkip');
-        if (introSkipEl) settings.login_intro_enabled = introSkipEl.checked ? 'false' : 'true';
-        const introMutedEl = document.getElementById('setIntroMuted');
-        if (introMutedEl) settings.login_intro_muted = introMutedEl.checked ? 'true' : 'false';
-        const d = await api('PUT', '/settings/system', settings);
-        if (d.success) toast('Experience settings saved!'); else toast(d.error, 'error');
-    }
-
-    // ──── Skip Preferences Section ────
-    async function loadSkipSection() {
-        const mc = document.getElementById('settingsContent');
-        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Skip Detection</h2></div>
-            <p class="section-desc">Configure automatic intro, credits, and recap skipping behavior.</p>
-            <div class="settings-grid" id="skipGrid"><div class="spinner"></div></div>`;
-
-        const res = await api('GET', '/settings/skip');
-        const prefs = res.success ? res.data : { skip_intros: false, skip_credits: false, skip_recaps: false, show_skip_button: true };
-        const isAdmin = currentUser && currentUser.role === 'admin';
-
-        document.getElementById('skipGrid').innerHTML = `
-            <div class="settings-card full-width">
-                <h3>Skip Button Behavior</h3>
-                <p class="settings-helper" style="margin-bottom:16px;">When a skip segment is detected, a "Skip Intro / Credits / Recap" button appears on the player. Enable auto-skip to skip automatically without pressing the button.</p>
-                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
-                    <label class="toggle-label" style="margin-bottom:0;">
-                        <span class="toggle-switch"><input type="checkbox" id="setShowSkipBtn" ${prefs.show_skip_button?'checked':''}><span class="toggle-slider"></span></span>
-                        Show Skip Button
-                    </label>
-                </div>
-                <p class="settings-helper" style="margin-bottom:20px;">Display the skip button overlay when intros, credits, or recaps are detected.</p>
-                <h3 style="margin-top:24px;">Auto-Skip</h3>
-                <p class="settings-helper" style="margin-bottom:16px;">Automatically skip these segments without showing a button.</p>
-                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
-                    <label class="toggle-label" style="margin-bottom:0;">
-                        <span class="toggle-switch"><input type="checkbox" id="setSkipIntros" ${prefs.skip_intros?'checked':''}><span class="toggle-slider"></span></span>
-                        Auto-skip Intros
-                    </label>
-                </div>
-                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
-                    <label class="toggle-label" style="margin-bottom:0;">
-                        <span class="toggle-switch"><input type="checkbox" id="setSkipCredits" ${prefs.skip_credits?'checked':''}><span class="toggle-slider"></span></span>
-                        Auto-skip Credits
-                    </label>
-                </div>
-                <div class="form-group" style="display:flex;align-items:center;gap:16px;margin-bottom:12px;">
-                    <label class="toggle-label" style="margin-bottom:0;">
-                        <span class="toggle-switch"><input type="checkbox" id="setSkipRecaps" ${prefs.skip_recaps?'checked':''}><span class="toggle-slider"></span></span>
-                        Auto-skip Recaps
-                    </label>
-                </div>
-                <div style="text-align:right;margin-top:20px;">
-                    <button class="btn-primary" onclick="saveSkipPrefs()">Save</button>
-                </div>
-            </div>
-            ${isAdmin ? `<div class="settings-card full-width">
-                <h3>Detect Skip Segments</h3>
-                <p class="settings-helper" style="margin-bottom:16px;">Run the skip detection engine on a library to identify intros, credits, recaps, and anime OP/ED sequences.</p>
-                <div id="skipDetectLibList"><div class="spinner"></div></div>
-            </div>` : ''}`;
-
-        if (isAdmin) loadSkipDetectLibraries();
-    }
-
+    // ──── Skip Detect / Save Functions ────
     async function loadSkipDetectLibraries() {
         const libRes = await api('GET', '/libraries');
         const container = document.getElementById('skipDetectLibList');
@@ -1235,11 +1283,11 @@
         else toast('Failed: ' + d.error, 'error');
     }
 
-    // ──── Metadata Section ────
+    // ──── MetaData Section (enhanced) ────
     async function loadMetadataSection() {
         const mc = document.getElementById('settingsContent');
-        mc.innerHTML = `<div class="section-header"><h2 class="section-title">Metadata</h2></div>
-            <p class="section-desc">Configure metadata sources, cache server, and API keys.</p>
+        mc.innerHTML = `<div class="section-header"><h2 class="section-title">MetaData</h2></div>
+            <p class="section-desc">Configure metadata sources, matching thresholds, and external API keys.</p>
             <div class="settings-grid" id="metadataGrid"><div class="spinner"></div></div>`;
 
         if (currentUser?.role !== 'admin') {
@@ -1257,12 +1305,12 @@
 
         document.getElementById('metadataGrid').innerHTML = `
             <div class="settings-card full-width">
-                <h3>Metadata Cache Server</h3>
-                <p style="color:#8a9bae;margin-bottom:16px;">The cache server becomes the sole metadata source when enabled. All lookups, ratings, artwork, and editions come from the cache server, which aggregates data from TMDB, OMDb, Fanart.tv, TVDB, and AniList. Disable to use direct API calls instead.</p>
+                <h3>Cache Server</h3>
+                <p style="color:#8a9bae;margin-bottom:16px;">The cache server becomes the sole metadata source when enabled, aggregating data from TMDB, OMDb, Fanart.tv, TVDB, and AniList. A Patreon subscription will be required in a future release.</p>
                 <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;">
                     <label class="toggle-label" style="margin-bottom:0;">
-                        <span class="toggle-switch"><input type="checkbox" id="setCacheEnabled" ${cacheEnabled?'checked':''}><span class="toggle-slider"></span></span>
-                        Enable Cache Server
+                        <span class="toggle-switch"><input type="checkbox" id="setCacheEnabled" ${cacheEnabled?'checked':''} onchange="toggleApiFields()"><span class="toggle-slider"></span></span>
+                        Use Cache Server
                     </label>
                     <span style="font-size:0.8rem;color:${cacheRegistered?'#4caf50':'#5a6a7f'};">
                         <span class="status-dot ${cacheRegistered?'green':''}"></span>
@@ -1271,42 +1319,66 @@
                 </div>
             </div>
             <div class="settings-card full-width">
-                <h3>Metadata Matching</h3>
-                <p style="color:#8a9bae;margin-bottom:16px;">Control how aggressively CineVault matches files to metadata. Higher percentages require closer title matches. Auto applies during scans; Manual applies when you use the Identify button.</p>
+                <h3>Matching Thresholds</h3>
+                <p style="color:#8a9bae;margin-bottom:16px;">Control how aggressively CineVault matches files to metadata. Higher percentages require closer title matches.</p>
                 <div class="form-group">
-                    <label>Min Match Percentage — Auto</label>
+                    <label>Automatch Minimum %</label>
                     <div style="display:flex;align-items:center;gap:10px;">
                         <input type="number" id="setAutoMinMatch" value="${sys.metadata_match_auto_min||'95'}" min="50" max="100" step="1" style="width:80px;">
                         <span style="color:#5a6a7f;font-size:0.85rem;">%</span>
                     </div>
-                    <p style="color:#5a6a7f;font-size:0.78rem;margin-top:4px;">Used during library scans and auto-match jobs. Higher values reduce false matches.</p>
+                    <p class="settings-helper" style="margin-top:4px;">Items must be at least this % match to automatch during scans. Highest match wins.</p>
                 </div>
                 <div class="form-group">
-                    <label>Min Match Percentage — Manual</label>
+                    <label>Manual Minimum %</label>
                     <div style="display:flex;align-items:center;gap:10px;">
                         <input type="number" id="setManualMinMatch" value="${sys.metadata_match_manual_min||'75'}" min="10" max="100" step="1" style="width:80px;">
                         <span style="color:#5a6a7f;font-size:0.85rem;">%</span>
                     </div>
-                    <p style="color:#5a6a7f;font-size:0.78rem;margin-top:4px;">Used when identifying media manually. Lower values show more options.</p>
+                    <p class="settings-helper" style="margin-top:4px;">Items must be at least this % to be considered and returned by cache server or API for manual identification.</p>
                 </div>
                 <div class="form-group">
-                    <label>Max Results</label>
+                    <label>Manual Matches</label>
                     <div style="display:flex;align-items:center;gap:10px;">
                         <input type="number" id="setMaxResults" value="${sys.metadata_match_max_results||'5'}" min="1" max="25" step="1" style="width:80px;">
                     </div>
-                    <p style="color:#5a6a7f;font-size:0.78rem;margin-top:4px;">Maximum number of matches to return for manual identification.</p>
+                    <p class="settings-helper" style="margin-top:4px;">Show this many possible matches (highest confidence first). For example, if 20 results match but this is set to 5, only the top 5 are returned.</p>
                 </div>
             </div>
-            <div class="settings-card full-width">
-                <h3>Metadata Enrichment</h3>
-                <p style="color:#8a9bae;margin-bottom:16px;">Configure external API keys for additional metadata enrichment. An OMDb API key enables IMDB ratings, Rotten Tomatoes scores, and audience scores.</p>
+            <div class="settings-card full-width" id="apiKeysCard" style="${cacheEnabled?'display:none;':''}">
+                <h3>APIs</h3>
+                <p style="color:#8a9bae;margin-bottom:16px;">Configure external API keys used when the cache server is not enabled. Add your own keys for each metadata source.</p>
                 <div class="form-group">
                     <label>OMDb API Key</label>
                     <div style="display:flex;gap:10px;">
                         <input type="password" id="setOmdbKey" value="${sys.omdb_api_key||''}" placeholder="Enter your OMDb API key" style="flex:1;">
-                        <button class="btn-secondary" onclick="document.getElementById('setOmdbKey').type=document.getElementById('setOmdbKey').type==='password'?'text':'password'">&#128065;</button>
+                        <button class="btn-secondary" onclick="toggleKeyVis('setOmdbKey')">&#128065;</button>
                     </div>
-                    <p style="color:#5a6a7f;font-size:0.78rem;margin-top:6px;">Get a free key at <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" style="color:#00D9FF;">omdbapi.com</a></p>
+                    <p class="settings-helper" style="margin-top:6px;">IMDB ratings, Rotten Tomatoes, audience scores. Free key at <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" style="color:#00D9FF;">omdbapi.com</a></p>
+                </div>
+                <div class="form-group">
+                    <label>TVDB API Key</label>
+                    <div style="display:flex;gap:10px;">
+                        <input type="password" id="setTvdbKey" value="${sys.tvdb_api_key||''}" placeholder="Enter your TVDB API key" style="flex:1;">
+                        <button class="btn-secondary" onclick="toggleKeyVis('setTvdbKey')">&#128065;</button>
+                    </div>
+                    <p class="settings-helper" style="margin-top:6px;">TV show metadata and artwork. Get a key at <a href="https://thetvdb.com/api-information" target="_blank" style="color:#00D9FF;">thetvdb.com</a></p>
+                </div>
+                <div class="form-group">
+                    <label>Fanart.tv API Key</label>
+                    <div style="display:flex;gap:10px;">
+                        <input type="password" id="setFanartKey" value="${sys.fanart_api_key||''}" placeholder="Enter your Fanart.tv API key" style="flex:1;">
+                        <button class="btn-secondary" onclick="toggleKeyVis('setFanartKey')">&#128065;</button>
+                    </div>
+                    <p class="settings-helper" style="margin-top:6px;">High-quality artwork (posters, logos, backgrounds). Get a key at <a href="https://fanart.tv/get-an-api-key/" target="_blank" style="color:#00D9FF;">fanart.tv</a></p>
+                </div>
+                <div class="form-group">
+                    <label>TMDB API Key</label>
+                    <div style="display:flex;gap:10px;">
+                        <input type="password" id="setTmdbKey" value="${sys.tmdb_api_key||''}" placeholder="Enter your TMDB API key" style="flex:1;">
+                        <button class="btn-secondary" onclick="toggleKeyVis('setTmdbKey')">&#128065;</button>
+                    </div>
+                    <p class="settings-helper" style="margin-top:6px;">Movie and TV metadata, cast, crew. Get a key at <a href="https://www.themoviedb.org/settings/api" target="_blank" style="color:#00D9FF;">themoviedb.org</a></p>
                 </div>
             </div>
             <div style="grid-column:1/-1;text-align:right;">
@@ -1314,10 +1386,18 @@
             </div>`;
     }
 
+    function toggleApiFields() {
+        const cacheOn = document.getElementById('setCacheEnabled').checked;
+        document.getElementById('apiKeysCard').style.display = cacheOn ? 'none' : '';
+    }
+
+    function toggleKeyVis(id) {
+        const el = document.getElementById(id);
+        el.type = el.type === 'password' ? 'text' : 'password';
+    }
+
     async function saveMetadataSettings() {
         const settings = {};
-        const omdbEl = document.getElementById('setOmdbKey');
-        if (omdbEl) settings.omdb_api_key = omdbEl.value.trim();
         const cacheEnabledEl = document.getElementById('setCacheEnabled');
         if (cacheEnabledEl) settings.cache_server_enabled = cacheEnabledEl.checked ? 'true' : 'false';
         const autoMinEl = document.getElementById('setAutoMinMatch');
@@ -1326,8 +1406,18 @@
         if (manualMinEl) settings.metadata_match_manual_min = manualMinEl.value.trim();
         const maxResEl = document.getElementById('setMaxResults');
         if (maxResEl) settings.metadata_match_max_results = maxResEl.value.trim();
+
+        const omdbEl = document.getElementById('setOmdbKey');
+        if (omdbEl && !omdbEl.value.includes('****')) settings.omdb_api_key = omdbEl.value.trim();
+        const tvdbEl = document.getElementById('setTvdbKey');
+        if (tvdbEl && !tvdbEl.value.includes('****')) settings.tvdb_api_key = tvdbEl.value.trim();
+        const fanartEl = document.getElementById('setFanartKey');
+        if (fanartEl && !fanartEl.value.includes('****')) settings.fanart_api_key = fanartEl.value.trim();
+        const tmdbEl = document.getElementById('setTmdbKey');
+        if (tmdbEl && !tmdbEl.value.includes('****')) settings.tmdb_api_key = tmdbEl.value.trim();
+
         const d = await api('PUT', '/settings/system', settings);
-        if (d.success) toast('Metadata settings saved!'); else toast(d.error, 'error');
+        if (d.success) toast('MetaData settings saved!'); else toast(d.error, 'error');
     }
 
     // ──── Duplicates Section ────
