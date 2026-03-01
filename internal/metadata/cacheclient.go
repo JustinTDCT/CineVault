@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/models"
@@ -82,11 +83,14 @@ type cacheEntry struct {
 	// Source tracking
 	Source     string  `json:"source,omitempty"`
 	ExternalID *string `json:"external_id,omitempty"`
-	// Multi-source aggregated arrays
+	// Multi-source aggregated arrays (legacy field names)
 	PosterURLs   json.RawMessage `json:"poster_urls,omitempty"`
 	BackdropURLs json.RawMessage `json:"backdrop_urls,omitempty"`
 	Descriptions json.RawMessage `json:"descriptions,omitempty"`
 	LogoURLs     json.RawMessage `json:"logo_urls,omitempty"`
+	// Current cache server field names (ImageRef arrays from MovieMeta)
+	Posters  json.RawMessage `json:"posters,omitempty"`
+	Backdrops json.RawMessage `json:"backdrops,omitempty"`
 	// Ratings
 	IMDBRating      *float64 `json:"imdb_rating,omitempty"`
 	RTCriticScore   *int     `json:"rt_critic_score,omitempty"`
@@ -572,10 +576,31 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 	result.EditionsDiscovered = entry.EditionsDiscovered
 	result.AllSourcesScraped = entry.AllSourcesScraped
 
-	// Parse artwork URL arrays from JSON — cache server sends objects with source/url/path
+	// Parse artwork URL arrays — try legacy field names first, fall back to current cache server names
 	result.AllPosterURLs = parseArtworkURLArray(rawToString(entry.PosterURLs))
+	if len(result.AllPosterURLs) == 0 {
+		result.AllPosterURLs = parseArtworkURLArray(rawToString(entry.Posters))
+	}
 	result.AllBackdropURLs = parseArtworkURLArray(rawToString(entry.BackdropURLs))
+	if len(result.AllBackdropURLs) == 0 {
+		result.AllBackdropURLs = parseArtworkURLArray(rawToString(entry.Backdrops))
+	}
 	result.AllLogoURLs = parseArtworkURLArray(rawToString(entry.LogoURLs))
+
+	// Ensure primary URLs are included in the artwork lists (e.g. fanart backdrop
+	// is stored as backdrop_url but not in the backdrops array)
+	if match.PosterURL != nil && *match.PosterURL != "" {
+		resolved := resolveTMDBPath(*match.PosterURL)
+		if !containsURL(result.AllPosterURLs, resolved) {
+			result.AllPosterURLs = append([]string{resolved}, result.AllPosterURLs...)
+		}
+	}
+	if match.BackdropURL != nil && *match.BackdropURL != "" {
+		resolved := resolveTMDBPath(*match.BackdropURL)
+		if !containsURL(result.AllBackdropURLs, resolved) {
+			result.AllBackdropURLs = append([]string{resolved}, result.AllBackdropURLs...)
+		}
+	}
 
 	// Cache server local image paths
 	result.CacheServerPosterPath = entry.PosterPath
@@ -1404,12 +1429,33 @@ func extractArtistMBIDFromCastCrew(castCrew *string) string {
 	return ""
 }
 
+// resolveTMDBPath checks if a URL is a bare TMDB image path (e.g. "/abc123.jpg")
+// and prepends the TMDB image base URL. Full URLs are returned as-is.
+func resolveTMDBPath(u string) string {
+	if u == "" {
+		return ""
+	}
+	if strings.HasPrefix(u, "/") && !strings.Contains(u, "://") {
+		return "https://image.tmdb.org/t/p/original" + u
+	}
+	return u
+}
+
+func containsURL(urls []string, target string) bool {
+	for _, u := range urls {
+		if u == target {
+			return true
+		}
+	}
+	return false
+}
+
 func parseArtworkURLArray(raw *string) []string {
 	if raw == nil || *raw == "" || *raw == "null" {
 		return nil
 	}
 
-	// Try parsing as array of objects (current cache server format)
+	// Try parsing as array of objects (artworkEntry or ImageRef — both have "url")
 	var entries []artworkEntry
 	if err := json.Unmarshal([]byte(*raw), &entries); err == nil && len(entries) > 0 {
 		urls := make([]string, 0, len(entries))
@@ -1417,7 +1463,7 @@ func parseArtworkURLArray(raw *string) []string {
 			if e.Path != "" {
 				urls = append(urls, CacheImageURL(e.Path))
 			} else if e.URL != "" {
-				urls = append(urls, e.URL)
+				urls = append(urls, resolveTMDBPath(e.URL))
 			}
 		}
 		return urls
@@ -1426,7 +1472,11 @@ func parseArtworkURLArray(raw *string) []string {
 	// Fall back to plain string array (legacy format)
 	var plain []string
 	if err := json.Unmarshal([]byte(*raw), &plain); err == nil {
-		return plain
+		resolved := make([]string, 0, len(plain))
+		for _, u := range plain {
+			resolved = append(resolved, resolveTMDBPath(u))
+		}
+		return resolved
 	}
 
 	return nil

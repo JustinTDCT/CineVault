@@ -280,6 +280,7 @@ function extractArtworkSource(url) {
     if (url.includes('fanart.tv')) return 'Fanart.tv';
     if (url.includes('thetvdb.com')) return 'TVDB';
     if (url.includes('anilist')) return 'AniList';
+    if (url.includes('/images/')) return 'Cache';
     return 'Source';
 }
 
