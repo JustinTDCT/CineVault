@@ -999,3 +999,14 @@ async function reloadLibraryGrid() {
 }
 
 function showLibraryGrid() {
+    const wrapper = document.getElementById('mediaGridWrapper');
+    if (wrapper) wrapper.style.display = 'flex';
+    ['collectionsArea','seriesArea','artistsArea','albumsArea','genresArea'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    ['ftGridBtn','ftCollBtn','ftSeriesBtn','ftArtistBtn','ftAlbumBtn','ftGenreBtn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('active', id === 'ftGridBtn');
+    });
+}
