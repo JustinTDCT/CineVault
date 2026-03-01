@@ -1167,7 +1167,7 @@ body {
 }
 .detail-hero-overlay {
     position: absolute; inset: 0; z-index: 0;
-    background: linear-gradient(to right, rgba(10,18,30,0.92) 0%, rgba(10,18,30,0.75) 50%, rgba(10,18,30,0.45) 100%);
+    background: linear-gradient(to right, rgba(10,18,30,0.95) 0%, rgba(10,18,30,0.88) 50%, rgba(10,18,30,0.72) 100%);
     border-radius: inherit;
 }
 .detail-hero.has-backdrop { border-color: rgba(0,217,255,0.2); }
