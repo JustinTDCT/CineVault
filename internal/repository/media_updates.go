@@ -43,23 +43,23 @@ func (r *MediaRepository) UpdateMetadataWithLocks(id uuid.UUID, title string, ye
 		title = CASE WHEN $8::text[] IS NOT NULL AND ('title' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN title ELSE $1 END,
 		year = CASE
 			WHEN $8::text[] IS NOT NULL AND ('year' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN year
-			WHEN $2 IS NOT NULL THEN $2
+			WHEN $2::integer IS NOT NULL THEN $2::integer
 			ELSE year END,
 		description = CASE
 			WHEN $8::text[] IS NOT NULL AND ('description' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN description
-			WHEN $3 IS NOT NULL THEN $3
+			WHEN $3::text IS NOT NULL THEN $3::text
 			ELSE description END,
 		rating = CASE
 			WHEN $8::text[] IS NOT NULL AND ('rating' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN rating
-			WHEN $4 IS NOT NULL THEN $4
+			WHEN $4::double precision IS NOT NULL THEN $4::double precision
 			ELSE rating END,
 		poster_path = CASE
 			WHEN $8::text[] IS NOT NULL AND ('poster_path' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN poster_path
-			WHEN $5 IS NOT NULL THEN $5
+			WHEN $5::text IS NOT NULL THEN $5::text
 			ELSE poster_path END,
 		content_rating = CASE
 			WHEN $8::text[] IS NOT NULL AND ('content_rating' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN content_rating
-			WHEN $6 IS NOT NULL THEN $6
+			WHEN $6::text IS NOT NULL THEN $6::text
 			ELSE content_rating END,
 		generated_poster = CASE
 			WHEN $8::text[] IS NOT NULL AND ('poster_path' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN generated_poster
