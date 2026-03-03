@@ -646,16 +646,17 @@ func (r *MediaRepository) ListDuplicateItems() ([]*models.MediaItem, error) {
 // ListItemsNeedingEnrichment returns items in a library that have a title/description
 // (i.e. were TMDB-matched) but are missing OMDb ratings, have no linked performers,
 // or have a generated (screenshot) poster that should be replaced.
+// Items with generated_poster=true are always included so that failed initial
+// metadata lookups can be retried on the next scan.
 func (r *MediaRepository) ListItemsNeedingEnrichment(libraryID uuid.UUID) ([]*models.MediaItem, error) {
 	query := `SELECT ` + mediaColumns + `
 		FROM media_items mi
 		WHERE mi.library_id = $1
 		  AND mi.metadata_locked = false
-		  AND mi.description IS NOT NULL
-		  AND mi.description != ''
 		  AND (
-		    mi.imdb_rating IS NULL
-		    OR NOT EXISTS (SELECT 1 FROM media_performers mp WHERE mp.media_item_id = mi.id)
+		    (mi.description IS NOT NULL AND mi.description != ''
+		      AND (mi.imdb_rating IS NULL
+		        OR NOT EXISTS (SELECT 1 FROM media_performers mp WHERE mp.media_item_id = mi.id)))
 		    OR mi.generated_poster = true
 		  )
 		  AND mi.media_type IN ('movies','tv_shows','music_videos','home_videos','other_videos','adult_movies')

@@ -154,13 +154,34 @@ func (s *Scanner) enrichItemFast(item *models.MediaItem, tmdbScraper *metadata.T
 		if result != nil && result.Match != nil {
 			log.Printf("Re-enrich: %q → %q (source=cache/%s)", item.Title, result.Match.Title, result.Source)
 
+			match := result.Match
+
+			// Apply base metadata if missing (retry for items that failed initial lookup)
+			if item.Description == nil || *item.Description == "" {
+				var posterPath *string
+				if match.PosterURL != nil && s.posterDir != "" && !item.IsFieldLocked("poster_path") {
+					filename := item.ID.String() + ".jpg"
+					pDir := filepath.Join(s.posterDir, "posters")
+					_ = os.Remove(filepath.Join(pDir, filename))
+					_, err := metadata.DownloadPoster(*match.PosterURL, pDir, filename)
+					if err != nil {
+						log.Printf("Re-enrich: poster download failed for %s: %v", item.ID, err)
+					} else {
+						webPath := "/previews/posters/" + filename
+						posterPath = &webPath
+						_ = s.mediaRepo.SetGeneratedPoster(item.ID, false)
+					}
+				}
+				_ = s.mediaRepo.UpdateMetadataWithLocks(item.ID, match.Title, match.Year,
+					match.Description, match.Rating, posterPath, match.ContentRating, item.LockedFields)
+			}
+
 			// Download poster if cache provides one and current poster is a generated screenshot
-			if item.GeneratedPoster && result.Match.PosterURL != nil && s.posterDir != "" && !item.IsFieldLocked("poster_path") {
+			if item.GeneratedPoster && (item.Description != nil && *item.Description != "") && match.PosterURL != nil && s.posterDir != "" && !item.IsFieldLocked("poster_path") {
 				filename := item.ID.String() + ".jpg"
 				posterDir := filepath.Join(s.posterDir, "posters")
-				// Remove generated screenshot so dedup doesn't save TMDB poster as _alt
 				_ = os.Remove(filepath.Join(posterDir, filename))
-				_, err := metadata.DownloadPoster(*result.Match.PosterURL, posterDir, filename)
+				_, err := metadata.DownloadPoster(*match.PosterURL, posterDir, filename)
 				if err != nil {
 					log.Printf("Re-enrich: poster download failed for %s: %v", item.ID, err)
 				} else {
