@@ -23,8 +23,12 @@ func (r *MediaRepository) UpdateParentMediaID(id, parentID uuid.UUID) error {
 }
 
 func (r *MediaRepository) UpdateMetadata(id uuid.UUID, title string, year *int, description *string, rating *float64, posterPath *string, contentRating *string) error {
-	query := `UPDATE media_items SET title = $1, year = $2, description = $3, rating = $4,
-		poster_path = $5, content_rating = $6,
+	query := `UPDATE media_items SET title = $1,
+		year = COALESCE($2, year),
+		description = COALESCE($3, description),
+		rating = COALESCE($4, rating),
+		poster_path = COALESCE($5, poster_path),
+		content_rating = COALESCE($6, content_rating),
 		generated_poster = CASE WHEN ($5::text) IS NOT NULL THEN false ELSE generated_poster END,
 		updated_at = CURRENT_TIMESTAMP WHERE id = $7`
 	_, err := r.db.Exec(query, title, year, description, rating, posterPath, contentRating, id)
@@ -32,15 +36,31 @@ func (r *MediaRepository) UpdateMetadata(id uuid.UUID, title string, year *int, 
 }
 
 // UpdateMetadataWithLocks updates metadata fields but respects per-field locks.
-// Locked fields retain their current database value.
+// Locked fields retain their current database value. NULL new values preserve
+// the existing database value (non-destructive merge).
 func (r *MediaRepository) UpdateMetadataWithLocks(id uuid.UUID, title string, year *int, description *string, rating *float64, posterPath *string, contentRating *string, lockedFields pq.StringArray) error {
 	query := `UPDATE media_items SET
 		title = CASE WHEN $8::text[] IS NOT NULL AND ('title' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN title ELSE $1 END,
-		year = CASE WHEN $8::text[] IS NOT NULL AND ('year' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN year ELSE $2 END,
-		description = CASE WHEN $8::text[] IS NOT NULL AND ('description' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN description ELSE $3 END,
-		rating = CASE WHEN $8::text[] IS NOT NULL AND ('rating' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN rating ELSE $4 END,
-		poster_path = CASE WHEN $8::text[] IS NOT NULL AND ('poster_path' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN poster_path ELSE $5 END,
-		content_rating = CASE WHEN $8::text[] IS NOT NULL AND ('content_rating' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN content_rating ELSE $6 END,
+		year = CASE
+			WHEN $8::text[] IS NOT NULL AND ('year' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN year
+			WHEN $2 IS NOT NULL THEN $2
+			ELSE year END,
+		description = CASE
+			WHEN $8::text[] IS NOT NULL AND ('description' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN description
+			WHEN $3 IS NOT NULL THEN $3
+			ELSE description END,
+		rating = CASE
+			WHEN $8::text[] IS NOT NULL AND ('rating' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN rating
+			WHEN $4 IS NOT NULL THEN $4
+			ELSE rating END,
+		poster_path = CASE
+			WHEN $8::text[] IS NOT NULL AND ('poster_path' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN poster_path
+			WHEN $5 IS NOT NULL THEN $5
+			ELSE poster_path END,
+		content_rating = CASE
+			WHEN $8::text[] IS NOT NULL AND ('content_rating' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN content_rating
+			WHEN $6 IS NOT NULL THEN $6
+			ELSE content_rating END,
 		generated_poster = CASE
 			WHEN $8::text[] IS NOT NULL AND ('poster_path' = ANY($8::text[]) OR '*' = ANY($8::text[])) THEN generated_poster
 			WHEN ($5::text) IS NOT NULL THEN false
