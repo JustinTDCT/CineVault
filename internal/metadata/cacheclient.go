@@ -483,12 +483,21 @@ func (c *CacheClient) convertCacheResponse(lookupResp *cacheLookupResponse) *Cac
 		url := CacheImageURL(*entry.PosterPath)
 		match.PosterURL = &url
 	}
+	// Resolve bare TMDB paths (e.g. "/abc123.jpg") to full downloadable URLs
+	if match.PosterURL != nil {
+		resolved := resolveTMDBPath(*match.PosterURL)
+		match.PosterURL = &resolved
+	}
 
 	// Use preferred backdrop
 	match.BackdropURL = pickPreferredURL(rawToString(entry.BackdropURLs), metadataSource, entry.BackdropURL)
 	if match.BackdropURL == nil && entry.BackdropPath != nil && *entry.BackdropPath != "" {
 		url := CacheImageURL(*entry.BackdropPath)
 		match.BackdropURL = &url
+	}
+	if match.BackdropURL != nil {
+		resolved := resolveTMDBPath(*match.BackdropURL)
+		match.BackdropURL = &resolved
 	}
 
 	if entry.IMDBID != nil {
