@@ -9,7 +9,7 @@ Date: 26 Nov 2026 · Status: Accepted
 | Server language | **Go** (module `github.com/JustinTDCT/CineVault`, minimum Go 1.25, required by the pgx driver; the test server runs 1.27) |
 | Database | **PostgreSQL** (18 on the test server) |
 | Transcoding | **FFmpeg as a separate process** that CineVault runs and controls |
-| Web interface | **TypeScript** single-page app served by the Go server. React or Svelte, to be decided when UI work starts. |
+| Web interface | **React + TypeScript**, built with Vite (`web/`), embedded in the Go binary and served by it. Decided 26 Nov 2026. |
 | Development | Go server runs **natively** on the test VM; PostgreSQL runs in a **Docker container** |
 | Releases and real installs | **Docker Compose** (CineVault + PostgreSQL), with the NVIDIA Container Toolkit for GPU access |
 | Default HTTP port | **8456** (`CINEVAULT_LISTEN`) |
@@ -27,6 +27,7 @@ Date: 26 Nov 2026 · Status: Accepted
   - the paid cache server needs a real database too, so one database type serves both
   - users never set it up by hand, because Compose runs it
 - **FFmpeg as a separate process:** the same approach Jellyfin and Emby take. It keeps transcoding swappable, debuggable and isolated from crashes.
+- **React for the web interface:** the largest ecosystem and contributor pool, and React Native offers a path to TV and phone apps that share code and know-how with the web app (Plex's TV apps use React Native).
 - **Native for development, Docker for releases:** fast rebuilds and direct GPU access while developing, and an easy install for users. The Compose setup is tested on the same VM regularly, so it doesn't fall behind.
 
 ## Consequences
@@ -35,3 +36,5 @@ Date: 26 Nov 2026 · Status: Accepted
 - **Containers that transcode** need `NVIDIA_DRIVER_CAPABILITIES` to include `video`, as well as `compute,utility`, or NVENC and NVDEC won't be available inside the container.
 - **PostgreSQL driver: pgx v5** (`github.com/jackc/pgx/v5`), added with the first schema. Only `internal/db` imports it. The API and other packages depend on plain Go types (`internal/catalog`) and functions, so they can be tested without a database.
 - **Schema changes are numbered migrations** (`internal/db/migrations/NNNN_name.sql`), embedded in the binary and applied at startup inside a transaction. A PostgreSQL advisory lock stops two servers applying the same migration at once, and migrations are never edited after release.
+- **The web app is embedded in the server binary** (`internal/webui`), so one file runs everything. `make build` builds the web app first; a server built without it shows a "web interface isn't built" page and the API still works.
+- **Fonts are bundled, not loaded from Google**, so a self-hosted server doesn't contact third parties when someone opens it. Posters still load from TMDb's image CDN for now; caching them on the server is planned.

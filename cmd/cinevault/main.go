@@ -21,6 +21,7 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/scan"
 	"github.com/JustinTDCT/CineVault/internal/server"
 	"github.com/JustinTDCT/CineVault/internal/tmdb"
+	"github.com/JustinTDCT/CineVault/internal/webui"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -86,6 +87,7 @@ func run(log *slog.Logger) error {
 		Libraries:     database,
 		Scan:          scanner.Scan,
 		Match:         matchFn,
+		UI:            webui.Handler(),
 		Log:           log,
 	})
 	srv := &http.Server{
@@ -99,7 +101,7 @@ func run(log *slog.Logger) error {
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	log.Info("listening", "url", "http://"+displayAddr(cfg.Listen)+"/api/health")
+	log.Info("listening", "url", "http://"+displayAddr(cfg.Listen)+"/")
 
 	select {
 	case err := <-errc:

@@ -43,7 +43,9 @@ type Options struct {
 	Match func(ctx context.Context, libraryID int64) (match.Result, error)
 	// IsDir checks that a library folder exists; defaults to os.Stat.
 	IsDir func(path string) bool
-	Log   *slog.Logger
+	// UI serves the web app for every other GET request; nil for none.
+	UI  http.Handler
+	Log *slog.Logger
 }
 
 // LibraryStore is what the library endpoints need from the database.
@@ -85,6 +87,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/libraries/{id}/titles", s.libraryTitles)
 	mux.HandleFunc("POST /api/libraries/{id}/scan", s.scanLibrary)
 	mux.HandleFunc("POST /api/libraries/{id}/match", s.matchLibrary)
+	if s.opt.UI != nil {
+		// GET only, so a wrong method on an API route still gets 405.
+		mux.Handle("GET /", s.opt.UI)
+	}
 	return mux
 }
 

@@ -1,0 +1,134 @@
+import { useEffect, useState } from "react";
+import { api, type Edition, type Title } from "../api";
+import { Poster } from "../components/PosterCard";
+import { defaultEdition, fileName, formatRuntime, formatSize, labelWithoutResolution, resolution } from "../format";
+import { linkTo } from "../router";
+
+export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: number }) {
+  const [title, setTitle] = useState<Title | null | undefined>(undefined);
+  const [error, setError] = useState("");
+  const [editionId, setEditionId] = useState<number | null>(null);
+
+  useEffect(() => {
+    api
+      .titles(libraryId)
+      .then((all) => {
+        const t = all.find((x) => x.id === titleId) ?? null;
+        setTitle(t);
+        if (t) setEditionId(defaultEdition(t)?.id ?? null);
+      })
+      .catch((e: Error) => setError(e.message));
+  }, [libraryId, titleId]);
+
+  if (error) {
+    return (
+      <div className="notice notice-error" role="alert">
+        <p>{error}</p>
+      </div>
+    );
+  }
+  if (title === undefined) return <p className="page-sub">Loading…</p>;
+  if (title === null) {
+    return (
+      <div className="notice">
+        <p>This title isn't in the library any more.</p>
+        <a className="btn" {...linkTo(`/libraries/${libraryId}`)}>
+          Back to the library
+        </a>
+      </div>
+    );
+  }
+
+  const edition = title.editions.find((e) => e.id === editionId) ?? title.editions[0];
+  const facts = [title.year, title.runtime_minutes ? formatRuntime(title.runtime_minutes * 60) : "", title.genres.join(", ")].filter(Boolean);
+
+  return (
+    <article className="title-page">
+      {title.backdrop_url ? <div className="backdrop" style={{ backgroundImage: `url(${title.backdrop_url})` }} aria-hidden="true" /> : null}
+
+      <a className="back" {...linkTo(`/libraries/${libraryId}`)}>
+        All movies
+      </a>
+
+      <div className="title-head">
+        <Poster title={title} size="large" />
+        <div className="title-info">
+          <h1 className="title-name">{title.name}</h1>
+          {facts.length ? <p className="title-facts">{facts.join("   ")}</p> : null}
+          {title.tagline ? <p className="tagline">{title.tagline}</p> : null}
+          {title.overview ? <p className="overview">{title.overview}</p> : null}
+          <MatchNote title={title} />
+          {title.collection_name ? <p className="collection">Part of the {title.collection_name}</p> : null}
+        </div>
+      </div>
+
+      <EditionTabs title={title} selected={edition} onSelect={setEditionId} />
+    </article>
+  );
+}
+
+function MatchNote({ title }: { title: Title }) {
+  if (title.match_status === "matched") return null;
+  const text =
+    title.match_status === "not_found"
+      ? "TMDb has no movie with this name and year, so there's no poster or description. Check the file name."
+      : title.match_status === "error"
+        ? `Matching with TMDb failed: ${title.match_error ?? "unknown error"}. It will be retried on the next scan.`
+        : "Not matched with TMDb yet. It will be matched on the next scan.";
+  return <p className="match-note">{text}</p>;
+}
+
+function EditionTabs({ title, selected, onSelect }: { title: Title; selected?: Edition; onSelect: (id: number) => void }) {
+  if (!selected) return null;
+  const single = title.editions.length === 1;
+
+  return (
+    <section className="editions" aria-label="Editions">
+      <h2 className="section-title">{single ? "Your copy" : `${title.editions.length} editions in your library`}</h2>
+      {single ? null : (
+        <div className="edition-tabs" role="tablist">
+          {title.editions.map((e) => (
+            <button
+              key={e.id}
+              role="tab"
+              id={`edition-tab-${e.id}`}
+              aria-selected={e.id === selected.id}
+              aria-controls="edition-panel"
+              className="edition-tab"
+              onClick={() => onSelect(e.id)}
+            >
+              <span className="edition-tab-name">{e.display_name}</span>
+              <span className="edition-tab-runtime">{formatRuntime(e.runtime_seconds) || "Runtime unknown"}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="edition-panel" id="edition-panel" role={single ? undefined : "tabpanel"} aria-labelledby={single ? undefined : `edition-tab-${selected.id}`}>
+        <div className="edition-actions">
+          <button className="btn btn-primary" disabled title="Playback is coming in a later version">
+            Play {single ? "" : selected.display_name}
+          </button>
+          <span className="hint">Playback isn't available yet.</span>
+        </div>
+        <ul className="versions">
+          {selected.versions.map((v) => (
+            <li key={v.id} className={v.missing ? "version version-missing" : "version"}>
+              <div className="version-main">
+                <span className="version-res">{resolution(v) || "Unknown"}</span>
+                <span className="version-label">{labelWithoutResolution(v.label, resolution(v))}</span>
+              </div>
+              <div className="version-file">
+                <span className="version-path" title={v.path}>
+                  {fileName(v.path)}
+                </span>
+                <span className="version-size">{formatSize(v.size_bytes)}</span>
+                {v.missing ? <span className="version-flag">File missing</span> : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}

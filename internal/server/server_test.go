@@ -115,3 +115,17 @@ func TestOnlyGETAllowed(t *testing.T) {
 		t.Errorf("POST code = %d", code)
 	}
 }
+
+func TestUIRoutes(t *testing.T) {
+	s := newServer(nil, nil, true)
+	s.opt.UI = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ui:" + r.URL.Path)) })
+	if code, body := do(t, s, "GET", "/libraries/1"); code != http.StatusOK || body != "ui:/libraries/1" {
+		t.Errorf("page: code=%d body=%s", code, body)
+	}
+	if code, body := do(t, s, "GET", "/api/health"); code != http.StatusOK || strings.HasPrefix(body, "ui:") {
+		t.Errorf("API must win over the UI: code=%d", code)
+	}
+	if code, _ := do(t, s, "POST", "/api/health"); code != http.StatusMethodNotAllowed {
+		t.Errorf("POST /api/health: code=%d, want 405", code)
+	}
+}

@@ -9,19 +9,30 @@ This is a fresh start (November 2026). Earlier work is preserved on these branch
 
 ## Development quick start
 
-Requires Go 1.25 or newer, FFmpeg, and the development PostgreSQL container described in [`docs/environment/test-server.md`](docs/environment/test-server.md). That container's credentials live in `~/.config/cinevault/db.env`.
+Requires Go 1.25 or newer, Node.js 20.19+ with npm (for the web app), FFmpeg, and the development PostgreSQL container described in [`docs/environment/test-server.md`](docs/environment/test-server.md). That container's credentials live in `~/.config/cinevault/db.env`.
 
 ```bash
-make test     # unit tests (no database needed)
+make test     # unit tests, Go and web (no database needed)
 make test-db  # all tests, including database tests on temporary databases
-make run      # build and start the server against the dev database
+make run      # build the web app and server, then start it against the dev database
 ```
 
-On startup the server connects to PostgreSQL and applies any pending schema migrations (`internal/db/migrations`), then starts the API. Check it from another terminal:
+Open `http://<server>:8456/` in a browser for the web interface.
+
+On startup the server connects to PostgreSQL and applies any pending schema migrations (`internal/db/migrations`), then starts the API and web app. Check the API from another terminal:
 
 ```bash
 curl -s http://localhost:8456/api/health
 curl -s 'http://localhost:8456/api/edition-types?media_type=movie'
+```
+
+### Working on the web app
+
+The web app lives in `web/` (React + TypeScript + Vite). For live reloading while editing it, keep the Go server running (`make run`) and in another terminal:
+
+```bash
+cd web
+npm run dev    # serves on port 5173 and forwards /api to the Go server on 8456
 ```
 
 ### API
@@ -60,6 +71,7 @@ Settings come from environment variables:
 | Path | Contents |
 |---|---|
 | `cmd/cinevault` | Server entry point |
+| `web/` | Web app (React + TypeScript), built into `internal/webui/static` |
 | `internal/catalog` | Library data types shared by the database and the API |
 | `internal/config` | Settings from environment variables |
 | `internal/db` | PostgreSQL connection, migrations and queries |
@@ -69,6 +81,7 @@ Settings come from environment variables:
 | `internal/scan` | Library scanner and file-name parser (title, year, edition) |
 | `internal/server` | HTTP API |
 | `internal/tmdb` | TMDb API client |
+| `internal/webui` | Serves the built web app from the server binary |
 
 ## Design docs
 
