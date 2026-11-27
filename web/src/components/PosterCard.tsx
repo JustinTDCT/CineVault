@@ -9,7 +9,7 @@ export function Poster({ title, size = "card" }: { title: Title; size?: "card" |
   const wide = title.media_type === "musicvideo";
   const square = title.media_type === "music" || title.media_type === "audiobook";
   const shape = wide ? " poster-wide" : square ? " poster-square" : "";
-  const src = wide ? thumbUrl(title) : square || title.media_type === "book" ? coverUrl(title) : title.poster_url;
+  const src = wide ? thumbUrl(title) : square || title.media_type === "book" || title.media_type === "comic" ? coverUrl(title) : title.poster_url;
   if (src && !failed) {
     return <img className={`poster poster-${size}${shape}`} src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
   }
@@ -40,6 +40,10 @@ export function PosterCard({ title }: { title: Title }) {
       </h3>
       {title.media_type === "tv" ? (
         <p className="card-year">{[title.year, showCounts(title)].filter(Boolean).join("   ")}</p>
+      ) : title.media_type === "comic" ? (
+        <p className="card-year">
+          {[title.year, title.track_count ? `${title.track_count} ${title.track_count === 1 ? "issue" : "issues"}` : ""].filter(Boolean).join("   ")}
+        </p>
       ) : (title.media_type === "audiobook" || title.media_type === "book") && title.series ? (
         <p className="card-year">{title.series_index ? `Book ${title.series_index}` : title.year}</p>
       ) : title.year ? (

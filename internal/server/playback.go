@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
+	"github.com/JustinTDCT/CineVault/internal/comic"
 	"github.com/JustinTDCT/CineVault/internal/probe"
 	"github.com/JustinTDCT/CineVault/internal/thumb"
 	"github.com/JustinTDCT/CineVault/internal/transcode"
@@ -42,6 +44,8 @@ type Playback struct {
 	MaxHeight int
 	// Thumbs makes still images from videos; nil disables them.
 	Thumbs *thumb.Maker
+	// Comics reads comic pages; nil disables them.
+	Comics *comic.Reader
 }
 
 type playRequest struct {
@@ -221,6 +225,10 @@ func (s *Server) versionCover(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "load file", err)
 		return
 	}
+	if comic.Extensions[strings.ToLower(filepath.Ext(v.Path))] {
+		s.comicCover(w, r, v)
+		return
+	}
 	path, err := pb.Thumbs.Cover(r.Context(), thumb.Source{VersionID: v.ID, Path: v.Path, SizeBytes: v.SizeBytes})
 	if err != nil {
 		writeError(w, http.StatusNotFound, "no cover art for this file")
@@ -228,6 +236,66 @@ func (s *Server) versionCover(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "private, max-age=86400")
 	http.ServeFile(w, r, path)
+}
+
+// comicCover serves a comic's first page, scaled down, as its cover.
+func (s *Server) comicCover(w http.ResponseWriter, r *http.Request, v catalog.Version) {
+	pb := s.opt.Playback
+	if pb.Comics == nil {
+		http.NotFound(w, r)
+		return
+	}
+	key := fmt.Sprintf("p%d-%d", v.ID, v.SizeBytes)
+	img, _, err := pb.Comics.Page(r.Context(), v.Path, key, 0)
+	if err == nil {
+		var path string
+		if path, err = pb.Thumbs.FromImage(r.Context(), key, img); err == nil {
+			w.Header().Set("Cache-Control", "private, max-age=86400")
+			http.ServeFile(w, r, path)
+			return
+		}
+	}
+	writeError(w, http.StatusNotFound, "no cover for this comic")
+}
+
+// versionPage serves one page of a comic (pages count from 0).
+func (s *Server) versionPage(w http.ResponseWriter, r *http.Request) {
+	pb := s.opt.Playback
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	n, nerr := strconv.Atoi(r.PathValue("n"))
+	if pb == nil || pb.Comics == nil || err != nil || id <= 0 || nerr != nil || n < 0 {
+		http.NotFound(w, r)
+		return
+	}
+	v, err := pb.Versions.Version(r.Context(), id)
+	if errors.Is(err, catalog.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
+	if err != nil {
+		s.internalError(w, "load file", err)
+		return
+	}
+	if !comic.Extensions[strings.ToLower(filepath.Ext(v.Path))] {
+		writeError(w, http.StatusBadRequest, "this file isn't a comic")
+		return
+	}
+	img, mime, err := pb.Comics.Page(r.Context(), v.Path, fmt.Sprintf("v%d-%d", v.ID, v.SizeBytes), n)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		writeError(w, http.StatusNotFound, "no such page")
+		return
+	case errors.Is(err, comic.ErrNoTool):
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	case err != nil:
+		s.opt.Log.Warn("comic page failed", "file", v.Path, "page", n, "error", err)
+		writeError(w, http.StatusInternalServerError, "couldn't read this page from the comic file")
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	_, _ = w.Write(img)
 }
 
 // versionFile sends a file as-is, with range requests so players can seek.

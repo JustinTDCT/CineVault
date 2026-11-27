@@ -1,6 +1,7 @@
 package db
 
 import (
+	"archive/zip"
 	"context"
 	"errors"
 	"fmt"
@@ -592,5 +593,52 @@ func TestIntegrationEbooks(t *testing.T) {
 	}
 	if p, ok, err := d.Progress(ctx, b.ID); err != nil || !ok || p.Locator != "epubcfi(/6/14!/4/2/1:0)" || p.PositionSeconds != 0.42 {
 		t.Errorf("progress = %+v %v %v", p, ok, err)
+	}
+}
+
+func TestIntegrationComics(t *testing.T) {
+	d := testDatabase(t)
+	ctx := context.Background()
+	if _, err := d.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "Aliens - Book One")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"Aliens - Book One - 1.cbz", "Aliens - Book One - 2.cbz"} {
+		f, err := os.Create(filepath.Join(dir, n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		z := zip.NewWriter(f)
+		for _, pg := range []string{"01.jpg", "02.jpg"} {
+			w, _ := z.Create(pg)
+			w.Write([]byte{0xFF, 0xD8, 0xFF})
+		}
+		z.Close()
+		f.Close()
+	}
+	lib, err := d.CreateLibrary(ctx, catalog.Library{Name: "Comics", MediaType: "comic", Paths: []string{filepath.Dir(dir)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, err := (scan.Scanner{Store: d, Prober: stubProber{}}).Scan(ctx, lib); err != nil || res.Added != 2 {
+		t.Fatalf("scan: %+v err=%v", res, err)
+	}
+	titles, err := d.LibraryTitles(ctx, lib.ID)
+	if err != nil || len(titles) != 1 || titles[0].TrackCount != 2 || titles[0].CoverVersionID == 0 {
+		t.Fatalf("titles: %+v %v", titles, err)
+	}
+	eds, err := d.AlbumTracks(ctx, titles[0].ID)
+	if err != nil || len(eds) != 1 || len(eds[0].Tracks) != 2 {
+		t.Fatalf("issues: %+v %v", eds, err)
+	}
+	if iss := eds[0].Tracks[1]; iss.Name != "Issue 2" || iss.Versions[0].PageCount != 2 {
+		t.Errorf("issue 2 = %+v", iss)
+	}
+	v, err := d.Version(ctx, eds[0].Tracks[0].Versions[0].ID)
+	if err != nil || v.PageCount != 2 {
+		t.Errorf("version = %+v %v", v, err)
 	}
 }

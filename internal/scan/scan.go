@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
+	"github.com/JustinTDCT/CineVault/internal/comic"
 	"github.com/JustinTDCT/CineVault/internal/ebook"
 	"github.com/JustinTDCT/CineVault/internal/mediainfo"
 )
@@ -36,6 +37,8 @@ type NewVersion struct {
 	LastEpisode int
 	// TrackID links a music file to its track; 0 otherwise.
 	TrackID int64
+	// PageCount is a comic's number of pages; 0 otherwise.
+	PageCount int
 }
 
 // Store is what the scanner needs from the database.
@@ -87,6 +90,8 @@ type Result struct {
 type Scanner struct {
 	Store  Store
 	Prober mediainfo.Prober
+	// Comics reads comic archives; nil means a default reader.
+	Comics *comic.Reader
 }
 
 // VideoExtensions are the file types scanned in movie and TV libraries.
@@ -104,6 +109,8 @@ func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) 
 	case "movie", "tv", "musicvideo":
 	case "music", "audiobook":
 		exts = AudioExtensions
+	case "comic":
+		exts = comic.Extensions
 	case "book":
 		exts = map[string]bool{}
 		for ext := range ebook.Formats {
@@ -186,6 +193,8 @@ func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) 
 				add = s.addBookFile
 			case "book":
 				add = s.addEbookFile
+			case "comic":
+				add = s.addComicFile
 			}
 			if err := add(ctx, lib, root, types, defaultEdition, path, info.Size()); err != nil {
 				if ctx.Err() != nil {
@@ -381,6 +390,51 @@ func (s Scanner) addEbookFile(ctx context.Context, lib catalog.Library, root str
 	}
 	info := mediainfo.Info{Container: meta.Format}
 	if err := s.Store.UpsertVersion(ctx, editionID, NewVersion{Path: path, SizeBytes: size, Fingerprint: fp, Info: info}); err != nil {
+		return fmt.Errorf("save file: %w", err)
+	}
+	return nil
+}
+
+// addComicFile records a comic issue: the series (a title), the issue (a
+// track numbered so 2.5 sorts between 2 and 3) and the file with its pages.
+func (s Scanner) addComicFile(ctx context.Context, lib catalog.Library, root string, _ []catalog.EditionType, defaultEdition, path string, size int64) error {
+	reader := s.Comics
+	if reader == nil {
+		reader = &comic.Reader{}
+	}
+	pages, info, err := reader.Scan(ctx, path)
+	if err != nil {
+		return err
+	}
+	if pages == 0 {
+		return errors.New("no page images in this comic archive")
+	}
+	c := ParseComic(root, path, info)
+	c.Series.EditionTypeID = defaultEdition
+	fp, err := Fingerprint(path)
+	if err != nil {
+		return fmt.Errorf("fingerprint: %w", describeErr(err))
+	}
+	titleID, err := s.Store.FindOrCreateTitle(ctx, lib.ID, lib.MediaType, c.Series)
+	if err != nil {
+		return fmt.Errorf("save series: %w", err)
+	}
+	if c.Overview != "" {
+		if err := s.Store.SetBookInfo(ctx, titleID, "", 0, "", c.Overview); err != nil {
+			return fmt.Errorf("save series details: %w", err)
+		}
+	}
+	editionID, err := s.Store.FindOrCreateEdition(ctx, titleID, defaultEdition, 0)
+	if err != nil {
+		return fmt.Errorf("save edition: %w", err)
+	}
+	issueID, err := s.Store.FindOrCreateTrack(ctx, titleID, 1, issueTrack(c.Number), c.Issue, "")
+	if err != nil {
+		return fmt.Errorf("save issue: %w", err)
+	}
+	info2 := mediainfo.Info{Container: strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")}
+	v := NewVersion{Path: path, SizeBytes: size, Fingerprint: fp, Info: info2, TrackID: issueID, PageCount: pages}
+	if err := s.Store.UpsertVersion(ctx, editionID, v); err != nil {
 		return fmt.Errorf("save file: %w", err)
 	}
 	return nil

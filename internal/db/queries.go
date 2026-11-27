@@ -110,7 +110,7 @@ const (
 		       v.id, v.path, v.size_bytes, COALESCE(v.label, ''), COALESCE(v.container, ''),
 		       COALESCE(v.audio_codec, ''), COALESCE(v.audio_channels, 0),
 		       COALESCE(v.duration_seconds, 0)::float8, COALESCE(v.bitrate, 0),
-		       v.missing_since IS NOT NULL
+		       v.missing_since IS NOT NULL, COALESCE(v.page_count, 0)
 		FROM tracks tr
 		JOIN versions v ON v.track_id = tr.id
 		WHERE tr.title_id = $1
@@ -120,12 +120,12 @@ const (
 	sqlUpsertVersion = `
 		INSERT INTO versions (edition_id, path, size_bytes, fingerprint, label, container,
 		                      video_codec, width, height, hdr, audio_codec, audio_channels,
-		                      duration_seconds, bitrate, episode_id, last_episode, track_id)
+		                      duration_seconds, bitrate, episode_id, last_episode, track_id, page_count)
 		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''),
 		        NULLIF($7, ''), NULLIF($8::integer, 0), NULLIF($9::integer, 0), NULLIF($10, ''),
 		        NULLIF($11, ''), NULLIF($12::integer, 0),
 		        NULLIF($13::float8, 0)::numeric(10,3), NULLIF($14::bigint, 0),
-		        NULLIF($15::bigint, 0), NULLIF($16::integer, 0), NULLIF($17::bigint, 0))
+		        NULLIF($15::bigint, 0), NULLIF($16::integer, 0), NULLIF($17::bigint, 0), NULLIF($18::integer, 0))
 		ON CONFLICT (path) DO UPDATE SET
 		    edition_id       = CASE WHEN versions.edition_locked THEN versions.edition_id ELSE EXCLUDED.edition_id END,
 		    size_bytes       = EXCLUDED.size_bytes,
@@ -143,6 +143,7 @@ const (
 		    episode_id       = EXCLUDED.episode_id,
 		    last_episode     = EXCLUDED.last_episode,
 		    track_id         = EXCLUDED.track_id,
+		    page_count       = EXCLUDED.page_count,
 		    missing_since    = NULL`
 
 	sqlSetMissing = `
@@ -158,7 +159,7 @@ const (
 		       COALESCE(v.video_codec, ''), COALESCE(v.width, 0), COALESCE(v.height, 0),
 		       COALESCE(v.hdr, ''), COALESCE(v.audio_codec, ''), COALESCE(v.audio_channels, 0),
 		       COALESCE(v.duration_seconds, 0)::float8, COALESCE(v.bitrate, 0),
-		       v.edition_locked, v.missing_since IS NOT NULL, COALESCE(v.last_episode, 0)
+		       v.edition_locked, v.missing_since IS NOT NULL, COALESCE(v.last_episode, 0), COALESCE(v.page_count, 0)
 		FROM versions v
 		WHERE v.id = $1`
 
@@ -260,7 +261,7 @@ const (
 		       COALESCE(t.collection_tmdb_id, 0), COALESCE(t.collection_name, ''),
 		       t.match_status, COALESCE(t.match_error, ''), COALESCE(t.artist, ''),
 		       COALESCE(t.series, ''), COALESCE(t.series_index, 0)::float8, COALESCE(t.narrator, ''),
-		       COALESCE(CASE WHEN t.media_type IN ('music', 'audiobook', 'book') THEN
+		       COALESCE(CASE WHEN t.media_type IN ('music', 'audiobook', 'book', 'comic') THEN
 		         (SELECT min(x.id) FROM versions x JOIN editions xe ON xe.id = x.edition_id
 		           WHERE xe.title_id = t.id AND x.missing_since IS NULL
 		             AND (x.track_id IS NOT NULL OR t.media_type = 'book'))

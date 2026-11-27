@@ -18,6 +18,7 @@ import { ShowEpisodes } from "./ShowEpisodes";
 import { AlbumTracks } from "./AlbumTracks";
 import { BookChapters } from "./BookChapters";
 import { EbookFormats } from "./EbookFormats";
+import { ComicIssues } from "./ComicIssues";
 import { linkTo } from "../router";
 
 export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: number }) {
@@ -62,12 +63,15 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
   const isAlbum = title.media_type === "music";
   const isBook = title.media_type === "audiobook";
   const isEbook = title.media_type === "book";
+  const isComic = title.media_type === "comic";
   const facts = (
     isShow
       ? [title.year, showCounts(title), title.genres.join(", ")]
-      : isAlbum || isBook || isEbook
-        ? [title.artist, title.year, title.genres.filter((g) => !/^(audio ?books?|speech|spoken word)$/i.test(g)).join(", ")]
-        : [title.artist, title.year, runtime ? formatRuntime(runtime) : "", title.genres.join(", ")]
+      : isComic
+        ? [title.year, title.track_count ? `${title.track_count} ${title.track_count === 1 ? "issue" : "issues"}` : ""]
+        : isAlbum || isBook || isEbook
+          ? [title.artist, title.year, title.genres.filter((g) => !/^(audio ?books?|speech|spoken word)$/i.test(g)).join(", ")]
+          : [title.artist, title.year, runtime ? formatRuntime(runtime) : "", title.genres.join(", ")]
   ).filter(Boolean);
 
   return (
@@ -93,7 +97,9 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
         </div>
       </div>
 
-      {isEbook ? (
+      {isComic ? (
+        <ComicIssues title={title} />
+      ) : isEbook ? (
         <EbookFormats title={title} />
       ) : isBook ? (
         <BookChapters title={title} />

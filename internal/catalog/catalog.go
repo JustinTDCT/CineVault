@@ -163,6 +163,8 @@ type Version struct {
 	Missing         bool    `json:"missing"`
 	// LastEpisode is the last episode in a multi-episode file, 0 otherwise.
 	LastEpisode int `json:"last_episode,omitempty"`
+	// PageCount is a comic's number of pages.
+	PageCount int `json:"page_count,omitempty"`
 	// Chapters are the file's chapter marks (audiobooks).
 	Chapters []Chapter `json:"chapters,omitempty"`
 }

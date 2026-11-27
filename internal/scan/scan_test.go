@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"archive/zip"
 	"context"
 	"errors"
 	"fmt"
@@ -48,7 +49,7 @@ func (f *fakeStore) EditionTypes(context.Context) ([]catalog.EditionType, error)
 	for i := range types[1:] {
 		types[i+1].MediaTypes = []string{"movie"}
 	}
-	types = append(types, catalog.EditionType{ID: "original", DisplayName: "Original", MediaTypes: []string{"book"}, IsDefault: true})
+	types = append(types, catalog.EditionType{ID: "original", DisplayName: "Original", MediaTypes: []string{"book", "comic"}, IsDefault: true})
 	types = append(types, catalog.EditionType{ID: "unabridged", DisplayName: "Unabridged", MediaTypes: []string{"audiobook"}, IsDefault: true})
 	types = append(types, catalog.EditionType{ID: "original", DisplayName: "Original", MediaTypes: []string{"music"}, IsDefault: true},
 		catalog.EditionType{ID: "deluxe", DisplayName: "Deluxe/Expanded", MediaTypes: []string{"music"}, Aliases: []string{"deluxe edition", "deluxe"}})
@@ -284,8 +285,8 @@ func TestScanReportsBadFilesAndFolders(t *testing.T) {
 
 func TestScanRejectsUnsupportedLibraries(t *testing.T) {
 	s := Scanner{Store: newFakeStore(), Prober: &fakeProber{}}
-	if _, err := s.Scan(context.Background(), catalog.Library{MediaType: "comic"}); err == nil {
-		t.Error("comic libraries should be rejected for now")
+	if _, err := s.Scan(context.Background(), catalog.Library{MediaType: "game"}); err == nil {
+		t.Error("unknown library types should be rejected")
 	}
 }
 
@@ -472,5 +473,35 @@ func TestScanEbooks(t *testing.T) {
 	}
 	if len(store.titles) != 2 || store.titles["the story of kullervo|0|j.r.r. tolkien"] == 0 {
 		t.Errorf("titles = %v", store.titles)
+	}
+}
+
+func TestScanComics(t *testing.T) {
+	dir := t.TempDir()
+	series := filepath.Join(dir, "Aliens - Book One")
+	for _, n := range []string{"Aliens - Book One - 1.cbz", "Aliens - Book One - 2.cbz", "Aliens - Book One - 10.cbz"} {
+		p := filepath.Join(series, n)
+		os.MkdirAll(series, 0o755)
+		f, _ := os.Create(p)
+		z := zip.NewWriter(f)
+		for _, pg := range []string{"01.jpg", "02.jpg", "03.jpg"} {
+			w, _ := z.Create(pg)
+			w.Write([]byte{0xFF, 0xD8, 0xFF})
+		}
+		z.Close()
+		f.Close()
+	}
+	write(t, filepath.Join(series, "empty.cbz"), "not a zip")
+	store := newFakeStore()
+	res, err := Scanner{Store: store, Prober: &fakeProber{}}.Scan(context.Background(), catalog.Library{ID: 7, MediaType: "comic", Paths: []string{dir}})
+	if err != nil || res.Added != 3 || len(res.Errors) != 1 {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	if len(store.titles) != 1 || len(store.tracks) != 3 {
+		t.Errorf("titles=%v tracks=%v", store.titles, store.tracks)
+	}
+	id := store.titles["aliens - book one|0"]
+	if store.tracks[fmt.Sprintf("%d|1|1000|issue 10", id)] == 0 {
+		t.Errorf("issue 10 = %v", store.tracks)
 	}
 }

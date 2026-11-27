@@ -1276,6 +1276,103 @@ img {
   accent-color: var(--lamp);
 }
 
+/* ---------- Comic reader ---------- */
+
+.comic-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.comic-cover {
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+/* How far into an issue you are, along the bottom of its cover. */
+.comic-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--lamp);
+}
+
+.comic .comic-opt[aria-pressed="true"] {
+  border-color: var(--lamp);
+  color: var(--lamp);
+}
+
+.comic-stage {
+  position: relative;
+  min-height: 0;
+  overflow: auto;
+  background: #0a0b0d;
+}
+
+.comic-pages {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100%;
+}
+
+.comic-fit-page .comic-pages {
+  height: 100%;
+  align-items: center;
+}
+
+.comic-fit-page .comic-pages img {
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.comic-fit-page.comic-spread .comic-pages img {
+  max-width: 50%;
+}
+
+.comic-fit-width .comic-pages img {
+  width: min(100%, 1100px);
+  height: auto;
+}
+
+.comic-fit-width.comic-spread .comic-pages img {
+  width: min(50%, 900px);
+}
+
+/* The left and right thirds of the page turn it. */
+.comic-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 33%;
+  z-index: 1;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.comic-zone-prev {
+  left: 0;
+  cursor: w-resize;
+}
+
+.comic-zone-next {
+  right: 0;
+  cursor: e-resize;
+}
+
+.comic-next-issue {
+  position: absolute;
+  z-index: 2;
+  right: 1.5rem;
+  bottom: 1.5rem;
+}
+
 /* ---------- Setup form ---------- */
 
 .kind-choice {
@@ -1399,6 +1496,9 @@ img {
   }
   .reader-tools {
     gap: 0.25rem;
+  }
+  .comic-opt {
+    display: none;
   }
   .reader-tools .btn {
     padding-inline: 0.7rem;

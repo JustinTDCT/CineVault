@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/JustinTDCT/CineVault/internal/comic"
 	"github.com/JustinTDCT/CineVault/internal/config"
 	"github.com/JustinTDCT/CineVault/internal/db"
 	"github.com/JustinTDCT/CineVault/internal/match"
@@ -68,9 +69,16 @@ func run(log *slog.Logger) error {
 	caps := probeCapabilities(cfg)
 	logCapabilities(log, caps)
 
+	comics := &comic.Reader{CacheDir: filepath.Join(cfg.CacheDir, "comics")}
+	if comics.Available() {
+		log.Info("comics", "cbr_cb7", "bsdtar")
+	} else {
+		log.Warn("comics: CBR and CB7 files need bsdtar; CBZ works without it", "install", "sudo apt install libarchive-tools")
+	}
 	scanner := scan.Scanner{
 		Store:  database,
 		Prober: mediainfo.FFprobe{Path: cfg.FFprobePath, Run: probe.ExecRunner},
+		Comics: comics,
 	}
 
 	pref, err := transcode.ParsePreference(cfg.TranscodeMode, cfg.TranscodeGPU)
@@ -117,6 +125,7 @@ func run(log *slog.Logger) error {
 			Versions: database, Streamer: streamer,
 			Encoder: enc, EncoderOK: encOK, Note: note, MaxHeight: 1080,
 			Thumbs: thumb.New(cfg.FFmpegPath, filepath.Join(cfg.CacheDir, "thumbs")),
+			Comics: comics,
 		},
 		Log: log,
 	})

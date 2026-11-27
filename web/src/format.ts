@@ -191,6 +191,8 @@ export function itemNoun(mediaType: string | undefined, count: number): string {
       return one ? "audiobook" : "audiobooks";
     case "book":
       return one ? "book" : "books";
+    case "comic":
+      return "series";
     default:
       return one ? "movie" : "movies";
   }

@@ -30,6 +30,8 @@ export interface Version {
   last_episode?: number;
   /** Chapter marks (audiobooks). */
   chapters?: Chapter[];
+  /** Comics: number of pages. */
+  page_count?: number;
 }
 
 export interface Chapter {

@@ -54,6 +54,7 @@ npm run dev    # serves on port 5173 and forwards /api to the Go server on 8456
 | `DELETE /api/playback/{session}` | Stop a session |
 | `GET /api/versions/{id}/thumb` | A still from a video file (a third of the way in), made on first request and cached |
 | `GET /api/versions/{id}/cover` | Album cover for a music file: `cover.jpg`/`folder.jpg` next to it, or the art embedded in the file |
+| `GET /api/versions/{id}/pages/{n}` | Page n (from 0) of a comic, as an image |
 | `GET /api/versions/{id}/file` | The original file, with range requests for seeking |
 
 The health check reports:
@@ -120,6 +121,10 @@ J.R.R. Tolkien - [The Lord of the Rings 02] - The Fellowship of the Ring.m4b   (
 ### Ebooks
 
 EPUB, AZW3, MOBI and FB2 read in the browser (with [foliate-js](https://github.com/johnfactotum/foliate-js)); PDFs open in the browser's own viewer. Title, author, series and cover come from the book file itself (the EPUB package, the AZW3 header), then from names like `Author/Author - [Series 05] - Title.epub`. Copies of one book in several formats are listed together, and the reading position is saved per book.
+
+### Comics
+
+A comic library holds one folder per series, with one file per issue: `Aliens - Book One/Aliens - Book One - 1.cbr`. The issue number comes from the end of the name (`- 2`, `#002`, `Issue 12`), and a `ComicInfo.xml` inside the archive wins when there is one. CBZ works out of the box; CBR, CB7 and CBT need `bsdtar` (`sudo apt install libarchive-tools`), and are unpacked into the cache on first read so pages turn quickly (the 12 most recent are kept).
 
 ## Project layout
 

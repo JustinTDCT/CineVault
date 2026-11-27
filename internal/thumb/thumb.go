@@ -180,3 +180,36 @@ func FolderCover(dir string) string {
 	}
 	return ""
 }
+
+// FromImage makes a cached 400-pixel-wide JPEG from image data, for example
+// a comic's first page as its cover. key names the cache file.
+func (m *Maker) FromImage(ctx context.Context, key string, data []byte) (string, error) {
+	out := filepath.Join(m.Dir, key+".jpg")
+	if st, err := os.Stat(out); err == nil && st.Size() > 0 {
+		return out, nil
+	}
+	select {
+	case m.sem <- struct{}{}:
+		defer func() { <-m.sem }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	if err := os.MkdirAll(m.Dir, 0o755); err != nil {
+		return "", err
+	}
+	src := out + ".src"
+	if err := os.WriteFile(src, data, 0o644); err != nil {
+		return "", err
+	}
+	defer os.Remove(src)
+	tmp := out + ".tmp.jpg"
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, m.FFmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+		"-i", src, "-frames:v", "1", "-vf", "scale='min(400,iw)':-2", "-q:v", "3", tmp)
+	if msg, err := cmd.CombinedOutput(); err != nil {
+		os.Remove(tmp)
+		return "", fmt.Errorf("%w: %v %s", ErrFailed, err, msg)
+	}
+	return out, os.Rename(tmp, out)
+}

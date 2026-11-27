@@ -156,7 +156,7 @@ func (d *DB) UpsertVersion(ctx context.Context, editionID int64, v scan.NewVersi
 	_, err := d.Pool.Exec(ctx, sqlUpsertVersion,
 		editionID, v.Path, v.SizeBytes, v.Fingerprint, i.Label(), i.Container,
 		i.VideoCodec, i.Width, i.Height, i.HDR, i.AudioCodec, i.AudioChannels,
-		i.DurationSeconds, i.Bitrate, v.EpisodeID, v.LastEpisode, v.TrackID)
+		i.DurationSeconds, i.Bitrate, v.EpisodeID, v.LastEpisode, v.TrackID, v.PageCount)
 	return err
 }
 
@@ -178,7 +178,7 @@ func (d *DB) Version(ctx context.Context, id int64) (catalog.Version, error) {
 	var v catalog.Version
 	err := d.Pool.QueryRow(ctx, sqlVersion, id).Scan(
 		&v.ID, &v.Path, &v.SizeBytes, &v.Label, &v.Container, &v.VideoCodec, &v.Width, &v.Height,
-		&v.HDR, &v.AudioCodec, &v.AudioChannels, &v.DurationSeconds, &v.Bitrate, &v.EditionLocked, &v.Missing, &v.LastEpisode)
+		&v.HDR, &v.AudioCodec, &v.AudioChannels, &v.DurationSeconds, &v.Bitrate, &v.EditionLocked, &v.Missing, &v.LastEpisode, &v.PageCount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return v, catalog.ErrNotFound
 	}
@@ -286,7 +286,7 @@ func (d *DB) AlbumTracks(ctx context.Context, titleID int64) ([]catalog.AlbumEdi
 		var v catalog.Version
 		if err := rows.Scan(&editionID, &tr.ID, &tr.Disc, &tr.Number, &tr.Name, &tr.Artist,
 			&v.ID, &v.Path, &v.SizeBytes, &v.Label, &v.Container, &v.AudioCodec, &v.AudioChannels,
-			&v.DurationSeconds, &v.Bitrate, &v.Missing); err != nil {
+			&v.DurationSeconds, &v.Bitrate, &v.Missing, &v.PageCount); err != nil {
 			return nil, err
 		}
 		if n := len(out); n == 0 || out[n-1].EditionID != editionID {

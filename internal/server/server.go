@@ -103,6 +103,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/versions/{id}/file", s.versionFile)
 	mux.HandleFunc("GET /api/versions/{id}/thumb", s.versionThumb)
 	mux.HandleFunc("GET /api/versions/{id}/cover", s.versionCover)
+	mux.HandleFunc("GET /api/versions/{id}/pages/{n}", s.versionPage)
 	mux.HandleFunc("GET /api/titles/{id}/tracks", s.albumTracks)
 	mux.HandleFunc("GET /api/titles/{id}/progress", s.getProgress)
 	mux.HandleFunc("PUT /api/titles/{id}/progress", s.putProgress)

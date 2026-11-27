@@ -1,6 +1,7 @@
 package server
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
+	"github.com/JustinTDCT/CineVault/internal/comic"
 	"github.com/JustinTDCT/CineVault/internal/probe"
 	"github.com/JustinTDCT/CineVault/internal/transcode"
 )
@@ -172,5 +174,43 @@ func TestVersionThumb(t *testing.T) {
 	// No thumbnail maker configured: 404 rather than an error.
 	if code, _ := send(t, s, "GET", "/api/versions/1/thumb", ""); code != http.StatusNotFound {
 		t.Errorf("no maker: %d", code)
+	}
+}
+
+func TestComicPages(t *testing.T) {
+	dir := t.TempDir()
+	cbz := filepath.Join(dir, "Aliens - Book One - 1.cbz")
+	f, _ := os.Create(cbz)
+	z := zip.NewWriter(f)
+	for _, n := range []string{"p2.jpg", "p1.jpg"} {
+		w, _ := z.Create(n)
+		w.Write([]byte("JPEG-" + n))
+	}
+	z.Close()
+	f.Close()
+	s := New(Options{
+		Playback: &Playback{
+			Versions: fakeVersions{
+				5: {ID: 5, Path: cbz, SizeBytes: 10, Container: "cbz", PageCount: 2},
+				6: {ID: 6, Path: "/m/a.mkv", Container: "mkv"},
+			},
+			Comics: &comic.Reader{CacheDir: dir},
+		},
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/versions/5/pages/0", nil))
+	if rec.Code != 200 || rec.Body.String() != "JPEG-p1.jpg" || rec.Header().Get("Content-Type") != "image/jpeg" {
+		t.Errorf("page 0: %d %q %q", rec.Code, rec.Body.String(), rec.Header().Get("Content-Type"))
+	}
+	for target, want := range map[string]int{
+		"/api/versions/5/pages/2":  404,
+		"/api/versions/5/pages/-1": 404,
+		"/api/versions/6/pages/0":  400,
+		"/api/versions/9/pages/0":  404,
+	} {
+		if code, _ := send(t, s, "GET", target, ""); code != want {
+			t.Errorf("%s: %d, want %d", target, code, want)
+		}
 	}
 }

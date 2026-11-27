@@ -7,6 +7,7 @@ const KINDS: { type: MediaType; label: string; name: string; folder: string; nam
   { type: "music", label: "Music", name: "Music", folder: "/media/music", naming: "3 Doors Down/Away From the Sun (2002)/01 - When I'm Gone.flac" },
   { type: "audiobook", label: "Audiobooks", name: "Audiobooks", folder: "/media/audiobooks", naming: "Author/Series/Book Title.m4b" },
   { type: "book", label: "Ebooks", name: "Ebooks", folder: "/media/ebooks", naming: "Author/Author - [Series 01] - Title.epub" },
+  { type: "comic", label: "Comics", name: "Comics", folder: "/media/comics", naming: "Aliens - Book One/Aliens - Book One - 1.cbr" },
   { type: "musicvideo", label: "Music videos", name: "Music Videos", folder: "/media/musicvideos", naming: "Alice In Chains - No Excuses (MTV Unplugged).mp4" },
 ];
 
