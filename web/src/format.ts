@@ -1,4 +1,4 @@
-import type { Edition, Title, Version } from "./api";
+import type { Edition, Episode, Season, Title, Version } from "./api";
 
 /** How many edition labels a card shows before "Show all" (Editions spec §7). */
 export const CARD_EDITION_LIMIT = 3;
@@ -88,4 +88,51 @@ export function labelWithoutResolution(label: string | undefined, res: string): 
   if (!label) return "";
   const parts = label.split(" · ");
   return parts[0] === res ? parts.slice(1).join(" · ") : label;
+}
+
+// ---------- TV ----------
+
+/** "Season 1", "Specials", or TMDb's season name when it's more than that. */
+export function seasonLabel(s: Pick<Season, "number" | "name">): string {
+  if (s.number === 0) return "Specials";
+  return s.name && s.name !== `Season ${s.number}` ? s.name : `Season ${s.number}`;
+}
+
+/** "S1 E3", "S1 E1–E2" for a two-episode file, "Special 2" for season 0. */
+export function episodeCode(season: number, episode: number, last?: number): string {
+  const range = last && last > episode ? `${episode}–E${last}` : `${episode}`;
+  return season === 0 ? `Special ${range.replace("E", "")}` : `S${season} E${range}`;
+}
+
+/** The file to play for an episode: the tallest one that's present. */
+export function playableVersion(e: Episode): Version | undefined {
+  return e.versions.find((v) => !v.missing);
+}
+
+/** Episodes with a playable file, in viewing order (specials come last from the server). */
+export function playableEpisodes(seasons: Season[]): Episode[] {
+  return seasons.flatMap((s) => s.episodes.filter((e) => playableVersion(e)));
+}
+
+/** The next playable episode after the given one, for Up Next. */
+export function nextEpisode(seasons: Season[], episodeId: number): Episode | undefined {
+  const list = playableEpisodes(seasons);
+  const i = list.findIndex((e) => e.id === episodeId);
+  return i >= 0 ? list[i + 1] : undefined;
+}
+
+/** "2 seasons · 14 episodes" for a show card; "" when nothing is known. */
+export function showCounts(t: Pick<Title, "season_count" | "episode_count">): string {
+  const parts: string[] = [];
+  if (t.season_count) parts.push(`${t.season_count} ${t.season_count === 1 ? "season" : "seasons"}`);
+  if (t.episode_count) parts.push(`${t.episode_count} ${t.episode_count === 1 ? "episode" : "episodes"}`);
+  return parts.join(" · ");
+}
+
+/** "21 Mar 2024" from "2024-03-21". */
+export function formatDate(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }

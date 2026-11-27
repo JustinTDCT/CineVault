@@ -21,3 +21,17 @@ func TestValidMediaType(t *testing.T) {
 		}
 	}
 }
+
+func TestLinkMultiEpisodeFiles(t *testing.T) {
+	seasons := []Season{{Number: 1, Episodes: []Episode{
+		{Number: 1, Versions: []Version{{ID: 9, LastEpisode: 3}}},
+		{Number: 2},
+		{Number: 3, Versions: []Version{{ID: 10}}}, // has its own file too
+		{Number: 4},
+	}}}
+	LinkMultiEpisodeFiles(seasons)
+	eps := seasons[0].Episodes
+	if eps[1].PartOf != 1 || eps[2].PartOf != 0 || eps[3].PartOf != 0 {
+		t.Errorf("part_of = %d %d %d", eps[1].PartOf, eps[2].PartOf, eps[3].PartOf)
+	}
+}

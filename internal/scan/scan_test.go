@@ -16,6 +16,7 @@ import (
 
 type fakeVersion struct {
 	id, editionID, size int64
+	episodeID, last     int64
 	missing             bool
 	info                mediainfo.Info
 }
@@ -26,10 +27,12 @@ type fakeStore struct {
 	editions map[string]int64 // "titleID|edition" -> id
 	runtimes map[int64]int
 	versions map[string]*fakeVersion
+	episodes map[string]int64 // "titleID|S1E3" -> id
+	epNames  map[int64]string
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{titles: map[string]int64{}, editions: map[string]int64{}, runtimes: map[int64]int{}, versions: map[string]*fakeVersion{}}
+	return &fakeStore{titles: map[string]int64{}, editions: map[string]int64{}, runtimes: map[int64]int{}, versions: map[string]*fakeVersion{}, episodes: map[string]int64{}, epNames: map[int64]string{}}
 }
 
 func (f *fakeStore) id() int64 { f.nextID++; return f.nextID }
@@ -41,7 +44,18 @@ func (f *fakeStore) EditionTypes(context.Context) ([]catalog.EditionType, error)
 	for i := range types[1:] {
 		types[i+1].MediaTypes = []string{"movie"}
 	}
+	types = append(types, catalog.EditionType{ID: "broadcast", DisplayName: "Broadcast", MediaTypes: []string{"tv"}, IsDefault: true})
 	return types, nil
+}
+
+func (f *fakeStore) FindOrCreateEpisode(_ context.Context, titleID int64, season, episode int, name string) (int64, error) {
+	key := fmt.Sprintf("%d|S%dE%d", titleID, season, episode)
+	if id, ok := f.episodes[key]; ok {
+		return id, nil
+	}
+	f.episodes[key] = f.id()
+	f.epNames[f.episodes[key]] = name
+	return f.episodes[key], nil
 }
 
 func (f *fakeStore) KnownVersions(context.Context, int64) (map[string]KnownVersion, error) {
@@ -74,9 +88,10 @@ func (f *fakeStore) FindOrCreateEdition(_ context.Context, titleID int64, ed str
 func (f *fakeStore) UpsertVersion(_ context.Context, editionID int64, v NewVersion) error {
 	if old, ok := f.versions[v.Path]; ok {
 		old.editionID, old.size, old.missing, old.info = editionID, v.SizeBytes, false, v.Info
+		old.episodeID, old.last = v.EpisodeID, int64(v.LastEpisode)
 		return nil
 	}
-	f.versions[v.Path] = &fakeVersion{id: f.id(), editionID: editionID, size: v.SizeBytes, info: v.Info}
+	f.versions[v.Path] = &fakeVersion{id: f.id(), editionID: editionID, size: v.SizeBytes, info: v.Info, episodeID: v.EpisodeID, last: int64(v.LastEpisode)}
 	return nil
 }
 
@@ -265,5 +280,49 @@ func TestFingerprint(t *testing.T) {
 	}
 	if !strings.HasPrefix(fp("small"), "v1:4:") {
 		t.Errorf("small = %s", fp("small"))
+	}
+}
+
+func TestScanTVLibrary(t *testing.T) {
+	dir := t.TempDir()
+	show := filepath.Join(dir, "3 Body Problem", "Season 1")
+	for _, n := range []string{"01 - Countdown", "02 - Red Coast", "03 - Destroyer of Worlds"} {
+		base := "3 Body Problem - S01E" + n + " [WEBRip-1080p, x265 EAC3 Atmos]"
+		write(t, filepath.Join(show, base+".mkv"), "video "+n)
+		write(t, filepath.Join(show, base+".en.srt"), "subs") // sidecar subtitles are skipped
+	}
+	write(t, filepath.Join(dir, "Lost", "Season 1", "Lost - S01E01-E02 - Pilot.mkv"), "two episodes")
+	write(t, filepath.Join(dir, "Lost", "Season 1", "Lost - Behind the Scenes.mkv"), "extra")
+
+	store := newFakeStore()
+	sc := Scanner{Store: store, Prober: &fakeProber{}}
+	res, err := sc.Scan(context.Background(), catalog.Library{ID: 1, MediaType: "tv", Paths: []string{dir}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.FilesSeen != 5 || res.Added != 4 || len(res.Errors) != 1 || !strings.Contains(res.Errors[0].Error, "season and episode") {
+		t.Fatalf("result = %+v", res)
+	}
+	if len(store.titles) != 2 || store.titles["3 body problem|0"] == 0 || store.titles["lost|0"] == 0 {
+		t.Errorf("titles = %v", store.titles)
+	}
+	if len(store.episodes) != 4 {
+		t.Errorf("episodes = %v", store.episodes)
+	}
+	tbp := store.titles["3 body problem|0"]
+	if id := store.episodes[fmt.Sprintf("%d|S1E3", tbp)]; store.epNames[id] != "Destroyer of Worlds" {
+		t.Errorf("episode name = %q", store.epNames[id])
+	}
+	pilot := store.versions[filepath.Join(dir, "Lost", "Season 1", "Lost - S01E01-E02 - Pilot.mkv")]
+	if pilot == nil || pilot.episodeID == 0 || pilot.last != 2 {
+		t.Errorf("multi-episode file = %+v", pilot)
+	}
+	// Every file of a show shares the show's default edition.
+	eds := map[int64]bool{}
+	for _, v := range store.versions {
+		eds[v.editionID] = true
+	}
+	if len(eds) != 2 {
+		t.Errorf("editions used = %v, want one per show", eds)
 	}
 }

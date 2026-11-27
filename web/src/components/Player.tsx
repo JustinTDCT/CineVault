@@ -10,7 +10,19 @@ export interface PlayTarget {
 
 /** Full-window player. Plays the file directly when the browser supports it,
  *  otherwise streams it converted (HLS) by the server. */
-export function Player({ target, onClose }: { target: PlayTarget; onClose: () => void }) {
+export function Player({
+  target,
+  onClose,
+  upNext,
+  onEnded,
+}: {
+  target: PlayTarget;
+  onClose: () => void;
+  /** Label of what plays next (an episode), shown with a button to skip to it. */
+  upNext?: string;
+  /** Called when the video finishes, e.g. to play the next episode. */
+  onEnded?: () => void;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [info, setInfo] = useState<PlayResponse | null>(null);
   const [error, setError] = useState("");
@@ -87,11 +99,18 @@ export function Player({ target, onClose }: { target: PlayTarget; onClose: () =>
             {error || status}
           </p>
         </div>
-        <button className="btn" onClick={onClose} autoFocus>
-          Close
-        </button>
+        <div className="player-actions">
+          {upNext && onEnded ? (
+            <button className="btn" onClick={onEnded} title={`Play ${upNext}`}>
+              Next: {upNext}
+            </button>
+          ) : null}
+          <button className="btn" onClick={onClose} autoFocus>
+            Close
+          </button>
+        </div>
       </div>
-      <video ref={videoRef} className="player-video" controls playsInline />
+      <video ref={videoRef} className="player-video" controls playsInline onEnded={onEnded} />
     </div>
   );
 }

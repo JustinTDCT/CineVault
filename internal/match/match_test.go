@@ -3,6 +3,7 @@ package match
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/JustinTDCT/CineVault/internal/tmdb"
@@ -68,10 +69,47 @@ func (f *fakeSource) Movie(_ context.Context, id int) (tmdb.Movie, error) {
 	return tmdb.Movie{ID: id, Title: "Movie " + string(rune('A'+id%26))}, nil
 }
 
+func (f *fakeSource) SearchTV(_ context.Context, q string, year int) ([]tmdb.SearchResult, error) {
+	f.searches = append(f.searches, "tv:"+q)
+	if q == "3 Body Problem" {
+		return []tmdb.SearchResult{r(108545, "3 Body Problem", "2024-03-21")}, nil
+	}
+	return []tmdb.SearchResult{}, nil
+}
+
+func (f *fakeSource) TV(_ context.Context, id int) (tmdb.Show, error) {
+	return tmdb.Show{ID: id, Name: "3 Body Problem", FirstAirDate: "2024-03-21",
+		Seasons: []tmdb.SeasonSummary{{SeasonNumber: 0}, {SeasonNumber: 1}, {SeasonNumber: 2}}}, nil
+}
+
+func (f *fakeSource) Season(_ context.Context, show, n int) (tmdb.Season, error) {
+	f.searches = append(f.searches, fmt.Sprintf("season:%d/%d", show, n))
+	switch n {
+	case 1:
+		return tmdb.Season{SeasonNumber: 1, Episodes: make([]tmdb.Episode, 8)}, nil
+	case 2:
+		return tmdb.Season{}, errors.New("TMDb returned HTTP 500")
+	}
+	return tmdb.Season{}, tmdb.ErrNotFound
+}
+
 type fakeStore struct {
 	titles   []Title
 	matched  map[int64]int
 	failures map[int64]string
+	seasons  map[int64][]int
+	pending  []ShowSeasons
+}
+
+func (f *fakeStore) SaveSeason(_ context.Context, id int64, s tmdb.Season) error {
+	if f.seasons == nil {
+		f.seasons = map[int64][]int{}
+	}
+	f.seasons[id] = append(f.seasons[id], s.SeasonNumber)
+	return nil
+}
+func (f *fakeStore) ShowsNeedingEpisodes(context.Context, int64) ([]ShowSeasons, error) {
+	return f.pending, nil
 }
 
 func (f *fakeStore) TitlesToMatch(context.Context, int64) ([]Title, error) { return f.titles, nil }
@@ -128,5 +166,32 @@ func TestMatchRecordsNetworkErrors(t *testing.T) {
 	res, err := Matcher{Store: store, Source: src}.MatchLibrary(context.Background(), 1)
 	if err != nil || res.Errors != 1 || store.failures[1] != "error" {
 		t.Errorf("res=%+v err=%v failures=%v", res, err, store.failures)
+	}
+}
+
+func TestMatchShows(t *testing.T) {
+	store := &fakeStore{
+		titles:  []Title{{ID: 7, MediaType: "tv", Name: "3 Body Problem"}, {ID: 8, MediaType: "tv", Name: "Unknown Show"}},
+		matched: map[int64]int{}, failures: map[int64]string{},
+		pending: []ShowSeasons{{TitleID: 9, Name: "Older Show", TMDbID: 555, Seasons: []int{1}}},
+	}
+	src := &fakeSource{}
+	res, err := Matcher{Store: store, Source: src}.MatchLibrary(context.Background(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.matched[7] != 108545 || store.failures[8] != "not_found" {
+		t.Errorf("matched=%v failures=%v", store.matched, store.failures)
+	}
+	// Season 0 isn't on TMDb (skipped), season 1 saved, season 2 failed but didn't stop the run;
+	// the older show's new season was fetched too.
+	if fmt.Sprint(store.seasons[7]) != "[1]" || fmt.Sprint(store.seasons[9]) != "[1]" {
+		t.Errorf("seasons = %v", store.seasons)
+	}
+	if res.Matched != 1 || res.NotFound != 1 || res.Errors != 1 || res.Episodes != 16 {
+		t.Errorf("result = %+v", res)
+	}
+	if src.searches[0] != "tv:3 Body Problem" {
+		t.Errorf("searches = %v", src.searches)
 	}
 }

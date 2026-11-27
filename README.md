@@ -43,9 +43,10 @@ npm run dev    # serves on port 5173 and forwards /api to the Go server on 8456
 | `GET /api/edition-types` | The Edition List. Optional `media_type` (`movie`, `tv`, `music`, `audiobook`, `book`) and `include_hidden=true`. |
 | `GET /api/libraries` | All libraries |
 | `POST /api/libraries` | Add a library: `{"name": "Movies", "media_type": "movie", "paths": ["/media/movies"]}` |
-| `POST /api/libraries/{id}/scan` | Scan a library now, then match new titles to TMDb, and return a summary (movie libraries only, for now) |
+| `POST /api/libraries/{id}/scan` | Scan a library now, then match new titles to TMDb, and return a summary. Movie and TV libraries. |
 | `POST /api/libraries/{id}/match` | Match unmatched titles to TMDb without scanning. Titles that failed with an error are retried; ones TMDb didn't find are not. |
-| `GET /api/libraries/{id}/titles` | Titles with their editions and versions |
+| `GET /api/libraries/{id}/titles` | Titles with their editions and versions. Shows list their season and episode counts instead of files. |
+| `GET /api/titles/{id}/episodes` | A show's seasons and episodes with their files, including episodes TMDb lists that the library doesn't have |
 | `POST /api/playback` | Start playing a file: `{"version_id": 2, "caps": {...}}`. Returns a direct file URL, or an HLS playlist URL when the file needs converting. |
 | `GET /api/playback/{session}/index.m3u8`, `…/segN.ts` | HLS playlist and segments for a session |
 | `DELETE /api/playback/{session}` | Stop a session |
@@ -75,6 +76,19 @@ Settings come from environment variables:
 | `CINEVAULT_TRANSCODE_RESUME_AHEAD` | `90s` | Resume it when the lead drops to this; must be less than the pause setting |
 | `CINEVAULT_TRANSCODE_KEEP_BEHIND` | `3m` | Keep this much already-watched video for quick rewinds; older segments are deleted |
 | `CINEVAULT_TMDB_TOKEN` | none | TMDb API read access token. Without it, titles aren't matched to TMDb. `make run` reads it from `~/.config/cinevault/tmdb.env`. |
+
+### TV file names
+
+A TV library holds one folder per show. The show name comes from that folder (a year in brackets and a `{tmdb-123}` tag are optional), and the season and episode from the file name:
+
+```
+3 Body Problem/Season 1/3 Body Problem - S01E01 - Countdown.mkv
+Doctor Who (2005) {tmdb-57243}/Season 01/Doctor Who (2005) - S01E01 - Rose.mkv
+Lost/Season 1/Lost - S01E01-E02 - Pilot.mkv          (one file, two episodes)
+Sherlock/Specials/Sherlock - S00E01 - The Abominable Bride.mkv
+```
+
+`S01E01`, `s1e1`, `S01.E01` and `1x01` all work. Files with no season and episode number are listed as scan errors. Subtitle files next to the video (`.srt`) are ignored for now.
 
 ## Project layout
 

@@ -56,6 +56,8 @@ type LibraryStore interface {
 	Libraries(ctx context.Context) ([]catalog.Library, error)
 	Library(ctx context.Context, id int64) (catalog.Library, error)
 	LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Title, error)
+	// TitleEpisodes returns a show's seasons and episodes, or catalog.ErrNotFound.
+	TitleEpisodes(ctx context.Context, titleID int64) ([]catalog.Season, error)
 }
 
 // Server serves the CineVault API.
@@ -89,6 +91,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/libraries/{id}/titles", s.libraryTitles)
 	mux.HandleFunc("POST /api/libraries/{id}/scan", s.scanLibrary)
 	mux.HandleFunc("POST /api/libraries/{id}/match", s.matchLibrary)
+	mux.HandleFunc("GET /api/titles/{id}/episodes", s.titleEpisodes)
 	mux.HandleFunc("POST /api/playback", s.startPlayback)
 	mux.HandleFunc("GET /api/playback/{session}/{file}", s.playbackFile)
 	mux.HandleFunc("DELETE /api/playback/{session}", s.stopPlayback)

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Title } from "../api";
-import { editionListing, posterBadge } from "../format";
+import { editionListing, posterBadge, showCounts } from "../format";
 import { linkTo } from "../router";
 
 export function Poster({ title, size = "card" }: { title: Title; size?: "card" | "large" }) {
@@ -42,7 +42,11 @@ export function PosterCard({ title }: { title: Title }) {
       <h3 className="card-title">
         <a {...linkTo(href)}>{title.name}</a>
       </h3>
-      {title.year ? <p className="card-year">{title.year}</p> : null}
+      {title.media_type === "tv" ? (
+        <p className="card-year">{[title.year, showCounts(title)].filter(Boolean).join("   ")}</p>
+      ) : title.year ? (
+        <p className="card-year">{title.year}</p>
+      ) : null}
       {multi ? (
         <p className="card-editions" aria-label="Editions you have">
           {shown.map((e, i) => (

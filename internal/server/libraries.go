@@ -108,6 +108,26 @@ func (s *Server) libraryTitles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, titles)
 }
 
+// titleEpisodes lists a show's seasons and episodes, including episodes the
+// library has no file for. A movie has none.
+func (s *Server) titleEpisodes(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "title id must be a positive number")
+		return
+	}
+	seasons, err := s.opt.Libraries.TitleEpisodes(r.Context(), id)
+	if errors.Is(err, catalog.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "title not found")
+		return
+	}
+	if err != nil {
+		s.internalError(w, "list episodes", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, seasons)
+}
+
 type scanResponse struct {
 	Library    catalog.Library `json:"library"`
 	DurationMS int64           `json:"duration_ms"`

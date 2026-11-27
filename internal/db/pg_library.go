@@ -72,6 +72,7 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 			&t.OriginalTitle, &t.Overview, &t.Tagline, &t.ReleaseDate, &t.RuntimeMinutes,
 			&t.PosterPath, &t.BackdropPath, &t.IMDbID, &t.Genres, &t.Rating,
 			&t.CollectionID, &t.CollectionName, &t.MatchStatus, &t.MatchError,
+			&t.SeasonCount, &t.EpisodeCount,
 			&e.ID, &e.EditionTypeID, &e.DisplayName, &e.ShortLabel, &e.RuntimeSeconds,
 			&v.ID, &v.Path, &v.SizeBytes, &v.Label, &v.Container, &v.VideoCodec,
 			&v.Width, &v.Height, &v.HDR, &v.AudioCodec, &v.AudioChannels,
@@ -152,7 +153,7 @@ func (d *DB) UpsertVersion(ctx context.Context, editionID int64, v scan.NewVersi
 	_, err := d.Pool.Exec(ctx, sqlUpsertVersion,
 		editionID, v.Path, v.SizeBytes, v.Fingerprint, i.Label(), i.Container,
 		i.VideoCodec, i.Width, i.Height, i.HDR, i.AudioCodec, i.AudioChannels,
-		i.DurationSeconds, i.Bitrate)
+		i.DurationSeconds, i.Bitrate, v.EpisodeID, v.LastEpisode)
 	return err
 }
 
@@ -174,9 +175,75 @@ func (d *DB) Version(ctx context.Context, id int64) (catalog.Version, error) {
 	var v catalog.Version
 	err := d.Pool.QueryRow(ctx, sqlVersion, id).Scan(
 		&v.ID, &v.Path, &v.SizeBytes, &v.Label, &v.Container, &v.VideoCodec, &v.Width, &v.Height,
-		&v.HDR, &v.AudioCodec, &v.AudioChannels, &v.DurationSeconds, &v.Bitrate, &v.EditionLocked, &v.Missing)
+		&v.HDR, &v.AudioCodec, &v.AudioChannels, &v.DurationSeconds, &v.Bitrate, &v.EditionLocked, &v.Missing, &v.LastEpisode)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return v, catalog.ErrNotFound
 	}
 	return v, err
+}
+
+// FindOrCreateEpisode implements scan.Store.
+func (d *DB) FindOrCreateEpisode(ctx context.Context, titleID int64, season, episode int, name string) (int64, error) {
+	var id int64
+	err := d.Pool.QueryRow(ctx, sqlFindOrCreateEpisode, titleID, season, episode, name).Scan(&id)
+	return id, err
+}
+
+// TitleEpisodes returns a show's seasons and episodes with their files, or
+// catalog.ErrNotFound when there's no such title.
+func (d *DB) TitleEpisodes(ctx context.Context, titleID int64) ([]catalog.Season, error) {
+	var exists bool
+	if err := d.Pool.QueryRow(ctx, sqlTitleExists, titleID).Scan(&exists); err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, catalog.ErrNotFound
+	}
+	rows, err := d.Pool.Query(ctx, sqlTitleEpisodes, titleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []catalog.Season{}
+	for rows.Next() {
+		var s catalog.Season
+		var e catalog.Episode
+		var v catalog.Version
+		var poster, still string
+		if err := rows.Scan(
+			&s.Number, &s.Name, &s.Overview, &poster, &s.AirDate,
+			&e.ID, &e.Number, &e.Name, &e.Overview, &e.AirDate, &e.RuntimeMinutes, &still, &e.Rating,
+			&v.ID, &v.Path, &v.SizeBytes, &v.Label, &v.Container, &v.VideoCodec,
+			&v.Width, &v.Height, &v.HDR, &v.AudioCodec, &v.AudioChannels,
+			&v.DurationSeconds, &v.Bitrate, &v.EditionLocked, &v.Missing, &v.LastEpisode,
+		); err != nil {
+			return nil, err
+		}
+		// Rows arrive grouped by season, then episode; fold them into a tree.
+		if n := len(out); n == 0 || out[n-1].Number != s.Number {
+			if poster != "" {
+				s.PosterURL = tmdb.ImageBaseURL + "w342" + poster
+			}
+			s.Episodes = []catalog.Episode{}
+			out = append(out, s)
+		}
+		season := &out[len(out)-1]
+		if n := len(season.Episodes); n == 0 || season.Episodes[n-1].ID != e.ID {
+			e.Season = s.Number
+			if still != "" {
+				e.StillURL = tmdb.ImageBaseURL + "w300" + still
+			}
+			e.Versions = []catalog.Version{}
+			season.Episodes = append(season.Episodes, e)
+		}
+		if v.ID != 0 {
+			ep := &season.Episodes[len(season.Episodes)-1]
+			ep.Versions = append(ep.Versions, v)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	catalog.LinkMultiEpisodeFiles(out)
+	return out, nil
 }

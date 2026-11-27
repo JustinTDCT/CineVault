@@ -32,14 +32,14 @@ const (
 		SELECT id FROM titles
 		WHERE library_id = $1
 		  AND lower(file_title) = lower($2)
-		  AND year IS NOT DISTINCT FROM NULLIF($3::integer, 0)
+		  AND file_year IS NOT DISTINCT FROM NULLIF($3::integer, 0)
 		ORDER BY id
 		LIMIT 1`
 
 	// $5 year and $6 tmdb_id: 0 means unknown.
 	sqlInsertTitle = `
-		INSERT INTO titles (library_id, media_type, name, file_title, sort_name, year, tmdb_id)
-		VALUES ($1, $2, $3, $3, $4, NULLIF($5::integer, 0), NULLIF($6::integer, 0))
+		INSERT INTO titles (library_id, media_type, name, file_title, sort_name, year, file_year, tmdb_id)
+		VALUES ($1, $2, $3, $3, $4, NULLIF($5::integer, 0), NULLIF($5::integer, 0), NULLIF($6::integer, 0))
 		RETURNING id`
 
 	// Keeps an existing runtime; fills it in if it was empty.
@@ -50,15 +50,28 @@ const (
 		   SET runtime_seconds = COALESCE(editions.runtime_seconds, EXCLUDED.runtime_seconds)
 		RETURNING id`
 
+	// Creates the season row too. A name from TMDb is kept over one from a file.
+	sqlFindOrCreateEpisode = `
+		WITH season AS (
+		    INSERT INTO seasons (title_id, season_number) VALUES ($1, $2)
+		    ON CONFLICT (title_id, season_number) DO NOTHING
+		)
+		INSERT INTO episodes (title_id, season_number, episode_number, name)
+		VALUES ($1, $2, $3, NULLIF($4, ''))
+		ON CONFLICT (title_id, season_number, episode_number) DO UPDATE
+		   SET name = COALESCE(episodes.name, EXCLUDED.name)
+		RETURNING id`
+
 	// A version whose edition the user locked keeps its edition.
 	sqlUpsertVersion = `
 		INSERT INTO versions (edition_id, path, size_bytes, fingerprint, label, container,
 		                      video_codec, width, height, hdr, audio_codec, audio_channels,
-		                      duration_seconds, bitrate)
+		                      duration_seconds, bitrate, episode_id, last_episode)
 		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''),
 		        NULLIF($7, ''), NULLIF($8::integer, 0), NULLIF($9::integer, 0), NULLIF($10, ''),
 		        NULLIF($11, ''), NULLIF($12::integer, 0),
-		        NULLIF($13::float8, 0)::numeric(10,3), NULLIF($14::bigint, 0))
+		        NULLIF($13::float8, 0)::numeric(10,3), NULLIF($14::bigint, 0),
+		        NULLIF($15::bigint, 0), NULLIF($16::integer, 0))
 		ON CONFLICT (path) DO UPDATE SET
 		    edition_id       = CASE WHEN versions.edition_locked THEN versions.edition_id ELSE EXCLUDED.edition_id END,
 		    size_bytes       = EXCLUDED.size_bytes,
@@ -73,6 +86,8 @@ const (
 		    audio_channels   = EXCLUDED.audio_channels,
 		    duration_seconds = EXCLUDED.duration_seconds,
 		    bitrate          = EXCLUDED.bitrate,
+		    episode_id       = EXCLUDED.episode_id,
+		    last_episode     = EXCLUDED.last_episode,
 		    missing_since    = NULL`
 
 	sqlSetMissing = `
@@ -88,12 +103,12 @@ const (
 		       COALESCE(v.video_codec, ''), COALESCE(v.width, 0), COALESCE(v.height, 0),
 		       COALESCE(v.hdr, ''), COALESCE(v.audio_codec, ''), COALESCE(v.audio_channels, 0),
 		       COALESCE(v.duration_seconds, 0)::float8, COALESCE(v.bitrate, 0),
-		       v.edition_locked, v.missing_since IS NOT NULL
+		       v.edition_locked, v.missing_since IS NOT NULL, COALESCE(v.last_episode, 0)
 		FROM versions v
 		WHERE v.id = $1`
 
 	sqlTitlesToMatch = `
-		SELECT id, file_title, COALESCE(year, 0), COALESCE(tmdb_id, 0)
+		SELECT id, media_type, file_title, COALESCE(file_year, 0), COALESCE(tmdb_id, 0)
 		FROM titles
 		WHERE library_id = $1 AND match_status IN ('unmatched', 'error')
 		ORDER BY sort_name, id`
@@ -125,6 +140,56 @@ const (
 		    updated_at         = now()
 		WHERE id = $1`
 
+	// Matched shows with episodes that have no TMDb details yet.
+	sqlShowsNeedingEpisodes = `
+		SELECT t.id, t.name, t.tmdb_id, array_agg(DISTINCT e.season_number ORDER BY e.season_number)
+		FROM titles t
+		JOIN episodes e ON e.title_id = t.id
+		WHERE t.library_id = $1 AND t.media_type = 'tv' AND t.match_status = 'matched'
+		  AND t.tmdb_id IS NOT NULL AND e.tmdb_id IS NULL
+		GROUP BY t.id, t.name, t.tmdb_id
+		ORDER BY t.id`
+
+	sqlSaveSeason = `
+		INSERT INTO seasons (title_id, season_number, name, overview, poster_path, air_date)
+		VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), NULLIF($6::text, '')::date)
+		ON CONFLICT (title_id, season_number) DO UPDATE SET
+		    name = EXCLUDED.name, overview = EXCLUDED.overview,
+		    poster_path = EXCLUDED.poster_path, air_date = EXCLUDED.air_date`
+
+	sqlSaveEpisode = `
+		INSERT INTO episodes (title_id, season_number, episode_number, name, overview, air_date,
+		                      runtime_minutes, still_path, rating, tmdb_id)
+		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), NULLIF($6::text, '')::date,
+		        NULLIF($7::integer, 0), NULLIF($8, ''), NULLIF($9::float8, 0)::numeric(3, 1), $10)
+		ON CONFLICT (title_id, season_number, episode_number) DO UPDATE SET
+		    name = COALESCE(EXCLUDED.name, episodes.name), overview = EXCLUDED.overview,
+		    air_date = EXCLUDED.air_date, runtime_minutes = EXCLUDED.runtime_minutes,
+		    still_path = EXCLUDED.still_path, rating = EXCLUDED.rating, tmdb_id = EXCLUDED.tmdb_id`
+
+	// One row per episode file (or per episode with no file); specials last.
+	sqlTitleEpisodes = `
+		SELECT s.season_number, COALESCE(s.name, ''), COALESCE(s.overview, ''),
+		       COALESCE(s.poster_path, ''), COALESCE(to_char(s.air_date, 'YYYY-MM-DD'), ''),
+		       ep.id, ep.episode_number, COALESCE(ep.name, ''), COALESCE(ep.overview, ''),
+		       COALESCE(to_char(ep.air_date, 'YYYY-MM-DD'), ''), COALESCE(ep.runtime_minutes, 0),
+		       COALESCE(ep.still_path, ''), COALESCE(ep.rating, 0)::float8,
+		       COALESCE(v.id, 0), COALESCE(v.path, ''), COALESCE(v.size_bytes, 0),
+		       COALESCE(v.label, ''), COALESCE(v.container, ''), COALESCE(v.video_codec, ''),
+		       COALESCE(v.width, 0), COALESCE(v.height, 0), COALESCE(v.hdr, ''),
+		       COALESCE(v.audio_codec, ''), COALESCE(v.audio_channels, 0),
+		       COALESCE(v.duration_seconds, 0)::float8, COALESCE(v.bitrate, 0),
+		       COALESCE(v.edition_locked, false), v.missing_since IS NOT NULL,
+		       COALESCE(v.last_episode, 0)
+		FROM seasons s
+		JOIN episodes ep ON ep.title_id = s.title_id AND ep.season_number = s.season_number
+		LEFT JOIN versions v ON v.episode_id = ep.id
+		WHERE s.title_id = $1
+		ORDER BY s.season_number = 0, s.season_number, ep.episode_number,
+		         v.height DESC NULLS LAST, v.id`
+
+	sqlTitleExists = `SELECT EXISTS (SELECT 1 FROM titles WHERE id = $1)`
+
 	sqlSaveMatchFailure = `
 		UPDATE titles SET match_status = $2, match_error = $3, updated_at = now()
 		WHERE id = $1`
@@ -139,6 +204,10 @@ const (
 		       t.genres, COALESCE(t.rating, 0)::float8,
 		       COALESCE(t.collection_tmdb_id, 0), COALESCE(t.collection_name, ''),
 		       t.match_status, COALESCE(t.match_error, ''),
+		       (SELECT count(DISTINCT ep.season_number) FROM episodes ep
+		         WHERE ep.title_id = t.id AND EXISTS (SELECT 1 FROM versions x WHERE x.episode_id = ep.id)),
+		       (SELECT count(*) FROM episodes ep
+		         WHERE ep.title_id = t.id AND EXISTS (SELECT 1 FROM versions x WHERE x.episode_id = ep.id)),
 		       e.id, e.edition_type_id, et.display_name, et.short_label,
 		       COALESCE(e.runtime_seconds, 0),
 		       COALESCE(v.id, 0), COALESCE(v.path, ''), COALESCE(v.size_bytes, 0),
@@ -150,7 +219,7 @@ const (
 		FROM titles t
 		JOIN editions e ON e.title_id = t.id
 		JOIN edition_types et ON et.id = e.edition_type_id
-		LEFT JOIN versions v ON v.edition_id = e.id
+		LEFT JOIN versions v ON v.edition_id = e.id AND v.episode_id IS NULL
 		WHERE t.library_id = $1
 		ORDER BY t.sort_name, t.year NULLS LAST, t.id, et.sort_order, e.id,
 		         v.height DESC NULLS LAST, v.id`

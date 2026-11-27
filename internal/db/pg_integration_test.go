@@ -347,3 +347,103 @@ func TestIntegrationMatchAlien(t *testing.T) {
 		t.Errorf("rescan created duplicate titles: %d", len(titles))
 	}
 }
+
+func (stubTMDb) SearchTV(_ context.Context, q string, _ int) ([]tmdb.SearchResult, error) {
+	if q == "3 Body Problem" {
+		return []tmdb.SearchResult{{ID: 108545, Title: "3 Body Problem", OriginalTitle: "3 Body Problem", ReleaseDate: "2024-03-21"}}, nil
+	}
+	return []tmdb.SearchResult{}, nil
+}
+
+func (stubTMDb) TV(_ context.Context, id int) (tmdb.Show, error) {
+	return tmdb.Show{ID: id, Name: "3 Body Problem", FirstAirDate: "2024-03-21", PosterPath: "/tbp.jpg",
+		Seasons: []tmdb.SeasonSummary{{SeasonNumber: 1, EpisodeCount: 8}}}, nil
+}
+
+func (stubTMDb) Season(_ context.Context, _ int, n int) (tmdb.Season, error) {
+	if n != 1 {
+		return tmdb.Season{}, tmdb.ErrNotFound
+	}
+	s := tmdb.Season{SeasonNumber: 1, Name: "Season 1", AirDate: "2024-03-21", PosterPath: "/s1.jpg"}
+	for i := 1; i <= 8; i++ {
+		s.Episodes = append(s.Episodes, tmdb.Episode{ID: 1000 + i, SeasonNumber: 1, EpisodeNumber: i,
+			Name: fmt.Sprintf("Episode %d", i), Runtime: 55, StillPath: "/still.jpg", AirDate: "2024-03-21"})
+	}
+	return s, nil
+}
+
+func TestIntegrationTVShow(t *testing.T) {
+	d := testDatabase(t)
+	ctx := context.Background()
+	if _, err := d.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	season := filepath.Join(dir, "3 Body Problem", "Season 1")
+	if err := os.MkdirAll(season, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"3 Body Problem - S01E01 - Countdown [WEBRip-1080p].mkv",
+		"3 Body Problem - S01E02-E03 - Red Coast [WEBRip-1080p].mkv",
+		"3 Body Problem - S01E05 - Judgment Day [WEBRip-1080p].mkv",
+	} {
+		if err := os.WriteFile(filepath.Join(season, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lib, err := d.CreateLibrary(ctx, catalog.Library{Name: "TV", MediaType: "tv", Paths: []string{dir}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scanner := scan.Scanner{Store: d, Prober: stubProber{}}
+	if res, err := scanner.Scan(ctx, lib); err != nil || res.Added != 3 {
+		t.Fatalf("scan: %+v err=%v", res, err)
+	}
+	m := match.Matcher{Store: d, Source: stubTMDb{}}
+	if res, err := m.MatchLibrary(ctx, lib.ID); err != nil || res.Matched != 1 || res.Episodes != 8 {
+		t.Fatalf("match: %+v err=%v", res, err)
+	}
+
+	titles, err := d.LibraryTitles(ctx, lib.ID)
+	if err != nil || len(titles) != 1 {
+		t.Fatalf("titles: %v %v", titles, err)
+	}
+	show := titles[0]
+	if show.Year != 2024 || show.SeasonCount != 1 || show.EpisodeCount != 3 || len(show.Editions) != 1 || len(show.Editions[0].Versions) != 0 {
+		t.Errorf("show = %+v", show)
+	}
+
+	seasons, err := d.TitleEpisodes(ctx, show.ID)
+	if err != nil || len(seasons) != 1 || len(seasons[0].Episodes) != 8 {
+		t.Fatalf("episodes: %+v err=%v", seasons, err)
+	}
+	eps := seasons[0].Episodes
+	if eps[0].Name != "Episode 1" || len(eps[0].Versions) != 1 || eps[0].StillURL == "" || eps[0].RuntimeMinutes != 55 {
+		t.Errorf("episode 1 = %+v", eps[0])
+	}
+	if len(eps[1].Versions) != 1 || eps[1].Versions[0].LastEpisode != 3 || eps[2].PartOf != 2 {
+		t.Errorf("multi-episode file: e2=%+v e3=%+v", eps[1], eps[2])
+	}
+	if len(eps[3].Versions) != 0 || eps[3].PartOf != 0 {
+		t.Errorf("episode 4 should be listed without a file: %+v", eps[3])
+	}
+	if _, err := d.TitleEpisodes(ctx, 999999); !errors.Is(err, catalog.ErrNotFound) {
+		t.Errorf("missing title: %v", err)
+	}
+
+	// TMDb filled in the year; a rescan must still find the show by its folder name.
+	if err := os.WriteFile(filepath.Join(dir, "3 Body Problem", "3 Body Problem - S02E01 - New.mkv"), []byte("s2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := scanner.Scan(ctx, lib); err != nil || res.Added != 1 || res.Unchanged != 3 {
+		t.Fatalf("rescan: %+v err=%v", res, err)
+	}
+	if titles, _ := d.LibraryTitles(ctx, lib.ID); len(titles) != 1 {
+		t.Errorf("rescan split the show: %d titles", len(titles))
+	}
+	need, err := d.ShowsNeedingEpisodes(ctx, lib.ID)
+	if err != nil || len(need) != 1 || need[0].TMDbID != 108545 || fmt.Sprint(need[0].Seasons) != "[2]" {
+		t.Errorf("shows needing episodes = %+v err=%v", need, err)
+	}
+}

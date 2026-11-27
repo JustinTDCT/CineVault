@@ -29,6 +29,10 @@ type NewVersion struct {
 	SizeBytes   int64
 	Fingerprint string
 	Info        mediainfo.Info
+	// EpisodeID links a TV file to its episode; 0 for movies. LastEpisode is
+	// the last episode number of a multi-episode file, 0 otherwise.
+	EpisodeID   int64
+	LastEpisode int
 }
 
 // Store is what the scanner needs from the database.
@@ -40,6 +44,9 @@ type Store interface {
 	FindOrCreateTitle(ctx context.Context, libraryID int64, mediaType string, p ParsedName) (int64, error)
 	// FindOrCreateEdition sets runtimeSeconds only if the edition has none yet.
 	FindOrCreateEdition(ctx context.Context, titleID int64, editionTypeID string, runtimeSeconds int) (int64, error)
+	// FindOrCreateEpisode finds a show's episode, creating it (and its season)
+	// with the name from the file if it's new.
+	FindOrCreateEpisode(ctx context.Context, titleID int64, season, episode int, name string) (int64, error)
 	// UpsertVersion inserts or updates the file by path and clears its missing
 	// flag. It never moves a version whose edition the user locked.
 	UpsertVersion(ctx context.Context, editionID int64, v NewVersion) error
@@ -79,8 +86,8 @@ var VideoExtensions = map[string]bool{
 // with what's on disk. Unchanged files (same path and size) aren't probed again.
 func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) {
 	res := Result{Errors: []FileError{}}
-	if lib.MediaType != "movie" {
-		return res, fmt.Errorf("scanning %s libraries isn't supported yet; only movie libraries are", lib.MediaType)
+	if lib.MediaType != "movie" && lib.MediaType != "tv" {
+		return res, fmt.Errorf("scanning %s libraries isn't supported yet; only movie and TV libraries are", lib.MediaType)
 	}
 
 	allTypes, err := s.Store.EditionTypes(ctx)
@@ -144,7 +151,11 @@ func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) 
 				res.Unchanged++
 				return nil
 			}
-			if err := s.addFile(ctx, lib, types, defaultEdition, path, info.Size()); err != nil {
+			add := s.addFile
+			if lib.MediaType == "tv" {
+				add = s.addEpisodeFile
+			}
+			if err := add(ctx, lib, root, types, defaultEdition, path, info.Size()); err != nil {
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
@@ -179,7 +190,7 @@ func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) 
 	return res, nil
 }
 
-func (s Scanner) addFile(ctx context.Context, lib catalog.Library, types []catalog.EditionType, defaultEdition, path string, size int64) error {
+func (s Scanner) addFile(ctx context.Context, lib catalog.Library, _ string, types []catalog.EditionType, defaultEdition, path string, size int64) error {
 	info, err := s.Prober.Probe(ctx, path)
 	if err != nil {
 		return err
@@ -201,6 +212,40 @@ func (s Scanner) addFile(ctx context.Context, lib catalog.Library, types []catal
 		return fmt.Errorf("save edition: %w", err)
 	}
 	if err := s.Store.UpsertVersion(ctx, editionID, NewVersion{Path: path, SizeBytes: size, Fingerprint: fp, Info: info}); err != nil {
+		return fmt.Errorf("save file: %w", err)
+	}
+	return nil
+}
+
+// addEpisodeFile records a TV episode file. All of a show's files go in its
+// default edition for now; per-episode editions come later.
+func (s Scanner) addEpisodeFile(ctx context.Context, lib catalog.Library, root string, _ []catalog.EditionType, defaultEdition, path string, size int64) error {
+	p, ok := ParseEpisode(root, path)
+	if !ok {
+		return errors.New("no season and episode number in the file name; name it like \"Show - S01E02 - Title.mkv\"")
+	}
+	info, err := s.Prober.Probe(ctx, path)
+	if err != nil {
+		return err
+	}
+	fp, err := Fingerprint(path)
+	if err != nil {
+		return fmt.Errorf("fingerprint: %w", describeErr(err))
+	}
+	titleID, err := s.Store.FindOrCreateTitle(ctx, lib.ID, lib.MediaType, p.Show)
+	if err != nil {
+		return fmt.Errorf("save show: %w", err)
+	}
+	editionID, err := s.Store.FindOrCreateEdition(ctx, titleID, defaultEdition, 0)
+	if err != nil {
+		return fmt.Errorf("save edition: %w", err)
+	}
+	episodeID, err := s.Store.FindOrCreateEpisode(ctx, titleID, p.Season, p.Episode, p.Name)
+	if err != nil {
+		return fmt.Errorf("save episode: %w", err)
+	}
+	v := NewVersion{Path: path, SizeBytes: size, Fingerprint: fp, Info: info, EpisodeID: episodeID, LastEpisode: p.Last}
+	if err := s.Store.UpsertVersion(ctx, editionID, v); err != nil {
 		return fmt.Errorf("save file: %w", err)
 	}
 	return nil

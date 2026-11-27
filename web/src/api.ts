@@ -26,6 +26,8 @@ export interface Version {
   bitrate?: number;
   edition_locked: boolean;
   missing: boolean;
+  /** Last episode in a multi-episode file (S01E01-E02). */
+  last_episode?: number;
 }
 
 export interface Edition {
@@ -58,7 +60,35 @@ export interface Title {
   collection_name?: string;
   match_status: "unmatched" | "matched" | "not_found" | "error";
   match_error?: string;
+  /** TV shows: seasons and episodes that have files. */
+  season_count?: number;
+  episode_count?: number;
   editions: Edition[];
+}
+
+export interface Episode {
+  id: number;
+  season: number;
+  number: number;
+  name?: string;
+  overview?: string;
+  air_date?: string;
+  runtime_minutes?: number;
+  still_url?: string;
+  rating?: number;
+  /** Set when this episode is inside another episode's file: that episode's number. */
+  part_of?: number;
+  /** Empty when the library has no file for this episode. */
+  versions: Version[];
+}
+
+export interface Season {
+  number: number; // 0 is Specials
+  name?: string;
+  overview?: string;
+  poster_url?: string;
+  air_date?: string;
+  episodes: Episode[];
 }
 
 export interface ScanResult {
@@ -68,7 +98,7 @@ export interface ScanResult {
   unchanged: number;
   missing: number;
   errors: { path: string; error: string }[];
-  match: { matched: number; not_found: number; errors: number; messages: string[]; error?: string } | null;
+  match: { matched: number; not_found: number; errors: number; episodes?: number; messages: string[]; error?: string } | null;
 }
 
 export interface ClientCaps {
@@ -119,6 +149,7 @@ export const api = {
   createLibrary: (name: string, mediaType: MediaType, paths: string[]) =>
     request<Library>("POST", "/api/libraries", { name, media_type: mediaType, paths }),
   titles: (libraryId: number) => request<Title[]>("GET", `/api/libraries/${libraryId}/titles`),
+  episodes: (titleId: number) => request<Season[]>("GET", `/api/titles/${titleId}/episodes`),
   scan: (libraryId: number) => request<ScanResult>("POST", `/api/libraries/${libraryId}/scan`),
   play: (versionId: number, caps: ClientCaps) => request<PlayResponse>("POST", "/api/playback", { version_id: versionId, caps }),
   /** Ends a streaming session; keepalive lets it finish while the page closes. */

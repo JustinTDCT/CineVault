@@ -10,6 +10,7 @@ function scanSummary(r: ScanResult): string {
   const files = `${r.files_seen} ${r.files_seen === 1 ? "file" : "files"}`;
   let text = parts.length ? `Scanned ${files}: ${parts.join(", ")}.` : `Scanned ${files}. Nothing changed.`;
   if (r.match && r.match.matched) text += ` Matched ${r.match.matched} to TMDb.`;
+  if (r.match?.episodes) text += ` Fetched details for ${r.match.episodes} episodes.`;
   return text;
 }
 
@@ -59,7 +60,7 @@ export function LibraryPage({ library, libraryId }: { library?: Library; library
           <h1 className="page-title">{library?.name ?? "Library"}</h1>
           {titles ? (
             <p className="page-sub">
-              {titles.length} {titles.length === 1 ? "title" : "titles"}
+              {titles.length} {library?.media_type === "tv" ? (titles.length === 1 ? "show" : "shows") : titles.length === 1 ? "movie" : "movies"}
               {library ? <> in {library.paths.join(", ")}</> : null}
             </p>
           ) : null}
@@ -90,7 +91,7 @@ export function LibraryPage({ library, libraryId }: { library?: Library; library
         <p className="page-sub">Loading…</p>
       ) : titles.length === 0 ? (
         <div className="empty">
-          <p>No movies here yet. Scan the library to find the files in its folders.</p>
+          <p>No {library?.media_type === "tv" ? "shows" : "movies"} here yet. Scan the library to find the files in its folders.</p>
         </div>
       ) : (
         <div className="grid">

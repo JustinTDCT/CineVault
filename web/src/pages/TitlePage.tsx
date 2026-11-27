@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { api, type Edition, type Title } from "../api";
 import { Poster } from "../components/PosterCard";
 import { Player, type PlayTarget } from "../components/Player";
-import { defaultEdition, fileName, formatRuntime, formatSize, labelWithoutResolution, resolution } from "../format";
+import { defaultEdition, fileName, formatRuntime, formatSize, labelWithoutResolution, resolution, showCounts } from "../format";
+import { ShowEpisodes } from "./ShowEpisodes";
 import { linkTo } from "../router";
 
 export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: number }) {
@@ -42,14 +43,19 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
   }
 
   const edition = title.editions.find((e) => e.id === editionId) ?? title.editions[0];
-  const facts = [title.year, title.runtime_minutes ? formatRuntime(title.runtime_minutes * 60) : "", title.genres.join(", ")].filter(Boolean);
+  const isShow = title.media_type === "tv";
+  const facts = (
+    isShow
+      ? [title.year, showCounts(title), title.genres.join(", ")]
+      : [title.year, title.runtime_minutes ? formatRuntime(title.runtime_minutes * 60) : "", title.genres.join(", ")]
+  ).filter(Boolean);
 
   return (
     <article className="title-page">
       {title.backdrop_url ? <div className="backdrop" style={{ backgroundImage: `url(${title.backdrop_url})` }} aria-hidden="true" /> : null}
 
       <a className="back" {...linkTo(`/libraries/${libraryId}`)}>
-        All movies
+        {isShow ? "All shows" : "All movies"}
       </a>
 
       <div className="title-head">
@@ -64,7 +70,7 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
         </div>
       </div>
 
-      <EditionTabs title={title} selected={edition} onSelect={setEditionId} onPlay={setPlaying} />
+      {isShow ? <ShowEpisodes title={title} /> : <EditionTabs title={title} selected={edition} onSelect={setEditionId} onPlay={setPlaying} />}
       {playing ? <Player target={playing} onClose={() => setPlaying(null)} /> : null}
     </article>
   );
@@ -74,7 +80,9 @@ function MatchNote({ title }: { title: Title }) {
   if (title.match_status === "matched") return null;
   const text =
     title.match_status === "not_found"
-      ? "TMDb has no movie with this name and year, so there's no poster or description. Check the file name."
+      ? title.media_type === "tv"
+        ? "TMDb has no show with this name, so there are no posters or episode details. Check the show's folder name."
+        : "TMDb has no movie with this name and year, so there's no poster or description. Check the file name."
       : title.match_status === "error"
         ? `Matching with TMDb failed: ${title.match_error ?? "unknown error"}. It will be retried on the next scan.`
         : "Not matched with TMDb yet. It will be matched on the next scan.";

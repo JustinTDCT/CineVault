@@ -81,7 +81,7 @@ export function App() {
 
       <footer className="footer">
         <span>
-          Movie information and images from{" "}
+          Movie and TV information and images from{" "}
           <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer">
             TMDb
           </a>

@@ -88,7 +88,40 @@ type Title struct {
 	MatchStatus string `json:"match_status"`
 	MatchError  string `json:"match_error,omitempty"`
 
+	// For TV shows: how many seasons and episodes have files.
+	SeasonCount  int `json:"season_count,omitempty"`
+	EpisodeCount int `json:"episode_count,omitempty"`
+
+	// Editions with their versions. A show's editions list no versions here;
+	// its files are under its episodes (see Season).
 	Editions []Edition `json:"editions"`
+}
+
+// Season is one season of a show with its episodes, owned or not.
+type Season struct {
+	Number    int       `json:"number"` // 0 is Specials
+	Name      string    `json:"name,omitempty"`
+	Overview  string    `json:"overview,omitempty"`
+	PosterURL string    `json:"poster_url,omitempty"`
+	AirDate   string    `json:"air_date,omitempty"`
+	Episodes  []Episode `json:"episodes"`
+}
+
+// Episode is one episode. Versions is empty when the library has no file
+// for it, unless it's part of a multi-episode file: then PartOf is the
+// episode number whose file holds it.
+type Episode struct {
+	ID             int64     `json:"id"`
+	Season         int       `json:"season"`
+	Number         int       `json:"number"`
+	Name           string    `json:"name,omitempty"`
+	Overview       string    `json:"overview,omitempty"`
+	AirDate        string    `json:"air_date,omitempty"`
+	RuntimeMinutes int       `json:"runtime_minutes,omitempty"`
+	StillURL       string    `json:"still_url,omitempty"`
+	Rating         float64   `json:"rating,omitempty"`
+	PartOf         int       `json:"part_of,omitempty"`
+	Versions       []Version `json:"versions"`
 }
 
 // Edition is one cut of a title, such as the Director's Cut, with its files.
@@ -118,4 +151,25 @@ type Version struct {
 	Bitrate         int64   `json:"bitrate,omitempty"`
 	EditionLocked   bool    `json:"edition_locked"`
 	Missing         bool    `json:"missing"`
+	// LastEpisode is the last episode in a multi-episode file, 0 otherwise.
+	LastEpisode int `json:"last_episode,omitempty"`
+}
+
+// LinkMultiEpisodeFiles marks episodes held in another episode's file
+// (S01E01-E02): an episode with no file of its own gets PartOf set to the
+// episode number whose file covers it.
+func LinkMultiEpisodeFiles(seasons []Season) {
+	for si := range seasons {
+		eps := seasons[si].Episodes
+		for i := range eps {
+			for _, v := range eps[i].Versions {
+				for j := range eps {
+					n := eps[j].Number
+					if n > eps[i].Number && n <= v.LastEpisode && len(eps[j].Versions) == 0 {
+						eps[j].PartOf = eps[i].Number
+					}
+				}
+			}
+		}
+	}
 }

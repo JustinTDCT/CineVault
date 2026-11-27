@@ -13,10 +13,11 @@ import (
 
 // Title is a title waiting to be matched.
 type Title struct {
-	ID     int64
-	Name   string // as read from file names
-	Year   int    // 0 when unknown
-	TMDbID int    // from a {tmdb-…} tag, 0 when absent
+	ID        int64
+	MediaType string // "movie" or "tv"
+	Name      string // as read from file names
+	Year      int    // 0 when unknown
+	TMDbID    int    // from a {tmdb-…} tag, 0 when absent
 }
 
 // Store is what the matcher needs from the database.
@@ -24,6 +25,11 @@ type Store interface {
 	// TitlesToMatch returns titles that are unmatched or failed with an error.
 	TitlesToMatch(ctx context.Context, libraryID int64) ([]Title, error)
 	SaveMatch(ctx context.Context, titleID int64, m tmdb.Movie) error
+	// SaveSeason stores a season's details and all its episodes, owned or not.
+	SaveSeason(ctx context.Context, titleID int64, s tmdb.Season) error
+	// ShowsNeedingEpisodes lists matched shows with episodes that have no TMDb
+	// details yet (new files since the show was matched), by season.
+	ShowsNeedingEpisodes(ctx context.Context, libraryID int64) ([]ShowSeasons, error)
 	// SaveMatchFailure records status "not_found" or "error".
 	SaveMatchFailure(ctx context.Context, titleID int64, status, message string) error
 }
@@ -32,17 +38,30 @@ type Store interface {
 type Source interface {
 	SearchMovie(ctx context.Context, query string, year int) ([]tmdb.SearchResult, error)
 	Movie(ctx context.Context, id int) (tmdb.Movie, error)
+	SearchTV(ctx context.Context, query string, year int) ([]tmdb.SearchResult, error)
+	TV(ctx context.Context, id int) (tmdb.Show, error)
+	Season(ctx context.Context, showID, season int) (tmdb.Season, error)
+}
+
+// ShowSeasons is a matched show and the seasons to fetch for it.
+type ShowSeasons struct {
+	TitleID int64
+	Name    string
+	TMDbID  int
+	Seasons []int
 }
 
 // Result summarizes a matching run.
 type Result struct {
-	Matched  int      `json:"matched"`
-	NotFound int      `json:"not_found"`
-	Errors   int      `json:"errors"`
+	Matched  int `json:"matched"`
+	NotFound int `json:"not_found"`
+	Errors   int `json:"errors"`
+	// Episodes is how many TV episodes had details fetched.
+	Episodes int      `json:"episodes"`
 	Messages []string `json:"messages"`
 }
 
-// Matcher matches titles in movie libraries.
+// Matcher matches titles in movie and TV libraries.
 type Matcher struct {
 	Store  Store
 	Source Source
@@ -60,7 +79,18 @@ func (m Matcher) MatchLibrary(ctx context.Context, libraryID int64) (Result, err
 		if err := ctx.Err(); err != nil {
 			return res, err
 		}
-		movie, found, err := m.find(ctx, t)
+		var (
+			movie tmdb.Movie
+			show  tmdb.Show
+			found bool
+			err   error
+		)
+		if t.MediaType == "tv" {
+			show, found, err = m.findShow(ctx, t)
+			movie = show.AsMovie()
+		} else {
+			movie, found, err = m.find(ctx, t)
+		}
 		switch {
 		case errors.Is(err, tmdb.ErrUnauthorized):
 			return res, err
@@ -81,9 +111,78 @@ func (m Matcher) MatchLibrary(ctx context.Context, libraryID int64) (Result, err
 				return res, fmt.Errorf("save match for %s: %w", label(t), err)
 			}
 			res.Matched++
+			if t.MediaType == "tv" {
+				var seasons []int
+				for _, s := range show.Seasons {
+					seasons = append(seasons, s.SeasonNumber)
+				}
+				if err := m.fetchSeasons(ctx, ShowSeasons{TitleID: t.ID, Name: label(t), TMDbID: show.ID, Seasons: seasons}, &res); err != nil {
+					return res, err
+				}
+			}
+		}
+	}
+
+	// Episodes added to shows that were matched on an earlier scan.
+	shows, err := m.Store.ShowsNeedingEpisodes(ctx, libraryID)
+	if err != nil {
+		return res, fmt.Errorf("load shows with new episodes: %w", err)
+	}
+	for _, s := range shows {
+		if err := m.fetchSeasons(ctx, s, &res); err != nil {
+			return res, err
 		}
 	}
 	return res, nil
+}
+
+// fetchSeasons stores each season's episodes. A season TMDb doesn't have is
+// skipped; other failures are reported and the rest carry on.
+func (m Matcher) fetchSeasons(ctx context.Context, s ShowSeasons, res *Result) error {
+	for _, n := range s.Seasons {
+		season, err := m.Source.Season(ctx, s.TMDbID, n)
+		switch {
+		case errors.Is(err, tmdb.ErrNotFound):
+			continue
+		case errors.Is(err, tmdb.ErrUnauthorized):
+			return err
+		case err != nil:
+			res.Errors++
+			res.Messages = append(res.Messages, fmt.Sprintf("%s season %d: %v", s.Name, n, err))
+			continue
+		}
+		if err := m.Store.SaveSeason(ctx, s.TitleID, season); err != nil {
+			return fmt.Errorf("save %s season %d: %w", s.Name, n, err)
+		}
+		res.Episodes += len(season.Episodes)
+	}
+	return nil
+}
+
+func (m Matcher) findShow(ctx context.Context, t Title) (tmdb.Show, bool, error) {
+	if t.TMDbID > 0 {
+		show, err := m.Source.TV(ctx, t.TMDbID)
+		if errors.Is(err, tmdb.ErrNotFound) {
+			return show, false, nil
+		}
+		return show, err == nil, err
+	}
+	results, err := m.Source.SearchTV(ctx, t.Name, t.Year)
+	if err != nil {
+		return tmdb.Show{}, false, err
+	}
+	best, ok := Pick(t, results)
+	if !ok && t.Year > 0 {
+		if results, err = m.Source.SearchTV(ctx, t.Name, 0); err != nil {
+			return tmdb.Show{}, false, err
+		}
+		best, ok = Pick(t, results)
+	}
+	if !ok {
+		return tmdb.Show{}, false, nil
+	}
+	show, err := m.Source.TV(ctx, best.ID)
+	return show, err == nil, err
 }
 
 func (m Matcher) find(ctx context.Context, t Title) (tmdb.Movie, bool, error) {

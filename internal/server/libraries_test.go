@@ -47,6 +47,33 @@ func (f *fakeLibraries) LibraryTitles(_ context.Context, id int64) ([]catalog.Ti
 	}}}, nil
 }
 
+func (f *fakeLibraries) TitleEpisodes(_ context.Context, id int64) ([]catalog.Season, error) {
+	if id != 7 {
+		return nil, catalog.ErrNotFound
+	}
+	return []catalog.Season{{Number: 1, Name: "Season 1", Episodes: []catalog.Episode{
+		{ID: 70, Season: 1, Number: 1, Name: "Countdown", Versions: []catalog.Version{{ID: 700}}},
+		{ID: 71, Season: 1, Number: 2, Name: "Red Coast", Versions: []catalog.Version{}},
+	}}}, nil
+}
+
+func TestTitleEpisodes(t *testing.T) {
+	s, _ := libServer(nil)
+	code, body := send(t, s, "GET", "/api/titles/7/episodes", "")
+	var seasons []catalog.Season
+	if err := json.Unmarshal([]byte(body), &seasons); code != http.StatusOK || err != nil || len(seasons) != 1 || seasons[0].Episodes[0].Name != "Countdown" {
+		t.Fatalf("code=%d body=%s", code, body)
+	}
+	if !strings.Contains(body, `"versions": []`) {
+		t.Errorf("an episode without files should list no versions as [], got %s", body)
+	}
+	for target, want := range map[string]int{"/api/titles/8/episodes": 404, "/api/titles/x/episodes": 400} {
+		if code, _ := send(t, s, "GET", target, ""); code != want {
+			t.Errorf("%s: %d, want %d", target, code, want)
+		}
+	}
+}
+
 func libServer(scanFn func(context.Context, catalog.Library) (scan.Result, error)) (*Server, *fakeLibraries) {
 	store := &fakeLibraries{}
 	if scanFn == nil {
