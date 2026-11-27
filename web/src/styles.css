@@ -28,6 +28,9 @@
   --t-xxl: clamp(2.75rem, 6vw, 4.5rem);
 
   --gutter: clamp(16px, 4vw, 48px);
+  --max: 1600px;
+  /* Side padding that keeps header, content and footer on one centred column. */
+  --inline: max(var(--gutter), calc((100% - var(--max)) / 2 + var(--gutter)));
   color-scheme: dark;
 }
 
@@ -69,6 +72,7 @@ img {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: clip; /* the full-bleed backdrop is 100vw wide */
 }
 
 .topbar {
@@ -76,7 +80,7 @@ img {
   align-items: baseline;
   gap: 2.5rem;
   flex-wrap: wrap;
-  padding: 1.25rem var(--gutter) 1rem;
+  padding: 1.25rem var(--inline) 1rem;
   border-bottom: 1px solid var(--rule);
 }
 
@@ -114,14 +118,12 @@ img {
 
 .content {
   flex: 1;
-  padding: 2rem var(--gutter) 4rem;
+  padding: 2rem var(--inline) 4rem;
   width: 100%;
-  max-width: 1600px;
-  margin: 0 auto;
 }
 
 .footer {
-  padding: 1.5rem var(--gutter);
+  padding: 1.5rem var(--inline);
   border-top: 1px solid var(--rule);
   color: var(--dim);
   font-size: var(--t-sm);
@@ -356,9 +358,13 @@ img {
   position: relative;
 }
 
+/* Full-bleed: spans the whole window, whatever the content width. */
 .backdrop {
   position: absolute;
-  inset: -2rem calc(-1 * var(--gutter)) auto;
+  top: -2rem;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
   height: 520px;
   background-size: cover;
   background-position: center 20%;

@@ -7,6 +7,7 @@ Set up 26 Nov 2026. A headless Ubuntu VM on Hyper-V, with an NVIDIA A2 passed th
 | Item | Value |
 |---|---|
 | Hostname | `cinevault` |
+| Address | `10.150.125.60` (static). Web interface: http://10.150.125.60:8456/ |
 | Hypervisor | Hyper-V on Windows Server, Generation 2 VM named `CineVault` |
 | OS | Ubuntu 26.04 LTS Server ("resolute"), headless |
 | GPU | NVIDIA A2, 16 GB (GA107GL, PCI ID `10DE:25B6`), passed through with Discrete Device Assignment |
