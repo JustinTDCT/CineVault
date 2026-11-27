@@ -58,6 +58,8 @@ type LibraryStore interface {
 	LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Title, error)
 	// TitleEpisodes returns a show's seasons and episodes, or catalog.ErrNotFound.
 	TitleEpisodes(ctx context.Context, titleID int64) ([]catalog.Season, error)
+	// AlbumTracks returns an album's tracks per edition, or catalog.ErrNotFound.
+	AlbumTracks(ctx context.Context, titleID int64) ([]catalog.AlbumEdition, error)
 }
 
 // Server serves the CineVault API.
@@ -97,6 +99,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/playback/{session}", s.stopPlayback)
 	mux.HandleFunc("GET /api/versions/{id}/file", s.versionFile)
 	mux.HandleFunc("GET /api/versions/{id}/thumb", s.versionThumb)
+	mux.HandleFunc("GET /api/versions/{id}/cover", s.versionCover)
+	mux.HandleFunc("GET /api/titles/{id}/tracks", s.albumTracks)
 	if s.opt.UI != nil {
 		// GET only, so a wrong method on an API route still gets 405.
 		mux.Handle("GET /", s.opt.UI)

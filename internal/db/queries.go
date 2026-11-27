@@ -63,16 +63,37 @@ const (
 		   SET name = COALESCE(episodes.name, EXCLUDED.name)
 		RETURNING id`
 
+	sqlFindOrCreateTrack = `
+		INSERT INTO tracks (title_id, disc_number, track_number, name, artist)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''))
+		ON CONFLICT (title_id, disc_number, track_number, lower(name)) DO UPDATE
+		   SET artist = COALESCE(EXCLUDED.artist, tracks.artist)
+		RETURNING id`
+
+	sqlSetGenres = `UPDATE titles SET genres = $2 WHERE id = $1 AND cardinality(genres) = 0`
+
+	// An album's tracks with their files, per edition; disc and track order.
+	sqlAlbumTracks = `
+		SELECT v.edition_id, tr.id, tr.disc_number, tr.track_number, tr.name, COALESCE(tr.artist, ''),
+		       v.id, v.path, v.size_bytes, COALESCE(v.label, ''), COALESCE(v.container, ''),
+		       COALESCE(v.audio_codec, ''), COALESCE(v.audio_channels, 0),
+		       COALESCE(v.duration_seconds, 0)::float8, COALESCE(v.bitrate, 0),
+		       v.missing_since IS NOT NULL
+		FROM tracks tr
+		JOIN versions v ON v.track_id = tr.id
+		WHERE tr.title_id = $1
+		ORDER BY v.edition_id, tr.disc_number, tr.track_number = 0, tr.track_number, tr.name, v.id`
+
 	// A version whose edition the user locked keeps its edition.
 	sqlUpsertVersion = `
 		INSERT INTO versions (edition_id, path, size_bytes, fingerprint, label, container,
 		                      video_codec, width, height, hdr, audio_codec, audio_channels,
-		                      duration_seconds, bitrate, episode_id, last_episode)
+		                      duration_seconds, bitrate, episode_id, last_episode, track_id)
 		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''),
 		        NULLIF($7, ''), NULLIF($8::integer, 0), NULLIF($9::integer, 0), NULLIF($10, ''),
 		        NULLIF($11, ''), NULLIF($12::integer, 0),
 		        NULLIF($13::float8, 0)::numeric(10,3), NULLIF($14::bigint, 0),
-		        NULLIF($15::bigint, 0), NULLIF($16::integer, 0))
+		        NULLIF($15::bigint, 0), NULLIF($16::integer, 0), NULLIF($17::bigint, 0))
 		ON CONFLICT (path) DO UPDATE SET
 		    edition_id       = CASE WHEN versions.edition_locked THEN versions.edition_id ELSE EXCLUDED.edition_id END,
 		    size_bytes       = EXCLUDED.size_bytes,
@@ -89,6 +110,7 @@ const (
 		    bitrate          = EXCLUDED.bitrate,
 		    episode_id       = EXCLUDED.episode_id,
 		    last_episode     = EXCLUDED.last_episode,
+		    track_id         = EXCLUDED.track_id,
 		    missing_since    = NULL`
 
 	sqlSetMissing = `
@@ -205,6 +227,12 @@ const (
 		       t.genres, COALESCE(t.rating, 0)::float8,
 		       COALESCE(t.collection_tmdb_id, 0), COALESCE(t.collection_name, ''),
 		       t.match_status, COALESCE(t.match_error, ''), COALESCE(t.artist, ''),
+		       COALESCE(CASE WHEN t.media_type = 'music' THEN
+		         (SELECT min(x.id) FROM versions x JOIN editions xe ON xe.id = x.edition_id
+		           WHERE xe.title_id = t.id AND x.track_id IS NOT NULL AND x.missing_since IS NULL)
+		       END, 0),
+		       (SELECT count(*) FROM tracks tr WHERE tr.title_id = t.id
+		          AND EXISTS (SELECT 1 FROM versions x WHERE x.track_id = tr.id)),
 		       (SELECT count(DISTINCT ep.season_number) FROM episodes ep
 		         WHERE ep.title_id = t.id AND EXISTS (SELECT 1 FROM versions x WHERE x.episode_id = ep.id)),
 		       (SELECT count(*) FROM episodes ep
@@ -220,7 +248,7 @@ const (
 		FROM titles t
 		JOIN editions e ON e.title_id = t.id
 		JOIN edition_types et ON et.id = e.edition_type_id
-		LEFT JOIN versions v ON v.edition_id = e.id AND v.episode_id IS NULL
+		LEFT JOIN versions v ON v.edition_id = e.id AND v.episode_id IS NULL AND v.track_id IS NULL
 		WHERE t.library_id = $1
 		ORDER BY t.sort_name, t.year NULLS LAST, t.id, et.sort_order, e.id,
 		         v.height DESC NULLS LAST, v.id`

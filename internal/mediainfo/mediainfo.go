@@ -25,6 +25,24 @@ type Info struct {
 	AudioProfile    string  `json:"audio_profile,omitempty"` // e.g. "DTS-HD MA", "Dolby TrueHD + Dolby Atmos"
 	DurationSeconds float64 `json:"duration_seconds,omitempty"`
 	Bitrate         int64   `json:"bitrate,omitempty"`
+	// SampleRate (Hz) and BitDepth describe the audio, for music labels.
+	SampleRate int `json:"sample_rate,omitempty"`
+	BitDepth   int `json:"bit_depth,omitempty"`
+	// HasCover is true when the file carries embedded cover art.
+	HasCover bool `json:"has_cover,omitempty"`
+	// Tags are the file's metadata tags with lower-case keys, such as
+	// "artist", "album", "album_artist", "title", "track", "disc", "date".
+	Tags map[string]string `json:"tags,omitempty"`
+}
+
+// Tag returns the first non-empty tag among keys.
+func (i Info) Tag(keys ...string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(i.Tags[k]); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // Prober reads a file's Info.
@@ -67,13 +85,18 @@ func (f FFprobe) Probe(ctx context.Context, path string) (Info, error) {
 
 type ffprobeOutput struct {
 	Streams []struct {
-		CodecType     string `json:"codec_type"`
-		CodecName     string `json:"codec_name"`
-		Profile       string `json:"profile"`
-		Width         int    `json:"width"`
-		Height        int    `json:"height"`
-		Channels      int    `json:"channels"`
-		ColorTransfer string `json:"color_transfer"`
+		CodecType     string            `json:"codec_type"`
+		CodecName     string            `json:"codec_name"`
+		Profile       string            `json:"profile"`
+		Width         int               `json:"width"`
+		Height        int               `json:"height"`
+		Channels      int               `json:"channels"`
+		SampleRate    string            `json:"sample_rate"`
+		BitsPerRaw    string            `json:"bits_per_raw_sample"`
+		BitsPerSample int               `json:"bits_per_sample"`
+		SampleFmt     string            `json:"sample_fmt"`
+		Tags          map[string]string `json:"tags"`
+		ColorTransfer string            `json:"color_transfer"`
 		SideData      []struct {
 			Type string `json:"side_data_type"`
 		} `json:"side_data_list"`
@@ -83,8 +106,9 @@ type ffprobeOutput struct {
 		} `json:"disposition"`
 	} `json:"streams"`
 	Format struct {
-		Duration string `json:"duration"`
-		BitRate  string `json:"bit_rate"`
+		Duration string            `json:"duration"`
+		BitRate  string            `json:"bit_rate"`
+		Tags     map[string]string `json:"tags"`
 	} `json:"format"`
 }
 
@@ -103,6 +127,9 @@ func Parse(data []byte) (Info, error) {
 	for i, s := range out.Streams {
 		switch s.CodecType {
 		case "video":
+			if s.Disposition.AttachedPic == 1 {
+				info.HasCover = true
+			}
 			if videoDone || s.Disposition.AttachedPic == 1 {
 				continue // cover art is a "video" stream too
 			}
@@ -124,11 +151,65 @@ func Parse(data []byte) (Info, error) {
 	if audioIdx >= 0 {
 		a := out.Streams[audioIdx]
 		info.AudioCodec, info.AudioChannels, info.AudioProfile = a.CodecName, a.Channels, a.Profile
+		info.SampleRate, _ = strconv.Atoi(a.SampleRate)
+		if b, err := strconv.Atoi(a.BitsPerRaw); err == nil {
+			info.BitDepth = b
+		} else if a.BitsPerSample > 0 {
+			info.BitDepth = a.BitsPerSample
+		} else if a.SampleFmt == "s16" || a.SampleFmt == "s16p" {
+			info.BitDepth = 16
+		}
+		// Ogg and Opus keep their tags on the audio stream.
+		for k, v := range a.Tags {
+			addTag(&info, k, v)
+		}
+	}
+	for k, v := range out.Format.Tags {
+		addTag(&info, k, v)
 	}
 	if !videoDone && audioIdx < 0 {
 		return info, fmt.Errorf("no audio or video streams")
 	}
 	return info, nil
+}
+
+// audioQuality describes an audio-only file: "24-bit/96 kHz" for lossless
+// formats, "320 kbps" for lossy ones.
+func (i Info) audioQuality() string {
+	switch {
+	case i.AudioCodec == "flac" || i.AudioCodec == "alac" || i.AudioCodec == "wavpack" || strings.HasPrefix(i.AudioCodec, "pcm_"):
+		if i.BitDepth == 0 || i.SampleRate == 0 {
+			return ""
+		}
+		khz := strconv.FormatFloat(float64(i.SampleRate)/1000, 'f', -1, 64)
+		return fmt.Sprintf("%d-bit/%s kHz", i.BitDepth, khz)
+	case i.Bitrate > 0:
+		return fmt.Sprintf("%d kbps", (i.Bitrate+500)/1000)
+	}
+	return ""
+}
+
+// addTag stores a tag under its lower-case key, keeping the first value seen.
+// Vorbis "ALBUMARTIST" and iTunes "album_artist" both become "album_artist".
+func addTag(info *Info, k, v string) {
+	k = strings.ToLower(strings.TrimSpace(k))
+	switch k {
+	case "albumartist", "album artist":
+		k = "album_artist"
+	case "tracknumber":
+		k = "track"
+	case "discnumber":
+		k = "disc"
+	}
+	if v = strings.TrimSpace(v); v == "" {
+		return
+	}
+	if info.Tags == nil {
+		info.Tags = map[string]string{}
+	}
+	if _, ok := info.Tags[k]; !ok {
+		info.Tags[k] = v
+	}
 }
 
 func hdrKind(transfer string) string {
@@ -177,6 +258,11 @@ func (i Info) Label() string {
 	if a := i.audioLabel(); a != "" {
 		parts = append(parts, a)
 	}
+	if i.VideoCodec == "" {
+		if q := i.audioQuality(); q != "" {
+			parts = append(parts, q)
+		}
+	}
 	return strings.Join(parts, " · ")
 }
 
@@ -223,6 +309,12 @@ func (i Info) audioLabel() string {
 		name = "FLAC"
 	case "opus":
 		name = "Opus"
+	case "mp3":
+		name = "MP3"
+	case "alac":
+		name = "ALAC"
+	case "vorbis":
+		name = "Vorbis"
 	}
 	switch i.AudioChannels {
 	case 1:

@@ -43,34 +43,13 @@ func ParseMusicVideo(root, path string, types []catalog.EditionType, defaultEdit
 		artist = filepath.Base(dir)
 	}
 
-	// "Song - Live" and other " - Edition" suffixes.
-	for {
-		i := strings.LastIndex(song, " - ")
-		if i <= 0 {
-			break
-		}
-		id, ok := matchAlias(song[i+3:], types)
-		if !ok {
-			break
-		}
+	rest, id, year := trimEditionSuffixes(song, types)
+	song = rest
+	if id != "" {
 		setEdition(id, EditionAlias)
-		song = strings.TrimSpace(song[:i])
 	}
-	// Trailing "(...)" groups.
-	for {
-		m := reTrailingParen.FindStringSubmatchIndex(song)
-		if m == nil || m[0] == 0 {
-			break
-		}
-		inner := strings.TrimSpace(song[m[2]:m[3]])
-		if id, ok := matchAlias(inner, types); ok {
-			setEdition(id, EditionAlias)
-		} else if y, err := strconv.Atoi(inner); err == nil && y >= 1900 && y <= 2099 {
-			p.Year = y
-		} else {
-			break
-		}
-		song = strings.TrimSpace(song[:m[0]])
+	if year != 0 {
+		p.Year = year
 	}
 	for _, b := range brackets {
 		if id, ok := matchAlias(b, types); ok {
@@ -81,4 +60,42 @@ func ParseMusicVideo(root, path string, types []catalog.EditionType, defaultEdit
 	p.Title, p.Artist = song, artist
 	p.SortName = strings.TrimSpace(SortName(artist) + " " + SortName(song))
 	return p
+}
+
+// trimEditionSuffixes takes edition names and a year off the end of a song or
+// album title: " - Live", "(MTV Unplugged)", "(Deluxe Edition)", "(2002)".
+// It returns the rest, the first edition found, and the year.
+func trimEditionSuffixes(s string, types []catalog.EditionType) (rest, edition string, year int) {
+	for {
+		i := strings.LastIndex(s, " - ")
+		if i <= 0 {
+			break
+		}
+		id, ok := matchAlias(s[i+3:], types)
+		if !ok {
+			break
+		}
+		if edition == "" {
+			edition = id
+		}
+		s = strings.TrimSpace(s[:i])
+	}
+	for {
+		m := reTrailingParen.FindStringSubmatchIndex(s)
+		if m == nil || m[0] == 0 {
+			break
+		}
+		inner := strings.TrimSpace(s[m[2]:m[3]])
+		if id, ok := matchAlias(inner, types); ok {
+			if edition == "" {
+				edition = id
+			}
+		} else if y, err := strconv.Atoi(inner); err == nil && y >= 1900 && y <= 2099 {
+			year = y
+		} else {
+			break
+		}
+		s = strings.TrimSpace(s[:m[0]])
+	}
+	return s, edition, year
 }

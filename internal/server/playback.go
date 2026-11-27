@@ -164,9 +164,12 @@ func (s *Server) stopPlayback(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-var directTypes = map[string]string{"mp4": "video/mp4", "m4v": "video/mp4", "mov": "video/mp4", "webm": "video/webm"}
+var directTypes = map[string]string{
+	"mp4": "video/mp4", "m4v": "video/mp4", "mov": "video/mp4", "webm": "video/webm",
+	"flac": "audio/flac", "mp3": "audio/mpeg", "m4a": "audio/mp4", "m4b": "audio/mp4", "aac": "audio/aac",
+	"ogg": "audio/ogg", "oga": "audio/ogg", "opus": "audio/ogg", "wav": "audio/wav",
+}
 
-// versionFile sends a file as-is, with range requests so players can seek.
 // versionThumb serves a still from a video file, made on first request.
 // Used for music videos and anything else without artwork.
 func (s *Server) versionThumb(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +201,34 @@ func (s *Server) versionThumb(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, path)
 }
 
+// versionCover serves the album cover for a music file: an image in its
+// folder, or the art embedded in the file.
+func (s *Server) versionCover(w http.ResponseWriter, r *http.Request) {
+	pb := s.opt.Playback
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if pb == nil || pb.Thumbs == nil || err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	v, err := pb.Versions.Version(r.Context(), id)
+	if errors.Is(err, catalog.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
+	if err != nil {
+		s.internalError(w, "load file", err)
+		return
+	}
+	path, err := pb.Thumbs.Cover(r.Context(), thumb.Source{VersionID: v.ID, Path: v.Path, SizeBytes: v.SizeBytes})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "no cover art for this file")
+		return
+	}
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	http.ServeFile(w, r, path)
+}
+
+// versionFile sends a file as-is, with range requests so players can seek.
 func (s *Server) versionFile(w http.ResponseWriter, r *http.Request) {
 	pb := s.opt.Playback
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)

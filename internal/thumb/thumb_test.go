@@ -38,3 +38,36 @@ func TestGet(t *testing.T) {
 		t.Errorf("missing source: %v", err)
 	}
 }
+
+func TestCover(t *testing.T) {
+	ff, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	dir := t.TempDir()
+	art := filepath.Join(dir, "art.png")
+	song := filepath.Join(dir, "01 Song.flac")
+	run := func(args ...string) {
+		if out, err := exec.Command(ff, append([]string{"-hide_banner", "-loglevel", "error", "-y"}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+	}
+	run("-f", "lavfi", "-i", "color=c=red:s=300x300", "-frames:v", "1", art)
+	run("-f", "lavfi", "-i", "sine=d=1", "-i", art, "-map", "0:a", "-map", "1:v", "-c:v", "png", "-disposition:v", "attached_pic", song)
+	os.Remove(art)
+
+	m := New(ff, filepath.Join(dir, "cache"))
+	p, err := m.Cover(context.Background(), Source{VersionID: 3, Path: song, SizeBytes: 10})
+	if err != nil {
+		t.Fatalf("embedded: %v", err)
+	}
+	if b, _ := os.ReadFile(p); len(b) < 100 || b[0] != 0xFF {
+		t.Error("embedded cover isn't a JPEG")
+	}
+	// A cover file next to the songs wins over embedded art.
+	folder := filepath.Join(dir, "Folder.JPG")
+	os.WriteFile(folder, []byte("jpeg"), 0o644)
+	if p, err := m.Cover(context.Background(), Source{VersionID: 3, Path: song, SizeBytes: 10}); err != nil || p != folder {
+		t.Errorf("folder cover: %s %v", p, err)
+	}
+}

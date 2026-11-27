@@ -60,8 +60,11 @@ export interface Title {
   collection_name?: string;
   match_status: "unmatched" | "matched" | "not_found" | "error";
   match_error?: string;
-  /** Music videos: who performs it. */
+  /** Music videos and albums: who performs it. */
   artist?: string;
+  /** Albums: a track file whose cover art stands for the album, and how many tracks have files. */
+  cover_version_id?: number;
+  track_count?: number;
   /** TV shows: seasons and episodes that have files. */
   season_count?: number;
   episode_count?: number;
@@ -82,6 +85,22 @@ export interface Episode {
   part_of?: number;
   /** Empty when the library has no file for this episode. */
   versions: Version[];
+}
+
+export interface Track {
+  id: number;
+  disc: number;
+  number: number; // 0 when unknown
+  name: string;
+  /** Set when it differs from the album artist. */
+  artist?: string;
+  versions: Version[];
+}
+
+/** One edition of an album (Original, Deluxe...) with its tracks. */
+export interface AlbumEdition {
+  edition_id: number;
+  tracks: Track[];
 }
 
 export interface Season {
@@ -151,6 +170,7 @@ export const api = {
   createLibrary: (name: string, mediaType: MediaType, paths: string[]) =>
     request<Library>("POST", "/api/libraries", { name, media_type: mediaType, paths }),
   titles: (libraryId: number) => request<Title[]>("GET", `/api/libraries/${libraryId}/titles`),
+  tracks: (titleId: number) => request<AlbumEdition[]>("GET", `/api/titles/${titleId}/tracks`),
   episodes: (titleId: number) => request<Season[]>("GET", `/api/titles/${titleId}/episodes`),
   scan: (libraryId: number) => request<ScanResult>("POST", `/api/libraries/${libraryId}/scan`),
   play: (versionId: number, caps: ClientCaps) => request<PlayResponse>("POST", "/api/playback", { version_id: versionId, caps }),

@@ -87,8 +87,12 @@ type Title struct {
 	// MatchStatus is unmatched, matched, not_found or error.
 	MatchStatus string `json:"match_status"`
 	MatchError  string `json:"match_error,omitempty"`
-	// Artist is who performs a music video.
+	// Artist is who performs a music video, or an album's artist.
 	Artist string `json:"artist,omitempty"`
+	// Albums: a track file whose cover art stands for the album, and how
+	// many tracks have files.
+	CoverVersionID int64 `json:"cover_version_id,omitempty"`
+	TrackCount     int   `json:"track_count,omitempty"`
 
 	// For TV shows: how many seasons and episodes have files.
 	SeasonCount  int `json:"season_count,omitempty"`
@@ -174,4 +178,20 @@ func LinkMultiEpisodeFiles(seasons []Season) {
 			}
 		}
 	}
+}
+
+// AlbumEdition is one edition of an album with its tracks.
+type AlbumEdition struct {
+	EditionID int64   `json:"edition_id"`
+	Tracks    []Track `json:"tracks"`
+}
+
+// Track is one song on an album, with its files in that edition.
+type Track struct {
+	ID       int64     `json:"id"`
+	Disc     int       `json:"disc"`
+	Number   int       `json:"number"` // 0 when unknown
+	Name     string    `json:"name"`
+	Artist   string    `json:"artist,omitempty"` // when it differs from the album artist
+	Versions []Version `json:"versions"`
 }

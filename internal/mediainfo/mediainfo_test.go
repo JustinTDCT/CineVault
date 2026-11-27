@@ -99,3 +99,33 @@ func TestFFprobeRunsAndSetsContainer(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestParseMusicTags(t *testing.T) {
+	// ffprobe output for a FLAC with Vorbis comments in upper case and embedded cover art.
+	out := `{"streams":[
+	  {"codec_type":"audio","codec_name":"flac","channels":2,"sample_rate":"44100","bits_per_raw_sample":"16","sample_fmt":"s16"},
+	  {"codec_type":"video","codec_name":"mjpeg","width":600,"height":600,"disposition":{"attached_pic":1}}],
+	 "format":{"duration":"236.893","bit_rate":"910000","tags":{"TITLE":"When I'm Gone","ARTIST":"3 Doors Down",
+	   "ALBUMARTIST":"3 Doors Down","ALBUM":"Away From the Sun","TRACKNUMBER":"1","DISCNUMBER":"1","DATE":"2002","GENRE":"Rock"}}}`
+	info, err := Parse([]byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.VideoCodec != "" || !info.HasCover || info.SampleRate != 44100 || info.BitDepth != 16 {
+		t.Errorf("info = %+v", info)
+	}
+	if info.Tag("album_artist") != "3 Doors Down" || info.Tag("track") != "1" || info.Tag("disc") != "1" || info.Tag("title") != "When I'm Gone" {
+		t.Errorf("tags = %v", info.Tags)
+	}
+	if info.Tag("nope", "album") != "Away From the Sun" {
+		t.Error("Tag should fall through to the next key")
+	}
+	info.Container = "flac"
+	if got := info.Label(); got != "FLAC 2.0 · 16-bit/44.1 kHz" {
+		t.Errorf("label = %q", got)
+	}
+	mp3 := Info{AudioCodec: "mp3", AudioChannels: 2, Bitrate: 320000}
+	if got := mp3.Label(); got != "MP3 2.0 · 320 kbps" {
+		t.Errorf("mp3 label = %q", got)
+	}
+}

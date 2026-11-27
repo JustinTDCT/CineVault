@@ -1,4 +1,4 @@
-import type { Edition, Episode, Season, Title, Version } from "./api";
+import type { Edition, Episode, Season, Title, Track, Version } from "./api";
 
 /** How many edition labels a card shows before "Show all" (Editions spec §7). */
 export const CARD_EDITION_LIMIT = 3;
@@ -185,7 +185,49 @@ export function itemNoun(mediaType: string | undefined, count: number): string {
       return one ? "show" : "shows";
     case "musicvideo":
       return one ? "music video" : "music videos";
+    case "music":
+      return one ? "album" : "albums";
     default:
       return one ? "movie" : "movies";
   }
+}
+
+// ---------- Music ----------
+
+/** Album cover from the album's files (a cover.jpg next to them, or embedded art). */
+export function coverUrl(t: Pick<Title, "cover_version_id">): string | undefined {
+  return t.cover_version_id ? `/api/versions/${t.cover_version_id}/cover` : undefined;
+}
+
+/** "3:56", or "1:02:03" past an hour. */
+export function formatClock(seconds: number | undefined): string {
+  if (!seconds || !Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+}
+
+/** The file to play for a track: the first one that's present. */
+export function trackFile(t: Track): Version | undefined {
+  return t.versions.find((v) => !v.missing);
+}
+
+/** "12 songs · 47 min" for an album edition. */
+export function albumSummary(tracks: Track[]): string {
+  const secs = tracks.reduce((sum, t) => sum + (trackFile(t)?.duration_seconds ?? 0), 0);
+  const songs = `${tracks.length} ${tracks.length === 1 ? "song" : "songs"}`;
+  return secs ? `${songs} · ${formatRuntime(secs)}` : songs;
+}
+
+/** Tracks split by disc, only when an album has more than one. */
+export function byDisc(tracks: Track[]): { disc: number; tracks: Track[] }[] {
+  const out: { disc: number; tracks: Track[] }[] = [];
+  for (const t of tracks) {
+    const last = out[out.length - 1];
+    if (last && last.disc === t.disc) last.tracks.push(t);
+    else out.push({ disc: t.disc, tracks: [t] });
+  }
+  return out;
 }

@@ -46,11 +46,13 @@ npm run dev    # serves on port 5173 and forwards /api to the Go server on 8456
 | `POST /api/libraries/{id}/scan` | Scan a library now, then match new titles to TMDb, and return a summary. Movie and TV libraries. |
 | `POST /api/libraries/{id}/match` | Match unmatched titles to TMDb without scanning. Titles that failed with an error are retried; ones TMDb didn't find are not. |
 | `GET /api/libraries/{id}/titles` | Titles with their editions and versions. Shows list their season and episode counts instead of files. |
+| `GET /api/titles/{id}/tracks` | An album's songs and their files, per edition |
 | `GET /api/titles/{id}/episodes` | A show's seasons and episodes with their files, including episodes TMDb lists that the library doesn't have |
 | `POST /api/playback` | Start playing a file: `{"version_id": 2, "caps": {...}}`. Returns a direct file URL, or an HLS playlist URL when the file needs converting. |
 | `GET /api/playback/{session}/index.m3u8`, `…/segN.ts` | HLS playlist and segments for a session |
 | `DELETE /api/playback/{session}` | Stop a session |
 | `GET /api/versions/{id}/thumb` | A still from a video file (a third of the way in), made on first request and cached |
+| `GET /api/versions/{id}/cover` | Album cover for a music file: `cover.jpg`/`folder.jpg` next to it, or the art embedded in the file |
 | `GET /api/versions/{id}/file` | The original file, with range requests for seeking |
 
 The health check reports:
@@ -91,6 +93,18 @@ Sherlock/Specials/Sherlock - S00E01 - The Abominable Bride.mkv
 ```
 
 `S01E01`, `s1e1`, `S01.E01` and `1x01` all work. Files with no season and episode number are listed as scan errors. Subtitle files next to the video (`.srt`) are ignored for now.
+
+### Music and music video file names
+
+Music is read from the files' tags first (album, album artist, track, disc, date, genre). The folders fill any gaps, and an album folder's year and edition win over tags, so one oddly tagged song can't split an album:
+
+```
+3 Doors Down/Away From the Sun (2002)/3 Doors Down - 01 - When I'm Gone.flac
+Adele/25 (Deluxe Edition) (2015)/01 Hello.flac       (a Deluxe edition of 25)
+Pink Floyd/The Wall (1979)/CD2/01 - Hey You.mp3      (disc 2)
+```
+
+Music videos are named `Artist - Song (Edition).mp4`, for example `Alice In Chains - No Excuses (MTV Unplugged).mp4`, or kept in an `Artist/` folder. Brackets that name an edition (Live, Unplugged, Lyric Video, U.S. Version...) make an edition of the same song.
 
 ## Project layout
 

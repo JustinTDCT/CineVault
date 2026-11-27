@@ -1,17 +1,19 @@
 import { useState } from "react";
 import type { Title } from "../api";
-import { editionListing, posterBadge, showCounts, thumbUrl } from "../format";
+import { coverUrl, editionListing, posterBadge, showCounts, thumbUrl } from "../format";
 import { linkTo } from "../router";
 
 export function Poster({ title, size = "card" }: { title: Title; size?: "card" | "large" }) {
   const [failed, setFailed] = useState(false);
   // Music videos have no posters: a still from the video, in 16:9.
   const wide = title.media_type === "musicvideo";
-  const src = wide ? thumbUrl(title) : title.poster_url;
+  const square = title.media_type === "music";
+  const shape = wide ? " poster-wide" : square ? " poster-square" : "";
+  const src = wide ? thumbUrl(title) : square ? coverUrl(title) : title.poster_url;
   if (src && !failed) {
     return (
       <img
-        className={`poster poster-${size}${wide ? " poster-wide" : ""}`}
+        className={`poster poster-${size}${shape}`}
         src={src}
         alt=""
         loading="lazy"
@@ -22,7 +24,7 @@ export function Poster({ title, size = "card" }: { title: Title; size?: "card" |
   }
   // No artwork yet: a title card in marquee lettering.
   return (
-    <div className={`poster poster-${size} poster-blank${wide ? " poster-wide" : ""}`} aria-hidden="true">
+    <div className={`poster poster-${size} poster-blank${shape}`} aria-hidden="true">
       <span>{title.name}</span>
       {title.year ? <span className="poster-blank-year">{title.year}</span> : null}
     </div>

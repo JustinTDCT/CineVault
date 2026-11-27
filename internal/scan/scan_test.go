@@ -28,11 +28,13 @@ type fakeStore struct {
 	runtimes map[int64]int
 	versions map[string]*fakeVersion
 	episodes map[string]int64 // "titleID|S1E3" -> id
+	tracks   map[string]int64 // "titleID|disc|num|name" -> id
+	genres   map[int64][]string
 	epNames  map[int64]string
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{titles: map[string]int64{}, editions: map[string]int64{}, runtimes: map[int64]int{}, versions: map[string]*fakeVersion{}, episodes: map[string]int64{}, epNames: map[int64]string{}}
+	return &fakeStore{titles: map[string]int64{}, editions: map[string]int64{}, runtimes: map[int64]int{}, versions: map[string]*fakeVersion{}, episodes: map[string]int64{}, epNames: map[int64]string{}, tracks: map[string]int64{}, genres: map[int64][]string{}}
 }
 
 func (f *fakeStore) id() int64 { f.nextID++; return f.nextID }
@@ -44,10 +46,28 @@ func (f *fakeStore) EditionTypes(context.Context) ([]catalog.EditionType, error)
 	for i := range types[1:] {
 		types[i+1].MediaTypes = []string{"movie"}
 	}
+	types = append(types, catalog.EditionType{ID: "original", DisplayName: "Original", MediaTypes: []string{"music"}, IsDefault: true},
+		catalog.EditionType{ID: "deluxe", DisplayName: "Deluxe/Expanded", MediaTypes: []string{"music"}, Aliases: []string{"deluxe edition", "deluxe"}})
 	types = append(types, catalog.EditionType{ID: "official_video", DisplayName: "Official Video", MediaTypes: []string{"musicvideo"}, IsDefault: true},
 		catalog.EditionType{ID: "acoustic", DisplayName: "Acoustic/Unplugged", MediaTypes: []string{"musicvideo"}, Aliases: []string{"mtv unplugged", "unplugged"}})
 	types = append(types, catalog.EditionType{ID: "broadcast", DisplayName: "Broadcast", MediaTypes: []string{"tv"}, IsDefault: true})
 	return types, nil
+}
+
+func (f *fakeStore) FindOrCreateTrack(_ context.Context, titleID int64, disc, num int, name, _ string) (int64, error) {
+	key := fmt.Sprintf("%d|%d|%d|%s", titleID, disc, num, strings.ToLower(name))
+	if id, ok := f.tracks[key]; ok {
+		return id, nil
+	}
+	f.tracks[key] = f.id()
+	return f.tracks[key], nil
+}
+
+func (f *fakeStore) SetGenres(_ context.Context, id int64, g []string) error {
+	if len(f.genres[id]) == 0 {
+		f.genres[id] = g
+	}
+	return nil
 }
 
 func (f *fakeStore) FindOrCreateEpisode(_ context.Context, titleID int64, season, episode int, name string) (int64, error) {
@@ -136,12 +156,16 @@ func (f *fakeStore) summary() []string {
 type fakeProber struct {
 	calls  int
 	failOn string
+	tags   map[string]map[string]string // by file name
 }
 
 func (p *fakeProber) Probe(_ context.Context, path string) (mediainfo.Info, error) {
 	p.calls++
 	if p.failOn != "" && strings.Contains(path, p.failOn) {
 		return mediainfo.Info{}, errors.New("ffprobe: Invalid data found when processing input")
+	}
+	if t, ok := p.tags[filepath.Base(path)]; ok {
+		return mediainfo.Info{Container: "flac", AudioCodec: "flac", AudioChannels: 2, DurationSeconds: 240, Tags: t}, nil
 	}
 	return mediainfo.Info{Container: "mkv", VideoCodec: "hevc", Width: 1920, Height: 800, DurationSeconds: 7020.4}, nil
 }
@@ -242,8 +266,8 @@ func TestScanReportsBadFilesAndFolders(t *testing.T) {
 
 func TestScanRejectsUnsupportedLibraries(t *testing.T) {
 	s := Scanner{Store: newFakeStore(), Prober: &fakeProber{}}
-	if _, err := s.Scan(context.Background(), catalog.Library{MediaType: "music"}); err == nil {
-		t.Error("music libraries should be rejected for now")
+	if _, err := s.Scan(context.Background(), catalog.Library{MediaType: "audiobook"}); err == nil {
+		t.Error("audiobook libraries should be rejected for now")
 	}
 }
 
@@ -353,5 +377,40 @@ func TestScanMusicVideos(t *testing.T) {
 	}
 	if !eds["acoustic"] || !eds["official_video"] {
 		t.Errorf("editions = %v", store.editions)
+	}
+}
+
+func TestScanMusic(t *testing.T) {
+	dir := t.TempDir()
+	album := filepath.Join(dir, "3 Doors Down", "Away From the Sun (2002)")
+	write(t, filepath.Join(album, "3 Doors Down - 01 - When I'm Gone [CD].flac"), "a")
+	write(t, filepath.Join(album, "3 Doors Down - 02 - Away From the Sun [CD].flac"), "b")
+	write(t, filepath.Join(album, "3 Doors Down - 02 - Away From the Sun [CD].mp3"), "b2") // second copy of the same song
+	write(t, filepath.Join(album, "cover.jpg"), "img")                                     // not a song
+	deluxe := filepath.Join(dir, "3 Doors Down", "Time of My Life (Deluxe Edition) (2011)")
+	write(t, filepath.Join(deluxe, "16 - Train (demo).flac"), "c")
+	store := newFakeStore()
+	pr := &fakeProber{tags: map[string]map[string]string{
+		"3 Doors Down - 01 - When I'm Gone [CD].flac":     {"title": "When I'm Gone", "track": "1/12", "album": "Away From the Sun", "album_artist": "3 Doors Down", "genre": "Rock; Post-grunge"},
+		"3 Doors Down - 02 - Away From the Sun [CD].flac": {},
+		"3 Doors Down - 02 - Away From the Sun [CD].mp3":  {},
+		"16 - Train (demo).flac":                          {},
+	}}
+	res, err := Scanner{Store: store, Prober: pr}.Scan(context.Background(), catalog.Library{ID: 4, MediaType: "music", Paths: []string{dir}})
+	if err != nil || res.Added != 4 || res.FilesSeen != 4 || len(res.Errors) != 0 {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	if len(store.titles) != 2 || store.titles["away from the sun|2002|3 doors down"] == 0 || store.titles["time of my life|2011|3 doors down"] == 0 {
+		t.Errorf("albums = %v", store.titles)
+	}
+	if len(store.tracks) != 3 {
+		t.Errorf("tracks = %v (the FLAC and MP3 of one song should share a track)", store.tracks)
+	}
+	if g := store.genres[store.titles["away from the sun|2002|3 doors down"]]; len(g) != 2 || g[1] != "Post-grunge" {
+		t.Errorf("genres = %v", g)
+	}
+	tol := store.titles["time of my life|2011|3 doors down"]
+	if store.editions[fmt.Sprintf("%d|deluxe", tol)] == 0 {
+		t.Errorf("deluxe edition missing: %v", store.editions)
 	}
 }

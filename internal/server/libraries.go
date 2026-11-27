@@ -128,6 +128,25 @@ func (s *Server) titleEpisodes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, seasons)
 }
 
+// albumTracks lists an album's tracks and their files, per edition.
+func (s *Server) albumTracks(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "title id must be a positive number")
+		return
+	}
+	eds, err := s.opt.Libraries.AlbumTracks(r.Context(), id)
+	if errors.Is(err, catalog.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "title not found")
+		return
+	}
+	if err != nil {
+		s.internalError(w, "list tracks", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, eds)
+}
+
 type scanResponse struct {
 	Library    catalog.Library `json:"library"`
 	DurationMS int64           `json:"duration_ms"`

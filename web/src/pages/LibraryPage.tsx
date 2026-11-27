@@ -95,11 +95,11 @@ export function LibraryPage({ library, libraryId }: { library?: Library; library
           <p>No {itemNoun(library?.media_type, 2)} here yet. Scan the library to find the files in its folders.</p>
         </div>
       ) : (
-        library?.media_type === "musicvideo" ? (
+        library?.media_type === "musicvideo" || library?.media_type === "music" ? (
           groupByArtist(titles).map((g) => (
             <section key={g.artist} className="artist-group" aria-label={g.artist}>
               <h2 className="artist-name">{g.artist}</h2>
-              <div className="grid grid-wide">
+              <div className={library.media_type === "music" ? "grid" : "grid grid-wide"}>
                 {g.titles.map((t) => (
                   <PosterCard key={t.id} title={t} />
                 ))}

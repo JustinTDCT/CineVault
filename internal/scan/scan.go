@@ -33,6 +33,8 @@ type NewVersion struct {
 	// the last episode number of a multi-episode file, 0 otherwise.
 	EpisodeID   int64
 	LastEpisode int
+	// TrackID links a music file to its track; 0 otherwise.
+	TrackID int64
 }
 
 // Store is what the scanner needs from the database.
@@ -47,6 +49,11 @@ type Store interface {
 	// FindOrCreateEpisode finds a show's episode, creating it (and its season)
 	// with the name from the file if it's new.
 	FindOrCreateEpisode(ctx context.Context, titleID int64, season, episode int, name string) (int64, error)
+	// FindOrCreateTrack finds an album's track by disc, number and name,
+	// creating it if it's new.
+	FindOrCreateTrack(ctx context.Context, titleID int64, disc, number int, name, artist string) (int64, error)
+	// SetGenres sets a title's genres if it has none yet.
+	SetGenres(ctx context.Context, titleID int64, genres []string) error
 	// UpsertVersion inserts or updates the file by path and clears its missing
 	// flag. It never moves a version whose edition the user locked.
 	UpsertVersion(ctx context.Context, editionID int64, v NewVersion) error
@@ -86,7 +93,12 @@ var VideoExtensions = map[string]bool{
 // with what's on disk. Unchanged files (same path and size) aren't probed again.
 func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) {
 	res := Result{Errors: []FileError{}}
-	if lib.MediaType != "movie" && lib.MediaType != "tv" && lib.MediaType != "musicvideo" {
+	exts := VideoExtensions
+	switch lib.MediaType {
+	case "movie", "tv", "musicvideo":
+	case "music":
+		exts = AudioExtensions
+	default:
 		return res, fmt.Errorf("scanning %s libraries isn't supported yet", lib.MediaType)
 	}
 
@@ -134,7 +146,7 @@ func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) 
 				}
 				return nil
 			}
-			if !d.Type().IsRegular() || strings.HasPrefix(name, ".") || !VideoExtensions[strings.ToLower(filepath.Ext(name))] || isSample(name) {
+			if !d.Type().IsRegular() || strings.HasPrefix(name, ".") || !exts[strings.ToLower(filepath.Ext(name))] || isSample(name) {
 				return nil
 			}
 			info, err := d.Info()
@@ -157,6 +169,8 @@ func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) 
 				add = s.addEpisodeFile
 			case "musicvideo":
 				add = s.addMusicVideoFile
+			case "music":
+				add = s.addTrackFile
 			}
 			if err := add(ctx, lib, root, types, defaultEdition, path, info.Size()); err != nil {
 				if ctx.Err() != nil {
@@ -247,6 +261,55 @@ func (s Scanner) addMusicVideoFile(ctx context.Context, lib catalog.Library, roo
 		return fmt.Errorf("save file: %w", err)
 	}
 	return nil
+}
+
+// addTrackFile records a song: its album (a title with its artist and
+// edition), its track, and the file as a version of that track.
+func (s Scanner) addTrackFile(ctx context.Context, lib catalog.Library, root string, types []catalog.EditionType, defaultEdition, path string, size int64) error {
+	info, err := s.Prober.Probe(ctx, path)
+	if err != nil {
+		return err
+	}
+	t, ok := ParseTrack(root, path, info, types, defaultEdition)
+	if !ok {
+		return errors.New("could not work out the song's name from its tags or file name")
+	}
+	fp, err := Fingerprint(path)
+	if err != nil {
+		return fmt.Errorf("fingerprint: %w", describeErr(err))
+	}
+	titleID, err := s.Store.FindOrCreateTitle(ctx, lib.ID, lib.MediaType, t.Album)
+	if err != nil {
+		return fmt.Errorf("save album: %w", err)
+	}
+	if t.Genre != "" {
+		if err := s.Store.SetGenres(ctx, titleID, splitGenres(t.Genre)); err != nil {
+			return fmt.Errorf("save genre: %w", err)
+		}
+	}
+	editionID, err := s.Store.FindOrCreateEdition(ctx, titleID, t.Album.EditionTypeID, 0)
+	if err != nil {
+		return fmt.Errorf("save edition: %w", err)
+	}
+	trackID, err := s.Store.FindOrCreateTrack(ctx, titleID, t.Disc, t.Number, t.Name, t.Artist)
+	if err != nil {
+		return fmt.Errorf("save track: %w", err)
+	}
+	if err := s.Store.UpsertVersion(ctx, editionID, NewVersion{Path: path, SizeBytes: size, Fingerprint: fp, Info: info, TrackID: trackID}); err != nil {
+		return fmt.Errorf("save file: %w", err)
+	}
+	return nil
+}
+
+// splitGenres reads "Rock; Alternative" or "Rock/Alternative".
+func splitGenres(s string) []string {
+	var out []string
+	for _, g := range strings.FieldsFunc(s, func(r rune) bool { return r == ';' || r == '/' || r == ',' }) {
+		if g = strings.TrimSpace(g); g != "" {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // addEpisodeFile records a TV episode file. All of a show's files go in its

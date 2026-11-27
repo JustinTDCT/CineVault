@@ -449,3 +449,50 @@ func TestIntegrationTVShow(t *testing.T) {
 		t.Errorf("shows needing episodes = %+v err=%v", need, err)
 	}
 }
+
+func TestIntegrationMusic(t *testing.T) {
+	d := testDatabase(t)
+	ctx := context.Background()
+	if _, err := d.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	album := filepath.Join(dir, "3 Doors Down", "Away From the Sun (2002)")
+	if err := os.MkdirAll(album, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"3 Doors Down - 01 - When I'm Gone [CD].flac",
+		"3 Doors Down - 02 - Away From the Sun [CD].flac",
+		"3 Doors Down - 02 - Away From the Sun [CD].mp3", // a second file of the same song
+	} {
+		if err := os.WriteFile(filepath.Join(album, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lib, err := d.CreateLibrary(ctx, catalog.Library{Name: "Music", MediaType: "music", Paths: []string{dir}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, err := (scan.Scanner{Store: d, Prober: stubProber{}}).Scan(ctx, lib); err != nil || res.Added != 3 {
+		t.Fatalf("scan: %+v err=%v", res, err)
+	}
+	titles, err := d.LibraryTitles(ctx, lib.ID)
+	if err != nil || len(titles) != 1 {
+		t.Fatalf("titles: %v %v", titles, err)
+	}
+	a := titles[0]
+	if a.Name != "Away From the Sun" || a.Artist != "3 Doors Down" || a.Year != 2002 || a.TrackCount != 2 || a.CoverVersionID == 0 || len(a.Editions[0].Versions) != 0 {
+		t.Errorf("album = %+v", a)
+	}
+	eds, err := d.AlbumTracks(ctx, a.ID)
+	if err != nil || len(eds) != 1 || len(eds[0].Tracks) != 2 {
+		t.Fatalf("tracks: %+v err=%v", eds, err)
+	}
+	if tr := eds[0].Tracks[1]; tr.Number != 2 || tr.Name != "Away From the Sun" || len(tr.Versions) != 2 {
+		t.Errorf("track 2 = %+v", tr)
+	}
+	if _, err := d.AlbumTracks(ctx, 999999); !errors.Is(err, catalog.ErrNotFound) {
+		t.Errorf("missing album: %v", err)
+	}
+}

@@ -2,11 +2,28 @@ import { useEffect, useState } from "react";
 import { api, type Edition, type Title } from "../api";
 import { Poster } from "../components/PosterCard";
 import { Player, type PlayTarget } from "../components/Player";
-import { defaultEdition, fileName, formatRuntime, formatSize, itemNoun, labelWithoutResolution, resolution, showCounts, usesTMDb } from "../format";
+import {
+  defaultEdition,
+  fileName,
+  formatRuntime,
+  formatSize,
+  itemNoun,
+  labelWithoutResolution,
+  resolution,
+  showCounts,
+  usesTMDb,
+} from "../format";
 import { ShowEpisodes } from "./ShowEpisodes";
+import { AlbumTracks } from "./AlbumTracks";
 import { linkTo } from "../router";
 
-export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: number }) {
+export function TitlePage({
+  libraryId,
+  titleId,
+}: {
+  libraryId: number;
+  titleId: number;
+}) {
   const [title, setTitle] = useState<Title | null | undefined>(undefined);
   const [error, setError] = useState("");
   const [editionId, setEditionId] = useState<number | null>(null);
@@ -42,18 +59,35 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
     );
   }
 
-  const edition = title.editions.find((e) => e.id === editionId) ?? title.editions[0];
+  const edition =
+    title.editions.find((e) => e.id === editionId) ?? title.editions[0];
   const isShow = title.media_type === "tv";
-  const runtime = title.runtime_minutes ? title.runtime_minutes * 60 : (edition?.runtime_seconds ?? 0);
+  const runtime = title.runtime_minutes
+    ? title.runtime_minutes * 60
+    : (edition?.runtime_seconds ?? 0);
+  const isAlbum = title.media_type === "music";
   const facts = (
     isShow
       ? [title.year, showCounts(title), title.genres.join(", ")]
-      : [title.artist, title.year, runtime ? formatRuntime(runtime) : "", title.genres.join(", ")]
+      : isAlbum
+        ? [title.artist, title.year, title.genres.join(", ")]
+        : [
+            title.artist,
+            title.year,
+            runtime ? formatRuntime(runtime) : "",
+            title.genres.join(", "),
+          ]
   ).filter(Boolean);
 
   return (
     <article className="title-page">
-      {title.backdrop_url ? <div className="backdrop" style={{ backgroundImage: `url(${title.backdrop_url})` }} aria-hidden="true" /> : null}
+      {title.backdrop_url ? (
+        <div
+          className="backdrop"
+          style={{ backgroundImage: `url(${title.backdrop_url})` }}
+          aria-hidden="true"
+        />
+      ) : null}
 
       <a className="back" {...linkTo(`/libraries/${libraryId}`)}>
         All {itemNoun(title.media_type, 2)}
@@ -63,16 +97,33 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
         <Poster title={title} size="large" />
         <div className="title-info">
           <h1 className="title-name">{title.name}</h1>
-          {facts.length ? <p className="title-facts">{facts.join("   ")}</p> : null}
+          {facts.length ? (
+            <p className="title-facts">{facts.join("   ")}</p>
+          ) : null}
           {title.tagline ? <p className="tagline">{title.tagline}</p> : null}
           {title.overview ? <p className="overview">{title.overview}</p> : null}
           <MatchNote title={title} />
-          {title.collection_name ? <p className="collection">Part of the {title.collection_name}</p> : null}
+          {title.collection_name ? (
+            <p className="collection">Part of the {title.collection_name}</p>
+          ) : null}
         </div>
       </div>
 
-      {isShow ? <ShowEpisodes title={title} /> : <EditionTabs title={title} selected={edition} onSelect={setEditionId} onPlay={setPlaying} />}
-      {playing ? <Player target={playing} onClose={() => setPlaying(null)} /> : null}
+      {isAlbum ? (
+        <AlbumTracks title={title} />
+      ) : isShow ? (
+        <ShowEpisodes title={title} />
+      ) : (
+        <EditionTabs
+          title={title}
+          selected={edition}
+          onSelect={setEditionId}
+          onPlay={setPlaying}
+        />
+      )}
+      {playing ? (
+        <Player target={playing} onClose={() => setPlaying(null)} />
+      ) : null}
     </article>
   );
 }
@@ -103,13 +154,19 @@ function EditionTabs({
 }) {
   if (!selected) return null;
   const single = title.editions.length === 1;
-  const heading = single ? title.name : `${title.name} · ${selected.display_name}`;
+  const heading = single
+    ? title.name
+    : `${title.name} · ${selected.display_name}`;
   // Play the highest-resolution file that's present; versions arrive tallest first.
   const best = selected.versions.find((v) => !v.missing);
 
   return (
     <section className="editions" aria-label="Editions">
-      <h2 className="section-title">{single ? "Your copy" : `${title.editions.length} editions in your library`}</h2>
+      <h2 className="section-title">
+        {single
+          ? "Your copy"
+          : `${title.editions.length} editions in your library`}
+      </h2>
       {single ? null : (
         <div className="edition-tabs" role="tablist">
           {title.editions.map((e) => (
@@ -123,25 +180,47 @@ function EditionTabs({
               onClick={() => onSelect(e.id)}
             >
               <span className="edition-tab-name">{e.display_name}</span>
-              <span className="edition-tab-runtime">{formatRuntime(e.runtime_seconds) || "Runtime unknown"}</span>
+              <span className="edition-tab-runtime">
+                {formatRuntime(e.runtime_seconds) || "Runtime unknown"}
+              </span>
             </button>
           ))}
         </div>
       )}
 
-      <div className="edition-panel" id="edition-panel" role={single ? undefined : "tabpanel"} aria-labelledby={single ? undefined : `edition-tab-${selected.id}`}>
+      <div
+        className="edition-panel"
+        id="edition-panel"
+        role={single ? undefined : "tabpanel"}
+        aria-labelledby={single ? undefined : `edition-tab-${selected.id}`}
+      >
         <div className="edition-actions">
-          <button className="btn btn-primary" disabled={!best} onClick={() => best && onPlay({ versionId: best.id, heading })}>
+          <button
+            className="btn btn-primary"
+            disabled={!best}
+            onClick={() => best && onPlay({ versionId: best.id, heading })}
+          >
             Play {single ? "" : selected.display_name}
           </button>
-          {best ? null : <span className="hint">The files for this edition are missing.</span>}
+          {best ? null : (
+            <span className="hint">
+              The files for this edition are missing.
+            </span>
+          )}
         </div>
         <ul className="versions">
           {selected.versions.map((v) => (
-            <li key={v.id} className={v.missing ? "version version-missing" : "version"}>
+            <li
+              key={v.id}
+              className={v.missing ? "version version-missing" : "version"}
+            >
               <div className="version-main">
-                <span className="version-res">{resolution(v) || "Unknown"}</span>
-                <span className="version-label">{labelWithoutResolution(v.label, resolution(v))}</span>
+                <span className="version-res">
+                  {resolution(v) || "Unknown"}
+                </span>
+                <span className="version-label">
+                  {labelWithoutResolution(v.label, resolution(v))}
+                </span>
               </div>
               <div className="version-file">
                 <span className="version-path" title={v.path}>
@@ -151,7 +230,15 @@ function EditionTabs({
                 {v.missing ? (
                   <span className="version-flag">File missing</span>
                 ) : selected.versions.length > 1 ? (
-                  <button className="linkish" onClick={() => onPlay({ versionId: v.id, heading: `${heading} (${resolution(v)})` })}>
+                  <button
+                    className="linkish"
+                    onClick={() =>
+                      onPlay({
+                        versionId: v.id,
+                        heading: `${heading} (${resolution(v)})`,
+                      })
+                    }
+                  >
                     Play this file
                   </button>
                 ) : null}

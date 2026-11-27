@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -76,4 +77,73 @@ func (m *Maker) Get(ctx context.Context, src Source) (string, error) {
 		return "", ErrFailed
 	}
 	return out, os.Rename(tmp, out)
+}
+
+// coverNames are the image files that hold an album's cover, in order of preference.
+var coverNames = []string{"cover", "folder", "front", "album", "albumart"}
+
+// Cover returns an album cover for a music file: an image next to it
+// (cover.jpg, folder.jpg, front.png...) or, failing that, the art embedded in
+// the file, extracted once and cached.
+func (m *Maker) Cover(ctx context.Context, src Source) (string, error) {
+	if p := FolderCover(filepath.Dir(src.Path)); p != "" {
+		return p, nil
+	}
+	out := filepath.Join(m.Dir, fmt.Sprintf("c%d-%d.jpg", src.VersionID, src.SizeBytes))
+	if st, err := os.Stat(out); err == nil && st.Size() > 0 {
+		return out, nil
+	}
+	select {
+	case m.sem <- struct{}{}:
+		defer func() { <-m.sem }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	if err := os.MkdirAll(m.Dir, 0o755); err != nil {
+		return "", err
+	}
+	tmp := out + ".tmp.jpg"
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, m.FFmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+		"-i", src.Path, "-an", "-map", "0:v:0", "-frames:v", "1",
+		"-vf", "scale='min(600,iw)':-2", "-q:v", "3", tmp)
+	if msg, err := cmd.CombinedOutput(); err != nil {
+		os.Remove(tmp)
+		return "", fmt.Errorf("%w: %v %s", ErrFailed, err, msg)
+	}
+	if st, err := os.Stat(tmp); err != nil || st.Size() == 0 {
+		os.Remove(tmp)
+		return "", ErrFailed
+	}
+	return out, os.Rename(tmp, out)
+}
+
+// FolderCover finds a cover image in dir, matching names without regard to case.
+func FolderCover(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	found := map[string]string{}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := strings.ToLower(e.Name())
+		ext := filepath.Ext(name)
+		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+			continue
+		}
+		base := strings.TrimSuffix(name, ext)
+		if _, ok := found[base]; !ok {
+			found[base] = filepath.Join(dir, e.Name())
+		}
+	}
+	for _, n := range coverNames {
+		if p, ok := found[n]; ok {
+			return p
+		}
+	}
+	return ""
 }

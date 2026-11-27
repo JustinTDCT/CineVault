@@ -57,6 +57,24 @@ func (f *fakeLibraries) TitleEpisodes(_ context.Context, id int64) ([]catalog.Se
 	}}}, nil
 }
 
+func (f *fakeLibraries) AlbumTracks(_ context.Context, id int64) ([]catalog.AlbumEdition, error) {
+	if id != 7 {
+		return nil, catalog.ErrNotFound
+	}
+	return []catalog.AlbumEdition{{EditionID: 1, Tracks: []catalog.Track{{ID: 5, Disc: 1, Number: 1, Name: "When I'm Gone", Versions: []catalog.Version{{ID: 50}}}}}}, nil
+}
+
+func TestAlbumTracks(t *testing.T) {
+	s, _ := libServer(nil)
+	code, body := send(t, s, "GET", "/api/titles/7/tracks", "")
+	if code != http.StatusOK || !strings.Contains(body, `"When I'm Gone"`) || !strings.Contains(body, `"edition_id": 1`) {
+		t.Fatalf("code=%d body=%s", code, body)
+	}
+	if code, _ := send(t, s, "GET", "/api/titles/8/tracks", ""); code != http.StatusNotFound {
+		t.Errorf("missing: %d", code)
+	}
+}
+
 func TestTitleEpisodes(t *testing.T) {
 	s, _ := libServer(nil)
 	code, body := send(t, s, "GET", "/api/titles/7/episodes", "")
