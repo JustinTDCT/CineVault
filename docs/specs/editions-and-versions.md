@@ -121,6 +121,8 @@ When a file is scanned, CineVault fills in three things before the user touches 
 4. runtime clustering against the title's known runtime (within about 2 minutes means the same edition)
 5. for music, the release type from MusicBrainz
 
+**Runtime is a weak hint, never a deciding rule.** It may suggest an edition for a file whose name says nothing, but it never overrides a name or tag, and it never merges two files into one edition on its own. Different cuts can have almost the same length. In testing (26 Nov 2026), *Alien* (1979) Director's Cut and a Remastered copy were 6,997.8 s and 6,997.0 s, less than a second apart, because the 2003 Director's Cut adds and removes footage. Runtime clustering would have merged them wrongly.
+
 Each match carries a confidence score. High-confidence matches are applied automatically. Low-confidence matches are queued as suggestions ("New copy of *Aliens* found: Director's Cut?").
 
 **b. Video and audio data**, probed per version:
