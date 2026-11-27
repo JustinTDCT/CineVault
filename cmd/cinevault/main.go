@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/JustinTDCT/CineVault/internal/cachesync"
 	"github.com/JustinTDCT/CineVault/internal/comic"
 	"github.com/JustinTDCT/CineVault/internal/config"
 	"github.com/JustinTDCT/CineVault/internal/db"
@@ -27,6 +28,7 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/tmdb"
 	"github.com/JustinTDCT/CineVault/internal/transcode"
 	"github.com/JustinTDCT/CineVault/internal/webui"
+	"github.com/JustinTDCT/CineVault/pkg/cacheapi"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -102,9 +104,34 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
+	cache := &cachesync.Service{
+		Store: database,
+		Client: &cacheapi.Client{
+			BaseURL: cfg.CacheURL, Token: cfg.CacheToken, UserAgent: "CineVault/" + version,
+		},
+		Log: log,
+	}
+	if cache.Subscribed() {
+		log.Info("cinevault cache", "url", cfg.CacheURL, "subscribed", true)
+	} else {
+		log.Info("cinevault cache", "url", cfg.CacheURL, "subscribed", false, "note", "no CINEVAULT_CACHE_TOKEN; titles are only shared with the cache, if sharing is on")
+	}
+
 	var matchFn func(context.Context, int64) (match.Result, error)
 	if cfg.TMDbToken != "" {
-		matchFn = match.Matcher{Store: database, Source: tmdb.New(cfg.TMDbToken)}.MatchLibrary
+		matcher := match.Matcher{Store: database, Source: tmdb.New(cfg.TMDbToken)}
+		matchFn = func(ctx context.Context, libraryID int64) (match.Result, error) {
+			res, err := matcher.MatchLibrary(ctx, libraryID)
+			if err == nil {
+				// Look the new titles up in the cache without holding up the scan.
+				go func() {
+					c, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+					defer cancel()
+					cache.LookupNew(c)
+				}()
+			}
+			return res, err
+		}
 		log.Info("metadata", "source", "TMDb")
 	} else {
 		log.Warn("metadata: CINEVAULT_TMDB_TOKEN not set; titles won't be matched to TMDb")
@@ -127,7 +154,9 @@ func run(log *slog.Logger) error {
 			Thumbs: thumb.New(cfg.FFmpegPath, filepath.Join(cfg.CacheDir, "thumbs")),
 			Comics: comics,
 		},
-		Log: log,
+		Cache:         cache,
+		TitleCacheKey: database.TitleCacheKey,
+		Log:           log,
 	})
 	srv := &http.Server{
 		Addr:              cfg.Listen,
@@ -139,6 +168,7 @@ func run(log *slog.Logger) error {
 	defer stop()
 	reaperDone := make(chan struct{})
 	go func() { streamer.RunReaper(ctx); close(reaperDone) }()
+	go cache.Run(ctx)
 	defer func() { stop(); <-reaperDone }() // stops FFmpeg and removes session files
 
 	errc := make(chan error, 1)

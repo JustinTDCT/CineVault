@@ -272,8 +272,13 @@ const (
 		         WHERE ep.title_id = t.id AND EXISTS (SELECT 1 FROM versions x WHERE x.episode_id = ep.id)),
 		       (SELECT count(*) FROM episodes ep
 		         WHERE ep.title_id = t.id AND EXISTS (SELECT 1 FROM versions x WHERE x.episode_id = ep.id)),
+		       t.cache_state, t.cache_withdrawn, COALESCE(t.cache_sources, '[]'::jsonb),
 		       e.id, e.edition_type_id, et.display_name, et.short_label,
 		       COALESCE(e.runtime_seconds, 0),
+		       e.from_cache, COALESCE(e.cache_status, ''), COALESCE(e.cache_display_name, ''),
+		       COALESCE(e.cache_runtime_min, 0), COALESCE(e.cache_runtime_sources, '{}'),
+		       COALESCE(e.cache_difference_short, ''), COALESCE(e.cache_difference_full, '[]'::jsonb),
+		       COALESCE(e.cache_confidence, ''),
 		       COALESCE(v.id, 0), COALESCE(v.path, ''), COALESCE(v.size_bytes, 0),
 		       COALESCE(v.label, ''), COALESCE(v.container, ''), COALESCE(v.video_codec, ''),
 		       COALESCE(v.width, 0), COALESCE(v.height, 0), COALESCE(v.hdr, ''),

@@ -56,6 +56,10 @@ npm run dev    # serves on port 5173 and forwards /api to the Go server on 8456
 | `GET /api/versions/{id}/cover` | Album cover for a music file: `cover.jpg`/`folder.jpg` next to it, or the art embedded in the file |
 | `GET /api/versions/{id}/pages/{n}` | Page n (from 0) of a comic, as an image |
 | `GET /api/versions/{id}/file` | The original file, with range requests for seeking |
+| `GET /api/cache` | CineVault Cache status for Settings: subscription, settings, last check and share, titles per cache state |
+| `PUT /api/cache/settings` | `{"check_interval": "24h", "share": true}`; intervals are `1h`, `6h`, `24h`, `168h` or `manual` |
+| `POST /api/cache/check` | "Check now": starts a check in the background (202); `GET /api/cache` shows `checking` until it ends |
+| `POST /api/titles/{id}/report` | Report a mistake in the cache's information: `{"edition": "directors_cut", "field": "runtime", "message": "…"}` |
 
 The health check reports:
 - `status`: `ok`, or `degraded` with HTTP 503 when the database can't be reached or FFmpeg is missing
@@ -81,6 +85,8 @@ Settings come from environment variables:
 | `CINEVAULT_TRANSCODE_PAUSE_AHEAD` | `3m` | Pause a conversion once it is this far ahead of the player |
 | `CINEVAULT_TRANSCODE_RESUME_AHEAD` | `90s` | Resume it when the lead drops to this; must be less than the pause setting |
 | `CINEVAULT_TRANSCODE_KEEP_BEHIND` | `3m` | Keep this much already-watched video for quick rewinds; older segments are deleted |
+| `CINEVAULT_CACHE_URL` | `https://cache.cine-vault.tv` | The CineVault Cache service |
+| `CINEVAULT_CACHE_TOKEN` | none | A CineVault Cache subscription token. Without it the server only shares titles with the cache (if sharing is on in Settings). `make run` reads both from `~/.config/cinevault/cache.env`. |
 | `CINEVAULT_TMDB_TOKEN` | none | TMDb API read access token. Without it, titles aren't matched to TMDb. `make run` reads it from `~/.config/cinevault/tmdb.env`. |
 
 ### TV file names
@@ -144,6 +150,7 @@ A comic library holds one folder per series, with one file per issue: `Aliens - 
 | `internal/transcode` | Direct-play decision, FFmpeg commands, HLS streaming sessions |
 | `internal/webui` | Serves the built web app from the server binary |
 | `pkg/editionlist` | The built-in Edition List as Go data, shared with the CineVault Cache service; a database test keeps it in step with the migrations |
+| `internal/cachesync` | The CineVault Cache client: lookups after matching, the scheduled update check, and the daily share of titles |
 | `pkg/cacheapi` | The CineVault Cache API contract (v1): JSON types, validation rules, a client, and golden files in `testdata/` that pin the wire format |
 
 ## Design docs

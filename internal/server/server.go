@@ -10,11 +10,22 @@ import (
 	"sync"
 	"time"
 
+	"github.com/JustinTDCT/CineVault/internal/cachesync"
 	"github.com/JustinTDCT/CineVault/internal/catalog"
 	"github.com/JustinTDCT/CineVault/internal/match"
 	"github.com/JustinTDCT/CineVault/internal/probe"
 	"github.com/JustinTDCT/CineVault/internal/scan"
+	"github.com/JustinTDCT/CineVault/pkg/cacheapi"
 )
+
+// CacheService is what the cache endpoints need (cachesync.Service).
+type CacheService interface {
+	Status(ctx context.Context) (cachesync.Status, error)
+	LoadSettings(ctx context.Context) (cachesync.Settings, error)
+	SaveSettings(ctx context.Context, st cachesync.Settings) error
+	Check(ctx context.Context) (cachesync.CheckResult, error)
+	Report(ctx context.Context, key cacheapi.Key, r cacheapi.Report) (cacheapi.ReportResponse, error)
+}
 
 // Capabilities is what the host can do for transcoding, probed at startup.
 type Capabilities struct {
@@ -47,7 +58,11 @@ type Options struct {
 	UI http.Handler
 	// Playback plays files; nil disables it.
 	Playback *Playback
-	Log      *slog.Logger
+	// Cache is the CineVault Cache client; nil disables its endpoints.
+	Cache CacheService
+	// TitleCacheKey gives a title's cache key, false when it has none.
+	TitleCacheKey func(ctx context.Context, titleID int64) (cacheapi.Key, bool, error)
+	Log           *slog.Logger
 }
 
 // LibraryStore is what the library endpoints need from the database.
@@ -107,6 +122,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/titles/{id}/tracks", s.albumTracks)
 	mux.HandleFunc("GET /api/titles/{id}/progress", s.getProgress)
 	mux.HandleFunc("PUT /api/titles/{id}/progress", s.putProgress)
+	mux.HandleFunc("GET /api/cache", s.cacheStatus)
+	mux.HandleFunc("PUT /api/cache/settings", s.cacheSettings)
+	mux.HandleFunc("POST /api/cache/check", s.cacheCheck)
+	mux.HandleFunc("POST /api/titles/{id}/report", s.cacheReport)
 	if s.opt.UI != nil {
 		// GET only, so a wrong method on an API route still gets 405.
 		mux.Handle("GET /", s.opt.UI)

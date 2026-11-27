@@ -63,10 +63,42 @@ export function hasHDR(t: Title): boolean {
   return t.editions.some((e) => e.versions.some((v) => !!v.hdr));
 }
 
+/** True for an edition the CineVault Cache knows about but the library has no file for. */
+export function isUnowned(e: Edition): boolean {
+  return !!e.from_cache && e.versions.length === 0;
+}
+
+/** The editions the library has: everything except the cache's placeholders. */
+export function ownedEditions(t: Pick<Title, "editions">): Edition[] {
+  return t.editions.filter((e) => !isUnowned(e));
+}
+
+/** An edition's runtime in seconds: the measured file first, then the cache's figure. */
+export function editionRuntime(e: Edition): number {
+  return e.runtime_seconds || (e.cache?.runtime_min ?? 0) * 60;
+}
+
+/** When a date was, in words: "just now", "5 minutes ago", "yesterday", or the date. */
+export function timeAgo(iso: string | undefined, now = new Date()): string {
+  if (!iso) return "";
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime()) || then.getFullYear() < 2000) return "";
+  const mins = Math.round((now.getTime() - then.getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return mins === 1 ? "a minute ago" : `${mins} minutes ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return hours === 1 ? "an hour ago" : `${hours} hours ago`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  return then.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+}
+
 /** The poster badge, e.g. "2 editions · 4K" (Editions spec §7). Empty when there's nothing to say. */
 export function posterBadge(t: Title): string {
   const parts: string[] = [];
-  if (t.editions.length > 1) parts.push(`${t.editions.length} editions`);
+  const owned = ownedEditions(t).length;
+  if (owned > 1) parts.push(`${owned} editions`);
   const res = bestResolution(t);
   if (res === "4K") parts.push(hasHDR(t) ? "4K HDR" : "4K");
   return parts.join(" · ");
@@ -74,7 +106,7 @@ export function posterBadge(t: Title): string {
 
 /** The edition to open first on a details page: the first with a file present. */
 export function defaultEdition(t: Title): Edition | undefined {
-  return t.editions.find((e) => e.versions.some((v) => !v.missing)) ?? t.editions[0];
+  return t.editions.find((e) => e.versions.some((v) => !v.missing)) ?? ownedEditions(t)[0] ?? t.editions[0];
 }
 
 /** File name from a path. */

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Title } from "../api";
-import { coverUrl, editionListing, posterBadge, showCounts, thumbUrl } from "../format";
+import { coverUrl, editionListing, ownedEditions, posterBadge, showCounts, thumbUrl } from "../format";
 import { linkTo } from "../router";
 
 export function Poster({ title, size = "card" }: { title: Title; size?: "card" | "large" }) {
@@ -26,8 +26,9 @@ export function PosterCard({ title }: { title: Title }) {
   const [expanded, setExpanded] = useState(false);
   const href = `/libraries/${title.library_id}/titles/${title.id}`;
   const badge = posterBadge(title);
-  const multi = title.editions.length > 1;
-  const { shown, hidden } = editionListing(title.editions, expanded);
+  const owned = ownedEditions(title);
+  const multi = owned.length > 1;
+  const { shown, hidden } = editionListing(owned, expanded);
 
   return (
     <article className="card">
@@ -64,7 +65,7 @@ export function PosterCard({ title }: { title: Title }) {
           ))}
           {hidden > 0 || expanded ? (
             <button className="linkish" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
-              {expanded ? "Show fewer" : `Show all (${title.editions.length})`}
+              {expanded ? "Show fewer" : `Show all (${owned.length})`}
             </button>
           ) : null}
         </p>

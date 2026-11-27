@@ -37,12 +37,19 @@ type Config struct {
 	// TMDbToken is a TMDb API read access token. Without it, titles aren't
 	// matched to TMDb.
 	TMDbToken string
+	// CacheURL is the CineVault Cache service; CacheToken is a subscriber's
+	// token (empty on free servers, which only share titles with it).
+	CacheURL   string
+	CacheToken string
 	// ProbeTimeout bounds each capability check at startup.
 	ProbeTimeout time.Duration
 }
 
 // DefaultListen is the default HTTP port for CineVault.
 const DefaultListen = ":8456"
+
+// DefaultCacheURL is the public CineVault Cache.
+const DefaultCacheURL = "https://cache.cine-vault.tv"
 
 // Load reads settings from the environment, applying defaults.
 func Load() (Config, error) {
@@ -60,10 +67,18 @@ func load(getenv func(string) string) (Config, error) {
 		TranscodeGPU:  getenv("CINEVAULT_TRANSCODE_GPU"),
 		TranscodeDir:  getenv("CINEVAULT_TRANSCODE_DIR"),
 		CacheDir:      getenv("CINEVAULT_CACHE_DIR"),
+		CacheURL:      getenv("CINEVAULT_CACHE_URL"),
+		CacheToken:    getenv("CINEVAULT_CACHE_TOKEN"),
 		ProbeTimeout:  15 * time.Second,
 	}
 	if c.Listen == "" {
 		c.Listen = DefaultListen
+	}
+	if c.CacheURL == "" {
+		c.CacheURL = DefaultCacheURL
+	}
+	if u, err := url.Parse(c.CacheURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return c, fmt.Errorf("CINEVAULT_CACHE_URL must be an http(s) URL")
 	}
 	if c.FFmpegPath == "" {
 		c.FFmpegPath = "ffmpeg"

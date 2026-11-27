@@ -55,8 +55,54 @@ export interface Edition {
   display_name: string;
   short_label: string;
   runtime_seconds?: number;
+  /** Set for editions the CineVault Cache told us about. With no versions it's one the library doesn't have. */
+  from_cache?: boolean;
+  cache?: EditionCache;
   versions: Version[];
 }
+
+/** What the CineVault Cache says about an edition. */
+export interface EditionCache {
+  /** "withdrawn" shows as No longer verified. */
+  status: "published" | "withdrawn";
+  display_name?: string;
+  runtime_min?: number;
+  runtime_sources?: string[];
+  difference_short?: string;
+  difference_full?: { change: "added" | "removed" | "changed" | "extended" | "shortened"; text: string; sources: string[] }[];
+  confidence?: "high" | "medium" | "low";
+}
+
+export interface CacheSource {
+  id: string;
+  name: string;
+  url: string;
+}
+
+export type CacheState = "none" | "pending" | "cached" | "not_found" | "error";
+
+export interface CacheSettings {
+  check_interval: "1h" | "6h" | "24h" | "168h" | "manual";
+  share: boolean;
+}
+
+export interface CacheStatus {
+  /** A subscriber token is set. */
+  configured: boolean;
+  url: string;
+  subscription?: { status: "active" | "lapsed" | "cancelled"; server_label?: string; expires_at?: string };
+  /** Why the subscription couldn't be checked. */
+  problem?: string;
+  settings: CacheSettings;
+  last_check?: string;
+  last_error?: string;
+  last_share?: string;
+  last_share_error?: string;
+  checking: boolean;
+  counts: Partial<Record<CacheState, number>>;
+}
+
+export type ReportField = "exists" | "runtime" | "difference_short" | "difference_full" | "content_rating" | "other";
 
 export interface Title {
   id: number;
@@ -91,6 +137,11 @@ export interface Title {
   /** TV shows: seasons and episodes that have files. */
   season_count?: number;
   episode_count?: number;
+  /** Movies and shows: the CineVault Cache's state for this title. */
+  cache_state?: CacheState;
+  /** The cache withdrew its record: No longer verified. */
+  cache_withdrawn?: boolean;
+  cache_sources?: CacheSource[];
   editions: Edition[];
 }
 
@@ -213,6 +264,11 @@ export const api = {
       keepalive: true,
     }).catch(() => {});
   },
+  cache: () => request<CacheStatus>("GET", "/api/cache"),
+  saveCacheSettings: (s: CacheSettings) => request<CacheSettings>("PUT", "/api/cache/settings", s),
+  checkCache: () => request<{ started: boolean }>("POST", "/api/cache/check"),
+  report: (titleId: number, edition: string, field: ReportField, message: string) =>
+    request<{ report_id: string }>("POST", `/api/titles/${titleId}/report`, { edition, field, message }),
   episodes: (titleId: number) => request<Season[]>("GET", `/api/titles/${titleId}/episodes`),
   scan: (libraryId: number) => request<ScanResult>("POST", `/api/libraries/${libraryId}/scan`),
   play: (versionId: number, caps: ClientCaps) => request<PlayResponse>("POST", "/api/playback", { version_id: versionId, caps }),

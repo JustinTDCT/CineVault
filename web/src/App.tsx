@@ -4,6 +4,7 @@ import { linkTo, navigate, useRoute } from "./router";
 import { LibraryPage } from "./pages/LibraryPage";
 import { TitlePage } from "./pages/TitlePage";
 import { SetupPage } from "./pages/SetupPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { AudioProvider } from "./components/AudioPlayer";
 
 export function App() {
@@ -49,6 +50,9 @@ export function App() {
               Add library
             </a>
           </nav>
+          <a className="topbar-settings" {...linkTo("/settings")} aria-current={route.page === "settings" ? "page" : undefined}>
+            Settings
+          </a>
         </header>
 
         <main className="content">
@@ -67,6 +71,8 @@ export function App() {
                 navigate(`/libraries/${lib.id}?scan=1`);
               }}
             />
+          ) : route.page === "settings" ? (
+            <SettingsPage />
           ) : route.page === "library" ? (
             <LibraryPage key={route.libraryId} library={libraries?.find((l) => l.id === route.libraryId)} libraryId={route.libraryId} />
           ) : route.page === "title" ? (

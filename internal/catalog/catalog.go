@@ -3,6 +3,7 @@
 package catalog
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -87,6 +88,12 @@ type Title struct {
 	// MatchStatus is unmatched, matched, not_found or error.
 	MatchStatus string `json:"match_status"`
 	MatchError  string `json:"match_error,omitempty"`
+	// CacheState is the title's CineVault Cache state: none, pending, cached,
+	// not_found or error (cache spec §3). CacheWithdrawn means the cache
+	// withdrew its record: show "No longer verified".
+	CacheState     string          `json:"cache_state,omitempty"`
+	CacheWithdrawn bool            `json:"cache_withdrawn,omitempty"`
+	CacheSources   json.RawMessage `json:"cache_sources,omitempty"` // [{id, name, url}]
 	// Artist is who performs a music video, or an album's artist.
 	Artist string `json:"artist,omitempty"`
 	// Albums: a track file whose cover art stands for the album, and how
@@ -136,12 +143,27 @@ type Episode struct {
 
 // Edition is one cut of a title, such as the Director's Cut, with its files.
 type Edition struct {
-	ID             int64     `json:"id"`
-	EditionTypeID  string    `json:"edition_type_id"`
-	DisplayName    string    `json:"display_name"`
-	ShortLabel     string    `json:"short_label"`
-	RuntimeSeconds int       `json:"runtime_seconds,omitempty"`
-	Versions       []Version `json:"versions"`
+	ID             int64  `json:"id"`
+	EditionTypeID  string `json:"edition_type_id"`
+	DisplayName    string `json:"display_name"`
+	ShortLabel     string `json:"short_label"`
+	RuntimeSeconds int    `json:"runtime_seconds,omitempty"`
+	// FromCache marks an edition the CineVault Cache told us about. With no
+	// versions it's a placeholder: an edition the library doesn't have.
+	FromCache bool          `json:"from_cache,omitempty"`
+	Cache     *EditionCache `json:"cache,omitempty"`
+	Versions  []Version     `json:"versions"`
+}
+
+// EditionCache is what the CineVault Cache says about an edition.
+type EditionCache struct {
+	Status          string          `json:"status"` // published or withdrawn ("No longer verified")
+	DisplayName     string          `json:"display_name,omitempty"`
+	RuntimeMin      int             `json:"runtime_min,omitempty"`
+	RuntimeSources  []string        `json:"runtime_sources,omitempty"`
+	DifferenceShort string          `json:"difference_short,omitempty"`
+	DifferenceFull  json.RawMessage `json:"difference_full,omitempty"` // [{change, text, sources}]
+	Confidence      string          `json:"confidence,omitempty"`
 }
 
 // Version is one file of an edition, such as a 4K or 1080p copy.

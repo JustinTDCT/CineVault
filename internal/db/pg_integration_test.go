@@ -17,6 +17,7 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/mediainfo"
 	"github.com/JustinTDCT/CineVault/internal/scan"
 	"github.com/JustinTDCT/CineVault/internal/tmdb"
+	"github.com/JustinTDCT/CineVault/pkg/cacheapi"
 )
 
 // testDatabase creates a fresh, empty database for one test and drops it
@@ -640,5 +641,110 @@ func TestIntegrationComics(t *testing.T) {
 	v, err := d.Version(ctx, eds[0].Tracks[0].Versions[0].ID)
 	if err != nil || v.PageCount != 2 {
 		t.Errorf("version = %+v %v", v, err)
+	}
+}
+
+func TestIntegrationCacheRecords(t *testing.T) {
+	d := testDatabase(t)
+	ctx := context.Background()
+	if _, err := d.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Alien {edition-Director's Cut} (1979).mkv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lib, err := d.CreateLibrary(ctx, catalog.Library{Name: "Movies", MediaType: "movie", Paths: []string{dir}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (scan.Scanner{Store: d, Prober: stubProber{}}).Scan(ctx, lib); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (match.Matcher{Store: d, Source: stubTMDb{}}).MatchLibrary(ctx, lib.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := d.CacheItems(ctx)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("items = %+v, %v", items, err)
+	}
+	it := items[0]
+	if it.Key != (cacheapi.Key{Kind: "movie", TMDbID: 348}) || it.State != "none" ||
+		len(it.Owned) != 1 || it.Owned[0] != (cacheapi.ContributeEdition{Edition: "directors_cut", RuntimeMin: 117}) {
+		t.Fatalf("alien item = %+v", it)
+	}
+	if k, ok, err := d.TitleCacheKey(ctx, it.TitleID); !ok || err != nil || k != it.Key {
+		t.Errorf("title cache key = %v %v %v", k, ok, err)
+	}
+
+	rec := cacheapi.Record{
+		Key: it.Key, Status: cacheapi.StatusReady, RecordVersion: 3,
+		Editions: []cacheapi.Edition{
+			{Edition: "theatrical", Status: cacheapi.EditionPublished, RuntimeMin: 117, RuntimeSources: []string{"s1"}, Confidence: "high"},
+			{Edition: "directors_cut", Status: cacheapi.EditionPublished, RuntimeMin: 116, DifferenceShort: "Adds the cocoon scene.",
+				DifferenceFull: []cacheapi.Difference{{Change: "added", Text: "The cocoon scene.", Sources: []string{"s1"}}}, Confidence: "high"},
+			{Edition: "edition_from_the_future", Status: cacheapi.EditionPublished, RuntimeMin: 120},
+		},
+		Sources: []cacheapi.Source{{ID: "s1", Name: "TMDb", URL: "https://www.themoviedb.org/movie/348"}},
+	}
+	if err := d.ApplyRecord(ctx, it.TitleID, rec); err != nil {
+		t.Fatal(err)
+	}
+	alien := func() catalog.Title {
+		titles, err := d.LibraryTitles(ctx, lib.ID)
+		if err != nil || len(titles) != 1 {
+			t.Fatalf("titles = %d, %v", len(titles), err)
+		}
+		return titles[0]
+	}
+	got := alien()
+	if got.CacheState != "cached" || len(got.CacheSources) == 0 || len(got.Editions) != 2 {
+		t.Fatalf("alien after apply = %+v", got)
+	}
+	theatrical, dc := got.Editions[0], got.Editions[1]
+	if theatrical.EditionTypeID != "theatrical" || !theatrical.FromCache || len(theatrical.Versions) != 0 ||
+		theatrical.Cache == nil || theatrical.Cache.RuntimeMin != 117 {
+		t.Errorf("placeholder = %+v cache %+v", theatrical, theatrical.Cache)
+	}
+	if dc.FromCache || len(dc.Versions) != 1 || dc.Cache == nil || dc.Cache.DifferenceShort != "Adds the cocoon scene." || len(dc.Cache.DifferenceFull) == 0 {
+		t.Errorf("owned edition = %+v cache %+v", dc, dc.Cache)
+	}
+	// Placeholders aren't shared as owned.
+	if items, _ := d.CacheItems(ctx); len(items[0].Owned) != 1 || items[0].Version != 3 || items[0].State != "cached" {
+		t.Errorf("items after apply = %+v", items[0])
+	}
+
+	// A withdrawn edition stays, marked "No longer verified".
+	rec.RecordVersion = 4
+	rec.Editions = []cacheapi.Edition{{Edition: "directors_cut", Status: cacheapi.EditionWithdrawn}}
+	if err := d.ApplyRecord(ctx, it.TitleID, rec); err != nil {
+		t.Fatal(err)
+	}
+	got = alien()
+	if len(got.Editions) != 2 || got.Editions[1].Cache.Status != "withdrawn" || got.Editions[1].Cache.RuntimeMin != 116 {
+		t.Errorf("after withdrawal = %+v", got.Editions)
+	}
+
+	if err := d.SetCacheState(ctx, it.TitleID, "error", time.Now().Add(time.Hour), "boom"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetContributed(ctx, map[int64]string{it.TitleID: "abc"}); err != nil {
+		t.Fatal(err)
+	}
+	if items, _ := d.CacheItems(ctx); items[0].State != "error" || items[0].ContributedHash != "abc" || !items[0].RetryAt.After(time.Now()) {
+		t.Errorf("items = %+v", items[0])
+	}
+
+	var share bool
+	if ok, err := d.Setting(ctx, "cache.share", &share); ok || err != nil {
+		t.Errorf("unset setting: ok %v err %v", ok, err)
+	}
+	if err := d.SaveSetting(ctx, "cache.share", false); err != nil {
+		t.Fatal(err)
+	}
+	share = true
+	if ok, err := d.Setting(ctx, "cache.share", &share); !ok || err != nil || share {
+		t.Errorf("saved setting: %v %v %v", ok, err, share)
 	}
 }

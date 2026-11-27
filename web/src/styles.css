@@ -107,6 +107,23 @@ img {
   border-bottom: 2px solid transparent;
 }
 
+.topbar-settings {
+  margin-left: auto;
+  text-decoration: none;
+  color: var(--dim);
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid transparent;
+}
+
+.topbar-settings:hover,
+.topbar-settings[aria-current="page"] {
+  color: var(--light);
+}
+
+.topbar-settings[aria-current="page"] {
+  border-bottom-color: var(--lamp);
+}
+
 .libnav a:hover {
   color: var(--light);
 }
@@ -534,6 +551,108 @@ img {
   font-size: var(--t-sm);
   margin-top: 0.15rem;
   font-variant-numeric: tabular-nums;
+}
+
+/* Editions the library doesn't have: an empty can, outlined and dashed. */
+.edition-tab-unowned {
+  background: transparent;
+  border-style: dashed;
+  border-bottom: none;
+  opacity: 0.8;
+}
+
+.edition-tab-unowned[aria-selected="true"] {
+  color: var(--light);
+  background: var(--seat);
+  border-color: var(--lamp);
+  opacity: 1;
+}
+
+.edition-unowned-note {
+  margin: 0;
+  color: var(--dim);
+}
+
+.cache-info {
+  margin-top: 1.25rem;
+  max-width: 72ch;
+}
+
+.edition-unowned-note + .cache-info {
+  margin-top: 0.75rem;
+}
+
+.cache-short {
+  margin: 0;
+  font-size: var(--t-md);
+  color: var(--light);
+}
+
+.cache-flag {
+  margin: 0 0 0.75rem;
+  color: var(--warn);
+}
+
+.cache-info-withdrawn .cache-short,
+.cache-info-withdrawn .cache-full {
+  color: var(--dim);
+}
+
+.cache-full {
+  margin-top: 0.75rem;
+}
+
+.cache-full summary {
+  cursor: pointer;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.cache-full summary:focus-visible {
+  outline: 2px solid var(--lamp);
+  outline-offset: 3px;
+}
+
+.cache-full ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.cache-change {
+  font-weight: 600;
+}
+
+.cache-cite,
+.cache-meta {
+  color: var(--dim);
+  font-size: var(--t-sm);
+}
+
+.cache-cite a,
+.cache-meta a {
+  color: inherit;
+}
+
+.cache-meta {
+  margin: 0.9rem 0 0;
+}
+
+.report-form {
+  margin-top: 1rem;
+  max-width: 34rem;
+}
+
+.report-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.report-sent {
+  margin: 1rem 0 0;
+  color: var(--light);
 }
 
 .edition-panel {
@@ -1420,6 +1539,102 @@ img {
   max-width: 640px;
 }
 
+.setup-share {
+  margin-top: 1.5rem;
+}
+
+/* ---------- Settings ---------- */
+
+.settings {
+  max-width: 720px;
+}
+
+.settings-group {
+  margin-top: 2rem;
+}
+
+.settings-heading {
+  font-family: var(--f-marquee);
+  font-size: var(--t-lg);
+  font-weight: 700;
+  margin: 0;
+}
+
+.settings-intro {
+  color: var(--dim);
+  margin: 0.5rem 0 0;
+  max-width: 66ch;
+}
+
+.settings-row {
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--rule);
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+
+.settings-label {
+  font-weight: 600;
+  margin: 0;
+  display: block;
+}
+
+.settings-note {
+  color: var(--dim);
+  margin: 0;
+  max-width: 66ch;
+  display: block;
+}
+
+.settings-problem {
+  color: var(--warn);
+}
+
+.settings-select {
+  font: inherit;
+  color: var(--light);
+  background: var(--seat);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 0.55rem 0.7rem;
+}
+
+.settings-select:focus-visible {
+  border-color: var(--lamp);
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.settings-toggle {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  align-items: start;
+  cursor: pointer;
+}
+
+.settings-toggle input {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0.2rem 0 0;
+  accent-color: var(--lamp);
+}
+
+.settings-toggle .settings-note {
+  margin-top: 0.25rem;
+}
+
+.settings-indent {
+  padding-left: 1.9rem;
+}
+
 .form {
   display: grid;
   gap: 0.5rem;
@@ -1431,7 +1646,9 @@ img {
   margin-top: 0.75rem;
 }
 
-.form input {
+.form input,
+.form select,
+.form textarea {
   font: inherit;
   color: var(--light);
   background: var(--seat);
@@ -1440,7 +1657,9 @@ img {
   padding: 0.65rem 0.8rem;
 }
 
-.form input:focus-visible {
+.form input:focus-visible,
+.form select:focus-visible,
+.form textarea:focus-visible {
   border-color: var(--lamp);
 }
 

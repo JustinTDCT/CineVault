@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { api, type Library, type MediaType } from "../api";
+import { useEffect, useState, type FormEvent } from "react";
+import { api, type CacheSettings, type Library, type MediaType } from "../api";
 
 const KINDS: { type: MediaType; label: string; name: string; folder: string; naming: string }[] = [
   { type: "movie", label: "Movies", name: "Movies", folder: "/media/movies", naming: "Alien (1979).mkv" },
@@ -17,6 +17,20 @@ export function SetupPage({ hasLibraries, onCreated }: { hasLibraries: boolean; 
   const [folder, setFolder] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // The first library is when to mention sharing with the CineVault Cache.
+  const [cache, setCache] = useState<CacheSettings | null>(null);
+  const [share, setShare] = useState(true);
+
+  useEffect(() => {
+    if (hasLibraries) return;
+    api
+      .cache()
+      .then((s) => {
+        setCache(s.settings);
+        setShare(s.settings.share);
+      })
+      .catch(() => setCache(null));
+  }, [hasLibraries]);
 
   const current = KINDS.find((k) => k.type === kind)!;
 
@@ -25,6 +39,7 @@ export function SetupPage({ hasLibraries, onCreated }: { hasLibraries: boolean; 
     setBusy(true);
     setError("");
     try {
+      if (cache && share !== cache.share) await api.saveCacheSettings({ ...cache, share });
       onCreated(await api.createLibrary(name.trim(), kind, [folder.trim()]));
     } catch (err) {
       setError((err as Error).message);
@@ -64,6 +79,18 @@ export function SetupPage({ hasLibraries, onCreated }: { hasLibraries: boolean; 
         <p className="hint">
           Use the full path, starting with /. Files named like <code>{current.naming}</code> work best.
         </p>
+        {cache && (kind === "movie" || kind === "tv") ? (
+          <label className="settings-toggle setup-share">
+            <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />
+            <span>
+              <span className="settings-label">Help build the CineVault Cache</span>
+              <span className="settings-note">
+                Once a day, CineVault sends which movies and shows you have, their editions and runtimes, so the cache can work out every edition of
+                them. No file names, folders or anything that identifies you. You can change this in Settings.
+              </span>
+            </span>
+          </label>
+        ) : null}
         {error ? (
           <p className="form-error" role="alert">
             {error}

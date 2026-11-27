@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/jackc/pgx/v5"
@@ -68,6 +69,8 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 		var t catalog.Title
 		var e catalog.Edition
 		var v catalog.Version
+		var ec catalog.EditionCache
+		var cacheSources, diffFull []byte
 		if err := rows.Scan(
 			&t.ID, &t.LibraryID, &t.MediaType, &t.Name, &t.SortName, &t.Year, &t.TMDbID,
 			&t.OriginalTitle, &t.Overview, &t.Tagline, &t.ReleaseDate, &t.RuntimeMinutes,
@@ -76,7 +79,10 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 			&t.Series, &t.SeriesIndex, &t.Narrator,
 			&t.CoverVersionID, &t.TrackCount,
 			&t.SeasonCount, &t.EpisodeCount,
+			&t.CacheState, &t.CacheWithdrawn, &cacheSources,
 			&e.ID, &e.EditionTypeID, &e.DisplayName, &e.ShortLabel, &e.RuntimeSeconds,
+			&e.FromCache, &ec.Status, &ec.DisplayName, &ec.RuntimeMin, &ec.RuntimeSources,
+			&ec.DifferenceShort, &diffFull, &ec.Confidence,
 			&v.ID, &v.Path, &v.SizeBytes, &v.Label, &v.Container, &v.VideoCodec,
 			&v.Width, &v.Height, &v.HDR, &v.AudioCodec, &v.AudioChannels,
 			&v.DurationSeconds, &v.Bitrate, &v.EditionLocked, &v.Missing,
@@ -95,11 +101,20 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 			if t.BackdropPath != "" {
 				t.BackdropURL = tmdb.ImageBaseURL + "w1280" + t.BackdropPath
 			}
+			if t.CacheState == "cached" && len(cacheSources) > 2 {
+				t.CacheSources = json.RawMessage(cacheSources)
+			}
 			out = append(out, t)
 		}
 		title := &out[len(out)-1]
 		if n := len(title.Editions); n == 0 || title.Editions[n-1].ID != e.ID {
 			e.Versions = []catalog.Version{}
+			if ec.Status != "" {
+				if len(diffFull) > 2 {
+					ec.DifferenceFull = json.RawMessage(diffFull)
+				}
+				e.Cache = &ec
+			}
 			title.Editions = append(title.Editions, e)
 		}
 		if v.ID != 0 {

@@ -2,6 +2,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 DB_ENV  ?= $(HOME)/.config/cinevault/db.env
 TMDB_ENV ?= $(HOME)/.config/cinevault/tmdb.env
+CACHE_ENV ?= $(HOME)/.config/cinevault/cache.env
 
 .PHONY: build web test test-web test-db vet fmt run
 
@@ -41,9 +42,10 @@ fmt:
 
 # Runs the server against the development database container.
 # Reads credentials from $(DB_ENV) and, if present, the TMDb token from
-# $(TMDB_ENV) (see docs/environment/test-server.md).
+# $(TMDB_ENV) and the CineVault Cache URL and token from $(CACHE_ENV)
+# (see docs/environment/test-server.md).
 run: build
 	@test -f "$(DB_ENV)" || { echo "Missing $(DB_ENV)"; exit 1; }
-	@set -a; . "$(DB_ENV)"; if [ -f "$(TMDB_ENV)" ]; then . "$(TMDB_ENV)"; fi; set +a; \
+	@set -a; . "$(DB_ENV)"; if [ -f "$(TMDB_ENV)" ]; then . "$(TMDB_ENV)"; fi; if [ -f "$(CACHE_ENV)" ]; then . "$(CACHE_ENV)"; fi; set +a; \
 	CINEVAULT_DATABASE_URL="postgres://$$POSTGRES_USER:$$POSTGRES_PASSWORD@127.0.0.1:5432/$$POSTGRES_DB" \
 	./bin/cinevault

@@ -4,3 +4,4 @@
 internal/webui/static/*
 !internal/webui/static/.gitkeep
 web/node_modules/
+web/tsconfig.tsbuildinfo
