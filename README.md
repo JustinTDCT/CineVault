@@ -143,6 +143,8 @@ A comic library holds one folder per series, with one file per issue: `Aliens - 
 | `internal/tmdb` | TMDb API client |
 | `internal/transcode` | Direct-play decision, FFmpeg commands, HLS streaming sessions |
 | `internal/webui` | Serves the built web app from the server binary |
+| `pkg/editionlist` | The built-in Edition List as Go data, shared with the CineVault Cache service; a database test keeps it in step with the migrations |
+| `pkg/cacheapi` | The CineVault Cache API contract (v1): JSON types, validation rules, a client, and golden files in `testdata/` that pin the wire format |
 
 ## Design docs
 
