@@ -46,6 +46,10 @@ npm run dev    # serves on port 5173 and forwards /api to the Go server on 8456
 | `POST /api/libraries/{id}/scan` | Scan a library now, then match new titles to TMDb, and return a summary (movie libraries only, for now) |
 | `POST /api/libraries/{id}/match` | Match unmatched titles to TMDb without scanning. Titles that failed with an error are retried; ones TMDb didn't find are not. |
 | `GET /api/libraries/{id}/titles` | Titles with their editions and versions |
+| `POST /api/playback` | Start playing a file: `{"version_id": 2, "caps": {...}}`. Returns a direct file URL, or an HLS playlist URL when the file needs converting. |
+| `GET /api/playback/{session}/index.m3u8`, `…/segN.ts` | HLS playlist and segments for a session |
+| `DELETE /api/playback/{session}` | Stop a session |
+| `GET /api/versions/{id}/file` | The original file, with range requests for seeking |
 
 The health check reports:
 - `status`: `ok`, or `degraded` with HTTP 503 when the database can't be reached or FFmpeg is missing
@@ -64,6 +68,9 @@ Settings come from environment variables:
 | `CINEVAULT_LISTEN` | `:8456` | HTTP listen address |
 | `CINEVAULT_FFMPEG` | `ffmpeg` | Path to the FFmpeg binary |
 | `CINEVAULT_FFPROBE` | `ffprobe` | Path to ffprobe, used to read media files |
+| `CINEVAULT_TRANSCODE` | `auto` | Video conversion device: `auto` (best working, falling back to CPU), `nvenc` or `cpu` |
+| `CINEVAULT_TRANSCODE_GPU` | any | NVIDIA GPU number to use, e.g. `0` |
+| `CINEVAULT_TRANSCODE_DIR` | system temp folder | Where stream segments are written while videos play; cleaned up automatically |
 | `CINEVAULT_TMDB_TOKEN` | none | TMDb API read access token. Without it, titles aren't matched to TMDb. `make run` reads it from `~/.config/cinevault/tmdb.env`. |
 
 ## Project layout
@@ -81,6 +88,7 @@ Settings come from environment variables:
 | `internal/scan` | Library scanner and file-name parser (title, year, edition) |
 | `internal/server` | HTTP API |
 | `internal/tmdb` | TMDb API client |
+| `internal/transcode` | Direct-play decision, FFmpeg commands, HLS streaming sessions |
 | `internal/webui` | Serves the built web app from the server binary |
 
 ## Design docs

@@ -83,6 +83,15 @@ const (
 		UPDATE versions SET missing_since = NULL
 		WHERE id = ANY($1::bigint[]) AND missing_since IS NOT NULL`
 
+	sqlVersion = `
+		SELECT v.id, v.path, v.size_bytes, COALESCE(v.label, ''), COALESCE(v.container, ''),
+		       COALESCE(v.video_codec, ''), COALESCE(v.width, 0), COALESCE(v.height, 0),
+		       COALESCE(v.hdr, ''), COALESCE(v.audio_codec, ''), COALESCE(v.audio_channels, 0),
+		       COALESCE(v.duration_seconds, 0)::float8, COALESCE(v.bitrate, 0),
+		       v.edition_locked, v.missing_since IS NOT NULL
+		FROM versions v
+		WHERE v.id = $1`
+
 	sqlTitlesToMatch = `
 		SELECT id, file_title, COALESCE(year, 0), COALESCE(tmdb_id, 0)
 		FROM titles

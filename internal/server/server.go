@@ -44,8 +44,10 @@ type Options struct {
 	// IsDir checks that a library folder exists; defaults to os.Stat.
 	IsDir func(path string) bool
 	// UI serves the web app for every other GET request; nil for none.
-	UI  http.Handler
-	Log *slog.Logger
+	UI http.Handler
+	// Playback plays files; nil disables it.
+	Playback *Playback
+	Log      *slog.Logger
 }
 
 // LibraryStore is what the library endpoints need from the database.
@@ -87,6 +89,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/libraries/{id}/titles", s.libraryTitles)
 	mux.HandleFunc("POST /api/libraries/{id}/scan", s.scanLibrary)
 	mux.HandleFunc("POST /api/libraries/{id}/match", s.matchLibrary)
+	mux.HandleFunc("POST /api/playback", s.startPlayback)
+	mux.HandleFunc("GET /api/playback/{session}/{file}", s.playbackFile)
+	mux.HandleFunc("DELETE /api/playback/{session}", s.stopPlayback)
+	mux.HandleFunc("GET /api/versions/{id}/file", s.versionFile)
 	if s.opt.UI != nil {
 		// GET only, so a wrong method on an API route still gets 405.
 		mux.Handle("GET /", s.opt.UI)
@@ -100,6 +106,14 @@ type dbStatus struct {
 	Error         string `json:"error,omitempty"`
 }
 
+type playbackStatus struct {
+	// Encoder is the H.264 encoder used for conversion, e.g. "h264_nvenc".
+	Encoder string `json:"encoder,omitempty"`
+	Device  string `json:"device,omitempty"`
+	Ready   bool   `json:"ready"`
+	Note    string `json:"note,omitempty"`
+}
+
 type metadataStatus struct {
 	// TMDbConfigured is true when a TMDb token is set, so titles get matched.
 	TMDbConfigured bool `json:"tmdb_configured"`
@@ -111,6 +125,7 @@ type healthResponse struct {
 	Time      time.Time      `json:"time"`
 	Database  dbStatus       `json:"database"`
 	Metadata  metadataStatus `json:"metadata"`
+	Playback  playbackStatus `json:"playback"`
 	Transcode Capabilities   `json:"transcode"`
 }
 
@@ -127,6 +142,12 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		Transcode: s.opt.Caps,
 		Database:  dbStatus{SchemaVersion: s.opt.SchemaVersion},
 		Metadata:  metadataStatus{TMDbConfigured: s.opt.Match != nil},
+	}
+	if pb := s.opt.Playback; pb != nil {
+		resp.Playback = playbackStatus{Ready: pb.EncoderOK, Note: pb.Note}
+		if pb.EncoderOK {
+			resp.Playback.Encoder, resp.Playback.Device = pb.Encoder.Name, pb.Encoder.DeviceName
+		}
 	}
 	if err := s.opt.PingDB(ctx); err != nil {
 		resp.Database.Error = "cannot connect to " + s.opt.DBAddr

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -21,6 +23,7 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/scan"
 	"github.com/JustinTDCT/CineVault/internal/server"
 	"github.com/JustinTDCT/CineVault/internal/tmdb"
+	"github.com/JustinTDCT/CineVault/internal/transcode"
 	"github.com/JustinTDCT/CineVault/internal/webui"
 )
 
@@ -69,6 +72,24 @@ func run(log *slog.Logger) error {
 		Prober: mediainfo.FFprobe{Path: cfg.FFprobePath, Run: probe.ExecRunner},
 	}
 
+	pref, err := transcode.ParsePreference(cfg.TranscodeMode, cfg.TranscodeGPU)
+	if err != nil {
+		return err
+	}
+	enc, note, encOK := transcode.SelectH264(caps.FFmpeg.Encoders, pref)
+	switch {
+	case !encOK:
+		log.Warn("playback: no working H.264 encoder; only files the player supports will play", "reason", note)
+	case note != "":
+		log.Warn("playback", "encoder", enc.Name, "device", enc.DeviceName, "note", note)
+	default:
+		log.Info("playback", "encoder", enc.Name, "device", enc.DeviceName, "mode", pref.Mode)
+	}
+	streamer := &transcode.Manager{FFmpeg: cfg.FFmpegPath, WorkDir: cfg.TranscodeDir, Log: log}
+	if err := prepareTranscodeDir(cfg.TranscodeDir); err != nil {
+		return err
+	}
+
 	var matchFn func(context.Context, int64) (match.Result, error)
 	if cfg.TMDbToken != "" {
 		matchFn = match.Matcher{Store: database, Source: tmdb.New(cfg.TMDbToken)}.MatchLibrary
@@ -88,7 +109,11 @@ func run(log *slog.Logger) error {
 		Scan:          scanner.Scan,
 		Match:         matchFn,
 		UI:            webui.Handler(),
-		Log:           log,
+		Playback: &server.Playback{
+			Versions: database, Streamer: streamer,
+			Encoder: enc, EncoderOK: encOK, Note: note, MaxHeight: 1080,
+		},
+		Log: log,
 	})
 	srv := &http.Server{
 		Addr:              cfg.Listen,
@@ -98,6 +123,9 @@ func run(log *slog.Logger) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	reaperDone := make(chan struct{})
+	go func() { streamer.RunReaper(ctx); close(reaperDone) }()
+	defer func() { stop(); <-reaperDone }() // stops FFmpeg and removes session files
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
@@ -120,15 +148,16 @@ func run(log *slog.Logger) error {
 func probeCapabilities(cfg config.Config) server.Capabilities {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.ProbeTimeout)
 	defer cancel()
+	gpus := probe.NvidiaGPUs(ctx, probe.ExecRunner)
 	return server.Capabilities{
-		FFmpeg: probe.FFmpeg(ctx, probe.ExecRunner, cfg.FFmpegPath),
-		GPUs:   probe.NvidiaGPUs(ctx, probe.ExecRunner),
+		FFmpeg: probe.FFmpeg(ctx, probe.ExecRunner, cfg.FFmpegPath, gpus),
+		GPUs:   gpus,
 	}
 }
 
 func logCapabilities(log *slog.Logger, caps server.Capabilities) {
 	for _, g := range caps.GPUs {
-		log.Info("gpu", "name", g.Name, "driver", g.Driver, "memory_mib", g.MemoryMiB)
+		log.Info("gpu", "index", g.Index, "name", g.Name, "driver", g.Driver, "memory_mib", g.MemoryMiB)
 	}
 	if !caps.FFmpeg.Found {
 		log.Warn("ffmpeg unavailable; transcoding disabled", "error", caps.FFmpeg.Error)
@@ -136,14 +165,18 @@ func logCapabilities(log *slog.Logger, caps server.Capabilities) {
 	}
 	var usable, unusable []string
 	for _, e := range caps.FFmpeg.Encoders {
+		name := e.Name
+		if e.Kind == probe.KindNVENC && e.GPU >= 0 {
+			name = fmt.Sprintf("%s@gpu%d", e.Name, e.GPU)
+		}
 		if e.Usable {
-			usable = append(usable, e.Name)
+			usable = append(usable, name)
 		} else {
-			unusable = append(unusable, e.Name)
+			unusable = append(unusable, name)
 		}
 	}
 	log.Info("ffmpeg", "version", caps.FFmpeg.Version,
-		"gpu_encoders", strings.Join(usable, ","),
+		"encoders", strings.Join(usable, ","),
 		"listed_but_not_working", strings.Join(unusable, ","))
 }
 
@@ -153,3 +186,24 @@ func displayAddr(listen string) string {
 	}
 	return listen
 }
+
+// prepareTranscodeDir creates the folder for streaming segments and removes
+// session folders left by a previous run. Only folders named like session IDs
+// (32 hex characters) are removed, so a misconfigured path can't lose data.
+func prepareTranscodeDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("transcode folder %s: %w", dir, err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("transcode folder %s: %w", dir, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() && sessionDirName.MatchString(e.Name()) {
+			_ = os.RemoveAll(filepath.Join(dir, e.Name()))
+		}
+	}
+	return nil
+}
+
+var sessionDirName = regexp.MustCompile(`^[0-9a-f]{32}$`)

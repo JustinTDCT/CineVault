@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Edition, type Title } from "../api";
 import { Poster } from "../components/PosterCard";
+import { Player, type PlayTarget } from "../components/Player";
 import { defaultEdition, fileName, formatRuntime, formatSize, labelWithoutResolution, resolution } from "../format";
 import { linkTo } from "../router";
 
@@ -8,6 +9,7 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
   const [title, setTitle] = useState<Title | null | undefined>(undefined);
   const [error, setError] = useState("");
   const [editionId, setEditionId] = useState<number | null>(null);
+  const [playing, setPlaying] = useState<PlayTarget | null>(null);
 
   useEffect(() => {
     api
@@ -62,7 +64,8 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
         </div>
       </div>
 
-      <EditionTabs title={title} selected={edition} onSelect={setEditionId} />
+      <EditionTabs title={title} selected={edition} onSelect={setEditionId} onPlay={setPlaying} />
+      {playing ? <Player target={playing} onClose={() => setPlaying(null)} /> : null}
     </article>
   );
 }
@@ -78,9 +81,22 @@ function MatchNote({ title }: { title: Title }) {
   return <p className="match-note">{text}</p>;
 }
 
-function EditionTabs({ title, selected, onSelect }: { title: Title; selected?: Edition; onSelect: (id: number) => void }) {
+function EditionTabs({
+  title,
+  selected,
+  onSelect,
+  onPlay,
+}: {
+  title: Title;
+  selected?: Edition;
+  onSelect: (id: number) => void;
+  onPlay: (t: PlayTarget) => void;
+}) {
   if (!selected) return null;
   const single = title.editions.length === 1;
+  const heading = single ? title.name : `${title.name} · ${selected.display_name}`;
+  // Play the highest-resolution file that's present; versions arrive tallest first.
+  const best = selected.versions.find((v) => !v.missing);
 
   return (
     <section className="editions" aria-label="Editions">
@@ -106,10 +122,10 @@ function EditionTabs({ title, selected, onSelect }: { title: Title; selected?: E
 
       <div className="edition-panel" id="edition-panel" role={single ? undefined : "tabpanel"} aria-labelledby={single ? undefined : `edition-tab-${selected.id}`}>
         <div className="edition-actions">
-          <button className="btn btn-primary" disabled title="Playback is coming in a later version">
+          <button className="btn btn-primary" disabled={!best} onClick={() => best && onPlay({ versionId: best.id, heading })}>
             Play {single ? "" : selected.display_name}
           </button>
-          <span className="hint">Playback isn't available yet.</span>
+          {best ? null : <span className="hint">The files for this edition are missing.</span>}
         </div>
         <ul className="versions">
           {selected.versions.map((v) => (
@@ -123,7 +139,13 @@ function EditionTabs({ title, selected, onSelect }: { title: Title; selected?: E
                   {fileName(v.path)}
                 </span>
                 <span className="version-size">{formatSize(v.size_bytes)}</span>
-                {v.missing ? <span className="version-flag">File missing</span> : null}
+                {v.missing ? (
+                  <span className="version-flag">File missing</span>
+                ) : selected.versions.length > 1 ? (
+                  <button className="linkish" onClick={() => onPlay({ versionId: v.id, heading: `${heading} (${resolution(v)})` })}>
+                    Play this file
+                  </button>
+                ) : null}
               </div>
             </li>
           ))}

@@ -30,12 +30,24 @@ func ExecRunner(ctx context.Context, name string, args ...string) ([]byte, []byt
 	return out.Bytes(), errb.Bytes(), err
 }
 
-// Encoder is one hardware video encoder and whether it worked in a test encode.
+// Encoder kinds.
+const (
+	KindNVENC = "nvenc" // NVIDIA GPU
+	KindCPU   = "cpu"   // software
+)
+
+// Encoder is one video encoder on one device, and whether it worked in a
+// test encode. Each NVIDIA GPU gets its own entries.
 type Encoder struct {
-	Name   string `json:"name"`
-	Codec  string `json:"codec"`
-	Usable bool   `json:"usable"`
-	Error  string `json:"error,omitempty"`
+	Name  string `json:"name"`
+	Codec string `json:"codec"`
+	Kind  string `json:"kind"`
+	// GPU is the NVIDIA GPU index for NVENC encoders, -1 for CPU encoders or
+	// when no GPU list was available.
+	GPU        int    `json:"gpu"`
+	DeviceName string `json:"device_name"`
+	Usable     bool   `json:"usable"`
+	Error      string `json:"error,omitempty"`
 }
 
 // FFmpegInfo describes the FFmpeg build and the hardware encoders that work with it.
@@ -50,20 +62,27 @@ type FFmpegInfo struct {
 
 // GPU is one NVIDIA GPU reported by nvidia-smi.
 type GPU struct {
+	Index     int    `json:"index"`
 	Name      string `json:"name"`
 	Driver    string `json:"driver"`
 	MemoryMiB int    `json:"memory_mib"`
 }
 
-// candidateEncoders are the hardware encoders CineVault knows how to use.
-var candidateEncoders = []Encoder{
-	{Name: "h264_nvenc", Codec: "h264"},
-	{Name: "hevc_nvenc", Codec: "hevc"},
-	{Name: "av1_nvenc", Codec: "av1"},
+// nvencEncoders are the NVIDIA encoders CineVault knows how to use.
+var nvencEncoders = []Encoder{
+	{Name: "h264_nvenc", Codec: "h264", Kind: KindNVENC},
+	{Name: "hevc_nvenc", Codec: "hevc", Kind: KindNVENC},
+	{Name: "av1_nvenc", Codec: "av1", Kind: KindNVENC},
 }
 
-// FFmpeg probes the FFmpeg binary at path.
-func FFmpeg(ctx context.Context, run Runner, path string) FFmpegInfo {
+// cpuEncoders are the software encoders CineVault knows how to use.
+var cpuEncoders = []Encoder{
+	{Name: "libx264", Codec: "h264", Kind: KindCPU, GPU: -1, DeviceName: "CPU"},
+}
+
+// FFmpeg probes the FFmpeg binary at path. NVENC encoders are tested once per
+// GPU in gpus; with no GPU list they're tested once on the default device.
+func FFmpeg(ctx context.Context, run Runner, path string, gpus []GPU) FFmpegInfo {
 	info := FFmpegInfo{Path: path, HWAccels: []string{}, Encoders: []Encoder{}}
 
 	out, _, err := run(ctx, path, "-hide_banner", "-version")
@@ -88,15 +107,37 @@ func FFmpeg(ctx context.Context, run Runner, path string) FFmpegInfo {
 		listed = parseEncoderNames(out)
 	}
 
-	for _, c := range candidateEncoders {
+	var candidates []Encoder
+	for _, c := range nvencEncoders {
 		if !listed[c.Name] {
 			continue
 		}
-		e := c
-		_, stderr, err := run(ctx, path,
-			"-hide_banner", "-loglevel", "error",
+		if len(gpus) == 0 {
+			c.GPU, c.DeviceName = -1, "NVIDIA GPU"
+			candidates = append(candidates, c)
+			continue
+		}
+		for _, g := range gpus {
+			e := c
+			e.GPU, e.DeviceName = g.Index, g.Name
+			candidates = append(candidates, e)
+		}
+	}
+	for _, c := range cpuEncoders {
+		if listed[c.Name] {
+			candidates = append(candidates, c)
+		}
+	}
+
+	for _, e := range candidates {
+		args := []string{"-hide_banner", "-loglevel", "error",
 			"-f", "lavfi", "-i", "color=c=black:s=256x256:r=24",
-			"-frames:v", "2", "-c:v", e.Name, "-f", "null", "-")
+			"-frames:v", "2", "-c:v", e.Name}
+		if e.Kind == KindNVENC && e.GPU >= 0 {
+			args = append(args, "-gpu", strconv.Itoa(e.GPU))
+		}
+		args = append(args, "-f", "null", "-")
+		_, stderr, err := run(ctx, path, args...)
 		if err == nil {
 			e.Usable = true
 		} else {
@@ -114,7 +155,7 @@ func FFmpeg(ctx context.Context, run Runner, path string) FFmpegInfo {
 // nvidia-smi is missing or fails.
 func NvidiaGPUs(ctx context.Context, run Runner) []GPU {
 	out, _, err := run(ctx, "nvidia-smi",
-		"--query-gpu=name,driver_version,memory.total",
+		"--query-gpu=index,name,driver_version,memory.total",
 		"--format=csv,noheader,nounits")
 	if err != nil {
 		return []GPU{}
@@ -164,13 +205,18 @@ func parseGPUs(out []byte) []GPU {
 	gpus := []GPU{}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		parts := strings.Split(line, ",")
-		if len(parts) != 3 {
+		if len(parts) != 4 {
 			continue
 		}
-		mem, _ := strconv.Atoi(strings.TrimSpace(parts[2]))
+		idx, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if err != nil {
+			continue
+		}
+		mem, _ := strconv.Atoi(strings.TrimSpace(parts[3]))
 		gpus = append(gpus, GPU{
-			Name:      strings.TrimSpace(parts[0]),
-			Driver:    strings.TrimSpace(parts[1]),
+			Index:     idx,
+			Name:      strings.TrimSpace(parts[1]),
+			Driver:    strings.TrimSpace(parts[2]),
 			MemoryMiB: mem,
 		})
 	}

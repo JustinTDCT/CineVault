@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -19,6 +20,12 @@ type Config struct {
 	FFmpegPath string
 	// FFprobePath is the ffprobe binary used to read media files.
 	FFprobePath string
+	// TranscodeMode is auto, nvenc or cpu; TranscodeGPU picks an NVIDIA GPU
+	// by number (empty for any). See transcode.ParsePreference.
+	TranscodeMode string
+	TranscodeGPU  string
+	// TranscodeDir holds streaming segments while videos play.
+	TranscodeDir string
 	// TMDbToken is a TMDb API read access token. Without it, titles aren't
 	// matched to TMDb.
 	TMDbToken string
@@ -36,12 +43,15 @@ func Load() (Config, error) {
 
 func load(getenv func(string) string) (Config, error) {
 	c := Config{
-		Listen:       getenv("CINEVAULT_LISTEN"),
-		DatabaseURL:  getenv("CINEVAULT_DATABASE_URL"),
-		FFmpegPath:   getenv("CINEVAULT_FFMPEG"),
-		FFprobePath:  getenv("CINEVAULT_FFPROBE"),
-		TMDbToken:    getenv("CINEVAULT_TMDB_TOKEN"),
-		ProbeTimeout: 15 * time.Second,
+		Listen:        getenv("CINEVAULT_LISTEN"),
+		DatabaseURL:   getenv("CINEVAULT_DATABASE_URL"),
+		FFmpegPath:    getenv("CINEVAULT_FFMPEG"),
+		FFprobePath:   getenv("CINEVAULT_FFPROBE"),
+		TMDbToken:     getenv("CINEVAULT_TMDB_TOKEN"),
+		TranscodeMode: getenv("CINEVAULT_TRANSCODE"),
+		TranscodeGPU:  getenv("CINEVAULT_TRANSCODE_GPU"),
+		TranscodeDir:  getenv("CINEVAULT_TRANSCODE_DIR"),
+		ProbeTimeout:  15 * time.Second,
 	}
 	if c.Listen == "" {
 		c.Listen = DefaultListen
@@ -51,6 +61,9 @@ func load(getenv func(string) string) (Config, error) {
 	}
 	if c.FFprobePath == "" {
 		c.FFprobePath = "ffprobe"
+	}
+	if c.TranscodeDir == "" {
+		c.TranscodeDir = filepath.Join(os.TempDir(), "cinevault-transcode")
 	}
 	if c.DatabaseURL == "" {
 		return c, fmt.Errorf("CINEVAULT_DATABASE_URL is not set")

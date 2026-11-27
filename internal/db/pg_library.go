@@ -168,3 +168,15 @@ func (d *DB) SetMissing(ctx context.Context, ids []int64, missing bool) error {
 	_, err := d.Pool.Exec(ctx, q, ids)
 	return err
 }
+
+// Version returns one file by ID, or catalog.ErrNotFound.
+func (d *DB) Version(ctx context.Context, id int64) (catalog.Version, error) {
+	var v catalog.Version
+	err := d.Pool.QueryRow(ctx, sqlVersion, id).Scan(
+		&v.ID, &v.Path, &v.SizeBytes, &v.Label, &v.Container, &v.VideoCodec, &v.Width, &v.Height,
+		&v.HDR, &v.AudioCodec, &v.AudioChannels, &v.DurationSeconds, &v.Bitrate, &v.EditionLocked, &v.Missing)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return v, catalog.ErrNotFound
+	}
+	return v, err
+}

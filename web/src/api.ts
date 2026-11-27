@@ -71,6 +71,21 @@ export interface ScanResult {
   match: { matched: number; not_found: number; errors: number; messages: string[]; error?: string } | null;
 }
 
+export interface ClientCaps {
+  containers: string[];
+  video: string[];
+  audio: string[];
+}
+
+export interface PlayResponse {
+  mode: "direct" | "hls";
+  url: string;
+  session_id?: string;
+  reasons: string[];
+  device?: string;
+  encoder?: string;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -105,4 +120,9 @@ export const api = {
     request<Library>("POST", "/api/libraries", { name, media_type: mediaType, paths }),
   titles: (libraryId: number) => request<Title[]>("GET", `/api/libraries/${libraryId}/titles`),
   scan: (libraryId: number) => request<ScanResult>("POST", `/api/libraries/${libraryId}/scan`),
+  play: (versionId: number, caps: ClientCaps) => request<PlayResponse>("POST", "/api/playback", { version_id: versionId, caps }),
+  /** Ends a streaming session; keepalive lets it finish while the page closes. */
+  stopPlayback: (sessionId: string) => {
+    fetch(`/api/playback/${sessionId}`, { method: "DELETE", keepalive: true }).catch(() => {});
+  },
 };
