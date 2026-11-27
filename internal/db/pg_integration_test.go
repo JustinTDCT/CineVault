@@ -115,8 +115,9 @@ func TestIntegrationEditionList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(types) != 38 {
-		t.Errorf("got %d edition types, want the 38 approved built-ins", len(types))
+	// 38 approved in 0001, plus 5 music video editions in 0004.
+	if len(types) != 43 {
+		t.Errorf("got %d edition types, want the 43 built-ins", len(types))
 	}
 
 	defaults := map[string][]string{}
@@ -134,7 +135,8 @@ func TestIntegrationEditionList(t *testing.T) {
 			}
 		}
 	}
-	want := map[string]string{"movie": "theatrical", "tv": "broadcast", "music": "original", "audiobook": "unabridged", "book": "original"}
+	want := map[string]string{"movie": "theatrical", "tv": "broadcast", "music": "original", "audiobook": "unabridged", "book": "original",
+		"musicvideo": "official_video", "comic": "original"}
 	for media, id := range want {
 		if len(defaults[media]) != 1 || defaults[media][0] != id {
 			t.Errorf("default for %s = %v, want [%s]", media, defaults[media], id)

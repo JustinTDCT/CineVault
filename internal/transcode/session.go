@@ -153,7 +153,11 @@ func (m *Manager) Segment(ctx context.Context, id string, n int) (string, error)
 		return "", ErrNoSession
 	}
 	p := s.proc
-	if p == nil || !p.running() || n < p.start || n > s.nextMissing(max(p.start, s.cleaned))+lookahead {
+	// Restart when nothing is converting, when the segment is before where
+	// this FFmpeg started, when it was already made and deleted (a rewind
+	// past what's kept: FFmpeg won't make it again), or when it's too far
+	// ahead to wait for.
+	if p == nil || !p.running() || n < p.start || n < s.cleaned || n > s.nextMissing(max(p.start, s.cleaned))+lookahead {
 		if p != nil {
 			p.stop()
 		}

@@ -223,3 +223,35 @@ func TestThrottlePausesResumesAndCleansUp(t *testing.T) {
 		t.Errorf("rewind: %v", err)
 	}
 }
+
+// Rewinding to a deleted segment while FFmpeg is still running (paused ahead
+// of the player) must start a new FFmpeg there, not wait for the old one.
+func TestRewindPastDeletedWhileRunning(t *testing.T) {
+	src := testSource(t)
+	m := newManager(t)
+	m.PauseAhead, m.ResumeAhead, m.KeepBehind = 12*time.Second, 6*time.Second, 6*time.Second
+	m.SegmentTimeout = 15 * time.Second
+	id, _ := m.Start(src, cpuPlan)
+	defer m.Stop(id)
+	ctx := context.Background()
+	for n := 0; n <= 4; n++ {
+		if _, err := m.Segment(ctx, id, n); err != nil {
+			t.Fatalf("segment %d: %v", n, err)
+		}
+		m.Throttle()
+	}
+	s, _ := m.get(id)
+	s.mu.Lock()
+	running, cleaned := s.proc.running(), s.cleaned
+	s.mu.Unlock()
+	if !running || cleaned < 2 {
+		t.Skipf("setup didn't leave FFmpeg running with segments deleted (running=%v cleaned=%d)", running, cleaned)
+	}
+	start := time.Now()
+	if _, err := m.Segment(ctx, id, 1); err != nil {
+		t.Fatalf("rewind: %v", err)
+	}
+	if d := time.Since(start); d > 10*time.Second {
+		t.Errorf("rewind took %s", d)
+	}
+}
