@@ -190,6 +190,8 @@ const (
 		    rating             = NULLIF($15::float8, 0)::numeric(3, 1),
 		    collection_tmdb_id = NULLIF($16::integer, 0),
 		    collection_name    = NULLIF($17, ''),
+		    cast_members       = $18::jsonb,
+		    directors          = $19::text[],
 		    match_status       = 'matched',
 		    match_error        = NULL,
 		    matched_at         = now(),
@@ -246,6 +248,16 @@ const (
 
 	sqlTitleExists = `SELECT EXISTS (SELECT 1 FROM titles WHERE id = $1)`
 
+	// Matched movies and shows whose cast hasn't been fetched yet.
+	sqlTitlesNeedingCredits = `
+		SELECT id, media_type, name, COALESCE(year, 0), tmdb_id
+		FROM titles
+		WHERE library_id = $1 AND match_status = 'matched' AND tmdb_id IS NOT NULL
+		  AND media_type IN ('movie', 'tv') AND cast_members IS NULL
+		ORDER BY sort_name, id`
+
+	sqlSaveCredits = `UPDATE titles SET cast_members = $2::jsonb, directors = $3::text[], updated_at = now() WHERE id = $1`
+
 	sqlSaveMatchFailure = `
 		UPDATE titles SET match_status = $2, match_error = $3, updated_at = now()
 		WHERE id = $1`
@@ -284,11 +296,20 @@ const (
 		       COALESCE(v.width, 0), COALESCE(v.height, 0), COALESCE(v.hdr, ''),
 		       COALESCE(v.audio_codec, ''), COALESCE(v.audio_channels, 0),
 		       COALESCE(v.duration_seconds, 0)::float8, COALESCE(v.bitrate, 0),
-		       COALESCE(v.edition_locked, false), v.missing_since IS NOT NULL
+		       COALESCE(v.edition_locked, false), v.missing_since IS NOT NULL,
+		       COALESCE(t.cast_members, '[]'::jsonb), COALESCE(t.directors, '{}'),
+		       COALESCE((SELECT max(x.added_at) FROM versions x JOIN editions xe ON xe.id = x.edition_id
+		                  WHERE xe.title_id = t.id AND x.missing_since IS NULL), t.created_at),
+		       COALESCE(pp.version_id, 0), COALESCE(pp.position_seconds, 0)::float8, COALESCE(pp.locator, ''),
+		       COALESCE(pp.updated_at, 'epoch'), COALESCE(pv.duration_seconds, 0)::float8, COALESCE(pv.page_count, 0),
+		       COALESCE(pe.season_number, 0), COALESCE(pe.episode_number, 0), COALESCE(pe.name, '')
 		FROM titles t
 		JOIN editions e ON e.title_id = t.id
 		JOIN edition_types et ON et.id = e.edition_type_id
 		LEFT JOIN versions v ON v.edition_id = e.id AND v.episode_id IS NULL AND v.track_id IS NULL
+		LEFT JOIN playback_progress pp ON pp.title_id = t.id
+		LEFT JOIN versions pv ON pv.id = pp.version_id
+		LEFT JOIN episodes pe ON pe.id = pv.episode_id
 		WHERE t.library_id = $1
 		ORDER BY t.sort_name, t.year NULLS LAST, t.id, et.sort_order, e.id,
 		         v.height DESC NULLS LAST, v.id`

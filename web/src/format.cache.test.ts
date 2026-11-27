@@ -15,7 +15,7 @@ const placeholder: Edition = {
 };
 const alien: Title = {
   id: 1, library_id: 1, media_type: "movie", name: "Alien", sort_name: "alien", genres: [], match_status: "matched",
-  cache_state: "cached", editions: [placeholder, owned],
+  cache_state: "cached", added_at: "2026-11-01T00:00:00Z", editions: [placeholder, owned],
 };
 
 describe("cache placeholders", () => {

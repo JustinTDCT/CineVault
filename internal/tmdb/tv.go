@@ -26,6 +26,11 @@ type Show struct {
 		IMDbID string `json:"imdb_id"`
 	} `json:"external_ids"`
 	Seasons []SeasonSummary `json:"seasons"`
+	Credits Credits         `json:"credits"`
+	// CreatedBy is the show's creators, shown where a movie shows its directors.
+	CreatedBy []struct {
+		Name string `json:"name"`
+	} `json:"created_by"`
 }
 
 // SeasonSummary is a season as listed in a show's details.
@@ -66,6 +71,10 @@ func (s Show) AsMovie() Movie {
 		ID: s.ID, IMDbID: s.ExternalIDs.IMDbID, Title: s.Name, OriginalTitle: s.OriginalName,
 		Overview: s.Overview, Tagline: s.Tagline, ReleaseDate: s.FirstAirDate,
 		PosterPath: s.PosterPath, BackdropPath: s.BackdropPath, VoteAverage: s.VoteAverage,
+		Credits: Credits{Cast: s.Credits.Cast},
+	}
+	for _, c := range s.CreatedBy {
+		m.Credits.Crew = append(m.Credits.Crew, CrewMember{Name: c.Name, Job: "Director"})
 	}
 	if len(s.EpisodeRunTime) > 0 {
 		m.Runtime = s.EpisodeRunTime[0]
@@ -108,7 +117,7 @@ func (c *Client) SearchTV(ctx context.Context, query string, year int) ([]Search
 // TV fetches a show's details, including its IMDb ID and season list.
 func (c *Client) TV(ctx context.Context, id int) (Show, error) {
 	var s Show
-	err := c.get(ctx, "/tv/"+strconv.Itoa(id), url.Values{"append_to_response": {"external_ids"}}, &s)
+	err := c.get(ctx, "/tv/"+strconv.Itoa(id), url.Values{"append_to_response": {"external_ids,credits"}}, &s)
 	return s, err
 }
 

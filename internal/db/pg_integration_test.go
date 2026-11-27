@@ -295,6 +295,10 @@ func (stubTMDb) Movie(_ context.Context, id int) (tmdb.Movie, error) {
 	m.Genres = append(m.Genres, struct {
 		Name string `json:"name"`
 	}{Name: "Horror"})
+	m.Credits = tmdb.Credits{
+		Cast: []tmdb.CastMember{{Name: "Sigourney Weaver", Character: "Ripley", ProfilePath: "/sw.jpg"}, {Name: "Tom Skerritt", Character: "Dallas", Order: 1}},
+		Crew: []tmdb.CrewMember{{Name: "Ridley Scott", Job: "Director"}},
+	}
 	return m, nil
 }
 
@@ -341,6 +345,46 @@ func TestIntegrationMatchAlien(t *testing.T) {
 	if alien.IMDbID != "tt0078748" || alien.RuntimeMinutes != 117 || alien.ReleaseDate != "1979-05-25" ||
 		alien.PosterURL != tmdb.ImageBaseURL+"w500/poster.jpg" || len(alien.Genres) != 1 || alien.MatchStatus != "matched" {
 		t.Errorf("alien = %+v", alien)
+	}
+
+	if len(alien.Cast) != 2 || alien.Cast[0].Name != "Sigourney Weaver" || alien.Cast[0].Character != "Ripley" ||
+		alien.Cast[0].ProfileURL != tmdb.ImageBaseURL+"w185/sw.jpg" || alien.Cast[1].ProfileURL != "" ||
+		len(alien.Directors) != 1 || alien.Directors[0] != "Ridley Scott" {
+		t.Errorf("cast = %+v, directors = %v", alien.Cast, alien.Directors)
+	}
+	if alien.AddedAt.IsZero() || alien.Progress != nil {
+		t.Errorf("added = %v, progress = %+v", alien.AddedAt, alien.Progress)
+	}
+
+	// A title matched before cast was stored gets it on the next match.
+	if _, err := d.Pool.Exec(ctx, `UPDATE titles SET cast_members = NULL, directors = NULL WHERE id = $1`, alien.ID); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := m.MatchLibrary(ctx, lib.ID); err != nil || res.Credits != 1 {
+		t.Errorf("credits run: %+v err=%v", res, err)
+	}
+	if res, err := m.MatchLibrary(ctx, lib.ID); err != nil || res.Credits != 0 {
+		t.Errorf("credits again: %+v err=%v", res, err)
+	}
+
+	// Progress shows on the title with the file's length.
+	v := alien.Editions[0].Versions[0]
+	if _, err := d.Pool.Exec(ctx, `UPDATE versions SET duration_seconds = 7020 WHERE id = $1`, v.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.SaveProgress(ctx, alien.ID, catalog.Progress{VersionID: v.ID, PositionSeconds: 2460}); err != nil {
+		t.Fatal(err)
+	}
+	titles, _ = d.LibraryTitles(ctx, lib.ID)
+	for _, ti := range titles {
+		if ti.ID == alien.ID {
+			if p := ti.Progress; p == nil || p.VersionID != v.ID || p.PositionSeconds != 2460 || p.DurationSeconds != 7020 || p.UpdatedAt.IsZero() {
+				t.Errorf("progress = %+v", p)
+			}
+			if len(ti.Cast) != 2 {
+				t.Errorf("cast after refetch = %+v", ti.Cast)
+			}
+		}
 	}
 
 	// Rescanning must not split the matched title.

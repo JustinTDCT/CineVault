@@ -30,6 +30,11 @@ type Store interface {
 	// ShowsNeedingEpisodes lists matched shows with episodes that have no TMDb
 	// details yet (new files since the show was matched), by season.
 	ShowsNeedingEpisodes(ctx context.Context, libraryID int64) ([]ShowSeasons, error)
+	// TitlesNeedingCredits lists matched movies and shows with no cast yet
+	// (matched before cast was stored).
+	TitlesNeedingCredits(ctx context.Context, libraryID int64) ([]Title, error)
+	// SaveCredits stores a title's cast and directors (a show's creators).
+	SaveCredits(ctx context.Context, titleID int64, c tmdb.Credits) error
 	// SaveMatchFailure records status "not_found" or "error".
 	SaveMatchFailure(ctx context.Context, titleID int64, status, message string) error
 }
@@ -57,7 +62,9 @@ type Result struct {
 	NotFound int `json:"not_found"`
 	Errors   int `json:"errors"`
 	// Episodes is how many TV episodes had details fetched.
-	Episodes int      `json:"episodes"`
+	Episodes int `json:"episodes"`
+	// Credits is how many titles matched earlier had their cast fetched.
+	Credits  int      `json:"credits"`
 	Messages []string `json:"messages"`
 }
 
@@ -123,6 +130,11 @@ func (m Matcher) MatchLibrary(ctx context.Context, libraryID int64) (Result, err
 		}
 	}
 
+	// Cast for titles matched before cast was stored.
+	if err := m.fetchCredits(ctx, libraryID, &res); err != nil {
+		return res, err
+	}
+
 	// Episodes added to shows that were matched on an earlier scan.
 	shows, err := m.Store.ShowsNeedingEpisodes(ctx, libraryID)
 	if err != nil {
@@ -134,6 +146,42 @@ func (m Matcher) MatchLibrary(ctx context.Context, libraryID int64) (Result, err
 		}
 	}
 	return res, nil
+}
+
+// fetchCredits stores the cast of matched titles that have none yet. A
+// failure is reported and the title is tried again on the next match.
+func (m Matcher) fetchCredits(ctx context.Context, libraryID int64, res *Result) error {
+	titles, err := m.Store.TitlesNeedingCredits(ctx, libraryID)
+	if err != nil {
+		return fmt.Errorf("load titles needing cast: %w", err)
+	}
+	for _, t := range titles {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		var credits tmdb.Credits
+		if t.MediaType == "tv" {
+			var s tmdb.Show
+			s, err = m.Source.TV(ctx, t.TMDbID)
+			credits = s.AsMovie().Credits
+		} else {
+			var mv tmdb.Movie
+			mv, err = m.Source.Movie(ctx, t.TMDbID)
+			credits = mv.Credits
+		}
+		if errors.Is(err, tmdb.ErrUnauthorized) {
+			return err
+		}
+		if err != nil {
+			res.Messages = append(res.Messages, fmt.Sprintf("%s: cast: %v", label(t), err))
+			continue
+		}
+		if err := m.Store.SaveCredits(ctx, t.ID, credits); err != nil {
+			return fmt.Errorf("save cast for %s: %w", label(t), err)
+		}
+		res.Credits++
+	}
+	return nil
 }
 
 // fetchSeasons stores each season's episodes. A season TMDb doesn't have is

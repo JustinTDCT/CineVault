@@ -66,7 +66,10 @@ func (f *fakeSource) Movie(_ context.Context, id int) (tmdb.Movie, error) {
 	if id == 404 {
 		return tmdb.Movie{}, tmdb.ErrNotFound
 	}
-	return tmdb.Movie{ID: id, Title: "Movie " + string(rune('A'+id%26))}, nil
+	return tmdb.Movie{ID: id, Title: "Movie " + string(rune('A'+id%26)), Credits: tmdb.Credits{
+		Cast: []tmdb.CastMember{{Name: "Second", Order: 1}, {Name: "First", Character: "Ripley", Order: 0}},
+		Crew: []tmdb.CrewMember{{Name: "Ridley Scott", Job: "Director"}, {Name: "Someone", Job: "Editor"}},
+	}}, nil
 }
 
 func (f *fakeSource) SearchTV(_ context.Context, q string, year int) ([]tmdb.SearchResult, error) {
@@ -94,11 +97,13 @@ func (f *fakeSource) Season(_ context.Context, show, n int) (tmdb.Season, error)
 }
 
 type fakeStore struct {
-	titles   []Title
-	matched  map[int64]int
-	failures map[int64]string
-	seasons  map[int64][]int
-	pending  []ShowSeasons
+	needCredits []Title
+	credits     map[int64]tmdb.Credits
+	titles      []Title
+	matched     map[int64]int
+	failures    map[int64]string
+	seasons     map[int64][]int
+	pending     []ShowSeasons
 }
 
 func (f *fakeStore) SaveSeason(_ context.Context, id int64, s tmdb.Season) error {
@@ -113,6 +118,16 @@ func (f *fakeStore) ShowsNeedingEpisodes(context.Context, int64) ([]ShowSeasons,
 }
 
 func (f *fakeStore) TitlesToMatch(context.Context, int64) ([]Title, error) { return f.titles, nil }
+func (f *fakeStore) TitlesNeedingCredits(context.Context, int64) ([]Title, error) {
+	return f.needCredits, nil
+}
+func (f *fakeStore) SaveCredits(_ context.Context, id int64, c tmdb.Credits) error {
+	if f.credits == nil {
+		f.credits = map[int64]tmdb.Credits{}
+	}
+	f.credits[id] = c
+	return nil
+}
 func (f *fakeStore) SaveMatch(_ context.Context, id int64, m tmdb.Movie) error {
 	f.matched[id] = m.ID
 	return nil
@@ -193,5 +208,23 @@ func TestMatchShows(t *testing.T) {
 	}
 	if src.searches[0] != "tv:3 Body Problem" {
 		t.Errorf("searches = %v", src.searches)
+	}
+}
+
+func TestMatchFetchesMissingCredits(t *testing.T) {
+	st := &fakeStore{needCredits: []Title{{ID: 7, MediaType: "movie", Name: "Alien", TMDbID: 348}, {ID: 8, MediaType: "movie", Name: "Gone", TMDbID: 404}}}
+	res, err := Matcher{Store: st, Source: &fakeSource{}}.MatchLibrary(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Credits != 1 || len(res.Messages) != 1 {
+		t.Fatalf("result = %+v", res)
+	}
+	c := st.credits[7]
+	if top := c.TopCast(); len(top) != 2 || top[0].Name != "First" || top[0].Character != "Ripley" {
+		t.Errorf("cast = %+v", top)
+	}
+	if d := c.Directors(); len(d) != 1 || d[0] != "Ridley Scott" {
+		t.Errorf("directors = %v", d)
 	}
 }

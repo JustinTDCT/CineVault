@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type Hls from "hls.js";
 import { api, type PlayResponse } from "../api";
 import { detectCaps } from "../caps";
@@ -6,7 +6,14 @@ import { detectCaps } from "../caps";
 export interface PlayTarget {
   versionId: number;
   heading: string; // e.g. "Alien · Director's Cut"
+  /** The title the file belongs to; when set, the position is saved for "Continue". */
+  titleId?: number;
+  /** Where to start, in seconds (resume). */
+  startAt?: number;
 }
+
+/** How often the position is saved while playing. */
+const SAVE_EVERY_MS = 10_000;
 
 /** Full-window player. Plays the file directly when the browser supports it,
  *  otherwise streams it converted (HLS) by the server. */
@@ -26,6 +33,18 @@ export function Player({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [info, setInfo] = useState<PlayResponse | null>(null);
   const [error, setError] = useState("");
+  const lastSave = useRef(0);
+
+  // Save the position now; at the end, save the full length so it counts as finished.
+  const save = useCallback(
+    (ended = false) => {
+      const v = videoRef.current;
+      if (!target.titleId || !v || !(v.currentTime > 0)) return;
+      lastSave.current = Date.now();
+      api.saveProgress(target.titleId, target.versionId, ended && isFinite(v.duration) ? v.duration : v.currentTime);
+    },
+    [target.titleId, target.versionId],
+  );
 
   useEffect(() => {
     let hls: Hls | null = null;
@@ -42,6 +61,10 @@ export function Player({
         }
         setInfo(res);
         const video = videoRef.current!;
+        if (target.startAt && target.startAt > 0) {
+          const start = target.startAt;
+          video.addEventListener("loadedmetadata", () => (video.currentTime = start), { once: true });
+        }
         if (res.mode === "direct") {
           video.src = res.url;
         } else {
@@ -68,10 +91,14 @@ export function Player({
       }
     })();
 
-    const onUnload = () => sessionId && api.stopPlayback(sessionId);
+    const onUnload = () => {
+      save();
+      if (sessionId) api.stopPlayback(sessionId);
+    };
     window.addEventListener("pagehide", onUnload);
     return () => {
       cancelled = true;
+      save();
       window.removeEventListener("pagehide", onUnload);
       hls?.destroy();
       if (sessionId) api.stopPlayback(sessionId);
@@ -110,7 +137,18 @@ export function Player({
           </button>
         </div>
       </div>
-      <video ref={videoRef} className="player-video" controls playsInline onEnded={onEnded} />
+      <video
+        ref={videoRef}
+        className="player-video"
+        controls
+        playsInline
+        onTimeUpdate={() => Date.now() - lastSave.current > SAVE_EVERY_MS && save()}
+        onPause={() => save()}
+        onEnded={() => {
+          save(true);
+          onEnded?.();
+        }}
+      />
     </div>
   );
 }

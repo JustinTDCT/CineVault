@@ -70,7 +70,8 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 		var e catalog.Edition
 		var v catalog.Version
 		var ec catalog.EditionCache
-		var cacheSources, diffFull []byte
+		var cacheSources, diffFull, castJSON []byte
+		var p catalog.TitleProgress
 		if err := rows.Scan(
 			&t.ID, &t.LibraryID, &t.MediaType, &t.Name, &t.SortName, &t.Year, &t.TMDbID,
 			&t.OriginalTitle, &t.Overview, &t.Tagline, &t.ReleaseDate, &t.RuntimeMinutes,
@@ -86,6 +87,9 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 			&v.ID, &v.Path, &v.SizeBytes, &v.Label, &v.Container, &v.VideoCodec,
 			&v.Width, &v.Height, &v.HDR, &v.AudioCodec, &v.AudioChannels,
 			&v.DurationSeconds, &v.Bitrate, &v.EditionLocked, &v.Missing,
+			&castJSON, &t.Directors, &t.AddedAt,
+			&p.VersionID, &p.PositionSeconds, &p.Locator, &p.UpdatedAt, &p.DurationSeconds, &p.PageCount,
+			&p.SeasonNumber, &p.EpisodeNumber, &p.EpisodeName,
 		); err != nil {
 			return nil, err
 		}
@@ -100,6 +104,13 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 			}
 			if t.BackdropPath != "" {
 				t.BackdropURL = tmdb.ImageBaseURL + "w1280" + t.BackdropPath
+			}
+			t.Cast = castMembers(castJSON)
+			if len(t.Directors) == 0 {
+				t.Directors = nil
+			}
+			if p.VersionID != 0 {
+				t.Progress = &p
 			}
 			if t.CacheState == "cached" && len(cacheSources) > 2 {
 				t.CacheSources = json.RawMessage(cacheSources)
@@ -399,4 +410,21 @@ func (d *DB) SaveProgress(ctx context.Context, titleID int64, p catalog.Progress
 		return p, catalog.ErrNotFound
 	}
 	return p, err
+}
+
+// castMembers reads titles.cast_members, adding image URLs; nil when empty.
+func castMembers(raw []byte) []catalog.CastMember {
+	var stored []storedCast
+	if len(raw) <= 2 || json.Unmarshal(raw, &stored) != nil {
+		return nil
+	}
+	out := make([]catalog.CastMember, 0, len(stored))
+	for _, c := range stored {
+		m := catalog.CastMember{Name: c.Name, Character: c.Character}
+		if c.ProfilePath != "" {
+			m.ProfileURL = tmdb.ImageBaseURL + "w185" + c.ProfilePath
+		}
+		out = append(out, m)
+	}
+	return out
 }

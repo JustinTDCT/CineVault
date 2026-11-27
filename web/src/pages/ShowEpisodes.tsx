@@ -1,25 +1,64 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { api, type Episode, type Season, type Title } from "../api";
+import { api, type Episode, type Progress, type Season, type Title } from "../api";
 import { Player, type PlayTarget } from "../components/Player";
-import { episodeCode, formatDate, isPlaceholderName, isUpcoming, nextEpisode, playableEpisodes, playableVersion, resolution, seasonLabel } from "../format";
+import {
+  episodeCode,
+  formatDate,
+  isPlaceholderName,
+  isUpcoming,
+  nextEpisode,
+  playableEpisodes,
+  playableVersion,
+  resolution,
+  seasonLabel,
+  timeLeft,
+} from "../format";
+
+/** Where to pick a show up: the episode last played, from where it stopped, or the
+ *  next one when that episode was finished. Undefined when nothing was played. */
+export function resumePoint(seasons: Season[], p: Progress | undefined): { episode: Episode; startAt: number; left: string } | undefined {
+  if (!p) return undefined;
+  for (const s of seasons) {
+    for (const e of s.episodes) {
+      const v = e.versions.find((x) => x.id === p.version_id);
+      if (!v) continue;
+      const length = v.duration_seconds ?? 0;
+      if (length && p.position_seconds / length >= 0.95) {
+        const next = nextEpisode(seasons, e.id);
+        return next ? { episode: next, startAt: 0, left: "" } : undefined;
+      }
+      return { episode: e, startAt: p.position_seconds, left: length ? timeLeft(length, p.position_seconds) : "" };
+    }
+  }
+  return undefined;
+}
 
 /** A show's seasons as tabs, each listing every episode, with or without a file. */
-export function ShowEpisodes({ title }: { title: Title }) {
+export function ShowEpisodes({ title, autoplay = false }: { title: Title; autoplay?: boolean }) {
   const [seasons, setSeasons] = useState<Season[] | null>(null);
   const [error, setError] = useState("");
   const [seasonNumber, setSeasonNumber] = useState<number | null>(null);
-  const [playing, setPlaying] = useState<Episode | null>(null);
+  const [playing, setPlaying] = useState<{ episode: Episode; startAt?: number } | null>(null);
+  const [progress, setProgress] = useState<Progress | undefined>(title.progress);
 
   useEffect(() => {
     api
       .episodes(title.id)
       .then((s) => {
         setSeasons(s);
-        // Open the first season that has a file to play.
-        const first = s.find((x) => x.episodes.some((e) => playableVersion(e))) ?? s[0];
-        setSeasonNumber(first?.number ?? null);
+        const resume = resumePoint(s, title.progress);
+        // Open the season to resume in, or the first that has a file to play.
+        const open = resume ? s.find((x) => x.number === resume.episode.season) : s.find((x) => x.episodes.some((e) => playableVersion(e)));
+        setSeasonNumber((open ?? s[0])?.number ?? null);
+        // Home's Play and Continue link here with ?play=1.
+        if (autoplay) {
+          const first = playableEpisodes(s)[0];
+          if (resume) setPlaying({ episode: resume.episode, startAt: resume.startAt });
+          else if (first) setPlaying({ episode: first });
+        }
       })
       .catch((e: Error) => setError(e.message));
+    // Autoplay only on arrival.
   }, [title.id]);
 
   if (error) {
@@ -34,18 +73,38 @@ export function ShowEpisodes({ title }: { title: Title }) {
 
   const season = seasons.find((s) => s.number === seasonNumber) ?? seasons[0];
   const first = playableEpisodes(seasons)[0];
-  const target = (e: Episode): PlayTarget => ({
+  const resume = resumePoint(seasons, progress);
+  const target = (e: Episode, startAt?: number): PlayTarget => ({
     versionId: playableVersion(e)!.id,
     heading: `${title.name} · ${episodeCode(e.season, e.number, playableVersion(e)!.last_episode)}${e.name ? ` · ${e.name}` : ""}`,
+    titleId: title.id,
+    startAt,
   });
-  const next = playing ? nextEpisode(seasons, playing.id) : undefined;
+  const next = playing ? nextEpisode(seasons, playing.episode.id) : undefined;
+  const close = () => {
+    setPlaying(null);
+    // Pick up the position the player just saved.
+    window.setTimeout(() => api.progress(title.id).then(setProgress, () => {}), 300);
+  };
 
   return (
     <section className="episodes" aria-label="Episodes">
       <div className="episodes-head">
         <h2 className="cv-section-title">{seasons.length === 1 ? seasonLabel(season) : "Episodes"}</h2>
-        {first ? (
-          <button className="cv-btn cv-btn--primary" onClick={() => setPlaying(first)}>
+        {resume ? (
+          <div className="cv-actions">
+            <button className="cv-btn cv-btn--primary" onClick={() => setPlaying({ episode: resume.episode, startAt: resume.startAt })}>
+              {resume.startAt > 0 ? "Resume" : "Play"} {episodeCode(resume.episode.season, resume.episode.number)}
+              {resume.left ? <span className="cv-btn__note">{resume.left}</span> : null}
+            </button>
+            {resume.startAt > 0 ? (
+              <button className="cv-btn" onClick={() => setPlaying({ episode: resume.episode })}>
+                Start over
+              </button>
+            ) : null}
+          </div>
+        ) : first ? (
+          <button className="cv-btn cv-btn--primary" onClick={() => setPlaying({ episode: first })}>
             Play {episodeCode(first.season, first.number)}
           </button>
         ) : null}
@@ -92,17 +151,17 @@ export function ShowEpisodes({ title }: { title: Title }) {
         {season.overview ? <p className="season-overview">{season.overview}</p> : null}
         <ol className="episode-list">
           {season.episodes.map((e) => (
-            <EpisodeRow key={e.id} episode={e} onPlay={() => setPlaying(e)} />
+            <EpisodeRow key={e.id} episode={e} onPlay={() => setPlaying({ episode: e })} />
           ))}
         </ol>
       </div>
 
       {playing ? (
         <Player
-          target={target(playing)}
-          onClose={() => setPlaying(null)}
+          target={target(playing.episode, playing.startAt)}
+          onClose={close}
           upNext={next ? `${episodeCode(next.season, next.number)}${next.name ? ` · ${next.name}` : ""}` : undefined}
-          onEnded={next ? () => setPlaying(next) : undefined}
+          onEnded={next ? () => setPlaying({ episode: next }) : undefined}
         />
       ) : null}
     </section>

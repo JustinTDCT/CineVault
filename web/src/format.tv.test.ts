@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Episode, Season } from "./api";
+import { resumePoint } from "./pages/ShowEpisodes";
 import { isPlaceholderName, isUpcoming, episodeCode, nextEpisode, playableEpisodes, seasonLabel, showCounts } from "./format";
 
 const ep = (id: number, season: number, number: number, files: { missing?: boolean }[] = [{}]): Episode => ({
@@ -45,5 +46,18 @@ describe("tv", () => {
     expect(isUpcoming(undefined, today)).toBe(false);
     expect(isPlaceholderName("Episode 3", 3)).toBe(true);
     expect(isPlaceholderName("Countdown", 1)).toBe(false);
+  });
+  it("resumes a show where it stopped, or at the next episode", () => {
+    const withLength = seasons.map((s) => ({ ...s, episodes: s.episodes.map((e) => ({ ...e, versions: e.versions.map((v) => ({ ...v, duration_seconds: 3000 })) })) }));
+    const at = (version_id: number, position_seconds: number) => ({ version_id, position_seconds, updated_at: "" });
+    expect(resumePoint(withLength, undefined)).toBeUndefined();
+    const mid = resumePoint(withLength, at(10, 1200));
+    expect(mid?.episode.id).toBe(1);
+    expect(mid?.startAt).toBe(1200);
+    expect(mid?.left).toBe("30 min left");
+    const done = resumePoint(withLength, at(10, 2950));
+    expect(done?.episode.id).toBe(4);
+    expect(done?.startAt).toBe(0);
+    expect(resumePoint(withLength, at(60, 2990))).toBeUndefined(); // the last episode, finished
   });
 });

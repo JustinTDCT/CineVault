@@ -11,7 +11,7 @@ const ed = (id: number, label: string, versions: Partial<Edition["versions"][num
 });
 
 const title = (editions: Edition[]): Title => ({
-  id: 1, library_id: 1, media_type: "movie", name: "Alien", sort_name: "alien", genres: [], match_status: "matched", editions,
+  id: 1, library_id: 1, media_type: "movie", name: "Alien", sort_name: "alien", genres: [], match_status: "matched", added_at: "2026-11-01T00:00:00Z", editions,
 });
 
 describe("editionListing", () => {

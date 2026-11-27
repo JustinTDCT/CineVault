@@ -14,6 +14,11 @@ This is a fresh start (November 2026). Earlier work is preserved on these branch
 - TV shows with seasons and episodes (owned and missing)
 - Music, music videos, audiobooks (chapters, resume, speed), ebooks (EPUB/MOBI/AZW3 reader, PDF in the browser) and comics (CBZ natively; CBR/CB7/CBT need `libarchive-tools`; comics haven't been tested on the server yet)
 
+**Built 27 Nov 2026, not yet tested on the server:**
+- Movies and episodes save where you stopped and offer **Resume** (or Start over); a finished episode resumes at the next one
+- Home: a spotlight that cycles through up to 5 titles (several editions, a cut the cache knows, new or half-watched first; the order changes daily), **Continue** across every kind of title, and **Recently added**
+- **Cast** with photos and "Directed by" (a show's "Created by") on title pages, from TMDb credits. Migration 0010 adds them; titles matched earlier get them at the next scan or match
+
 **Built, not yet tested on the server:** the CineVault Cache client (`internal/cachesync`, migration 0009): lookups after matching, the scheduled update check, the daily share of titles, greyed "Not in library" editions, "What's different in this cut", "Report a mistake", a "Medium confidence" label, and a Settings page. The cache's research worker now fills pending titles on its own (cache build step 4, 27 Nov 2026): *Alien* is published there, and shows up here at the next update check.
 
 **Next, in order:**
@@ -61,7 +66,7 @@ npm run dev    # serves on port 5173 and forwards /api to the Go server on 8456
 | `POST /api/libraries/{id}/match` | Match unmatched titles to TMDb without scanning. Titles that failed with an error are retried; ones TMDb didn't find are not. |
 | `GET /api/libraries/{id}/titles` | Titles with their editions and versions. Shows list their season and episode counts instead of files. |
 | `GET /api/titles/{id}/tracks` | An album's songs (or an audiobook's parts) and their files per edition, with chapter marks |
-| `GET /api/titles/{id}/progress`, `PUT …` | Where playback of a title stopped (audiobooks resume from it): `{"version_id": 5, "position_seconds": 812.4}` |
+| `GET /api/titles/{id}/progress`, `PUT …` | Where playback of a title stopped (movies, episodes and audiobooks resume from it): `{"version_id": 5, "position_seconds": 812.4}`. Library titles also carry it as `progress`, with the file's length, for Home's Continue row |
 | `GET /api/titles/{id}/episodes` | A show's seasons and episodes with their files, including episodes TMDb lists that the library doesn't have |
 | `POST /api/playback` | Start playing a file: `{"version_id": 2, "caps": {...}}`. Returns a direct file URL, or an HLS playlist URL when the file needs converting. |
 | `GET /api/playback/{session}/index.m3u8`, `…/segN.ts` | HLS playlist and segments for a session |

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -80,6 +81,54 @@ type Movie struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
 	} `json:"belongs_to_collection"`
+	Credits Credits `json:"credits"`
+}
+
+// Credits is who is in and who made a movie or show.
+type Credits struct {
+	Cast []CastMember `json:"cast"`
+	Crew []CrewMember `json:"crew"`
+}
+
+// CastMember is one actor and their role.
+type CastMember struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Character   string `json:"character"`
+	ProfilePath string `json:"profile_path"`
+	Order       int    `json:"order"`
+}
+
+// CrewMember is one crew credit.
+type CrewMember struct {
+	Name string `json:"name"`
+	Job  string `json:"job"`
+}
+
+// MaxCast is how many cast members are kept for a title.
+const MaxCast = 15
+
+// TopCast returns the first MaxCast cast members in billing order; never nil.
+func (c Credits) TopCast() []CastMember {
+	out := append([]CastMember{}, c.Cast...)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Order < out[j].Order })
+	if len(out) > MaxCast {
+		out = out[:MaxCast]
+	}
+	return out
+}
+
+// Directors lists the directors, each once; never nil.
+func (c Credits) Directors() []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, m := range c.Crew {
+		if m.Job == "Director" && !seen[m.Name] {
+			seen[m.Name] = true
+			out = append(out, m.Name)
+		}
+	}
+	return out
 }
 
 // Year returns the release year, or 0.
@@ -115,7 +164,7 @@ func (c *Client) SearchMovie(ctx context.Context, query string, year int) ([]Sea
 // Movie fetches a movie's details by TMDb ID.
 func (c *Client) Movie(ctx context.Context, id int) (Movie, error) {
 	var m Movie
-	err := c.get(ctx, "/movie/"+strconv.Itoa(id), url.Values{}, &m)
+	err := c.get(ctx, "/movie/"+strconv.Itoa(id), url.Values{"append_to_response": {"credits"}}, &m)
 	return m, err
 }
 

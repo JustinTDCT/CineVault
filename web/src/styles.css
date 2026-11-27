@@ -209,6 +209,17 @@ img {
   color: var(--ink-2);
 }
 
+.credit-line {
+  margin: -12px 0 20px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.cast-section {
+  padding-left: 0;
+  padding-right: 0;
+}
+
 .match-note {
   margin: 12px 0 0;
   max-width: 66ch;

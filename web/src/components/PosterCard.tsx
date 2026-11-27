@@ -22,9 +22,22 @@ export function Poster({ title, size = "card" }: { title: Title; size?: "card" |
   );
 }
 
-export function PosterCard({ title }: { title: Title }) {
+export function PosterCard({
+  title,
+  progress,
+  caption,
+  href: hrefOverride,
+}: {
+  title: Title;
+  /** How far along, 0 to 1: drawn as a bar on the art ("Continue"). */
+  progress?: number;
+  /** Replaces the year line, e.g. "S1 E3 · 45 min left". */
+  caption?: string;
+  /** Where the card goes; the title page by default. */
+  href?: string;
+}) {
   const [expanded, setExpanded] = useState(false);
-  const href = `/libraries/${title.library_id}/titles/${title.id}`;
+  const href = hrefOverride ?? `/libraries/${title.library_id}/titles/${title.id}`;
   const badge = posterBadge(title);
   const owned = ownedEditions(title);
   const multi = owned.length > 1;
@@ -51,14 +64,19 @@ export function PosterCard({ title }: { title: Title }) {
       <a className={`cv-card__art${shape}`} {...linkTo(href)} aria-label={`${title.name}${title.year ? ` (${title.year})` : ""}`}>
         <Poster title={title} />
         {badge ? <span className="badge">{badge}</span> : null}
+        {progress !== undefined ? (
+          <span className="cv-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)} aria-label="Progress">
+            <span style={{ width: `${Math.round(progress * 100)}%` }} />
+          </span>
+        ) : null}
       </a>
       <h3 className="cv-card__title">
         <a {...linkTo(href)}>
           {title.name}
         </a>
       </h3>
-      {meta ? <p className="cv-card__meta">{meta}</p> : null}
-      {multi ? (
+      {caption ? <p className="cv-card__meta"><em>{caption}</em></p> : meta ? <p className="cv-card__meta">{meta}</p> : null}
+      {multi && !caption ? (
         <p className="card-editions" aria-label="Editions you have">
           {shown.map((e, i) => (
             <span key={e.id}>

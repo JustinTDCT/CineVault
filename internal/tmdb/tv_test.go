@@ -27,7 +27,7 @@ func TestTV(t *testing.T) {
 			}
 			w.Write([]byte(searchTBP))
 		case "/3/tv/108545":
-			if r.URL.Query().Get("append_to_response") != "external_ids" {
+			if r.URL.Query().Get("append_to_response") != "external_ids,credits" {
 				t.Errorf("details query = %s", r.URL.RawQuery)
 			}
 			w.Write([]byte(showTBP))

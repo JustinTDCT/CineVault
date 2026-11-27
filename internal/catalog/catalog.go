@@ -105,6 +105,15 @@ type Title struct {
 	SeriesIndex float64 `json:"series_index,omitempty"`
 	Narrator    string  `json:"narrator,omitempty"`
 
+	// Cast is the top of the bill from TMDb (movies and shows); Directors is a
+	// movie's directors or a show's creators.
+	Cast      []CastMember `json:"cast,omitempty"`
+	Directors []string     `json:"directors,omitempty"`
+	// AddedAt is when the title's newest file arrived (Home's "Recently added").
+	AddedAt time.Time `json:"added_at"`
+	// Progress is where playback or reading stopped; nil when never started.
+	Progress *TitleProgress `json:"progress,omitempty"`
+
 	// For TV shows: how many seasons and episodes have files.
 	SeasonCount  int `json:"season_count,omitempty"`
 	EpisodeCount int `json:"episode_count,omitempty"`
@@ -196,6 +205,25 @@ type Chapter struct {
 	Start float64 `json:"start"` // seconds
 	End   float64 `json:"end"`
 	Name  string  `json:"name"`
+}
+
+// CastMember is one actor and their role.
+type CastMember struct {
+	Name       string `json:"name"`
+	Character  string `json:"character,omitempty"`
+	ProfileURL string `json:"profile_url,omitempty"`
+}
+
+// TitleProgress is a title's saved progress with what's needed to show how far
+// along it is: the file's length (videos, audio) or page count (comics). For
+// a show, the episode the file belongs to.
+type TitleProgress struct {
+	Progress
+	DurationSeconds float64 `json:"duration_seconds,omitempty"`
+	PageCount       int     `json:"page_count,omitempty"`
+	SeasonNumber    int     `json:"season_number,omitempty"`
+	EpisodeNumber   int     `json:"episode_number,omitempty"`
+	EpisodeName     string  `json:"episode_name,omitempty"`
 }
 
 // Progress is where playback of a title stopped.

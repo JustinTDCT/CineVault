@@ -142,7 +142,32 @@ export interface Title {
   /** The cache withdrew its record: No longer verified. */
   cache_withdrawn?: boolean;
   cache_sources?: CacheSource[];
+  /** Movies and shows: the top of the bill from TMDb, and the directors (a show's creators). */
+  cast?: CastMember[];
+  directors?: string[];
+  /** When the newest file arrived. */
+  added_at: string;
+  /** Where playback or reading stopped; absent when never started. */
+  progress?: TitleProgress;
   editions: Edition[];
+}
+
+export interface CastMember {
+  name: string;
+  character?: string;
+  profile_url?: string;
+}
+
+/** Saved progress with what's needed to show how far along it is. */
+export interface TitleProgress extends Progress {
+  /** Videos and audio: the file's length. */
+  duration_seconds?: number;
+  /** Comics: the issue's page count (position_seconds is the page, from 0). */
+  page_count?: number;
+  /** Shows: the episode the file belongs to. */
+  season_number?: number;
+  episode_number?: number;
+  episode_name?: string;
 }
 
 export interface Episode {

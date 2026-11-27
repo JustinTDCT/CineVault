@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type FormEvent } from "react";
-import { api, type Edition, type ReportField, type Title } from "../api";
+import { api, type CastMember, type Edition, type Progress, type ReportField, type Title } from "../api";
 import { Poster } from "../components/PosterCard";
 import { Player, type PlayTarget } from "../components/Player";
 import {
@@ -15,6 +15,7 @@ import {
   resolution,
   seriesLabel,
   showCounts,
+  timeLeft,
   usesTMDb,
 } from "../format";
 import { ShowEpisodes } from "./ShowEpisodes";
@@ -30,6 +31,9 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
   const [error, setError] = useState("");
   const [editionId, setEditionId] = useState<number | null>(null);
   const [playing, setPlaying] = useState<PlayTarget | null>(null);
+  const [progress, setProgress] = useState<Progress | undefined>(undefined);
+  // Home's Play and Continue link here with ?play=1.
+  const [autoplay] = useState(() => new URLSearchParams(location.search).get("play") === "1");
 
   useEffect(() => {
     api
@@ -37,17 +41,26 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
       .then((all) => {
         const t = all.find((x) => x.id === titleId) ?? null;
         setTitle(t);
-        const first = t ? defaultEdition(t) : undefined;
+        setProgress(t?.progress);
+        // Open on the edition being watched, else the default one.
+        const watching = t ? resumeFor(t, t.progress) : undefined;
+        const first = watching?.edition ?? (t ? defaultEdition(t) : undefined);
         if (first) setEditionId(first.id);
-        // Home's spotlight links here with ?play=1.
-        if (new URLSearchParams(location.search).get("play") === "1") {
+        if (autoplay) {
           history.replaceState(null, "", location.pathname);
           const v = first?.versions.find((x) => !x.missing);
-          if (t && first && v) setPlaying({ versionId: v.id, heading: ownedEditions(t).length > 1 ? `${t.name} · ${first.display_name}` : t.name });
+          if (t && t.media_type === "movie" && first && v) {
+            setPlaying({
+              versionId: watching?.versionId ?? v.id,
+              heading: ownedEditions(t).length > 1 ? `${t.name} · ${first.display_name}` : t.name,
+              titleId: t.id,
+              startAt: watching?.startAt,
+            });
+          }
         }
       })
       .catch((e: Error) => setError(e.message));
-  }, [libraryId, titleId]);
+  }, [libraryId, titleId, autoplay]);
 
   if (error) {
     return (
@@ -89,6 +102,15 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
   const best = edition && !isUnowned(edition) ? edition.versions.find((v) => !v.missing) : undefined;
   const heading = owned.length === 1 && edition && !isUnowned(edition) ? title.name : `${title.name} · ${edition?.display_name ?? ""}`;
   const eyebrow = title.collection_name || (isMovie && owned.length > 1 ? `${owned.length} editions in your library` : "");
+  const resume = isMovie ? resumeFor(title, progress) : undefined;
+  const resumeHere = resume && edition && resume.edition.id === edition.id ? resume : undefined;
+  const play = (t: PlayTarget) => setPlaying({ titleId: title.id, ...t });
+  const closePlayer = () => {
+    setPlaying(null);
+    // Pick up the position the player just saved.
+    window.setTimeout(() => api.progress(title.id).then(setProgress, () => {}), 300);
+  };
+  const credit = title.directors?.length ? `${isShow ? "Created by" : "Directed by"} ${title.directors.join(", ")}` : "";
 
   return (
     <article className="title-page">
@@ -113,12 +135,24 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
             ) : null}
             {title.tagline ? <p className="tagline">{title.tagline}</p> : null}
             {title.overview ? <p className="overview">{title.overview}</p> : null}
+            {credit ? <p className="credit-line">{credit}</p> : null}
             {isMovie && edition ? (
               <div className="cv-actions">
                 {isUnowned(edition) ? (
                   <span className="cv-caption">You don't have this edition. Choose one you have to play.</span>
+                ) : resumeHere ? (
+                  <>
+                    <button className="cv-btn cv-btn--primary" onClick={() => play({ versionId: resumeHere.versionId, heading, startAt: resumeHere.startAt })}>
+                      <Icon name="play" filled />
+                      Resume{owned.length > 1 ? ` ${edition.cache?.display_name || edition.display_name}` : ""}
+                      {resumeHere.left ? <span className="cv-btn__note">{resumeHere.left}</span> : null}
+                    </button>
+                    <button className="cv-btn" disabled={!best} onClick={() => best && play({ versionId: best.id, heading })}>
+                      Start over
+                    </button>
+                  </>
                 ) : (
-                  <button className="cv-btn cv-btn--primary" disabled={!best} onClick={() => best && setPlaying({ versionId: best.id, heading })}>
+                  <button className="cv-btn cv-btn--primary" disabled={!best} onClick={() => best && play({ versionId: best.id, heading })}>
                     <Icon name="play" filled />
                     Play{owned.length > 1 ? ` ${edition.cache?.display_name || edition.display_name}` : ""}
                   </button>
@@ -142,14 +176,65 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
         ) : isAlbum ? (
           <AlbumTracks title={title} />
         ) : isShow ? (
-          <ShowEpisodes title={title} />
+          <ShowEpisodes title={title} autoplay={autoplay} />
         ) : (
-          <Editions title={title} selected={edition} onSelect={setEditionId} onPlay={setPlaying} />
+          <Editions title={title} selected={edition} onSelect={setEditionId} onPlay={play} />
         )}
+        {title.cast?.length ? <Cast cast={title.cast} /> : null}
       </div>
-      {playing ? <Player target={playing} onClose={() => setPlaying(null)} /> : null}
+      {playing ? <Player target={playing} onClose={closePlayer} /> : null}
     </article>
   );
+}
+
+/** Where to resume a movie: the edition and file last played, if it's part-way through. */
+function resumeFor(t: Title, p: Progress | undefined) {
+  if (!p) return undefined;
+  for (const e of t.editions) {
+    const v = e.versions.find((x) => x.id === p.version_id && !x.missing);
+    if (!v) continue;
+    const length = v.duration_seconds ?? 0;
+    const f = length ? p.position_seconds / length : 0;
+    if (f < 0.02 || f >= 0.95) return undefined;
+    return { edition: e, versionId: v.id, startAt: p.position_seconds, left: timeLeft(length, p.position_seconds) };
+  }
+  return undefined;
+}
+
+/** The top of the bill, with photos from TMDb. */
+function Cast({ cast }: { cast: CastMember[] }) {
+  return (
+    <section className="cv-section cast-section" aria-label="Cast">
+      <div className="cv-section-head">
+        <h2 className="cv-section-title">Cast</h2>
+      </div>
+      <ul className="cv-cast">
+        {cast.map((c, i) => (
+          <li key={`${c.name}-${i}`} className="cv-cast__member">
+            {c.profile_url ? (
+              <img className="cv-cast__photo" src={c.profile_url} alt="" loading="lazy" decoding="async" />
+            ) : (
+              <span className="cv-cast__photo cv-cast__photo--none" aria-hidden="true">
+                {initials(c.name)}
+              </span>
+            )}
+            <span className="cv-cast__name">{c.name}</span>
+            {c.character ? <span className="cv-cast__role">{c.character}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
 }
 
 function MatchNote({ title }: { title: Title }) {
