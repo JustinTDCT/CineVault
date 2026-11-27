@@ -1,0 +1,330 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Media Server Feature Master List</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: working ledger — summary strip, sticky filter bar, one dense scrollable table */
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --ink:#18212b; --muted:#5b6876; --line:#dde3e9;
+  --accent:#c2690f; --accent-soft:#fbead6;
+  --yes:#1d7a4b; --yes-bg:#dcf2e5; --paid:#8a5a00; --paid-bg:#fbeec9;
+  --prog:#1f5fa8; --prog-bg:#dde9f8; --req:#8a3d6b; --req-bg:#f6e3ee;
+  --no:#6d7782; --no-bg:#eceff2;
+  --f-display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --f-body:"Manrope",ui-sans-serif,system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#10151b; --surface:#171e26; --ink:#e6ebf0; --muted:#98a4b1; --line:#2a3440;
+  --accent:#f0a04b; --accent-soft:#3a2a17;
+  --yes:#6fd39c; --yes-bg:#173527; --paid:#f1c860; --paid-bg:#3a2f12;
+  --prog:#8ab8f0; --prog-bg:#1a2c45; --req:#e59bc6; --req-bg:#3a1f30;
+  --no:#98a4b1; --no-bg:#232c36; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10151b; --surface:#171e26; --ink:#e6ebf0; --muted:#98a4b1; --line:#2a3440;
+  --accent:#f0a04b; --accent-soft:#3a2a17;
+  --yes:#6fd39c; --yes-bg:#173527; --paid:#f1c860; --paid-bg:#3a2f12;
+  --prog:#8ab8f0; --prog-bg:#1a2c45; --req:#e59bc6; --req-bg:#3a1f30;
+  --no:#98a4b1; --no-bg:#232c36; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:28px 48px;display:grid;gap:20px}
+header{display:grid;gap:6px}
+h1{font-family:var(--f-display);font-size:clamp(26px,4vw,36px);line-height:1.1;margin:0;text-wrap:balance;letter-spacing:-.01em}
+.lede{color:var(--muted);max-width:68ch;margin:0}
+.stats{display:flex;flex-wrap:wrap;gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:grid;min-width:120px}
+.stat b{font-family:var(--f-display);font-size:22px;font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-size:12px}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:1px solid var(--line)}
+.bar input,.bar select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:0}
+.bar input{flex:1 1 220px}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{font:inherit;font-weight:600;font-size:13px;border:0;background:none;color:var(--muted);padding:7px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink)}
+.count{color:var(--muted);font-size:13px;margin-left:auto;font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:12px;color:var(--muted);align-items:center}
+.tablebox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;min-width:860px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;background:var(--surface)}
+tr.cat td{background:var(--bg);font-family:var(--f-display);font-weight:700;font-size:15px;padding-block:12px 8px}
+tr.cat td small{font-family:var(--f-body);font-weight:500;color:var(--muted);font-size:12px;margin-left:8px}
+td.id{font-family:var(--f-mono);font-size:12px;color:var(--muted);white-space:nowrap}
+td.feat b{font-weight:600}
+td.feat .note{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.gap{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);border:1px solid currentColor;border-radius:4px;padding:0 5px;margin-left:6px;vertical-align:1px}
+.pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:1px 9px;white-space:nowrap}
+.s-Y{background:var(--yes-bg);color:var(--yes)} .s-\${background:var(--paid-bg);color:var(--paid)}
+.s-W,.s-L{background:var(--prog-bg);color:var(--prog)} .s-R{background:var(--req-bg);color:var(--req)}
+.s-P,.s-U{background:var(--no-bg);color:var(--ink)} .s-N{background:var(--no-bg);color:var(--no)}
+.s-x{color:var(--muted)}
+td.dem{white-space:nowrap;font-variant-numeric:tabular-nums}
+td.dem b{font-family:var(--f-display);font-size:15px}
+td.dem span{display:block;color:var(--muted);font-size:11.5px}
+.lessons{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:grid;gap:8px}
+.lessons h2{font-family:var(--f-display);font-size:18px;margin:0}
+.lessons ul{margin:0;padding-left:18px;display:grid;gap:4px;max-width:80ch}
+.foot{color:var(--muted);font-size:12.5px;max-width:80ch}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Media Server Feature Master List</h1>
+    <p class="lede">Every feature found in Plex, Emby and Jellyfin (docs, pricing pages, source code), merged with what users vote for on each project's request board. One row per feature; each has an ID so we can refer to it while planning.</p>
+  </header>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="bar" role="search">
+    <input id="q" type="search" placeholder="Search features and notes" aria-label="Search features">
+    <select id="cat" aria-label="Category"></select>
+    <div class="seg" role="group" aria-label="Show">
+      <button id="v-all" aria-pressed="true">All</button>
+      <button id="v-req" aria-pressed="false">Has user demand</button>
+      <button id="v-gap" aria-pressed="false">Gaps</button>
+    </div>
+    <select id="sort" aria-label="Sort">
+      <option value="cat">Group by category</option>
+      <option value="dem">Most votes first</option>
+    </select>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div class="legend" id="legend"></div>
+
+  <div class="tablebox">
+    <table>
+      <thead><tr><th>ID</th><th>Feature</th><th>Plex</th><th>Emby</th><th>Jellyfin</th><th>Top vote count</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <section class="lessons">
+    <h2>Lessons, not features</h2>
+    <ul>
+      <li>Plex's 2025–26 TV redesign drew heavy backlash: tasks went from about two clicks to six, the top menu suited a mouse more than a remote, and nobody could opt out.</li>
+      <li>Removing a loved feature (Watch Together) produced Plex's second-highest request within months. Users asked for polls before features are cut.</li>
+      <li>Reliability complaints (resume position, scrubbing, 30-second playback starts) came up as often as new-feature requests.</li>
+      <li>Price is a feature: Plex's lifetime pass rose to $749.99 in July 2026, and paywalled basics (remote streaming, hardware transcoding, downloads) are the main reason users switch.</li>
+    </ul>
+  </section>
+
+  <p class="foot">Vote counts come from different boards and are not comparable across them: Plex's forum totals accumulate since 2012, Jellyfin's board is live as of 30 Sep 2026, and Emby figures are forum likes. A dash means our research found no evidence either way, not that the feature is missing. "Gaps" are features none of the three fully offers today.</p>
+</div>
+
+<script>
+const CATS={lib:"Library & media types",meta:"Metadata & organization",play:"Playback & streaming",subs:"Subtitles & tracks",music:"Music",users:"Accounts & security",home:"Home screen & personal tracking",social:"Social & discovery",remote:"Remote access & sharing",offline:"Offline & downloads",tv:"Live TV & DVR",clients:"Apps & devices",admin:"Server & admin",ext:"Integrations"};
+const ST={Y:"Yes",$:"Paid",P:"Partial",U:"Plugin",W:"In progress",L:"Planned",R:"Requested",N:"No","-":"—"};
+// [cat, feature, plex, emby, jellyfin, votes, board, note]
+const D=[
+["lib","Movie and TV libraries with automatic season and episode grouping","Y","Y","Y"],
+["lib","Music library","Y","Y","Y"],
+["lib","Photo library","Y","Y","Y"],
+["lib","Home videos and other video libraries","Y","Y","Y"],
+["lib","Music videos","Y","Y","Y"],
+["lib","Books, comics and PDF reader","R","-","Y",3182,"Plex","Plex's #1 request since 2013. Jellyfin's web app includes book, comic and PDF readers."],
+["lib","Audiobooks as a full library type","R","Y","W",2264,"Plex","Jellyfin: 857 votes, in progress."],
+["lib","Podcasts","-","$","R",563,"Jellyfin"],
+["lib","Internet radio stations","R","U","-",284,"Plex","Emby via the TuneIn plugin."],
+["lib","HEIC/HEIF photos","R","-","-",637,"Plex"],
+["lib","Multiple versions or cuts of one movie","Y","Y","P",1459,"Plex","Implemented in Plex. Jellyfin: better handling across folders requested (265)."],
+["lib","Missing and upcoming episodes shown in a series","-","Y","W",343,"Jellyfin","Jellyfin's main branch adds a TMDb task that creates placeholder episodes."],
+["lib","Trailers and extras (behind the scenes, deleted scenes)","Y","Y","Y",585,"Jellyfin","Jellyfin: online trailers plugin requested. Plex: TV series DVD extras requested (516)."],
+["lib","CUE sheet support for albums","-","-","R",170,"Jellyfin"],
+
+["meta","Automatic metadata and artwork (TMDb, TVDB, OMDb, MusicBrainz, AudioDB, Fanart.tv)","Y","Y","Y"],
+["meta","Local NFO metadata (Kodi style)","N","U","Y"],
+["meta","Custom metadata provider framework","Y","U","U",705,"Plex","Plex providers are standalone web services in any language. External provider IDs request implemented."],
+["meta","Anime metadata sources","-","U","U"],
+["meta","Collections (automatic and manual)","Y","Y","Y"],
+["meta","Edit metadata, tags and artwork","Y","Y","Y"],
+["meta","Bulk-edit metadata for many items","Y","R","R",186,"Jellyfin","Emby: 93 likes."],
+["meta","Add artwork by URL","-","-","R",252,"Jellyfin"],
+["meta","Keep original title option","-","-","R",315,"Jellyfin"],
+["meta","Metadata in multiple languages","-","-","R",212,"Jellyfin"],
+["meta","Alternate episode orders (DVD, absolute)","Y","Y","Y"],
+["meta","Flatten single-season shows","Y","-","R",170,"Jellyfin","A second similar request has 160 votes."],
+["meta","Hide shows or folders with no video files","-","R","L",190,"Jellyfin"],
+["meta","Ignore rules for files and folders","Y","Y","Y",null,"","Jellyfin 10.11 uses .gitignore-style rules; Plex uses .plexignore."],
+["meta","Folder view for libraries","Y","Y","R",438,"Jellyfin"],
+["meta","Robust music tag organization (ID3 and similar)","R","Y","Y",866,"Plex"],
+["meta","Auto-organize downloaded files into the library","N","U","N"],
+["meta","Search across all libraries","Y","Y","Y"],
+["meta","Search within one library","-","R","-",30,"Emby likes","Emby's most-replied open request (130 replies)."],
+["meta","Search and filter by tag or genre","-","-","R",256,"Jellyfin"],
+["meta","Filter by audio language","-","-","R",172,"Jellyfin"],
+["meta","Continuous scrolling in library views (no pages)","-","-","W",1178,"Jellyfin"],
+
+["play","Direct play and on-the-fly transcoding","Y","Y","Y"],
+["play","Hardware-accelerated transcoding","$","$","Y",null,"","Jellyfin supports NVENC, QSV, VAAPI, AMF, VideoToolbox, V4L2 and RKMPP. Emby is free on Shield and WD NAS."],
+["play","AMD hardware encoding","R","-","Y",848,"Plex"],
+["play","HDR tone mapping","$","$","Y"],
+["play","AV1 support","Y","-","Y",534,"Plex","Implemented in Plex."],
+["play","HEVC (H.265) transcoding output","R","Y","Y",247,"Plex"],
+["play","Pre-transcoded or optimized versions","Y","$","R",979,"Jellyfin"],
+["play","Automatic hardware transcoding self-test","-","-","L",423,"Jellyfin"],
+["play","Default remote streaming to maximum quality","R","-","-",1289,"Plex"],
+["play","Faster remote streaming over parallel connections","R","-","L",231,"Jellyfin","Plex: 208 votes."],
+["play","Buffer the main movie during pre-roll","R","-","-",589,"Plex"],
+["play","Pre-buffer the next episode","-","-","R",222,"Jellyfin"],
+["play","Identify Dolby Atmos, DTS:X and DTS-HD MA correctly","R","-","-",701,"Plex"],
+["play","Playback stats overlay (stats for nerds)","-","-","L",219,"Jellyfin","Requested for the Android TV app."],
+["play","Playback speed control","Y","Y","Y",1298,"Plex","Implemented in Plex."],
+["play","Skip intro, credits, recap, previews and commercials","$","$","Y",271,"Plex","Jellyfin segment types: Intro, Outro, Recap, Preview, Commercial. Plex: always-on auto-skip requested."],
+["play","Seek-bar preview thumbnails","Y","Y","Y"],
+["play","Cinema mode (trailers and pre-rolls before a movie)","Y","$","U"],
+["play","“Are you still watching?” prompt","Y","-","Y"],
+["play","Autoplay next episode","Y","Y","Y"],
+["play","Casting to Chromecast","Y","Y","Y"],
+["play","DLNA","Y","Y","U"],
+["play","Watch together (synced remote viewing)","P","R","Y",2875,"Plex","Plex removed it from native apps in 2025 (web only now). Jellyfin SyncPlay: invite link (266) and cross-account viewing (164) requested."],
+["play","Audio normalization (volume leveling)","Y","-","Y"],
+
+["subs","Embedded and external subtitles with styling","Y","Y","Y"],
+["subs","Download subtitles from online sources","Y","$","U"],
+["subs","Automatic subtitle sync","R","-","-",687,"Plex"],
+["subs","Subtitle timing offset","Y","Y","P",179,"Jellyfin","Missing on Android TV."],
+["subs","Per-series subtitle and audio preferences","Y","-","-",701,"Plex","Implemented in Plex."],
+["subs","Better subtitle appearance options","-","-","R",188,"Jellyfin"],
+["subs","Readable names for audio and subtitle tracks","R","-","-",421,"Plex"],
+["subs","Profanity filter","-","-","R",null,"","Open request on Jellyfin's board."],
+
+["music","Instant mix and artist radio","Y","Y","Y"],
+["music","Smart (rule-based) playlists","Y","R","L",588,"Jellyfin","Also on Emby's tracked list."],
+["music","Better and shareable playlists","R","-","-",1425,"Plex"],
+["music","Import playlists (M3U)","-","R","-",null,"","On Emby's tracked list."],
+["music","Gapless playback","Y","R","R",647,"Jellyfin"],
+["music","Lyrics (synced display and editor)","$","$","Y",189,"Plex","Plex: always-visible lyrics requested."],
+["music","Sound-alike recommendations (sonic analysis)","$","-","P",null,"","Jellyfin uses ListenBrainz similar artists."],
+["music","Music visualizer","-","R","-"],
+["music","Lossless (FLAC) playback on Android","-","-","R",210,"Jellyfin"],
+["music","Dedicated music app","Y","-","-",null,"","Plexamp. Third-party music clients exist for Jellyfin."],
+
+["users","Multiple users with per-user libraries and parental controls","Y","Y","Y"],
+["users","Quick profile switching","Y","Y","W",154,"Jellyfin"],
+["users","User groups","-","R","R",202,"Jellyfin"],
+["users","Single sign-on (OIDC / OAuth)","P","R","L",1191,"Jellyfin","Centralized login is Emby's top tracked server request."],
+["users","LDAP","N","$","U"],
+["users","Two-factor authentication","Y","R","L",1653,"Plex","Implemented in Plex. Jellyfin 1,103 votes; Emby's most active thread (459 replies)."],
+["users","Sign in on a TV with a code or QR","Y","-","Y",225,"Jellyfin","Jellyfin Quick Connect exists; QR code is planned."],
+["users","Self-service sign-up or invite page","Y","-","R",227,"Jellyfin"],
+["users","Per-user interface language","-","-","R",219,"Jellyfin"],
+["users","Works without a cloud account","N","P","Y"],
+["users","No tracking or telemetry","N","-","Y"],
+
+["home","Continue Watching and Next Up rows","Y","Y","Y"],
+["home","Remove an item from Continue Watching","Y","Y","L",1724,"Jellyfin"],
+["home","Merge Next Up and Continue Watching","-","-","R",202,"Jellyfin"],
+["home","Include playlists and collections in Next Up","-","R","-",44,"Emby likes"],
+["home","Customizable home screen sections","Y","Y","L",169,"Jellyfin"],
+["home","Watchlist","Y","R","L",1293,"Jellyfin"],
+["home","Watch history","Y","-","L",830,"Jellyfin"],
+["home","Personal ratings","Y","-","L",453,"Jellyfin"],
+["home","IMDb and Rotten Tomatoes ratings on posters","Y","-","R",196,"Jellyfin"],
+["home","Hide a title from your own view","-","-","R",null,"","Open request on Jellyfin's board."],
+["home","Favorites and played/unplayed marks","Y","Y","Y"],
+
+["social","Shareable, importable lists","Y","-","-",null,"","Plex, 2026."],
+["social","Public discussions on titles with spoiler tags","Y","-","-",null,"","Plex, June 2026."],
+["social","Predicted enjoyment score","Y","-","-",null,"","Plex Match Score, 2026."],
+["social","Recommend a title to another user","Y","R","-"],
+["social","Discover content across streaming services","Y","N","N",1000,"Plex","The votes were for a way to turn it off (now implemented)."],
+["social","Trakt sync","R","U","U",327,"Plex"],
+["social","Last.fm and ListenBrainz scrobbling","Y","U","U"],
+
+["remote","Remote streaming","$","Y","Y",null,"","Plex needs Plex Pass or Remote Watch Pass. Jellyfin needs manual setup since 10.11 removed auto port forwarding."],
+["remote","Remote access without port forwarding (relay)","Y","-","N"],
+["remote","Automatic server discovery on the home network","Y","Y","P"],
+["remote","Share libraries with friends and family","Y","Y","Y"],
+["remote","Temporary share links for a file","R","-","R",579,"Jellyfin","Plex: share link for people without accounts (331)."],
+["remote","Several servers in one app","Y","Y","R",177,"Jellyfin"],
+["remote","Merge or federate libraries from several servers","-","R","R",null,"","Open requests on Jellyfin's and Emby's boards."],
+["remote","Bandwidth limits per user","Y","Y","Y"],
+["remote","IPv6 remote access","R","-","-",549,"Plex"],
+
+["offline","Download to phones and tablets","$","$","W",1820,"Jellyfin","Jellyfin's #1 request (Android offline mode)."],
+["offline","Offline sync that keeps downloads up to date","$","$","L",816,"Jellyfin"],
+["offline","Download smaller transcoded copies","$","$","L",517,"Jellyfin"],
+["offline","Batch downloads (whole season or album)","Y","$","W",219,"Jellyfin"],
+["offline","Downloads on desktop apps","Y","$","-"],
+
+["tv","HDHomeRun tuners","$","$","Y"],
+["tv","M3U IPTV playlists","N","$","Y"],
+["tv","Program guide (XMLTV, Schedules Direct, built-in)","$","$","Y",null,"","Emby includes free guide data for the US, Canada and UK."],
+["tv","DVR recording and series rules","$","$","Y"],
+["tv","Multiple guide sources for multiple tuners","R","-","Y",611,"Plex"],
+["tv","Channel groups, renaming and reordering","R","-","L",437,"Plex","Jellyfin: IPTV channel groups planned (376)."],
+["tv","Virtual channels from your own library (PseudoTV)","R","-","-",622,"Plex"],
+["tv","Skip commercials in recordings","$","-","P"],
+["tv","Tvheadend and Vu+ backends","N","U","U"],
+
+["clients","Web app","Y","Y","Y"],
+["clients","Windows, macOS and Linux apps","Y","$","Y",null,"","Emby's free desktop playback stops after one minute."],
+["clients","iOS and Android apps","Y","$","Y",null,"","Emby needs an app unlock or Premiere for full playback."],
+["clients","Android TV and Fire TV","Y","Y","Y"],
+["clients","Apple TV","Y","Y","W",462,"Jellyfin","Third-party options (Swiftfin, Infuse) exist today."],
+["clients","Roku","Y","Y","Y"],
+["clients","Samsung and LG smart TVs","Y","Y","W",253,"Jellyfin"],
+["clients","Hisense VIDAA TVs","-","-","R",453,"Jellyfin"],
+["clients","Xbox and PlayStation","Y","$","-"],
+["clients","CarPlay and Android Auto","P","$","-"],
+["clients","Apple Watch","-","$","-",182,"Plex"],
+["clients","VR headsets and 360° video","-","-","R",167,"Jellyfin"],
+["clients","Kodi add-on","U","U","U"],
+["clients","Camera upload from phones","$","$","N"],
+["clients","Voice assistants (Google, Alexa)","P","$","R",2461,"Plex","Google Home is Plex's #3 request; Jellyfin 243."],
+["clients","Remote-friendly TV navigation with a pinned-library sidebar","P","-","-",null,"","Plex users demanded the sidebar back after the 2025–26 redesign."],
+
+["admin","Admin dashboard: sessions, activity, logs, devices, API keys","Y","Y","Y"],
+["admin","Stop another user's stream","Y","Y","R",402,"Jellyfin"],
+["admin","Send messages to users' screens","R","Y","Y",1205,"Plex"],
+["admin","Limit concurrent streams","-","$","Y"],
+["admin","Server-wide default settings for users","-","-","R",258,"Jellyfin"],
+["admin","Let non-admins refresh metadata","-","R","-"],
+["admin","Scheduled maintenance tasks","Y","Y","Y"],
+["admin","Backup and restore","P","$","Y",null,"","Jellyfin 10.11 lets you pick database, metadata, trickplay and subtitles."],
+["admin","Choice of database (MySQL, PostgreSQL)","N","R","W",663,"Jellyfin"],
+["admin","Usage statistics and reports","P","U","U",null,"","Plex users rely on Tautulli."],
+["admin","Custom branding and splash screen","-","-","Y"],
+["admin","Storage checks and startup status screen","-","-","Y"],
+["admin","Keep the computer awake while streaming or recording","-","-","R",222,"Plex","Plex: sleep/wake around DVR recordings. Jellyfin: inhibit idle while streaming."],
+["admin","Plugin system with a catalog","P","Y","Y",null,"","Plex removed plugins in 2018 and now allows only metadata providers."],
+
+["ext","Webhooks","$","$","U"],
+["ext","Notifications (email, push)","Y","U","U"],
+["ext","Smart home triggers (lights and scenes)","P","$","U",265,"Plex","Philips Hue integration requested."],
+["ext","Public API with documentation","Y","Y","Y"]
+];
+const HAS=s=>s==="Y"||s==="$";
+const rows=D.map((r,i)=>{const [c,f,p,e,j,v,b,n]=r;return{c,f,p,e,j,v:v??null,b:b||"",n:n||"",gap:!HAS(p)&&!HAS(e)&&!HAS(j),dem:v!=null||/request/i.test(n||"")||[p,e,j].some(s=>s==="R"||s==="L"||s==="W")}});
+// stable IDs by category order
+const counters={};const pre={lib:"LIB",meta:"MET",play:"PLY",subs:"SUB",music:"MUS",users:"USR",home:"HOM",social:"SOC",remote:"REM",offline:"OFF",tv:"LTV",clients:"APP",admin:"ADM",ext:"INT"};
+rows.forEach(r=>{counters[r.c]=(counters[r.c]||0)+1;r.id=pre[r.c]+"-"+String(counters[r.c]).padStart(2,"0")});
+
+const $=id=>document.getElementById(id);
+const esc=s=>s.replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+$("stats").innerHTML=[[rows.length,"features in total"],[rows.filter(r=>HAS(r.p)&&HAS(r.e)&&HAS(r.j)).length,"offered by all three"],[rows.filter(r=>r.dem).length,"with user demand"],[rows.filter(r=>r.gap).length,"gaps none fully offer"]].map(([n,l])=>`<div class="stat"><b>${n}</b><span>${l}</span></div>`).join("");
+$("cat").innerHTML='<option value="">All categories</option>'+Object.entries(CATS).map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
+$("legend").innerHTML=["Y","$","P","U","W","L","R","N"].map(k=>`<span class="pill s-${k==="$"?"\\$":k}">${ST[k]}</span>`).join("")+'<span>— not found in research</span>';
+document.querySelectorAll("#legend .pill").forEach((el,i)=>{el.className="pill s-"+["Y","$","P","U","W","L","R","N"][i]});
+let view="all";
+["all","req","gap"].forEach(v=>$("v-"+v).addEventListener("click",()=>{view=v;["all","req","gap"].forEach(x=>$("v-"+x).setAttribute("aria-pressed",x===v));render()}));
+["q","cat","sort"].forEach(id=>$(id).addEventListener("input",render));
+const pill=s=>s==="-"?'<span class="s-x">—</span>':`<span class="pill s-${s}">${ST[s]}</span>`;
+function rowHTML(r){return `<tr><td class="id">${r.id}</td><td class="feat"><b>${esc(r.f)}</b>${r.gap?'<span class="gap">Gap</span>':""}${r.n?`<span class="note">${esc(r.n)}</span>`:""}</td><td>${pill(r.p)}</td><td>${pill(r.e)}</td><td>${pill(r.j)}</td><td class="dem">${r.v!=null?`<b>${r.v.toLocaleString()}</b><span>${esc(r.b)}</span>`:'<span>—</span>'}</td></tr>`}
+function render(){
+  const q=$("q").value.trim().toLowerCase(),c=$("cat").value,s=$("sort").value;
+  let list=rows.filter(r=>(!c||r.c===c)&&(!q||(r.f+" "+r.n+" "+r.id).toLowerCase().includes(q))&&(view==="all"||(view==="req"&&r.dem)||(view==="gap"&&r.gap)));
+  $("count").textContent=`${list.length} of ${rows.length} shown`;
+  if(!list.length){$("rows").innerHTML='<tr><td colspan="6" class="empty">No features match. Clear the search or pick another filter.</td></tr>';return}
+  if(s==="dem"){list=[...list].sort((a,b)=>(b.v??-1)-(a.v??-1));$("rows").innerHTML=list.map(rowHTML).join("");return}
+  let h="";Object.keys(CATS).forEach(k=>{const g=list.filter(r=>r.c===k);if(g.length)h+=`<tr class="cat"><td colspan="6">${CATS[k]}<small>${g.length}</small></td></tr>`+g.map(rowHTML).join("")});
+  $("rows").innerHTML=h;
+}
+render();
+</script>
+
+</body></html>

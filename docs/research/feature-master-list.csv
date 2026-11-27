@@ -1,0 +1,165 @@
+ID,Category,Feature,Plex,Emby,Jellyfin,Top votes,Vote board,Gap,Notes
+LIB-01,Library & media types,Movie and TV libraries with automatic season and episode grouping,Yes,Yes,Yes,,,,
+LIB-02,Library & media types,Music library,Yes,Yes,Yes,,,,
+LIB-03,Library & media types,Photo library,Yes,Yes,Yes,,,,
+LIB-04,Library & media types,Home videos and other video libraries,Yes,Yes,Yes,,,,
+LIB-05,Library & media types,Music videos,Yes,Yes,Yes,,,,
+LIB-06,Library & media types,"Books, comics and PDF reader",Requested,—,Yes,3182,Plex,,"Plex's #1 request since 2013. Jellyfin's web app includes book, comic and PDF readers."
+LIB-07,Library & media types,Audiobooks as a full library type,Requested,Yes,In progress,2264,Plex,,"Jellyfin: 857 votes, in progress."
+LIB-08,Library & media types,Podcasts,—,Paid,Requested,563,Jellyfin,,
+LIB-09,Library & media types,Internet radio stations,Requested,Plugin,—,284,Plex,Yes,Emby via the TuneIn plugin.
+LIB-10,Library & media types,HEIC/HEIF photos,Requested,—,—,637,Plex,Yes,
+LIB-11,Library & media types,Multiple versions or cuts of one movie,Yes,Yes,Partial,1459,Plex,,Implemented in Plex. Jellyfin: better handling across folders requested (265).
+LIB-12,Library & media types,Missing and upcoming episodes shown in a series,—,Yes,In progress,343,Jellyfin,,Jellyfin's main branch adds a TMDb task that creates placeholder episodes.
+LIB-13,Library & media types,"Trailers and extras (behind the scenes, deleted scenes)",Yes,Yes,Yes,585,Jellyfin,,Jellyfin: online trailers plugin requested. Plex: TV series DVD extras requested (516).
+LIB-14,Library & media types,CUE sheet support for albums,—,—,Requested,170,Jellyfin,Yes,
+MET-01,Metadata & organization,"Automatic metadata and artwork (TMDb, TVDB, OMDb, MusicBrainz, AudioDB, Fanart.tv)",Yes,Yes,Yes,,,,
+MET-02,Metadata & organization,Local NFO metadata (Kodi style),No,Plugin,Yes,,,,
+MET-03,Metadata & organization,Custom metadata provider framework,Yes,Plugin,Plugin,705,Plex,,Plex providers are standalone web services in any language. External provider IDs request implemented.
+MET-04,Metadata & organization,Anime metadata sources,—,Plugin,Plugin,,,Yes,
+MET-05,Metadata & organization,Collections (automatic and manual),Yes,Yes,Yes,,,,
+MET-06,Metadata & organization,"Edit metadata, tags and artwork",Yes,Yes,Yes,,,,
+MET-07,Metadata & organization,Bulk-edit metadata for many items,Yes,Requested,Requested,186,Jellyfin,,Emby: 93 likes.
+MET-08,Metadata & organization,Add artwork by URL,—,—,Requested,252,Jellyfin,Yes,
+MET-09,Metadata & organization,Keep original title option,—,—,Requested,315,Jellyfin,Yes,
+MET-10,Metadata & organization,Metadata in multiple languages,—,—,Requested,212,Jellyfin,Yes,
+MET-11,Metadata & organization,"Alternate episode orders (DVD, absolute)",Yes,Yes,Yes,,,,
+MET-12,Metadata & organization,Flatten single-season shows,Yes,—,Requested,170,Jellyfin,,A second similar request has 160 votes.
+MET-13,Metadata & organization,Hide shows or folders with no video files,—,Requested,Planned,190,Jellyfin,Yes,
+MET-14,Metadata & organization,Ignore rules for files and folders,Yes,Yes,Yes,,,,Jellyfin 10.11 uses .gitignore-style rules; Plex uses .plexignore.
+MET-15,Metadata & organization,Folder view for libraries,Yes,Yes,Requested,438,Jellyfin,,
+MET-16,Metadata & organization,Robust music tag organization (ID3 and similar),Requested,Yes,Yes,866,Plex,,
+MET-17,Metadata & organization,Auto-organize downloaded files into the library,No,Plugin,No,,,Yes,
+MET-18,Metadata & organization,Search across all libraries,Yes,Yes,Yes,,,,
+MET-19,Metadata & organization,Search within one library,—,Requested,—,30,Emby likes,Yes,Emby's most-replied open request (130 replies).
+MET-20,Metadata & organization,Search and filter by tag or genre,—,—,Requested,256,Jellyfin,Yes,
+MET-21,Metadata & organization,Filter by audio language,—,—,Requested,172,Jellyfin,Yes,
+MET-22,Metadata & organization,Continuous scrolling in library views (no pages),—,—,In progress,1178,Jellyfin,Yes,
+PLY-01,Playback & streaming,Direct play and on-the-fly transcoding,Yes,Yes,Yes,,,,
+PLY-02,Playback & streaming,Hardware-accelerated transcoding,Paid,Paid,Yes,,,,"Jellyfin supports NVENC, QSV, VAAPI, AMF, VideoToolbox, V4L2 and RKMPP. Emby is free on Shield and WD NAS."
+PLY-03,Playback & streaming,AMD hardware encoding,Requested,—,Yes,848,Plex,,
+PLY-04,Playback & streaming,HDR tone mapping,Paid,Paid,Yes,,,,
+PLY-05,Playback & streaming,AV1 support,Yes,—,Yes,534,Plex,,Implemented in Plex.
+PLY-06,Playback & streaming,HEVC (H.265) transcoding output,Requested,Yes,Yes,247,Plex,,
+PLY-07,Playback & streaming,Pre-transcoded or optimized versions,Yes,Paid,Requested,979,Jellyfin,,
+PLY-08,Playback & streaming,Automatic hardware transcoding self-test,—,—,Planned,423,Jellyfin,Yes,
+PLY-09,Playback & streaming,Default remote streaming to maximum quality,Requested,—,—,1289,Plex,Yes,
+PLY-10,Playback & streaming,Faster remote streaming over parallel connections,Requested,—,Planned,231,Jellyfin,Yes,Plex: 208 votes.
+PLY-11,Playback & streaming,Buffer the main movie during pre-roll,Requested,—,—,589,Plex,Yes,
+PLY-12,Playback & streaming,Pre-buffer the next episode,—,—,Requested,222,Jellyfin,Yes,
+PLY-13,Playback & streaming,"Identify Dolby Atmos, DTS:X and DTS-HD MA correctly",Requested,—,—,701,Plex,Yes,
+PLY-14,Playback & streaming,Playback stats overlay (stats for nerds),—,—,Planned,219,Jellyfin,Yes,Requested for the Android TV app.
+PLY-15,Playback & streaming,Playback speed control,Yes,Yes,Yes,1298,Plex,,Implemented in Plex.
+PLY-16,Playback & streaming,"Skip intro, credits, recap, previews and commercials",Paid,Paid,Yes,271,Plex,,"Jellyfin segment types: Intro, Outro, Recap, Preview, Commercial. Plex: always-on auto-skip requested."
+PLY-17,Playback & streaming,Seek-bar preview thumbnails,Yes,Yes,Yes,,,,
+PLY-18,Playback & streaming,Cinema mode (trailers and pre-rolls before a movie),Yes,Paid,Plugin,,,,
+PLY-19,Playback & streaming,“Are you still watching?” prompt,Yes,—,Yes,,,,
+PLY-20,Playback & streaming,Autoplay next episode,Yes,Yes,Yes,,,,
+PLY-21,Playback & streaming,Casting to Chromecast,Yes,Yes,Yes,,,,
+PLY-22,Playback & streaming,DLNA,Yes,Yes,Plugin,,,,
+PLY-23,Playback & streaming,Watch together (synced remote viewing),Partial,Requested,Yes,2875,Plex,,Plex removed it from native apps in 2025 (web only now). Jellyfin SyncPlay: invite link (266) and cross-account viewing (164) requested.
+PLY-24,Playback & streaming,Audio normalization (volume leveling),Yes,—,Yes,,,,
+SUB-01,Subtitles & tracks,Embedded and external subtitles with styling,Yes,Yes,Yes,,,,
+SUB-02,Subtitles & tracks,Download subtitles from online sources,Yes,Paid,Plugin,,,,
+SUB-03,Subtitles & tracks,Automatic subtitle sync,Requested,—,—,687,Plex,Yes,
+SUB-04,Subtitles & tracks,Subtitle timing offset,Yes,Yes,Partial,179,Jellyfin,,Missing on Android TV.
+SUB-05,Subtitles & tracks,Per-series subtitle and audio preferences,Yes,—,—,701,Plex,,Implemented in Plex.
+SUB-06,Subtitles & tracks,Better subtitle appearance options,—,—,Requested,188,Jellyfin,Yes,
+SUB-07,Subtitles & tracks,Readable names for audio and subtitle tracks,Requested,—,—,421,Plex,Yes,
+SUB-08,Subtitles & tracks,Profanity filter,—,—,Requested,,,Yes,Open request on Jellyfin's board.
+MUS-01,Music,Instant mix and artist radio,Yes,Yes,Yes,,,,
+MUS-02,Music,Smart (rule-based) playlists,Yes,Requested,Planned,588,Jellyfin,,Also on Emby's tracked list.
+MUS-03,Music,Better and shareable playlists,Requested,—,—,1425,Plex,Yes,
+MUS-04,Music,Import playlists (M3U),—,Requested,—,,,Yes,On Emby's tracked list.
+MUS-05,Music,Gapless playback,Yes,Requested,Requested,647,Jellyfin,,
+MUS-06,Music,Lyrics (synced display and editor),Paid,Paid,Yes,189,Plex,,Plex: always-visible lyrics requested.
+MUS-07,Music,Sound-alike recommendations (sonic analysis),Paid,—,Partial,,,,Jellyfin uses ListenBrainz similar artists.
+MUS-08,Music,Music visualizer,—,Requested,—,,,Yes,
+MUS-09,Music,Lossless (FLAC) playback on Android,—,—,Requested,210,Jellyfin,Yes,
+MUS-10,Music,Dedicated music app,Yes,—,—,,,,Plexamp. Third-party music clients exist for Jellyfin.
+USR-01,Accounts & security,Multiple users with per-user libraries and parental controls,Yes,Yes,Yes,,,,
+USR-02,Accounts & security,Quick profile switching,Yes,Yes,In progress,154,Jellyfin,,
+USR-03,Accounts & security,User groups,—,Requested,Requested,202,Jellyfin,Yes,
+USR-04,Accounts & security,Single sign-on (OIDC / OAuth),Partial,Requested,Planned,1191,Jellyfin,Yes,Centralized login is Emby's top tracked server request.
+USR-05,Accounts & security,LDAP,No,Paid,Plugin,,,,
+USR-06,Accounts & security,Two-factor authentication,Yes,Requested,Planned,1653,Plex,,"Implemented in Plex. Jellyfin 1,103 votes; Emby's most active thread (459 replies)."
+USR-07,Accounts & security,Sign in on a TV with a code or QR,Yes,—,Yes,225,Jellyfin,,Jellyfin Quick Connect exists; QR code is planned.
+USR-08,Accounts & security,Self-service sign-up or invite page,Yes,—,Requested,227,Jellyfin,,
+USR-09,Accounts & security,Per-user interface language,—,—,Requested,219,Jellyfin,Yes,
+USR-10,Accounts & security,Works without a cloud account,No,Partial,Yes,,,,
+USR-11,Accounts & security,No tracking or telemetry,No,—,Yes,,,,
+HOM-01,Home screen & personal tracking,Continue Watching and Next Up rows,Yes,Yes,Yes,,,,
+HOM-02,Home screen & personal tracking,Remove an item from Continue Watching,Yes,Yes,Planned,1724,Jellyfin,,
+HOM-03,Home screen & personal tracking,Merge Next Up and Continue Watching,—,—,Requested,202,Jellyfin,Yes,
+HOM-04,Home screen & personal tracking,Include playlists and collections in Next Up,—,Requested,—,44,Emby likes,Yes,
+HOM-05,Home screen & personal tracking,Customizable home screen sections,Yes,Yes,Planned,169,Jellyfin,,
+HOM-06,Home screen & personal tracking,Watchlist,Yes,Requested,Planned,1293,Jellyfin,,
+HOM-07,Home screen & personal tracking,Watch history,Yes,—,Planned,830,Jellyfin,,
+HOM-08,Home screen & personal tracking,Personal ratings,Yes,—,Planned,453,Jellyfin,,
+HOM-09,Home screen & personal tracking,IMDb and Rotten Tomatoes ratings on posters,Yes,—,Requested,196,Jellyfin,,
+HOM-10,Home screen & personal tracking,Hide a title from your own view,—,—,Requested,,,Yes,Open request on Jellyfin's board.
+HOM-11,Home screen & personal tracking,Favorites and played/unplayed marks,Yes,Yes,Yes,,,,
+SOC-01,Social & discovery,"Shareable, importable lists",Yes,—,—,,,,"Plex, 2026."
+SOC-02,Social & discovery,Public discussions on titles with spoiler tags,Yes,—,—,,,,"Plex, June 2026."
+SOC-03,Social & discovery,Predicted enjoyment score,Yes,—,—,,,,"Plex Match Score, 2026."
+SOC-04,Social & discovery,Recommend a title to another user,Yes,Requested,—,,,,
+SOC-05,Social & discovery,Discover content across streaming services,Yes,No,No,1000,Plex,,The votes were for a way to turn it off (now implemented).
+SOC-06,Social & discovery,Trakt sync,Requested,Plugin,Plugin,327,Plex,Yes,
+SOC-07,Social & discovery,Last.fm and ListenBrainz scrobbling,Yes,Plugin,Plugin,,,,
+REM-01,Remote access & sharing,Remote streaming,Paid,Yes,Yes,,,,Plex needs Plex Pass or Remote Watch Pass. Jellyfin needs manual setup since 10.11 removed auto port forwarding.
+REM-02,Remote access & sharing,Remote access without port forwarding (relay),Yes,—,No,,,,
+REM-03,Remote access & sharing,Automatic server discovery on the home network,Yes,Yes,Partial,,,,
+REM-04,Remote access & sharing,Share libraries with friends and family,Yes,Yes,Yes,,,,
+REM-05,Remote access & sharing,Temporary share links for a file,Requested,—,Requested,579,Jellyfin,Yes,Plex: share link for people without accounts (331).
+REM-06,Remote access & sharing,Several servers in one app,Yes,Yes,Requested,177,Jellyfin,,
+REM-07,Remote access & sharing,Merge or federate libraries from several servers,—,Requested,Requested,,,Yes,Open requests on Jellyfin's and Emby's boards.
+REM-08,Remote access & sharing,Bandwidth limits per user,Yes,Yes,Yes,,,,
+REM-09,Remote access & sharing,IPv6 remote access,Requested,—,—,549,Plex,Yes,
+OFF-01,Offline & downloads,Download to phones and tablets,Paid,Paid,In progress,1820,Jellyfin,,Jellyfin's #1 request (Android offline mode).
+OFF-02,Offline & downloads,Offline sync that keeps downloads up to date,Paid,Paid,Planned,816,Jellyfin,,
+OFF-03,Offline & downloads,Download smaller transcoded copies,Paid,Paid,Planned,517,Jellyfin,,
+OFF-04,Offline & downloads,Batch downloads (whole season or album),Yes,Paid,In progress,219,Jellyfin,,
+OFF-05,Offline & downloads,Downloads on desktop apps,Yes,Paid,—,,,,
+LTV-01,Live TV & DVR,HDHomeRun tuners,Paid,Paid,Yes,,,,
+LTV-02,Live TV & DVR,M3U IPTV playlists,No,Paid,Yes,,,,
+LTV-03,Live TV & DVR,"Program guide (XMLTV, Schedules Direct, built-in)",Paid,Paid,Yes,,,,"Emby includes free guide data for the US, Canada and UK."
+LTV-04,Live TV & DVR,DVR recording and series rules,Paid,Paid,Yes,,,,
+LTV-05,Live TV & DVR,Multiple guide sources for multiple tuners,Requested,—,Yes,611,Plex,,
+LTV-06,Live TV & DVR,"Channel groups, renaming and reordering",Requested,—,Planned,437,Plex,Yes,Jellyfin: IPTV channel groups planned (376).
+LTV-07,Live TV & DVR,Virtual channels from your own library (PseudoTV),Requested,—,—,622,Plex,Yes,
+LTV-08,Live TV & DVR,Skip commercials in recordings,Paid,—,Partial,,,,
+LTV-09,Live TV & DVR,Tvheadend and Vu+ backends,No,Plugin,Plugin,,,Yes,
+APP-01,Apps & devices,Web app,Yes,Yes,Yes,,,,
+APP-02,Apps & devices,"Windows, macOS and Linux apps",Yes,Paid,Yes,,,,Emby's free desktop playback stops after one minute.
+APP-03,Apps & devices,iOS and Android apps,Yes,Paid,Yes,,,,Emby needs an app unlock or Premiere for full playback.
+APP-04,Apps & devices,Android TV and Fire TV,Yes,Yes,Yes,,,,
+APP-05,Apps & devices,Apple TV,Yes,Yes,In progress,462,Jellyfin,,"Third-party options (Swiftfin, Infuse) exist today."
+APP-06,Apps & devices,Roku,Yes,Yes,Yes,,,,
+APP-07,Apps & devices,Samsung and LG smart TVs,Yes,Yes,In progress,253,Jellyfin,,
+APP-08,Apps & devices,Hisense VIDAA TVs,—,—,Requested,453,Jellyfin,Yes,
+APP-09,Apps & devices,Xbox and PlayStation,Yes,Paid,—,,,,
+APP-10,Apps & devices,CarPlay and Android Auto,Partial,Paid,—,,,,
+APP-11,Apps & devices,Apple Watch,—,Paid,—,182,Plex,,
+APP-12,Apps & devices,VR headsets and 360° video,—,—,Requested,167,Jellyfin,Yes,
+APP-13,Apps & devices,Kodi add-on,Plugin,Plugin,Plugin,,,Yes,
+APP-14,Apps & devices,Camera upload from phones,Paid,Paid,No,,,,
+APP-15,Apps & devices,"Voice assistants (Google, Alexa)",Partial,Paid,Requested,2461,Plex,,Google Home is Plex's #3 request; Jellyfin 243.
+APP-16,Apps & devices,Remote-friendly TV navigation with a pinned-library sidebar,Partial,—,—,,,Yes,Plex users demanded the sidebar back after the 2025–26 redesign.
+ADM-01,Server & admin,"Admin dashboard: sessions, activity, logs, devices, API keys",Yes,Yes,Yes,,,,
+ADM-02,Server & admin,Stop another user's stream,Yes,Yes,Requested,402,Jellyfin,,
+ADM-03,Server & admin,Send messages to users' screens,Requested,Yes,Yes,1205,Plex,,
+ADM-04,Server & admin,Limit concurrent streams,—,Paid,Yes,,,,
+ADM-05,Server & admin,Server-wide default settings for users,—,—,Requested,258,Jellyfin,Yes,
+ADM-06,Server & admin,Let non-admins refresh metadata,—,Requested,—,,,Yes,
+ADM-07,Server & admin,Scheduled maintenance tasks,Yes,Yes,Yes,,,,
+ADM-08,Server & admin,Backup and restore,Partial,Paid,Yes,,,,"Jellyfin 10.11 lets you pick database, metadata, trickplay and subtitles."
+ADM-09,Server & admin,"Choice of database (MySQL, PostgreSQL)",No,Requested,In progress,663,Jellyfin,Yes,
+ADM-10,Server & admin,Usage statistics and reports,Partial,Plugin,Plugin,,,Yes,Plex users rely on Tautulli.
+ADM-11,Server & admin,Custom branding and splash screen,—,—,Yes,,,,
+ADM-12,Server & admin,Storage checks and startup status screen,—,—,Yes,,,,
+ADM-13,Server & admin,Keep the computer awake while streaming or recording,—,—,Requested,222,Plex,Yes,Plex: sleep/wake around DVR recordings. Jellyfin: inhibit idle while streaming.
+ADM-14,Server & admin,Plugin system with a catalog,Partial,Yes,Yes,,,,Plex removed plugins in 2018 and now allows only metadata providers.
+INT-01,Integrations,Webhooks,Paid,Paid,Plugin,,,,
+INT-02,Integrations,"Notifications (email, push)",Yes,Plugin,Plugin,,,,
+INT-03,Integrations,Smart home triggers (lights and scenes),Partial,Paid,Plugin,265,Plex,,Philips Hue integration requested.
+INT-04,Integrations,Public API with documentation,Yes,Yes,Yes,,,,

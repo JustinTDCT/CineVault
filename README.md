@@ -9,4 +9,5 @@ This is a fresh start (November 2026). Earlier work is preserved on these branch
 
 ## Design docs
 
-Feature specs live in [`docs/specs`](docs/specs/README.md).
+- Feature specs: [`docs/specs`](docs/specs/README.md)
+- Feature research (Plex, Emby, Jellyfin and user requests): [`docs/research/feature-master-list.md`](docs/research/feature-master-list.md)
