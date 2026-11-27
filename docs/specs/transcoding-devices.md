@@ -26,6 +26,7 @@ Example: a server with an 11th-gen Core i5 and an NVIDIA card could offer:
 
 - A file plays **directly** when the browser supports its container and codecs and it's within the height limit (1080p for now).
 - Otherwise it's streamed as **HLS**: H.264 video plus AAC stereo, in 6-second segments with keyframes forced on segment boundaries, so a seek restarts FFmpeg at exactly the right segment.
+- Conversion is **throttled** so it doesn't run through the whole film. FFmpeg pauses (SIGSTOP) once it is 3 minutes ahead of the player and resumes (SIGCONT) when the lead drops to 90 seconds, so the GPU idles most of the time and other streams get it. Segments more than 3 minutes behind the player are deleted, so a 2-hour film uses a few hundred MB of temp space instead of about 7 GB. Rewinding further back regenerates the segments. All three numbers are settings (`CINEVAULT_TRANSCODE_PAUSE_AHEAD`, `_RESUME_AHEAD`, `_KEEP_BEHIND`) and will move to the Settings page. On Windows, pausing isn't available yet, so FFmpeg runs ahead but old segments are still deleted.
 
 ## Scope
 

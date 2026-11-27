@@ -42,7 +42,16 @@ type Manager struct {
 	IdleTimeout time.Duration // sessions with no requests for this long are stopped; 0 means 2 minutes
 	// SegmentTimeout bounds how long a request waits for a segment; 0 means 60s.
 	SegmentTimeout time.Duration
-	Log            *slog.Logger
+
+	// Throttling: FFmpeg pauses when it's PauseAhead past the last segment the
+	// player asked for, and resumes when the lead falls to ResumeAhead.
+	// Segments more than KeepBehind before that point are deleted. Zero values
+	// mean 3 minutes, 90 seconds and 3 minutes.
+	PauseAhead  time.Duration
+	ResumeAhead time.Duration
+	KeepBehind  time.Duration
+
+	Log *slog.Logger
 
 	mu       sync.Mutex
 	sessions map[string]*session
@@ -58,6 +67,10 @@ type session struct {
 	proc   *proc
 	last   time.Time
 	closed bool
+	// lastReq is the highest segment the player asked for since the last seek.
+	lastReq int
+	// cleaned is the first segment not yet considered for deletion.
+	cleaned int
 }
 
 // proc is one running FFmpeg. err and stderr are only read after done closes.
@@ -68,6 +81,7 @@ type proc struct {
 	err    error
 	stderr bytes.Buffer
 	killed atomic.Bool // stopped on purpose (seek, stop); not a failure
+	paused bool        // suspended by the throttle; guarded by the session lock
 }
 
 // lookahead is how far beyond the next missing segment a request may be and
@@ -99,7 +113,7 @@ func (m *Manager) Start(src Source, plan Plan) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create session folder: %w", err)
 	}
-	m.sessions[id] = &session{id: id, src: src, plan: plan, dir: dir, segs: SegmentCount(src.DurationSeconds), last: time.Now()}
+	m.sessions[id] = &session{id: id, src: src, plan: plan, dir: dir, segs: SegmentCount(src.DurationSeconds), last: time.Now(), lastReq: -1}
 	return id, nil
 }
 
@@ -123,6 +137,12 @@ func (m *Manager) Segment(ctx context.Context, id string, n int) (string, error)
 		return "", ErrSegment
 	}
 	path := filepath.Join(s.dir, fmt.Sprintf("seg%d.ts", n))
+	s.mu.Lock()
+	s.noteRequest(n)
+	if s.proc != nil && s.proc.paused && s.lead(m.segAhead()) < m.resumeSegs() {
+		s.proc.resume()
+	}
+	s.mu.Unlock()
 	if exists(path) {
 		return path, nil
 	}
@@ -133,7 +153,7 @@ func (m *Manager) Segment(ctx context.Context, id string, n int) (string, error)
 		return "", ErrNoSession
 	}
 	p := s.proc
-	if p == nil || !p.running() || n < p.start || n > s.nextMissing(p.start)+lookahead {
+	if p == nil || !p.running() || n < p.start || n > s.nextMissing(max(p.start, s.cleaned))+lookahead {
 		if p != nil {
 			p.stop()
 		}
@@ -240,20 +260,97 @@ func (m *Manager) ReapIdle() {
 	}
 }
 
-// RunReaper calls ReapIdle every 30 seconds until ctx ends, then stops all sessions.
+// RunReaper throttles sessions every 2 seconds and stops idle ones every 30
+// seconds, until ctx ends; then it stops all sessions.
 func (m *Manager) RunReaper(ctx context.Context) {
-	t := time.NewTicker(30 * time.Second)
-	defer t.Stop()
+	throttle := time.NewTicker(2 * time.Second)
+	defer throttle.Stop()
+	reap := time.NewTicker(30 * time.Second)
+	defer reap.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			m.StopAll()
 			return
-		case <-t.C:
+		case <-throttle.C:
+			m.Throttle()
+		case <-reap.C:
 			m.ReapIdle()
 		}
 	}
 }
+
+// Throttle pauses FFmpeg for sessions far enough ahead of the player, resumes
+// those that have fallen behind, and deletes segments the player has passed.
+func (m *Manager) Throttle() {
+	m.mu.Lock()
+	list := make([]*session, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		list = append(list, s)
+	}
+	m.mu.Unlock()
+
+	for _, s := range list {
+		s.mu.Lock()
+		if p := s.proc; p != nil && p.running() && s.lastReq >= 0 {
+			lead := s.lead(m.segAhead())
+			switch {
+			case !p.paused && lead >= m.pauseSegs():
+				if p.pause() {
+					m.logger().Debug("transcode paused", "session", s.id, "lead_segments", lead)
+				}
+			case p.paused && lead <= m.resumeSegs():
+				p.resume()
+				m.logger().Debug("transcode resumed", "session", s.id, "lead_segments", lead)
+			}
+		}
+		s.cleanup(s.lastReq - m.keepSegs())
+		s.mu.Unlock()
+	}
+}
+
+// noteRequest records the player's position; a jump backwards is a seek.
+func (s *session) noteRequest(n int) {
+	if n > s.lastReq || n < s.lastReq-lookahead {
+		s.lastReq = n
+	}
+}
+
+// lead is how many finished segments exist past the player's last request,
+// counting at most limit+1 (enough to compare with the thresholds).
+func (s *session) lead(limit int) int {
+	n := 0
+	for i := s.lastReq + 1; i < s.segs && n <= limit; i++ {
+		if !exists(filepath.Join(s.dir, fmt.Sprintf("seg%d.ts", i))) {
+			break
+		}
+		n++
+	}
+	return n
+}
+
+// cleanup deletes segments before index before.
+func (s *session) cleanup(before int) {
+	for ; s.cleaned < before; s.cleaned++ {
+		_ = os.Remove(filepath.Join(s.dir, fmt.Sprintf("seg%d.ts", s.cleaned)))
+	}
+	// A seek backwards re-creates earlier segments; allow them to be cleaned again.
+	if before < s.cleaned {
+		s.cleaned = max(before, 0)
+	}
+}
+
+func segs(d, def time.Duration) int {
+	if d == 0 {
+		d = def
+	}
+	return int(d / (SegmentSeconds * time.Second))
+}
+
+func (m *Manager) pauseSegs() int  { return segs(m.PauseAhead, 3*time.Minute) }
+func (m *Manager) resumeSegs() int { return segs(m.ResumeAhead, 90*time.Second) }
+func (m *Manager) keepSegs() int   { return segs(m.KeepBehind, 3*time.Minute) }
+func (m *Manager) segAhead() int   { return m.pauseSegs() }
 
 func (m *Manager) get(id string) (*session, error) {
 	m.mu.Lock()
@@ -309,8 +406,23 @@ func (p *proc) running() bool {
 func (p *proc) stop() {
 	if p.running() && p.cmd.Process != nil {
 		p.killed.Store(true)
-		_ = p.cmd.Process.Kill()
+		_ = p.cmd.Process.Kill() // SIGKILL also ends a paused process
 		<-p.done
+	}
+}
+
+func (p *proc) pause() bool {
+	if p.paused || !p.running() || !suspend(p.cmd.Process) {
+		return false
+	}
+	p.paused = true
+	return true
+}
+
+func (p *proc) resume() {
+	if p.paused {
+		resumeProcess(p.cmd.Process)
+		p.paused = false
 	}
 }
 

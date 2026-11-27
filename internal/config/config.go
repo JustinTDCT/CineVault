@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -26,6 +27,11 @@ type Config struct {
 	TranscodeGPU  string
 	// TranscodeDir holds streaming segments while videos play.
 	TranscodeDir string
+	// PauseAhead, ResumeAhead and KeepBehind throttle conversions: FFmpeg
+	// pauses once it is PauseAhead ahead of the player, resumes when the lead
+	// drops to ResumeAhead, and segments more than KeepBehind behind the
+	// player are deleted. Zero means the transcode package's defaults.
+	PauseAhead, ResumeAhead, KeepBehind time.Duration
 	// TMDbToken is a TMDb API read access token. Without it, titles aren't
 	// matched to TMDb.
 	TMDbToken string
@@ -65,6 +71,23 @@ func load(getenv func(string) string) (Config, error) {
 	if c.TranscodeDir == "" {
 		c.TranscodeDir = filepath.Join(os.TempDir(), "cinevault-transcode")
 	}
+	for _, d := range []struct {
+		name string
+		dst  *time.Duration
+	}{
+		{"CINEVAULT_TRANSCODE_PAUSE_AHEAD", &c.PauseAhead},
+		{"CINEVAULT_TRANSCODE_RESUME_AHEAD", &c.ResumeAhead},
+		{"CINEVAULT_TRANSCODE_KEEP_BEHIND", &c.KeepBehind},
+	} {
+		v, err := duration(getenv(d.name))
+		if err != nil {
+			return c, fmt.Errorf("%s: %v", d.name, err)
+		}
+		*d.dst = v
+	}
+	if c.ResumeAhead > 0 && c.PauseAhead > 0 && c.ResumeAhead >= c.PauseAhead {
+		return c, fmt.Errorf("CINEVAULT_TRANSCODE_RESUME_AHEAD must be less than CINEVAULT_TRANSCODE_PAUSE_AHEAD")
+	}
 	if c.DatabaseURL == "" {
 		return c, fmt.Errorf("CINEVAULT_DATABASE_URL is not set")
 	}
@@ -72,6 +95,22 @@ func load(getenv func(string) string) (Config, error) {
 		return c, err
 	}
 	return c, nil
+}
+
+// duration parses a setting like "3m", "90s" or a plain number of seconds.
+// Empty means zero (use the default).
+func duration(v string) (time.Duration, error) {
+	if v == "" {
+		return 0, nil
+	}
+	if n, err := strconv.ParseFloat(v, 64); err == nil {
+		v = strconv.FormatFloat(n, 'f', -1, 64) + "s"
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < 0 {
+		return 0, fmt.Errorf("%q is not a duration like 3m or 90s", v)
+	}
+	return d, nil
 }
 
 // DatabaseAddress returns the host:port of a PostgreSQL URL, defaulting the port to 5432.

@@ -85,7 +85,10 @@ func run(log *slog.Logger) error {
 	default:
 		log.Info("playback", "encoder", enc.Name, "device", enc.DeviceName, "mode", pref.Mode)
 	}
-	streamer := &transcode.Manager{FFmpeg: cfg.FFmpegPath, WorkDir: cfg.TranscodeDir, Log: log}
+	streamer := &transcode.Manager{
+		FFmpeg: cfg.FFmpegPath, WorkDir: cfg.TranscodeDir, Log: log,
+		PauseAhead: cfg.PauseAhead, ResumeAhead: cfg.ResumeAhead, KeepBehind: cfg.KeepBehind,
+	}
 	if err := prepareTranscodeDir(cfg.TranscodeDir); err != nil {
 		return err
 	}

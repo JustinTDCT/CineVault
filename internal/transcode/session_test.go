@@ -3,6 +3,7 @@ package transcode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -138,5 +139,80 @@ func TestConversionFailureIsReported(t *testing.T) {
 	defer m.Stop(id)
 	if _, err := m.Segment(context.Background(), id, 0); err == nil || !strings.Contains(err.Error(), "conversion failed") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// procState reads a process's state letter from /proc ("T" means stopped).
+func procState(t *testing.T, pid int) string {
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		t.Skip("no /proc on this system")
+	}
+	f := strings.Fields(string(b[strings.LastIndexByte(string(b), ')')+1:]))
+	return f[0]
+}
+
+func TestThrottlePausesResumesAndCleansUp(t *testing.T) {
+	src := testSource(t)
+	m := newManager(t)
+	m.PauseAhead, m.ResumeAhead, m.KeepBehind = 12*time.Second, 6*time.Second, 6*time.Second // 2, 1 and 1 segments
+	id, _ := m.Start(src, cpuPlan)
+	defer m.Stop(id)
+	ctx := context.Background()
+	if _, err := m.Segment(ctx, id, 0); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := m.get(id)
+
+	// FFmpeg races ahead until the throttle pauses it.
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		m.Throttle()
+		s.mu.Lock()
+		paused, pid := s.proc.paused, s.proc.cmd.Process.Pid
+		s.mu.Unlock()
+		if paused {
+			if st := procState(t, pid); st != "T" && st != "t" {
+				t.Errorf("paused FFmpeg has state %q, want T", st)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("FFmpeg was never paused")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(300 * time.Millisecond)
+	s.mu.Lock()
+	lead := s.lead(100)
+	s.mu.Unlock()
+	if lead > 3 {
+		t.Errorf("FFmpeg kept going while paused: %d segments ahead", lead)
+	}
+
+	// Playing on resumes it; the whole file can still be played to the end.
+	first := s.proc
+	for n := 1; n < 10; n++ {
+		if _, err := m.Segment(ctx, id, n); err != nil {
+			t.Fatalf("segment %d: %v", n, err)
+		}
+		m.Throttle()
+	}
+	if s.proc != first {
+		t.Error("normal playback restarted FFmpeg; it should only pause and resume")
+	}
+	// Segments well behind the player are gone; recent ones remain.
+	for n := 0; n < 8; n++ {
+		if exists(filepath.Join(s.dir, fmt.Sprintf("seg%d.ts", n))) {
+			t.Errorf("segment %d should have been deleted", n)
+		}
+	}
+	if !exists(filepath.Join(s.dir, "seg9.ts")) {
+		t.Error("the latest segment should remain")
+	}
+
+	// Rewinding to a deleted segment regenerates it.
+	if _, err := m.Segment(ctx, id, 2); err != nil {
+		t.Errorf("rewind: %v", err)
 	}
 }
