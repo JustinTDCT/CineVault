@@ -1,6 +1,6 @@
 # Feature spec: CineVault Cache (subscription) & edition intelligence
 
-Status: Draft 1 · 26 Nov 2026 · Related: [Editions & Versions](editions-and-versions.md), [Collections & Viewing Orders](collections-and-viewing-orders.md)
+Status: Draft 2 · 27 Nov 2026 · Related: [Editions & Versions](editions-and-versions.md), [Collections & Viewing Orders](collections-and-viewing-orders.md)
 
 ## Decisions log
 
@@ -11,6 +11,9 @@ Status: Draft 1 · 26 Nov 2026 · Related: [Editions & Versions](editions-and-ve
 | 3 | What if the cache doesn't have a title? | The user's server falls back to the normal sources (TMDb, TVDB) and flags the item. The cache fills itself in the background. |
 | 4 | How does the user's server learn about updates? | It checks the cache periodically. The interval is a user setting, and there's a "Check now" button. |
 | 5 | Edition display | Each edition shows a short "what's different" line, and each edition has its own tab on the details page. |
+| 6 | Can free servers help the cache grow? (27 Nov 2026) | **Yes.** Every CineVault server, subscribed or not, can share which titles it has (§5a). The setting is **on by default**, shown on the setup page, and can be turned off at any time. |
+| 7 | What do servers share? (27 Nov 2026) | Type and TMDb ID, the Edition List IDs found in file names, and **each edition's runtime measured from the file**, rounded to the minute. Nothing else. |
+| 8 | Research for titles only free servers have (27 Nov 2026) | **Full AI research**, because the development model runs locally (Ollama with SearXNG) at no cost per title. Subscriber requests still come first in the queue. To revisit if a paid model is chosen. |
 
 ## 1. Goal
 
@@ -128,6 +131,39 @@ For each title, the cache server does the following.
 }
 ```
 
+## 5a. Shared titles from every server (decisions 6–8)
+
+The cache grows from every CineVault server, not only subscribers. A free server can't look titles up, but it can tell the cache what it has, so most titles are researched before a subscriber ever asks.
+
+**What a server sends.** Once a day, at a random time, each server sends one batch of the titles added or changed since its last batch:
+
+```json
+{
+  "install": "k3v…",
+  "items": [
+    { "kind": "movie", "tmdb_id": 679,
+      "editions": [ { "edition": "theatrical", "runtime_min": 137 },
+                    { "edition": "special_edition", "runtime_min": 154 } ] }
+  ]
+}
+```
+
+- `install` is a random ID made once per server. It isn't tied to an account, a token or a person.
+- Editions are Edition List IDs only. `runtime_min` is the owned file's duration, rounded.
+- Never file names, paths, file sizes, watch history or anything else from the library.
+- Subscribed servers send the same batch: their lookups don't carry runtimes.
+
+**The setting.** Settings → CineVault Cache → "Help build the CineVault Cache", **on by default**. The setup page shows it with one sentence explaining what's sent, so nobody shares without seeing it. Turning it off stops sending at once.
+
+**What the cache does with it.**
+1. **Popularity:** each title counts the separate servers that have it, and the research queue uses that order (after subscriber lookups and reports).
+2. **Research:** titles not yet researched are queued for the full pipeline (§5). With the local model this costs nothing per title.
+3. **Real-world runtimes:** for each title and edition, the cache counts how many separate servers have a file of each length. Once at least **5 separate servers** agree within 2 minutes, that counts as one corroborating source for the confidence rules. It's never the only source for publishing, and it's shown to reviewers as "seen in 37 libraries at 154 min".
+
+**Free servers get nothing back** apart from "accepted". Records, editions and differences stay subscriber-only, so the subscription keeps its value.
+
+**Abuse.** The endpoint needs no token, so anyone could send fake data. Shared titles therefore only raise priority and add to counts. They never publish anything on their own, and a count only matters once enough separate servers agree. Each install is rate-limited.
+
 ## 6. Display (decision 5)
 
 **Details page: one tab per edition**
@@ -181,7 +217,8 @@ This section isn't legal advice. It needs confirming with each provider and with
 
 - **Lookups send only metadata IDs** (TMDb, TVDB, MusicBrainz), plus the edition labels found when needed. Never file names, paths or other library details.
 - **Lookups are separated from the account.** Authentication uses a subscription token checked at the edge, and lookup logs don't store which subscriber asked for which title.
-- **Edition naming signals** used for research (§5) are aggregated counts only, with an opt-out in Settings.
+- **Shared titles (§5a)** are kept only as counts, plus a keyed hash of each install ID so separate servers can be counted. The hash key changes every 90 days and older rows are deleted, so no long-lived list of what one server has is kept. The cache doesn't store the sender's IP address.
+- **On by default needs care (not legal advice):** in some places, the EU in particular, sharing on by default may need a lawful basis other than consent, a clear notice and an easy opt-out. Check this with counsel before launch; the setup-page notice is designed to meet the notice part.
 - **The privacy policy** states plainly what is sent and kept.
 - **Abuse protection:** tokens are per server, rate limits apply per token, and tokens can be revoked.
 
@@ -200,9 +237,9 @@ This section isn't legal advice. It needs confirming with each provider and with
   - edition tabs and short difference lines
   - greyed unowned editions
   - "Report a mistake"
+  - shared titles from every server, with real-world runtimes (§5a)
 - **V1.1:**
   - the "check sooner" hint
-  - anonymous naming signals for research
   - difference text in the edition picker
 - **Later:**
   - difference data for TV episodes (extended episodes)
