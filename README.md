@@ -7,6 +7,21 @@ This is a fresh start (November 2026). Earlier work is preserved on these branch
 - `v2-archive`: the previous main branch, archived 26 Nov 2026
 - `v1-archive`: the earlier archive
 
+## Status (27 Nov 2026)
+
+**Working and tested on the test server** (10.150.125.60, NVIDIA A2):
+- Movies with editions and versions, matched to TMDb; playback with direct play or NVENC HLS conversion, throttled so FFmpeg pauses 3 min ahead
+- TV shows with seasons and episodes (owned and missing)
+- Music, music videos, audiobooks (chapters, resume, speed), ebooks (EPUB/MOBI/AZW3 reader, PDF in the browser) and comics (CBZ natively; CBR/CB7/CBT need `libarchive-tools`; comics haven't been tested on the server yet)
+
+**Built, not yet tested on the server:** the CineVault Cache client (`internal/cachesync`, migration 0009): lookups after matching, the scheduled update check, the daily share of titles, greyed "Not in library" editions, "What's different in this cut", "Report a mistake", and a Settings page. The cache's lookups from this server are arriving (they show as pending titles in the cache's review UI); nothing has been published for them yet.
+
+**Next, in order:**
+1. The cache's research worker and automatic review rules (in [JustinTDCT/cinevault-cache](https://github.com/JustinTDCT/cinevault-cache), build step 4; two open proposals in its decision 0001)
+2. The cache's `POST /v1/contribute` endpoint, so shared titles are received
+3. Subtitles (external `.srt` files next to the video first)
+4. A Settings section for transcoding (device, throttle values), QSV and VA-API, running as a systemd service, preloading hls.js
+
 ## Development quick start
 
 Requires Go 1.25 or newer, Node.js 20.19+ with npm (for the web app), FFmpeg, and the development PostgreSQL container described in [`docs/environment/test-server.md`](docs/environment/test-server.md). That container's credentials live in `~/.config/cinevault/db.env`.
@@ -149,8 +164,9 @@ A comic library holds one folder per series, with one file per issue: `Aliens - 
 | `internal/tmdb` | TMDb API client |
 | `internal/transcode` | Direct-play decision, FFmpeg commands, HLS streaming sessions |
 | `internal/webui` | Serves the built web app from the server binary |
-| `pkg/editionlist` | The built-in Edition List as Go data, shared with the CineVault Cache service; a database test keeps it in step with the migrations |
 | `internal/cachesync` | The CineVault Cache client: lookups after matching, the scheduled update check, and the daily share of titles |
+| `internal/comic`, `internal/ebook`, `internal/thumb` | Comic archives (pages), ebook metadata and covers, video stills and cover images |
+| `pkg/editionlist` | The built-in Edition List as Go data, shared with the CineVault Cache service; a database test keeps it in step with the migrations |
 | `pkg/cacheapi` | The CineVault Cache API contract (v1): JSON types, validation rules, a client, and golden files in `testdata/` that pin the wire format |
 
 ## Design docs
