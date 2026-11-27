@@ -60,6 +60,9 @@ type LibraryStore interface {
 	TitleEpisodes(ctx context.Context, titleID int64) ([]catalog.Season, error)
 	// AlbumTracks returns an album's tracks per edition, or catalog.ErrNotFound.
 	AlbumTracks(ctx context.Context, titleID int64) ([]catalog.AlbumEdition, error)
+	// Progress and SaveProgress keep where playback of a title stopped.
+	Progress(ctx context.Context, titleID int64) (catalog.Progress, bool, error)
+	SaveProgress(ctx context.Context, titleID int64, p catalog.Progress) (catalog.Progress, error)
 }
 
 // Server serves the CineVault API.
@@ -101,6 +104,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/versions/{id}/thumb", s.versionThumb)
 	mux.HandleFunc("GET /api/versions/{id}/cover", s.versionCover)
 	mux.HandleFunc("GET /api/titles/{id}/tracks", s.albumTracks)
+	mux.HandleFunc("GET /api/titles/{id}/progress", s.getProgress)
+	mux.HandleFunc("PUT /api/titles/{id}/progress", s.putProgress)
 	if s.opt.UI != nil {
 		// GET only, so a wrong method on an API route still gets 405.
 		mux.Handle("GET /", s.opt.UI)

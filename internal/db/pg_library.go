@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
+	"github.com/JustinTDCT/CineVault/internal/mediainfo"
 	"github.com/JustinTDCT/CineVault/internal/scan"
 	"github.com/JustinTDCT/CineVault/internal/tmdb"
 )
@@ -72,6 +73,7 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 			&t.OriginalTitle, &t.Overview, &t.Tagline, &t.ReleaseDate, &t.RuntimeMinutes,
 			&t.PosterPath, &t.BackdropPath, &t.IMDbID, &t.Genres, &t.Rating,
 			&t.CollectionID, &t.CollectionName, &t.MatchStatus, &t.MatchError, &t.Artist,
+			&t.Series, &t.SeriesIndex, &t.Narrator,
 			&t.CoverVersionID, &t.TrackCount,
 			&t.SeasonCount, &t.EpisodeCount,
 			&e.ID, &e.EditionTypeID, &e.DisplayName, &e.ShortLabel, &e.RuntimeSeconds,
@@ -298,5 +300,88 @@ func (d *DB) AlbumTracks(ctx context.Context, titleID int64) ([]catalog.AlbumEdi
 		t := &ed.Tracks[len(ed.Tracks)-1]
 		t.Versions = append(t.Versions, v)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	return out, d.addChapters(ctx, out)
+}
+
+// addChapters fills in the chapter marks of every file in eds.
+func (d *DB) addChapters(ctx context.Context, eds []catalog.AlbumEdition) error {
+	byID := map[int64]*catalog.Version{}
+	var ids []int64
+	for ei := range eds {
+		for ti := range eds[ei].Tracks {
+			for vi := range eds[ei].Tracks[ti].Versions {
+				v := &eds[ei].Tracks[ti].Versions[vi]
+				byID[v.ID] = v
+				ids = append(ids, v.ID)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := d.Pool.Query(ctx, sqlVersionChapters, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var c catalog.Chapter
+		if err := rows.Scan(&id, &c.Start, &c.End, &c.Name); err != nil {
+			return err
+		}
+		if v := byID[id]; v != nil {
+			v.Chapters = append(v.Chapters, c)
+		}
+	}
+	return rows.Err()
+}
+
+// SetBookInfo implements scan.Store.
+func (d *DB) SetBookInfo(ctx context.Context, titleID int64, series string, index float64, narrator, overview string) error {
+	_, err := d.Pool.Exec(ctx, sqlSetBookInfo, titleID, series, index, narrator, overview)
+	return err
+}
+
+// SaveChapters implements scan.Store.
+func (d *DB) SaveChapters(ctx context.Context, path string, chapters []mediainfo.Chapter) error {
+	tx, err := d.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, sqlDeleteChapters, path); err != nil {
+		return err
+	}
+	for i, c := range chapters {
+		if _, err := tx.Exec(ctx, sqlInsertChapter, path, i, c.Start, c.End, c.Name); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// Progress returns where playback of a title stopped; ok is false when it
+// hasn't been played.
+func (d *DB) Progress(ctx context.Context, titleID int64) (catalog.Progress, bool, error) {
+	var p catalog.Progress
+	err := d.Pool.QueryRow(ctx, sqlGetProgress, titleID).Scan(&p.VersionID, &p.PositionSeconds, &p.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return p, false, nil
+	}
+	return p, err == nil, err
+}
+
+// SaveProgress records where playback of a title stopped. It returns
+// catalog.ErrNotFound when the file isn't one of the title's.
+func (d *DB) SaveProgress(ctx context.Context, titleID int64, p catalog.Progress) (catalog.Progress, error) {
+	err := d.Pool.QueryRow(ctx, sqlSaveProgress, titleID, p.VersionID, p.PositionSeconds).Scan(&p.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return p, catalog.ErrNotFound
+	}
+	return p, err
 }

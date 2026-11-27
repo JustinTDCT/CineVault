@@ -967,6 +967,14 @@ img {
   }
 }
 
+.book-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-bottom: 2rem;
+}
+
 /* ---------- Now playing bar ---------- */
 
 .shell:has(~ .nowplaying) {
@@ -1091,6 +1099,44 @@ img {
 
 .np-count {
   margin-right: 0.5rem;
+}
+
+/* Audiobooks: 30-second skips with the number on the arrow, and a speed button. */
+.np-skip {
+  position: relative;
+}
+
+.np-skip span {
+  position: absolute;
+  font-size: 0.55rem;
+  font-weight: 600;
+  top: 52%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.np-skip svg {
+  width: 24px;
+  height: 24px;
+}
+
+.np-speed {
+  min-width: 3rem;
+  height: 2rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--light);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  margin-right: 0.25rem;
+}
+
+.np-speed:hover {
+  border-color: var(--lamp);
 }
 
 /* ---------- Setup form ---------- */

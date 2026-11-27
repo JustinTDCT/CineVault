@@ -46,7 +46,8 @@ npm run dev    # serves on port 5173 and forwards /api to the Go server on 8456
 | `POST /api/libraries/{id}/scan` | Scan a library now, then match new titles to TMDb, and return a summary. Movie and TV libraries. |
 | `POST /api/libraries/{id}/match` | Match unmatched titles to TMDb without scanning. Titles that failed with an error are retried; ones TMDb didn't find are not. |
 | `GET /api/libraries/{id}/titles` | Titles with their editions and versions. Shows list their season and episode counts instead of files. |
-| `GET /api/titles/{id}/tracks` | An album's songs and their files, per edition |
+| `GET /api/titles/{id}/tracks` | An album's songs (or an audiobook's parts) and their files per edition, with chapter marks |
+| `GET /api/titles/{id}/progress`, `PUT …` | Where playback of a title stopped (audiobooks resume from it): `{"version_id": 5, "position_seconds": 812.4}` |
 | `GET /api/titles/{id}/episodes` | A show's seasons and episodes with their files, including episodes TMDb lists that the library doesn't have |
 | `POST /api/playback` | Start playing a file: `{"version_id": 2, "caps": {...}}`. Returns a direct file URL, or an HLS playlist URL when the file needs converting. |
 | `GET /api/playback/{session}/index.m3u8`, `…/segN.ts` | HLS playlist and segments for a session |
@@ -105,6 +106,16 @@ Pink Floyd/The Wall (1979)/CD2/01 - Hey You.mp3      (disc 2)
 ```
 
 Music videos are named `Artist - Song (Edition).mp4`, for example `Alice In Chains - No Excuses (MTV Unplugged).mp4`, or kept in an `Artist/` folder. Brackets that name an edition (Live, Unplugged, Lyric Video, U.S. Version...) make an edition of the same song.
+
+### Audiobook file names
+
+An `.m4b` (or any file with chapters) is a whole book; a folder of MP3s is one book whose files are its parts. Tags come first (album or title, author, narrator in `composer` or `narrator`, description). Folders fill the gaps: the top folder is the author and the one nearest the book a series, and a single folder counts as a series only when it's named like one:
+
+```
+The John Matherson Series/One Second After.m4b           (series; author from the tags)
+Brandon Sanderson/Mistborn/The Final Empire/01 - ….mp3   (author / series / book of parts)
+J.R.R. Tolkien - [The Lord of the Rings 02] - The Fellowship of the Ring.m4b   (series and number)
+```
 
 ## Project layout
 

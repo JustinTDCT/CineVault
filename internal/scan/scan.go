@@ -52,6 +52,11 @@ type Store interface {
 	// FindOrCreateTrack finds an album's track by disc, number and name,
 	// creating it if it's new.
 	FindOrCreateTrack(ctx context.Context, titleID int64, disc, number int, name, artist string) (int64, error)
+	// SetBookInfo fills in a book's series, number in the series, narrator
+	// and description where they're still empty.
+	SetBookInfo(ctx context.Context, titleID int64, series string, index float64, narrator, overview string) error
+	// SaveChapters replaces the chapter marks of the file at path.
+	SaveChapters(ctx context.Context, path string, chapters []mediainfo.Chapter) error
 	// SetGenres sets a title's genres if it has none yet.
 	SetGenres(ctx context.Context, titleID int64, genres []string) error
 	// UpsertVersion inserts or updates the file by path and clears its missing
@@ -96,7 +101,7 @@ func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) 
 	exts := VideoExtensions
 	switch lib.MediaType {
 	case "movie", "tv", "musicvideo":
-	case "music":
+	case "music", "audiobook":
 		exts = AudioExtensions
 	default:
 		return res, fmt.Errorf("scanning %s libraries isn't supported yet", lib.MediaType)
@@ -171,6 +176,8 @@ func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) 
 				add = s.addMusicVideoFile
 			case "music":
 				add = s.addTrackFile
+			case "audiobook":
+				add = s.addBookFile
 			}
 			if err := add(ctx, lib, root, types, defaultEdition, path, info.Size()); err != nil {
 				if ctx.Err() != nil {
@@ -297,6 +304,45 @@ func (s Scanner) addTrackFile(ctx context.Context, lib catalog.Library, root str
 	}
 	if err := s.Store.UpsertVersion(ctx, editionID, NewVersion{Path: path, SizeBytes: size, Fingerprint: fp, Info: info, TrackID: trackID}); err != nil {
 		return fmt.Errorf("save file: %w", err)
+	}
+	return nil
+}
+
+// addBookFile records an audiobook file: the book (a title with its author),
+// the file as a part of it, and its chapters.
+func (s Scanner) addBookFile(ctx context.Context, lib catalog.Library, root string, types []catalog.EditionType, defaultEdition, path string, size int64) error {
+	info, err := s.Prober.Probe(ctx, path)
+	if err != nil {
+		return err
+	}
+	b, ok := ParseBook(root, path, info, types, defaultEdition)
+	if !ok {
+		return errors.New("could not work out the book's title from its tags or file name")
+	}
+	fp, err := Fingerprint(path)
+	if err != nil {
+		return fmt.Errorf("fingerprint: %w", describeErr(err))
+	}
+	titleID, err := s.Store.FindOrCreateTitle(ctx, lib.ID, lib.MediaType, b.Book)
+	if err != nil {
+		return fmt.Errorf("save book: %w", err)
+	}
+	if err := s.Store.SetBookInfo(ctx, titleID, b.Series, b.SeriesIndex, b.Narrator, b.Overview); err != nil {
+		return fmt.Errorf("save book details: %w", err)
+	}
+	editionID, err := s.Store.FindOrCreateEdition(ctx, titleID, b.Book.EditionTypeID, 0)
+	if err != nil {
+		return fmt.Errorf("save edition: %w", err)
+	}
+	partID, err := s.Store.FindOrCreateTrack(ctx, titleID, 1, b.Part, b.PartName, "")
+	if err != nil {
+		return fmt.Errorf("save part: %w", err)
+	}
+	if err := s.Store.UpsertVersion(ctx, editionID, NewVersion{Path: path, SizeBytes: size, Fingerprint: fp, Info: info, TrackID: partID}); err != nil {
+		return fmt.Errorf("save file: %w", err)
+	}
+	if err := s.Store.SaveChapters(ctx, path, info.Chapters); err != nil {
+		return fmt.Errorf("save chapters: %w", err)
 	}
 	return nil
 }

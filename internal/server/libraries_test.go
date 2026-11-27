@@ -64,6 +64,40 @@ func (f *fakeLibraries) AlbumTracks(_ context.Context, id int64) ([]catalog.Albu
 	return []catalog.AlbumEdition{{EditionID: 1, Tracks: []catalog.Track{{ID: 5, Disc: 1, Number: 1, Name: "When I'm Gone", Versions: []catalog.Version{{ID: 50}}}}}}, nil
 }
 
+func (f *fakeLibraries) Progress(_ context.Context, id int64) (catalog.Progress, bool, error) {
+	if id == 7 {
+		return catalog.Progress{VersionID: 50, PositionSeconds: 812.5}, true, nil
+	}
+	return catalog.Progress{}, false, nil
+}
+
+func (f *fakeLibraries) SaveProgress(_ context.Context, id int64, p catalog.Progress) (catalog.Progress, error) {
+	if id != 7 || p.VersionID != 50 {
+		return p, catalog.ErrNotFound
+	}
+	return p, nil
+}
+
+func TestProgress(t *testing.T) {
+	s, _ := libServer(nil)
+	if code, body := send(t, s, "GET", "/api/titles/7/progress", ""); code != 200 || !strings.Contains(body, `"position_seconds": 812.5`) {
+		t.Errorf("get: %d %s", code, body)
+	}
+	if code, body := send(t, s, "GET", "/api/titles/8/progress", ""); code != 200 || !strings.Contains(body, `"version_id": 0`) {
+		t.Errorf("never played: %d %s", code, body)
+	}
+	for body, want := range map[string]int{
+		`{"version_id":50,"position_seconds":100}`: 200,
+		`{"version_id":51,"position_seconds":100}`: 404,
+		`{"version_id":50,"position_seconds":-1}`:  400,
+		`nope`: 400,
+	} {
+		if code, _ := send(t, s, "PUT", "/api/titles/7/progress", body); code != want {
+			t.Errorf("put %s: %d, want %d", body, code, want)
+		}
+	}
+}
+
 func TestAlbumTracks(t *testing.T) {
 	s, _ := libServer(nil)
 	code, body := send(t, s, "GET", "/api/titles/7/tracks", "")

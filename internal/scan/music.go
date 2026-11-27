@@ -12,7 +12,7 @@ import (
 
 // AudioExtensions are the file types scanned in music libraries.
 var AudioExtensions = map[string]bool{
-	".flac": true, ".mp3": true, ".m4a": true, ".aac": true, ".ogg": true, ".oga": true,
+	".flac": true, ".mp3": true, ".m4a": true, ".m4b": true, ".aac": true, ".ogg": true, ".oga": true,
 	".opus": true, ".wav": true, ".wma": true, ".aiff": true, ".aif": true, ".alac": true, ".wv": true, ".ape": true,
 }
 

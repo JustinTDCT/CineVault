@@ -30,11 +30,13 @@ type fakeStore struct {
 	episodes map[string]int64 // "titleID|S1E3" -> id
 	tracks   map[string]int64 // "titleID|disc|num|name" -> id
 	genres   map[int64][]string
+	books    []string
+	chapters map[string]int
 	epNames  map[int64]string
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{titles: map[string]int64{}, editions: map[string]int64{}, runtimes: map[int64]int{}, versions: map[string]*fakeVersion{}, episodes: map[string]int64{}, epNames: map[int64]string{}, tracks: map[string]int64{}, genres: map[int64][]string{}}
+	return &fakeStore{titles: map[string]int64{}, editions: map[string]int64{}, runtimes: map[int64]int{}, versions: map[string]*fakeVersion{}, episodes: map[string]int64{}, epNames: map[int64]string{}, tracks: map[string]int64{}, genres: map[int64][]string{}, chapters: map[string]int{}}
 }
 
 func (f *fakeStore) id() int64 { f.nextID++; return f.nextID }
@@ -46,6 +48,7 @@ func (f *fakeStore) EditionTypes(context.Context) ([]catalog.EditionType, error)
 	for i := range types[1:] {
 		types[i+1].MediaTypes = []string{"movie"}
 	}
+	types = append(types, catalog.EditionType{ID: "unabridged", DisplayName: "Unabridged", MediaTypes: []string{"audiobook"}, IsDefault: true})
 	types = append(types, catalog.EditionType{ID: "original", DisplayName: "Original", MediaTypes: []string{"music"}, IsDefault: true},
 		catalog.EditionType{ID: "deluxe", DisplayName: "Deluxe/Expanded", MediaTypes: []string{"music"}, Aliases: []string{"deluxe edition", "deluxe"}})
 	types = append(types, catalog.EditionType{ID: "official_video", DisplayName: "Official Video", MediaTypes: []string{"musicvideo"}, IsDefault: true},
@@ -61,6 +64,16 @@ func (f *fakeStore) FindOrCreateTrack(_ context.Context, titleID int64, disc, nu
 	}
 	f.tracks[key] = f.id()
 	return f.tracks[key], nil
+}
+
+func (f *fakeStore) SetBookInfo(_ context.Context, id int64, series string, index float64, narrator, _ string) error {
+	f.books = append(f.books, fmt.Sprintf("%d|%s|%g|%s", id, series, index, narrator))
+	return nil
+}
+
+func (f *fakeStore) SaveChapters(_ context.Context, path string, ch []mediainfo.Chapter) error {
+	f.chapters[path] = len(ch)
+	return nil
 }
 
 func (f *fakeStore) SetGenres(_ context.Context, id int64, g []string) error {
@@ -164,6 +177,10 @@ func (p *fakeProber) Probe(_ context.Context, path string) (mediainfo.Info, erro
 	if p.failOn != "" && strings.Contains(path, p.failOn) {
 		return mediainfo.Info{}, errors.New("ffprobe: Invalid data found when processing input")
 	}
+	if strings.HasSuffix(path, ".m4b") {
+		return mediainfo.Info{Container: "m4b", AudioCodec: "aac", AudioChannels: 2, DurationSeconds: 36000,
+			Chapters: []mediainfo.Chapter{{Start: 0, End: 30, Name: "Opening Credits"}, {Start: 30, End: 36000, Name: "Chapter 1"}}}, nil
+	}
 	if t, ok := p.tags[filepath.Base(path)]; ok {
 		return mediainfo.Info{Container: "flac", AudioCodec: "flac", AudioChannels: 2, DurationSeconds: 240, Tags: t}, nil
 	}
@@ -266,8 +283,8 @@ func TestScanReportsBadFilesAndFolders(t *testing.T) {
 
 func TestScanRejectsUnsupportedLibraries(t *testing.T) {
 	s := Scanner{Store: newFakeStore(), Prober: &fakeProber{}}
-	if _, err := s.Scan(context.Background(), catalog.Library{MediaType: "audiobook"}); err == nil {
-		t.Error("audiobook libraries should be rejected for now")
+	if _, err := s.Scan(context.Background(), catalog.Library{MediaType: "book"}); err == nil {
+		t.Error("book libraries should be rejected for now")
 	}
 }
 
@@ -412,5 +429,26 @@ func TestScanMusic(t *testing.T) {
 	tol := store.titles["time of my life|2011|3 doors down"]
 	if store.editions[fmt.Sprintf("%d|deluxe", tol)] == 0 {
 		t.Errorf("deluxe edition missing: %v", store.editions)
+	}
+}
+
+func TestScanAudiobooks(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"One Second After.m4b", "One Year After.m4b", "The Final Day.m4b", "Five Years After.m4b"} {
+		write(t, filepath.Join(dir, "The John Matherson Series", n), n)
+	}
+	store := newFakeStore()
+	res, err := Scanner{Store: store, Prober: &fakeProber{}}.Scan(context.Background(), catalog.Library{ID: 5, MediaType: "audiobook", Paths: []string{dir}})
+	if err != nil || res.Added != 4 || len(res.Errors) != 0 {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	if len(store.titles) != 4 || len(store.tracks) != 4 {
+		t.Errorf("titles=%v tracks=%v", store.titles, store.tracks)
+	}
+	if n := store.chapters[filepath.Join(dir, "The John Matherson Series", "One Second After.m4b")]; n != 2 {
+		t.Errorf("chapters saved = %d", n)
+	}
+	if !strings.Contains(strings.Join(store.books, ","), "|The John Matherson Series|") {
+		t.Errorf("series = %v", store.books)
 	}
 }

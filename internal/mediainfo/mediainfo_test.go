@@ -129,3 +129,17 @@ func TestParseMusicTags(t *testing.T) {
 		t.Errorf("mp3 label = %q", got)
 	}
 }
+
+func TestParseChapters(t *testing.T) {
+	out := `{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2}],
+	 "chapters":[{"start_time":"0.000000","end_time":"10.000000","tags":{"title":"Opening Credits"}},
+	             {"start_time":"10.000000","end_time":"25.500000","tags":{}}],
+	 "format":{"duration":"25.5","tags":{"composer":"Joe Barrett"}}}`
+	info, err := Parse([]byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(info.Chapters) != 2 || info.Chapters[0].Name != "Opening Credits" || info.Chapters[1].Name != "Chapter 2" || info.Chapters[1].End != 25.5 {
+		t.Errorf("chapters = %+v", info.Chapters)
+	}
+}

@@ -5,6 +5,7 @@ const KINDS: { type: MediaType; label: string; name: string; folder: string; nam
   { type: "movie", label: "Movies", name: "Movies", folder: "/media/movies", naming: "Alien (1979).mkv" },
   { type: "tv", label: "TV shows", name: "TV Shows", folder: "/media/tv", naming: "3 Body Problem/Season 1/3 Body Problem - S01E01.mkv" },
   { type: "music", label: "Music", name: "Music", folder: "/media/music", naming: "3 Doors Down/Away From the Sun (2002)/01 - When I'm Gone.flac" },
+  { type: "audiobook", label: "Audiobooks", name: "Audiobooks", folder: "/media/audiobooks", naming: "Author/Series/Book Title.m4b" },
   { type: "musicvideo", label: "Music videos", name: "Music Videos", folder: "/media/musicvideos", naming: "Alice In Chains - No Excuses (MTV Unplugged).mp4" },
 ];
 

@@ -30,9 +30,18 @@ type Info struct {
 	BitDepth   int `json:"bit_depth,omitempty"`
 	// HasCover is true when the file carries embedded cover art.
 	HasCover bool `json:"has_cover,omitempty"`
+	// Chapters are the file's chapter marks (audiobooks, some films).
+	Chapters []Chapter `json:"chapters,omitempty"`
 	// Tags are the file's metadata tags with lower-case keys, such as
 	// "artist", "album", "album_artist", "title", "track", "disc", "date".
 	Tags map[string]string `json:"tags,omitempty"`
+}
+
+// Chapter is one chapter mark.
+type Chapter struct {
+	Start float64 `json:"start"` // seconds
+	End   float64 `json:"end"`
+	Name  string  `json:"name"`
 }
 
 // Tag returns the first non-empty tag among keys.
@@ -67,7 +76,7 @@ func (f FFprobe) Probe(ctx context.Context, path string) (Info, error) {
 		run = probe.ExecRunner
 	}
 	out, stderr, err := run(ctx, bin, "-v", "error", "-print_format", "json",
-		"-show_format", "-show_streams", path)
+		"-show_format", "-show_streams", "-show_chapters", path)
 	if err != nil {
 		msg := strings.TrimSpace(string(stderr))
 		if msg == "" {
@@ -105,6 +114,11 @@ type ffprobeOutput struct {
 			AttachedPic int `json:"attached_pic"`
 		} `json:"disposition"`
 	} `json:"streams"`
+	Chapters []struct {
+		StartTime string            `json:"start_time"`
+		EndTime   string            `json:"end_time"`
+		Tags      map[string]string `json:"tags"`
+	} `json:"chapters"`
 	Format struct {
 		Duration string            `json:"duration"`
 		BitRate  string            `json:"bit_rate"`
@@ -166,6 +180,15 @@ func Parse(data []byte) (Info, error) {
 	}
 	for k, v := range out.Format.Tags {
 		addTag(&info, k, v)
+	}
+	for i, c := range out.Chapters {
+		start, _ := strconv.ParseFloat(c.StartTime, 64)
+		end, _ := strconv.ParseFloat(c.EndTime, 64)
+		name := strings.TrimSpace(c.Tags["title"])
+		if name == "" {
+			name = fmt.Sprintf("Chapter %d", i+1)
+		}
+		info.Chapters = append(info.Chapters, Chapter{Start: start, End: end, Name: name})
 	}
 	if !videoDone && audioIdx < 0 {
 		return info, fmt.Errorf("no audio or video streams")

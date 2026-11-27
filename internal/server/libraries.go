@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -145,6 +146,46 @@ func (s *Server) albumTracks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, eds)
+}
+
+// getProgress returns where playback of a title stopped. A title that
+// hasn't been played answers with version_id 0.
+func (s *Server) getProgress(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "title id must be a positive number")
+		return
+	}
+	p, _, err := s.opt.Libraries.Progress(r.Context(), id)
+	if err != nil {
+		s.internalError(w, "load progress", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+// putProgress saves where playback stopped: {"version_id": 5, "position_seconds": 812.4}.
+func (s *Server) putProgress(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "title id must be a positive number")
+		return
+	}
+	var p catalog.Progress
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&p); err != nil || p.VersionID <= 0 || p.PositionSeconds < 0 {
+		writeError(w, http.StatusBadRequest, `send {"version_id": <file id>, "position_seconds": <seconds>}`)
+		return
+	}
+	saved, err := s.opt.Libraries.SaveProgress(r.Context(), id, p)
+	if errors.Is(err, catalog.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "that file isn't part of this title")
+		return
+	}
+	if err != nil {
+		s.internalError(w, "save progress", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, saved)
 }
 
 type scanResponse struct {

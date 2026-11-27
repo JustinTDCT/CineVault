@@ -70,6 +70,37 @@ const (
 		   SET artist = COALESCE(EXCLUDED.artist, tracks.artist)
 		RETURNING id`
 
+	sqlSetBookInfo = `
+		UPDATE titles SET
+		    series       = COALESCE(series, NULLIF($2, '')),
+		    series_index = COALESCE(series_index, NULLIF($3::numeric, 0)),
+		    narrator     = COALESCE(narrator, NULLIF($4, '')),
+		    overview     = COALESCE(overview, NULLIF($5, ''))
+		WHERE id = $1`
+
+	sqlDeleteChapters = `DELETE FROM chapters WHERE version_id = (SELECT id FROM versions WHERE path = $1)`
+
+	sqlInsertChapter = `
+		INSERT INTO chapters (version_id, idx, start_seconds, end_seconds, name)
+		SELECT id, $2, $3, $4, $5 FROM versions WHERE path = $1`
+
+	sqlVersionChapters = `
+		SELECT version_id, start_seconds::float8, end_seconds::float8, name
+		FROM chapters WHERE version_id = ANY($1) ORDER BY version_id, idx`
+
+	sqlGetProgress = `
+		SELECT version_id, position_seconds::float8, updated_at FROM playback_progress WHERE title_id = $1`
+
+	// Saved only when the file belongs to the title.
+	sqlSaveProgress = `
+		INSERT INTO playback_progress (title_id, version_id, position_seconds, updated_at)
+		SELECT $1, $2, $3, now()
+		WHERE EXISTS (SELECT 1 FROM versions v JOIN editions e ON e.id = v.edition_id
+		              WHERE v.id = $2 AND e.title_id = $1)
+		ON CONFLICT (title_id) DO UPDATE
+		   SET version_id = EXCLUDED.version_id, position_seconds = EXCLUDED.position_seconds, updated_at = now()
+		RETURNING updated_at`
+
 	sqlSetGenres = `UPDATE titles SET genres = $2 WHERE id = $1 AND cardinality(genres) = 0`
 
 	// An album's tracks with their files, per edition; disc and track order.
@@ -227,7 +258,8 @@ const (
 		       t.genres, COALESCE(t.rating, 0)::float8,
 		       COALESCE(t.collection_tmdb_id, 0), COALESCE(t.collection_name, ''),
 		       t.match_status, COALESCE(t.match_error, ''), COALESCE(t.artist, ''),
-		       COALESCE(CASE WHEN t.media_type = 'music' THEN
+		       COALESCE(t.series, ''), COALESCE(t.series_index, 0)::float8, COALESCE(t.narrator, ''),
+		       COALESCE(CASE WHEN t.media_type IN ('music', 'audiobook') THEN
 		         (SELECT min(x.id) FROM versions x JOIN editions xe ON xe.id = x.edition_id
 		           WHERE xe.title_id = t.id AND x.track_id IS NOT NULL AND x.missing_since IS NULL)
 		       END, 0),

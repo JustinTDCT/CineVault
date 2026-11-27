@@ -27,14 +27,10 @@ export function App() {
   // The home page opens the first library, or setup when there are none.
   useEffect(() => {
     if (route.page !== "home" || libraries === null) return;
-    navigate(
-      libraries.length > 0 ? `/libraries/${libraries[0].id}` : "/setup",
-      true,
-    );
+    navigate(libraries.length > 0 ? `/libraries/${libraries[0].id}` : "/setup", true);
   }, [route, libraries]);
 
-  const currentLibraryId =
-    route.page === "library" || route.page === "title" ? route.libraryId : null;
+  const currentLibraryId = route.page === "library" || route.page === "title" ? route.libraryId : null;
 
   return (
     <AudioProvider>
@@ -45,19 +41,11 @@ export function App() {
           </a>
           <nav className="libnav" aria-label="Libraries">
             {libraries?.map((l) => (
-              <a
-                key={l.id}
-                {...linkTo(`/libraries/${l.id}`)}
-                aria-current={l.id === currentLibraryId ? "page" : undefined}
-              >
+              <a key={l.id} {...linkTo(`/libraries/${l.id}`)} aria-current={l.id === currentLibraryId ? "page" : undefined}>
                 {l.name}
               </a>
             ))}
-            <a
-              {...linkTo("/setup")}
-              aria-current={route.page === "setup" ? "page" : undefined}
-              className="libnav-add"
-            >
+            <a {...linkTo("/setup")} aria-current={route.page === "setup" ? "page" : undefined} className="libnav-add">
               Add library
             </a>
           </nav>
@@ -80,17 +68,9 @@ export function App() {
               }}
             />
           ) : route.page === "library" ? (
-            <LibraryPage
-              key={route.libraryId}
-              library={libraries?.find((l) => l.id === route.libraryId)}
-              libraryId={route.libraryId}
-            />
+            <LibraryPage key={route.libraryId} library={libraries?.find((l) => l.id === route.libraryId)} libraryId={route.libraryId} />
           ) : route.page === "title" ? (
-            <TitlePage
-              key={route.titleId}
-              libraryId={route.libraryId}
-              titleId={route.titleId}
-            />
+            <TitlePage key={route.titleId} libraryId={route.libraryId} titleId={route.titleId} />
           ) : route.page === "notFound" ? (
             <div className="notice">
               <p>There's no page at this address.</p>
@@ -104,15 +84,10 @@ export function App() {
         <footer className="footer">
           <span>
             Movie and TV information and images from{" "}
-            <a
-              href="https://www.themoviedb.org"
-              target="_blank"
-              rel="noreferrer"
-            >
+            <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer">
               TMDb
             </a>
-            . This product uses the TMDB API but is not endorsed or certified by
-            TMDB.
+            . This product uses the TMDB API but is not endorsed or certified by TMDB.
           </span>
         </footer>
       </div>

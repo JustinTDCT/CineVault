@@ -7,7 +7,7 @@ export function Poster({ title, size = "card" }: { title: Title; size?: "card" |
   const [failed, setFailed] = useState(false);
   // Music videos have no posters: a still from the video, in 16:9.
   const wide = title.media_type === "musicvideo";
-  const square = title.media_type === "music";
+  const square = title.media_type === "music" || title.media_type === "audiobook";
   const shape = wide ? " poster-wide" : square ? " poster-square" : "";
   const src = wide ? thumbUrl(title) : square ? coverUrl(title) : title.poster_url;
   if (src && !failed) {
@@ -49,6 +49,8 @@ export function PosterCard({ title }: { title: Title }) {
       </h3>
       {title.media_type === "tv" ? (
         <p className="card-year">{[title.year, showCounts(title)].filter(Boolean).join("   ")}</p>
+      ) : title.media_type === "audiobook" && title.series ? (
+        <p className="card-year">{title.series_index ? `Book ${title.series_index}` : title.year}</p>
       ) : title.year ? (
         <p className="card-year">{title.year}</p>
       ) : null}

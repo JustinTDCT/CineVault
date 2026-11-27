@@ -1,4 +1,4 @@
-import type { Edition, Episode, Season, Title, Track, Version } from "./api";
+import type { Chapter, Edition, Episode, Season, Title, Track, Version } from "./api";
 
 /** How many edition labels a card shows before "Show all" (Editions spec §7). */
 export const CARD_EDITION_LIMIT = 3;
@@ -187,6 +187,8 @@ export function itemNoun(mediaType: string | undefined, count: number): string {
       return one ? "music video" : "music videos";
     case "music":
       return one ? "album" : "albums";
+    case "audiobook":
+      return one ? "audiobook" : "audiobooks";
     default:
       return one ? "movie" : "movies";
   }
@@ -230,4 +232,30 @@ export function byDisc(tracks: Track[]): { disc: number; tracks: Track[] }[] {
     else out.push({ disc: t.disc, tracks: [t] });
   }
   return out;
+}
+
+// ---------- Audiobooks ----------
+
+/** The chapter playing at a time, if the file has chapters. */
+export function chapterAt(chapters: Chapter[] | undefined, seconds: number): Chapter | undefined {
+  if (!chapters?.length) return undefined;
+  let found = chapters[0];
+  for (const c of chapters) {
+    if (c.start <= seconds + 0.5) found = c;
+    else break;
+  }
+  return found;
+}
+
+/** "The John Matherson Series, book 2", "The Lord of the Rings, book 4.5", or the series alone. */
+export function seriesLabel(t: Pick<Title, "series" | "series_index">): string {
+  if (!t.series) return "";
+  return t.series_index ? `${t.series}, book ${t.series_index}` : t.series;
+}
+
+/** "3 h 12 min left" for a resume button. */
+export function timeLeft(total: number, at: number): string {
+  const secs = Math.max(0, total - at);
+  if (secs <= 0) return "";
+  return secs < 60 ? "Under a minute left" : `${formatRuntime(secs)} left`;
 }

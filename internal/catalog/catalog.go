@@ -93,6 +93,10 @@ type Title struct {
 	// many tracks have files.
 	CoverVersionID int64 `json:"cover_version_id,omitempty"`
 	TrackCount     int   `json:"track_count,omitempty"`
+	// Audiobooks (and later books): series, number in it, and narrator.
+	Series      string  `json:"series,omitempty"`
+	SeriesIndex float64 `json:"series_index,omitempty"`
+	Narrator    string  `json:"narrator,omitempty"`
 
 	// For TV shows: how many seasons and episodes have files.
 	SeasonCount  int `json:"season_count,omitempty"`
@@ -159,6 +163,22 @@ type Version struct {
 	Missing         bool    `json:"missing"`
 	// LastEpisode is the last episode in a multi-episode file, 0 otherwise.
 	LastEpisode int `json:"last_episode,omitempty"`
+	// Chapters are the file's chapter marks (audiobooks).
+	Chapters []Chapter `json:"chapters,omitempty"`
+}
+
+// Chapter is a chapter mark within a file.
+type Chapter struct {
+	Start float64 `json:"start"` // seconds
+	End   float64 `json:"end"`
+	Name  string  `json:"name"`
+}
+
+// Progress is where playback of a title stopped.
+type Progress struct {
+	VersionID       int64     `json:"version_id"`
+	PositionSeconds float64   `json:"position_seconds"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // LinkMultiEpisodeFiles marks episodes held in another episode's file

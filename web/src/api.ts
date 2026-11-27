@@ -28,6 +28,21 @@ export interface Version {
   missing: boolean;
   /** Last episode in a multi-episode file (S01E01-E02). */
   last_episode?: number;
+  /** Chapter marks (audiobooks). */
+  chapters?: Chapter[];
+}
+
+export interface Chapter {
+  start: number; // seconds
+  end: number;
+  name: string;
+}
+
+/** Where playback of a title stopped; version_id is 0 when it hasn't been played. */
+export interface Progress {
+  version_id: number;
+  position_seconds: number;
+  updated_at: string;
 }
 
 export interface Edition {
@@ -65,6 +80,10 @@ export interface Title {
   /** Albums: a track file whose cover art stands for the album, and how many tracks have files. */
   cover_version_id?: number;
   track_count?: number;
+  /** Audiobooks: series, number in it, narrator. */
+  series?: string;
+  series_index?: number;
+  narrator?: string;
   /** TV shows: seasons and episodes that have files. */
   season_count?: number;
   episode_count?: number;
@@ -171,6 +190,16 @@ export const api = {
     request<Library>("POST", "/api/libraries", { name, media_type: mediaType, paths }),
   titles: (libraryId: number) => request<Title[]>("GET", `/api/libraries/${libraryId}/titles`),
   tracks: (titleId: number) => request<AlbumEdition[]>("GET", `/api/titles/${titleId}/tracks`),
+  progress: (titleId: number) => request<Progress>("GET", `/api/titles/${titleId}/progress`),
+  /** Saves a listening position; keepalive lets it finish while the page closes. */
+  saveProgress: (titleId: number, versionId: number, seconds: number) => {
+    fetch(`/api/titles/${titleId}/progress`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version_id: versionId, position_seconds: Math.max(0, seconds) }),
+      keepalive: true,
+    }).catch(() => {});
+  },
   episodes: (titleId: number) => request<Season[]>("GET", `/api/titles/${titleId}/episodes`),
   scan: (libraryId: number) => request<ScanResult>("POST", `/api/libraries/${libraryId}/scan`),
   play: (versionId: number, caps: ClientCaps) => request<PlayResponse>("POST", "/api/playback", { version_id: versionId, caps }),

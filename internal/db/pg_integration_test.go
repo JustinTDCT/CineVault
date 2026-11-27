@@ -496,3 +496,59 @@ func TestIntegrationMusic(t *testing.T) {
 		t.Errorf("missing album: %v", err)
 	}
 }
+
+func TestIntegrationAudiobook(t *testing.T) {
+	d := testDatabase(t)
+	ctx := context.Background()
+	if _, err := d.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	series := filepath.Join(dir, "The John Matherson Series")
+	if err := os.MkdirAll(series, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	book := filepath.Join(series, "One Second After.m4b")
+	if err := os.WriteFile(book, []byte("m4b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lib, err := d.CreateLibrary(ctx, catalog.Library{Name: "Audiobooks", MediaType: "audiobook", Paths: []string{dir}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, err := (scan.Scanner{Store: d, Prober: stubProber{}}).Scan(ctx, lib); err != nil || res.Added != 1 {
+		t.Fatalf("scan: %+v err=%v", res, err)
+	}
+	if err := d.SaveChapters(ctx, book, []mediainfo.Chapter{{Start: 0, End: 30, Name: "Opening Credits"}, {Start: 30, End: 7020.4, Name: "Chapter 1"}}); err != nil {
+		t.Fatal(err)
+	}
+	titles, err := d.LibraryTitles(ctx, lib.ID)
+	if err != nil || len(titles) != 1 {
+		t.Fatalf("titles: %v %v", titles, err)
+	}
+	b := titles[0]
+	if b.Name != "One Second After" || b.Series != "The John Matherson Series" || b.CoverVersionID == 0 {
+		t.Errorf("book = %+v", b)
+	}
+	eds, err := d.AlbumTracks(ctx, b.ID)
+	if err != nil || len(eds) != 1 || len(eds[0].Tracks) != 1 {
+		t.Fatalf("parts: %+v err=%v", eds, err)
+	}
+	v := eds[0].Tracks[0].Versions[0]
+	if len(v.Chapters) != 2 || v.Chapters[1].Name != "Chapter 1" || v.Chapters[1].Start != 30 {
+		t.Errorf("chapters = %+v", v.Chapters)
+	}
+
+	if _, ok, err := d.Progress(ctx, b.ID); err != nil || ok {
+		t.Errorf("progress before playing: ok=%v err=%v", ok, err)
+	}
+	if _, err := d.SaveProgress(ctx, b.ID, catalog.Progress{VersionID: v.ID, PositionSeconds: 812.4}); err != nil {
+		t.Fatal(err)
+	}
+	if p, ok, err := d.Progress(ctx, b.ID); err != nil || !ok || p.PositionSeconds != 812.4 || p.VersionID != v.ID {
+		t.Errorf("progress = %+v ok=%v err=%v", p, ok, err)
+	}
+	if _, err := d.SaveProgress(ctx, b.ID, catalog.Progress{VersionID: v.ID + 1000, PositionSeconds: 1}); !errors.Is(err, catalog.ErrNotFound) {
+		t.Errorf("someone else's file: %v", err)
+	}
+}
