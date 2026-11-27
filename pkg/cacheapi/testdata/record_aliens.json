@@ -1,0 +1,52 @@
+{
+  "key": { "kind": "movie", "tmdb_id": 679 },
+  "status": "ready",
+  "record_version": 4,
+  "published_at": "2026-12-03T14:02:11Z",
+  "edition_list_version": 2,
+  "base": {
+    "license": "tmdb",
+    "title": "Aliens",
+    "original_title": "Aliens",
+    "release_date": "1986-07-18",
+    "runtime_min": 137,
+    "overview": "Example overview text.",
+    "genres": ["Action", "Thriller", "Science Fiction"],
+    "imdb_id": "tt0090605",
+    "collection_tmdb_id": 8091,
+    "poster_path": "/example-poster.jpg",
+    "backdrop_path": "/example-backdrop.jpg"
+  },
+  "editions": [
+    {
+      "edition": "theatrical",
+      "status": "published",
+      "runtime_min": 137,
+      "runtime_sources": ["s1"],
+      "confidence": "high"
+    },
+    {
+      "edition": "directors_cut",
+      "status": "withdrawn"
+    },
+    {
+      "edition": "special_edition",
+      "status": "published",
+      "display_name": "Special Edition (Director's Cut)",
+      "runtime_min": 154,
+      "runtime_sources": ["s2", "s3"],
+      "difference_short": "Adds 17 minutes, including the colony before the outbreak, Ripley's daughter and the sentry guns.",
+      "difference_full": [
+        { "change": "added", "text": "Example note about an added scene.", "sources": ["s2", "s3"] },
+        { "change": "changed", "text": "Example note about a changed scene.", "sources": ["s2"] }
+      ],
+      "confidence": "high",
+      "reviewed": true
+    }
+  ],
+  "sources": [
+    { "id": "s1", "name": "TMDb", "url": "https://www.themoviedb.org/movie/679" },
+    { "id": "s2", "name": "Example reference A", "url": "https://example.org/a/aliens" },
+    { "id": "s3", "name": "Example reference B", "url": "https://example.org/b/aliens" }
+  ]
+}

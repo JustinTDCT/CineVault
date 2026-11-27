@@ -1,0 +1,9 @@
+{
+  "changed": [
+    { "kind": "movie", "tmdb_id": 679, "record_version": 4 },
+    { "kind": "tv", "tmdb_id": 1399, "record_version": 7 }
+  ],
+  "pending": [ { "kind": "movie", "tmdb_id": 348 } ],
+  "not_found": [],
+  "unchanged": 0
+}
