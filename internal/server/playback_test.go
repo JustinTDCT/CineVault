@@ -166,3 +166,11 @@ func TestPlaybackErrors(t *testing.T) {
 		t.Errorf("direct without encoder: code=%d", code)
 	}
 }
+
+func TestVersionThumb(t *testing.T) {
+	s, _ := playServer(t, true)
+	// No thumbnail maker configured: 404 rather than an error.
+	if code, _ := send(t, s, "GET", "/api/versions/1/thumb", ""); code != http.StatusNotFound {
+		t.Errorf("no maker: %d", code)
+	}
+}

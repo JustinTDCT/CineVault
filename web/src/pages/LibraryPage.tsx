@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Library, type ScanResult, type Title } from "../api";
 import { PosterCard } from "../components/PosterCard";
+import { groupByArtist, itemNoun } from "../format";
 
 function scanSummary(r: ScanResult): string {
   const parts: string[] = [];
@@ -60,7 +61,7 @@ export function LibraryPage({ library, libraryId }: { library?: Library; library
           <h1 className="page-title">{library?.name ?? "Library"}</h1>
           {titles ? (
             <p className="page-sub">
-              {titles.length} {library?.media_type === "tv" ? (titles.length === 1 ? "show" : "shows") : titles.length === 1 ? "movie" : "movies"}
+              {titles.length} {itemNoun(library?.media_type, titles.length)}
               {library ? <> in {library.paths.join(", ")}</> : null}
             </p>
           ) : null}
@@ -91,14 +92,27 @@ export function LibraryPage({ library, libraryId }: { library?: Library; library
         <p className="page-sub">Loading…</p>
       ) : titles.length === 0 ? (
         <div className="empty">
-          <p>No {library?.media_type === "tv" ? "shows" : "movies"} here yet. Scan the library to find the files in its folders.</p>
+          <p>No {itemNoun(library?.media_type, 2)} here yet. Scan the library to find the files in its folders.</p>
         </div>
       ) : (
+        library?.media_type === "musicvideo" ? (
+          groupByArtist(titles).map((g) => (
+            <section key={g.artist} className="artist-group" aria-label={g.artist}>
+              <h2 className="artist-name">{g.artist}</h2>
+              <div className="grid grid-wide">
+                {g.titles.map((t) => (
+                  <PosterCard key={t.id} title={t} />
+                ))}
+              </div>
+            </section>
+          ))
+        ) : (
         <div className="grid">
           {titles.map((t) => (
             <PosterCard key={t.id} title={t} />
           ))}
         </div>
+        )
       )}
     </section>
   );

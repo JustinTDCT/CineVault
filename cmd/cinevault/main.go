@@ -22,6 +22,7 @@ import (
 	"github.com/JustinTDCT/CineVault/internal/probe"
 	"github.com/JustinTDCT/CineVault/internal/scan"
 	"github.com/JustinTDCT/CineVault/internal/server"
+	"github.com/JustinTDCT/CineVault/internal/thumb"
 	"github.com/JustinTDCT/CineVault/internal/tmdb"
 	"github.com/JustinTDCT/CineVault/internal/transcode"
 	"github.com/JustinTDCT/CineVault/internal/webui"
@@ -115,6 +116,7 @@ func run(log *slog.Logger) error {
 		Playback: &server.Playback{
 			Versions: database, Streamer: streamer,
 			Encoder: enc, EncoderOK: encOK, Note: note, MaxHeight: 1080,
+			Thumbs: thumb.New(cfg.FFmpegPath, filepath.Join(cfg.CacheDir, "thumbs")),
 		},
 		Log: log,
 	})

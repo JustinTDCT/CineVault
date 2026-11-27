@@ -280,6 +280,18 @@ img {
   background: var(--stage);
 }
 
+.poster-wide {
+  aspect-ratio: 16 / 9;
+}
+
+.poster-large.poster-wide {
+  width: min(480px, 88vw);
+}
+
+.poster-wide.poster-blank span {
+  font-size: 1.1rem;
+}
+
 .poster-large {
   width: min(300px, 70vw);
   border-radius: 8px;
@@ -318,6 +330,26 @@ img {
   padding: 0.2rem 0.55rem;
   border-radius: 4px;
   backdrop-filter: blur(4px);
+}
+
+/* Music videos: one row of 16:9 stills per artist, the artist set in marquee lettering. */
+.artist-group + .artist-group {
+  margin-top: 2.75rem;
+}
+
+.artist-name {
+  font-family: var(--f-marquee);
+  font-weight: 700;
+  font-size: 1.6rem;
+  letter-spacing: 0.01em;
+  margin: 0 0 1rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.grid-wide {
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 80vw), 1fr));
+  gap: 1.75rem 1.5rem;
 }
 
 .card-title {

@@ -71,7 +71,7 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 			&t.ID, &t.LibraryID, &t.MediaType, &t.Name, &t.SortName, &t.Year, &t.TMDbID,
 			&t.OriginalTitle, &t.Overview, &t.Tagline, &t.ReleaseDate, &t.RuntimeMinutes,
 			&t.PosterPath, &t.BackdropPath, &t.IMDbID, &t.Genres, &t.Rating,
-			&t.CollectionID, &t.CollectionName, &t.MatchStatus, &t.MatchError,
+			&t.CollectionID, &t.CollectionName, &t.MatchStatus, &t.MatchError, &t.Artist,
 			&t.SeasonCount, &t.EpisodeCount,
 			&e.ID, &e.EditionTypeID, &e.DisplayName, &e.ShortLabel, &e.RuntimeSeconds,
 			&v.ID, &v.Path, &v.SizeBytes, &v.Label, &v.Container, &v.VideoCodec,
@@ -129,14 +129,14 @@ func (d *DB) KnownVersions(ctx context.Context, libraryID int64) (map[string]sca
 // FindOrCreateTitle implements scan.Store.
 func (d *DB) FindOrCreateTitle(ctx context.Context, libraryID int64, mediaType string, p scan.ParsedName) (int64, error) {
 	var id int64
-	err := d.Pool.QueryRow(ctx, sqlFindTitle, libraryID, p.Title, p.Year).Scan(&id)
+	err := d.Pool.QueryRow(ctx, sqlFindTitle, libraryID, p.Title, p.Year, p.Artist).Scan(&id)
 	if err == nil {
 		return id, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return 0, err
 	}
-	err = d.Pool.QueryRow(ctx, sqlInsertTitle, libraryID, mediaType, p.Title, p.SortName, p.Year, p.TMDbID).Scan(&id)
+	err = d.Pool.QueryRow(ctx, sqlInsertTitle, libraryID, mediaType, p.Title, p.SortName, p.Year, p.TMDbID, p.Artist).Scan(&id)
 	return id, err
 }
 

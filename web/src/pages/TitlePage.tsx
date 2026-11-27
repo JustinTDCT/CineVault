@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type Edition, type Title } from "../api";
 import { Poster } from "../components/PosterCard";
 import { Player, type PlayTarget } from "../components/Player";
-import { defaultEdition, fileName, formatRuntime, formatSize, labelWithoutResolution, resolution, showCounts } from "../format";
+import { defaultEdition, fileName, formatRuntime, formatSize, itemNoun, labelWithoutResolution, resolution, showCounts, usesTMDb } from "../format";
 import { ShowEpisodes } from "./ShowEpisodes";
 import { linkTo } from "../router";
 
@@ -44,10 +44,11 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
 
   const edition = title.editions.find((e) => e.id === editionId) ?? title.editions[0];
   const isShow = title.media_type === "tv";
+  const runtime = title.runtime_minutes ? title.runtime_minutes * 60 : (edition?.runtime_seconds ?? 0);
   const facts = (
     isShow
       ? [title.year, showCounts(title), title.genres.join(", ")]
-      : [title.year, title.runtime_minutes ? formatRuntime(title.runtime_minutes * 60) : "", title.genres.join(", ")]
+      : [title.artist, title.year, runtime ? formatRuntime(runtime) : "", title.genres.join(", ")]
   ).filter(Boolean);
 
   return (
@@ -55,7 +56,7 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
       {title.backdrop_url ? <div className="backdrop" style={{ backgroundImage: `url(${title.backdrop_url})` }} aria-hidden="true" /> : null}
 
       <a className="back" {...linkTo(`/libraries/${libraryId}`)}>
-        {isShow ? "All shows" : "All movies"}
+        All {itemNoun(title.media_type, 2)}
       </a>
 
       <div className="title-head">
@@ -77,7 +78,7 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
 }
 
 function MatchNote({ title }: { title: Title }) {
-  if (title.match_status === "matched") return null;
+  if (title.match_status === "matched" || !usesTMDb(title)) return null;
   const text =
     title.match_status === "not_found"
       ? title.media_type === "tv"

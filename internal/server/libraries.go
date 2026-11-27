@@ -166,7 +166,7 @@ func (s *Server) scanLibrary(w http.ResponseWriter, r *http.Request) {
 		"updated", res.Updated, "unchanged", res.Unchanged, "missing", res.Missing, "errors", len(res.Errors))
 
 	resp := scanResponse{Library: lib, Result: res}
-	if s.opt.Match != nil {
+	if s.opt.Match != nil && usesTMDb(lib.MediaType) {
 		resp.Match = s.runMatch(r, lib)
 	}
 	resp.DurationMS = time.Since(start).Milliseconds()
@@ -183,6 +183,10 @@ func (s *Server) matchLibrary(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "TMDb isn't configured; set CINEVAULT_TMDB_TOKEN")
 		return
 	}
+	if !usesTMDb(lib.MediaType) {
+		writeError(w, http.StatusBadRequest, "only movie and TV libraries are matched to TMDb")
+		return
+	}
 	if !s.scanning.TryLock() {
 		writeError(w, http.StatusConflict, "a scan is already running; try again when it finishes")
 		return
@@ -190,6 +194,9 @@ func (s *Server) matchLibrary(w http.ResponseWriter, r *http.Request) {
 	defer s.scanning.Unlock()
 	writeJSON(w, http.StatusOK, s.runMatch(r, lib))
 }
+
+// usesTMDb reports whether a library's titles are matched to TMDb.
+func usesTMDb(mediaType string) bool { return mediaType == "movie" || mediaType == "tv" }
 
 func (s *Server) runMatch(r *http.Request, lib catalog.Library) *matchSummary {
 	res, err := s.opt.Match(r.Context(), lib.ID)

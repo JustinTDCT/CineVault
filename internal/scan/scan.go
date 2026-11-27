@@ -86,8 +86,8 @@ var VideoExtensions = map[string]bool{
 // with what's on disk. Unchanged files (same path and size) aren't probed again.
 func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) {
 	res := Result{Errors: []FileError{}}
-	if lib.MediaType != "movie" && lib.MediaType != "tv" {
-		return res, fmt.Errorf("scanning %s libraries isn't supported yet; only movie and TV libraries are", lib.MediaType)
+	if lib.MediaType != "movie" && lib.MediaType != "tv" && lib.MediaType != "musicvideo" {
+		return res, fmt.Errorf("scanning %s libraries isn't supported yet", lib.MediaType)
 	}
 
 	allTypes, err := s.Store.EditionTypes(ctx)
@@ -152,8 +152,11 @@ func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) 
 				return nil
 			}
 			add := s.addFile
-			if lib.MediaType == "tv" {
+			switch lib.MediaType {
+			case "tv":
 				add = s.addEpisodeFile
+			case "musicvideo":
+				add = s.addMusicVideoFile
 			}
 			if err := add(ctx, lib, root, types, defaultEdition, path, info.Size()); err != nil {
 				if ctx.Err() != nil {
@@ -202,6 +205,35 @@ func (s Scanner) addFile(ctx context.Context, lib catalog.Library, _ string, typ
 	p := ParseName(path, types, defaultEdition)
 	if p.Title == "" {
 		return errors.New("could not work out a title from the file name")
+	}
+	titleID, err := s.Store.FindOrCreateTitle(ctx, lib.ID, lib.MediaType, p)
+	if err != nil {
+		return fmt.Errorf("save title: %w", err)
+	}
+	editionID, err := s.Store.FindOrCreateEdition(ctx, titleID, p.EditionTypeID, int(info.DurationSeconds+0.5))
+	if err != nil {
+		return fmt.Errorf("save edition: %w", err)
+	}
+	if err := s.Store.UpsertVersion(ctx, editionID, NewVersion{Path: path, SizeBytes: size, Fingerprint: fp, Info: info}); err != nil {
+		return fmt.Errorf("save file: %w", err)
+	}
+	return nil
+}
+
+// addMusicVideoFile records a music video: one title per artist and song,
+// with live, acoustic and other versions as its editions.
+func (s Scanner) addMusicVideoFile(ctx context.Context, lib catalog.Library, root string, types []catalog.EditionType, defaultEdition, path string, size int64) error {
+	p := ParseMusicVideo(root, path, types, defaultEdition)
+	if p.Title == "" {
+		return errors.New("could not work out the song from the file name; name it like \"Artist - Song.mp4\"")
+	}
+	info, err := s.Prober.Probe(ctx, path)
+	if err != nil {
+		return err
+	}
+	fp, err := Fingerprint(path)
+	if err != nil {
+		return fmt.Errorf("fingerprint: %w", describeErr(err))
 	}
 	titleID, err := s.Store.FindOrCreateTitle(ctx, lib.ID, lib.MediaType, p)
 	if err != nil {

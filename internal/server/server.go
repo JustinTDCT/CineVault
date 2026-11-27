@@ -96,6 +96,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/playback/{session}/{file}", s.playbackFile)
 	mux.HandleFunc("DELETE /api/playback/{session}", s.stopPlayback)
 	mux.HandleFunc("GET /api/versions/{id}/file", s.versionFile)
+	mux.HandleFunc("GET /api/versions/{id}/thumb", s.versionThumb)
 	if s.opt.UI != nil {
 		// GET only, so a wrong method on an API route still gets 405.
 		mux.Handle("GET /", s.opt.UI)

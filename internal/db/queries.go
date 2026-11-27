@@ -33,13 +33,14 @@ const (
 		WHERE library_id = $1
 		  AND lower(file_title) = lower($2)
 		  AND file_year IS NOT DISTINCT FROM NULLIF($3::integer, 0)
+		  AND lower(COALESCE(artist, '')) = lower($4)
 		ORDER BY id
 		LIMIT 1`
 
 	// $5 year and $6 tmdb_id: 0 means unknown.
 	sqlInsertTitle = `
-		INSERT INTO titles (library_id, media_type, name, file_title, sort_name, year, file_year, tmdb_id)
-		VALUES ($1, $2, $3, $3, $4, NULLIF($5::integer, 0), NULLIF($5::integer, 0), NULLIF($6::integer, 0))
+		INSERT INTO titles (library_id, media_type, name, file_title, sort_name, year, file_year, tmdb_id, artist)
+		VALUES ($1, $2, $3, $3, $4, NULLIF($5::integer, 0), NULLIF($5::integer, 0), NULLIF($6::integer, 0), NULLIF($7, ''))
 		RETURNING id`
 
 	// Keeps an existing runtime; fills it in if it was empty.
@@ -203,7 +204,7 @@ const (
 		       COALESCE(t.poster_path, ''), COALESCE(t.backdrop_path, ''), COALESCE(t.imdb_id, ''),
 		       t.genres, COALESCE(t.rating, 0)::float8,
 		       COALESCE(t.collection_tmdb_id, 0), COALESCE(t.collection_name, ''),
-		       t.match_status, COALESCE(t.match_error, ''),
+		       t.match_status, COALESCE(t.match_error, ''), COALESCE(t.artist, ''),
 		       (SELECT count(DISTINCT ep.season_number) FROM episodes ep
 		         WHERE ep.title_id = t.id AND EXISTS (SELECT 1 FROM versions x WHERE x.episode_id = ep.id)),
 		       (SELECT count(*) FROM episodes ep

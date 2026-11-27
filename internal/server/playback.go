@@ -12,6 +12,7 @@ import (
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
 	"github.com/JustinTDCT/CineVault/internal/probe"
+	"github.com/JustinTDCT/CineVault/internal/thumb"
 	"github.com/JustinTDCT/CineVault/internal/transcode"
 )
 
@@ -39,6 +40,8 @@ type Playback struct {
 	Note      string
 	// MaxHeight caps the converted picture height; 0 means no cap.
 	MaxHeight int
+	// Thumbs makes still images from videos; nil disables them.
+	Thumbs *thumb.Maker
 }
 
 type playRequest struct {
@@ -164,6 +167,37 @@ func (s *Server) stopPlayback(w http.ResponseWriter, r *http.Request) {
 var directTypes = map[string]string{"mp4": "video/mp4", "m4v": "video/mp4", "mov": "video/mp4", "webm": "video/webm"}
 
 // versionFile sends a file as-is, with range requests so players can seek.
+// versionThumb serves a still from a video file, made on first request.
+// Used for music videos and anything else without artwork.
+func (s *Server) versionThumb(w http.ResponseWriter, r *http.Request) {
+	pb := s.opt.Playback
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if pb == nil || pb.Thumbs == nil || err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	v, err := pb.Versions.Version(r.Context(), id)
+	if errors.Is(err, catalog.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "file not found")
+		return
+	}
+	if err != nil {
+		s.internalError(w, "load file", err)
+		return
+	}
+	path, err := pb.Thumbs.Get(r.Context(), thumb.Source{VersionID: v.ID, Path: v.Path, SizeBytes: v.SizeBytes, DurationSeconds: v.DurationSeconds})
+	if err != nil {
+		if r.Context().Err() == nil {
+			s.opt.Log.Warn("thumbnail failed", "file", v.Path, "error", err)
+		}
+		writeError(w, http.StatusNotFound, "no thumbnail for this file")
+		return
+	}
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("Content-Type", "image/jpeg")
+	http.ServeFile(w, r, path)
+}
+
 func (s *Server) versionFile(w http.ResponseWriter, r *http.Request) {
 	pb := s.opt.Playback
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)

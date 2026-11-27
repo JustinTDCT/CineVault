@@ -50,6 +50,7 @@ npm run dev    # serves on port 5173 and forwards /api to the Go server on 8456
 | `POST /api/playback` | Start playing a file: `{"version_id": 2, "caps": {...}}`. Returns a direct file URL, or an HLS playlist URL when the file needs converting. |
 | `GET /api/playback/{session}/index.m3u8`, `…/segN.ts` | HLS playlist and segments for a session |
 | `DELETE /api/playback/{session}` | Stop a session |
+| `GET /api/versions/{id}/thumb` | A still from a video file (a third of the way in), made on first request and cached |
 | `GET /api/versions/{id}/file` | The original file, with range requests for seeking |
 
 The health check reports:
@@ -72,6 +73,7 @@ Settings come from environment variables:
 | `CINEVAULT_TRANSCODE` | `auto` | Video conversion device: `auto` (best working, falling back to CPU), `nvenc` or `cpu` |
 | `CINEVAULT_TRANSCODE_GPU` | any | NVIDIA GPU number to use, e.g. `0` |
 | `CINEVAULT_TRANSCODE_DIR` | system temp folder | Where stream segments are written while videos play; cleaned up automatically |
+| `CINEVAULT_CACHE_DIR` | `~/.cache/cinevault` | Thumbnails and other things CineVault can recreate |
 | `CINEVAULT_TRANSCODE_PAUSE_AHEAD` | `3m` | Pause a conversion once it is this far ahead of the player |
 | `CINEVAULT_TRANSCODE_RESUME_AHEAD` | `90s` | Resume it when the lead drops to this; must be less than the pause setting |
 | `CINEVAULT_TRANSCODE_KEEP_BEHIND` | `3m` | Keep this much already-watched video for quick rewinds; older segments are deleted |

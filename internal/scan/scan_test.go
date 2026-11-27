@@ -44,6 +44,8 @@ func (f *fakeStore) EditionTypes(context.Context) ([]catalog.EditionType, error)
 	for i := range types[1:] {
 		types[i+1].MediaTypes = []string{"movie"}
 	}
+	types = append(types, catalog.EditionType{ID: "official_video", DisplayName: "Official Video", MediaTypes: []string{"musicvideo"}, IsDefault: true},
+		catalog.EditionType{ID: "acoustic", DisplayName: "Acoustic/Unplugged", MediaTypes: []string{"musicvideo"}, Aliases: []string{"mtv unplugged", "unplugged"}})
 	types = append(types, catalog.EditionType{ID: "broadcast", DisplayName: "Broadcast", MediaTypes: []string{"tv"}, IsDefault: true})
 	return types, nil
 }
@@ -68,6 +70,9 @@ func (f *fakeStore) KnownVersions(context.Context, int64) (map[string]KnownVersi
 
 func (f *fakeStore) FindOrCreateTitle(_ context.Context, _ int64, _ string, p ParsedName) (int64, error) {
 	key := fmt.Sprintf("%s|%d", strings.ToLower(p.Title), p.Year)
+	if p.Artist != "" {
+		key += "|" + strings.ToLower(p.Artist)
+	}
 	if id, ok := f.titles[key]; ok {
 		return id, nil
 	}
@@ -324,5 +329,29 @@ func TestScanTVLibrary(t *testing.T) {
 	}
 	if len(eds) != 2 {
 		t.Errorf("editions used = %v, want one per show", eds)
+	}
+}
+
+func TestScanMusicVideos(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"Alice In Chains - No Excuses (MTV Unplugged).mp4", "Alice In Chains - No Excuses.mp4",
+		"Alice Cooper - Poison.mp4", "Bell Biv DeVoe - Poison.mp4"} {
+		write(t, filepath.Join(dir, n), n)
+	}
+	store := newFakeStore()
+	res, err := Scanner{Store: store, Prober: &fakeProber{}}.Scan(context.Background(), catalog.Library{ID: 3, MediaType: "musicvideo", Paths: []string{dir}})
+	if err != nil || res.Added != 4 || len(res.Errors) != 0 {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	// Two editions of one song; two different songs that share a name.
+	if len(store.titles) != 3 {
+		t.Errorf("titles = %v", store.titles)
+	}
+	eds := map[string]bool{}
+	for k := range store.editions {
+		eds[k[strings.Index(k, "|")+1:]] = true
+	}
+	if !eds["acoustic"] || !eds["official_video"] {
+		t.Errorf("editions = %v", store.editions)
 	}
 }

@@ -8,7 +8,7 @@ import (
 )
 
 // MediaTypes are the kinds of library CineVault supports.
-var MediaTypes = []string{"movie", "tv", "music", "audiobook", "book"}
+var MediaTypes = []string{"movie", "tv", "music", "musicvideo", "audiobook", "book", "comic"}
 
 // EditionType is one entry in the Edition List: a fixed edition name such as
 // "Director's Cut" (see docs/specs/editions-and-versions.md §4).
@@ -87,6 +87,8 @@ type Title struct {
 	// MatchStatus is unmatched, matched, not_found or error.
 	MatchStatus string `json:"match_status"`
 	MatchError  string `json:"match_error,omitempty"`
+	// Artist is who performs a music video.
+	Artist string `json:"artist,omitempty"`
 
 	// For TV shows: how many seasons and episodes have files.
 	SeasonCount  int `json:"season_count,omitempty"`

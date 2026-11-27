@@ -1,6 +1,6 @@
 // Types mirror the Go JSON in internal/catalog and internal/server.
 
-export type MediaType = "movie" | "tv" | "music" | "audiobook" | "book";
+export type MediaType = "movie" | "tv" | "music" | "musicvideo" | "audiobook" | "book" | "comic";
 
 export interface Library {
   id: number;
@@ -60,6 +60,8 @@ export interface Title {
   collection_name?: string;
   match_status: "unmatched" | "matched" | "not_found" | "error";
   match_error?: string;
+  /** Music videos: who performs it. */
+  artist?: string;
   /** TV shows: seasons and episodes that have files. */
   season_count?: number;
   episode_count?: number;

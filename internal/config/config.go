@@ -27,6 +27,8 @@ type Config struct {
 	TranscodeGPU  string
 	// TranscodeDir holds streaming segments while videos play.
 	TranscodeDir string
+	// CacheDir holds things CineVault can make again, like video thumbnails.
+	CacheDir string
 	// PauseAhead, ResumeAhead and KeepBehind throttle conversions: FFmpeg
 	// pauses once it is PauseAhead ahead of the player, resumes when the lead
 	// drops to ResumeAhead, and segments more than KeepBehind behind the
@@ -57,6 +59,7 @@ func load(getenv func(string) string) (Config, error) {
 		TranscodeMode: getenv("CINEVAULT_TRANSCODE"),
 		TranscodeGPU:  getenv("CINEVAULT_TRANSCODE_GPU"),
 		TranscodeDir:  getenv("CINEVAULT_TRANSCODE_DIR"),
+		CacheDir:      getenv("CINEVAULT_CACHE_DIR"),
 		ProbeTimeout:  15 * time.Second,
 	}
 	if c.Listen == "" {
@@ -70,6 +73,13 @@ func load(getenv func(string) string) (Config, error) {
 	}
 	if c.TranscodeDir == "" {
 		c.TranscodeDir = filepath.Join(os.TempDir(), "cinevault-transcode")
+	}
+	if c.CacheDir == "" {
+		if d, err := os.UserCacheDir(); err == nil {
+			c.CacheDir = filepath.Join(d, "cinevault")
+		} else {
+			c.CacheDir = filepath.Join(os.TempDir(), "cinevault-cache")
+		}
 	}
 	for _, d := range []struct {
 		name string

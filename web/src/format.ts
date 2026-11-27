@@ -148,3 +148,44 @@ export function isUpcoming(airDate: string | undefined, today = new Date()): boo
 export function isPlaceholderName(name: string | undefined, number: number): boolean {
   return !name || name.trim().toLowerCase() === `episode ${number}`;
 }
+
+// ---------- Music videos ----------
+
+/** Movies and TV are matched to TMDb; other libraries describe themselves. */
+export function usesTMDb(t: Pick<Title, "media_type">): boolean {
+  return t.media_type === "movie" || t.media_type === "tv";
+}
+
+/** A still from the title's first present file, for titles without artwork. */
+export function thumbUrl(t: Pick<Title, "editions">): string | undefined {
+  for (const e of t.editions) {
+    const v = e.versions.find((x) => !x.missing);
+    if (v) return `/api/versions/${v.id}/thumb`;
+  }
+  return undefined;
+}
+
+/** Titles grouped by artist, in the order they arrive (the server sorts by artist). */
+export function groupByArtist<T extends Pick<Title, "artist">>(titles: T[]): { artist: string; titles: T[] }[] {
+  const groups: { artist: string; titles: T[] }[] = [];
+  for (const t of titles) {
+    const artist = t.artist || "Unknown artist";
+    const last = groups[groups.length - 1];
+    if (last && last.artist.toLowerCase() === artist.toLowerCase()) last.titles.push(t);
+    else groups.push({ artist, titles: [t] });
+  }
+  return groups;
+}
+
+/** What a library calls its items: "movies", "shows", "music videos". */
+export function itemNoun(mediaType: string | undefined, count: number): string {
+  const one = count === 1;
+  switch (mediaType) {
+    case "tv":
+      return one ? "show" : "shows";
+    case "musicvideo":
+      return one ? "music video" : "music videos";
+    default:
+      return one ? "movie" : "movies";
+  }
+}

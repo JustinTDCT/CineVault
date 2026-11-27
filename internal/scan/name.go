@@ -27,6 +27,7 @@ type ParsedName struct {
 	EditionTypeID  string
 	EditionSource  string
 	UnmatchedLabel string // the {edition-…} text when it matched nothing
+	Artist         string // music videos: who performs it
 }
 
 var (
