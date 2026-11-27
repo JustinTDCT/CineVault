@@ -1,6 +1,0 @@
-{
-  "version": "1.40.00",
-  "phase": 38,
-  "released": "2026-03-01",
-  "notes": "Feature: reorganized settings into consolidated sections — Settings, Video, MetaData, Users, Security."
-}
