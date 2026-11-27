@@ -111,8 +111,37 @@ ffmpeg -hide_banner -encoders | grep nvenc   # h264_nvenc, hevc_nvenc (ignore av
 ffmpeg -hide_banner -hwaccels                # includes cuda
 ```
 
+## Development tools (installed 26 Nov 2026)
+
+| Tool | Version | Notes |
+|---|---|---|
+| Go | 1.27.4 | Official tarball in `/usr/local/go`; `PATH` set in `~/.profile` |
+| Docker / Compose | 29.1.3 / 2.40.3 | Ubuntu packages `docker.io` and `docker-compose-v2`; user `jdube` is in the `docker` group |
+| NVIDIA Container Toolkit | 1.20.2 | NVIDIA's apt repository, then `nvidia-ctk runtime configure --runtime=docker`. `docker run --rm --gpus all ubuntu nvidia-smi` shows the A2. |
+| PostgreSQL | 18.7 | Container `cinevault-db`, volume `cinevault-pgdata`, bound to `127.0.0.1:5432` only |
+| Node / npm | 22.22.1 / 9.2.0 | Ubuntu packages, for the web interface later |
+| psql client | 18.6 | Ubuntu package `postgresql-client` |
+| git | | Repo cloned to `~/cinevault`. Pushes use a repo deploy key with write access (`~/.ssh/id_ed25519`). |
+
+**Database credentials** are in `~/.config/cinevault/db.env` (mode 600), with a random password generated at setup. `make run` reads this file. To recreate it and the container:
+
+```bash
+mkdir -p ~/.config/cinevault && chmod 700 ~/.config/cinevault
+printf 'POSTGRES_USER=cinevault\nPOSTGRES_DB=cinevault\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 24)" \
+  > ~/.config/cinevault/db.env
+chmod 600 ~/.config/cinevault/db.env
+
+docker run -d --name cinevault-db --restart unless-stopped \
+  --env-file ~/.config/cinevault/db.env \
+  -v cinevault-pgdata:/var/lib/postgresql \
+  -p 127.0.0.1:5432:5432 \
+  postgres:18
+```
+
+**Backups:** Hyper-V checkpoints don't work while the GPU is assigned. Use an offline copy of the VM's disk instead: stop the VM, copy its `.vhdx`, then start it again.
+
 ## To do
 
-- [ ] Install the NVIDIA Container Toolkit if CineVault runs in Docker.
+- [x] Install the NVIDIA Container Toolkit (done 26 Nov 2026).
 - [ ] Benchmark a real full-GPU pipeline (4K HEVC source → 1080p H.264) and record concurrent stream capacity.
 - [ ] Optional: `sudo apt autoremove` to clear the old 7.0.0-30 kernel packages.
