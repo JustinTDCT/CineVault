@@ -301,6 +301,17 @@ function EditionCacheInfo({ title, edition }: { title: Title; edition: Edition }
           </>
         ) : null}
         From the CineVault Cache.
+        {c.confidence === "medium" && !withdrawn ? (
+          <>
+            {" "}
+            <span
+              className="cache-confidence"
+              title="Published automatically from one independent source. It's raised to high when a second source agrees."
+            >
+              Medium confidence
+            </span>
+          </>
+        ) : null}
         {canReport && !reporting ? (
           <>
             {" "}

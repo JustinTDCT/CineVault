@@ -588,6 +588,16 @@ img {
   color: var(--light);
 }
 
+.cache-confidence {
+  display: inline-block;
+  padding: 0 0.4em;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 0.85em;
+  opacity: 0.8;
+  cursor: help;
+}
+
 .cache-flag {
   margin: 0 0 0.75rem;
   color: var(--warn);
