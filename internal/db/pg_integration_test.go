@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
+	"github.com/JustinTDCT/CineVault/internal/match"
 	"github.com/JustinTDCT/CineVault/internal/mediainfo"
 	"github.com/JustinTDCT/CineVault/internal/scan"
+	"github.com/JustinTDCT/CineVault/internal/tmdb"
 )
 
 // testDatabase creates a fresh, empty database for one test and drops it
@@ -270,5 +272,78 @@ func TestIntegrationScanAlien(t *testing.T) {
 	titles, _ = d.LibraryTitles(ctx, lib.ID)
 	if !titles[0].Editions[0].Versions[0].Missing || titles[0].Editions[1].Versions[0].Missing {
 		t.Errorf("missing flags wrong: %+v", titles[0].Editions)
+	}
+}
+
+type stubTMDb struct{}
+
+func (stubTMDb) SearchMovie(_ context.Context, q string, _ int) ([]tmdb.SearchResult, error) {
+	if q == "Alien" {
+		return []tmdb.SearchResult{{ID: 348, Title: "Alien", OriginalTitle: "Alien", ReleaseDate: "1979-05-25"}}, nil
+	}
+	return []tmdb.SearchResult{}, nil
+}
+
+func (stubTMDb) Movie(_ context.Context, id int) (tmdb.Movie, error) {
+	m := tmdb.Movie{ID: id, IMDbID: "tt0078748", Title: "Alien", OriginalTitle: "Alien",
+		Overview: "During its return to the earth...", ReleaseDate: "1979-05-25", Runtime: 117,
+		PosterPath: "/poster.jpg", VoteAverage: 8.1}
+	m.Genres = append(m.Genres, struct {
+		Name string `json:"name"`
+	}{Name: "Horror"})
+	return m, nil
+}
+
+func TestIntegrationMatchAlien(t *testing.T) {
+	d := testDatabase(t)
+	ctx := context.Background()
+	if _, err := d.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	for _, name := range []string{"Alien {edition-Director's Cut} (1979).mkv", "Nonexistent Film (2001).mkv"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lib, err := d.CreateLibrary(ctx, catalog.Library{Name: "Movies", MediaType: "movie", Paths: []string{dir}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (scan.Scanner{Store: d, Prober: stubProber{}}).Scan(ctx, lib); err != nil {
+		t.Fatal(err)
+	}
+
+	m := match.Matcher{Store: d, Source: stubTMDb{}}
+	res, err := m.MatchLibrary(ctx, lib.ID)
+	if err != nil || res.Matched != 1 || res.NotFound != 1 {
+		t.Fatalf("match: %+v err=%v", res, err)
+	}
+	// A second run only retries errors, not titles TMDb didn't know.
+	if res, err = m.MatchLibrary(ctx, lib.ID); err != nil || res.Matched+res.NotFound+res.Errors != 0 {
+		t.Errorf("second run: %+v err=%v", res, err)
+	}
+
+	titles, err := d.LibraryTitles(ctx, lib.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var alien catalog.Title
+	for _, ti := range titles {
+		if ti.TMDbID == 348 {
+			alien = ti
+		}
+	}
+	if alien.IMDbID != "tt0078748" || alien.RuntimeMinutes != 117 || alien.ReleaseDate != "1979-05-25" ||
+		alien.PosterURL != tmdb.ImageBaseURL+"w500/poster.jpg" || len(alien.Genres) != 1 || alien.MatchStatus != "matched" {
+		t.Errorf("alien = %+v", alien)
+	}
+
+	// Rescanning must not split the matched title.
+	if res, err := (scan.Scanner{Store: d, Prober: stubProber{}}).Scan(ctx, lib); err != nil || res.Unchanged != 2 {
+		t.Errorf("rescan: %+v err=%v", res, err)
+	}
+	if titles, _ := d.LibraryTitles(ctx, lib.ID); len(titles) != 2 {
+		t.Errorf("rescan created duplicate titles: %d", len(titles))
 	}
 }

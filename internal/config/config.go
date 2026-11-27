@@ -19,6 +19,9 @@ type Config struct {
 	FFmpegPath string
 	// FFprobePath is the ffprobe binary used to read media files.
 	FFprobePath string
+	// TMDbToken is a TMDb API read access token. Without it, titles aren't
+	// matched to TMDb.
+	TMDbToken string
 	// ProbeTimeout bounds each capability check at startup.
 	ProbeTimeout time.Duration
 }
@@ -37,6 +40,7 @@ func load(getenv func(string) string) (Config, error) {
 		DatabaseURL:  getenv("CINEVAULT_DATABASE_URL"),
 		FFmpegPath:   getenv("CINEVAULT_FFMPEG"),
 		FFprobePath:  getenv("CINEVAULT_FFPROBE"),
+		TMDbToken:    getenv("CINEVAULT_TMDB_TOKEN"),
 		ProbeTimeout: 15 * time.Second,
 	}
 	if c.Listen == "" {

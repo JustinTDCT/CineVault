@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
+	"github.com/JustinTDCT/CineVault/internal/match"
 	"github.com/JustinTDCT/CineVault/internal/scan"
 )
 
@@ -151,4 +153,46 @@ func TestOnlyOneScanAtATime(t *testing.T) {
 	}
 	close(release)
 	wg.Wait()
+}
+
+func TestScanRunsMatchWhenConfigured(t *testing.T) {
+	s, _ := libServer(nil)
+	s.opt.Match = func(context.Context, int64) (match.Result, error) {
+		return match.Result{Matched: 1, Messages: []string{}}, nil
+	}
+	send(t, s, "POST", "/api/libraries", `{"name":"Movies","media_type":"movie","paths":["/home/jdube/movies"]}`)
+
+	code, body := send(t, s, "POST", "/api/libraries/1/scan", "")
+	var res scanResponse
+	if err := json.Unmarshal([]byte(body), &res); err != nil || code != http.StatusOK || res.Match == nil || res.Match.Matched != 1 {
+		t.Errorf("scan: code=%d body=%s", code, body)
+	}
+	code, body = send(t, s, "POST", "/api/libraries/1/match", "")
+	if code != http.StatusOK || !strings.Contains(body, `"matched": 1`) {
+		t.Errorf("match: code=%d body=%s", code, body)
+	}
+}
+
+func TestMatchErrorsAreReportedNotFatal(t *testing.T) {
+	s, _ := libServer(nil)
+	s.opt.Match = func(context.Context, int64) (match.Result, error) {
+		return match.Result{}, errors.New("TMDb rejected the API token")
+	}
+	send(t, s, "POST", "/api/libraries", `{"name":"Movies","media_type":"movie","paths":["/home/jdube/movies"]}`)
+	code, body := send(t, s, "POST", "/api/libraries/1/scan", "")
+	if code != http.StatusOK || !strings.Contains(body, "rejected the API token") || !strings.Contains(body, `"added": 2`) {
+		t.Errorf("scan should succeed and report the match error: code=%d body=%s", code, body)
+	}
+}
+
+func TestMatchWithoutTMDb(t *testing.T) {
+	s, _ := libServer(nil)
+	send(t, s, "POST", "/api/libraries", `{"name":"Movies","media_type":"movie","paths":["/home/jdube/movies"]}`)
+	if code, body := send(t, s, "POST", "/api/libraries/1/match", ""); code != http.StatusServiceUnavailable || !strings.Contains(body, "CINEVAULT_TMDB_TOKEN") {
+		t.Errorf("code=%d body=%s", code, body)
+	}
+	code, body := send(t, s, "POST", "/api/libraries/1/scan", "")
+	if code != http.StatusOK || !strings.Contains(body, `"match": null`) {
+		t.Errorf("scan without TMDb: code=%d body=%s", code, body)
+	}
 }

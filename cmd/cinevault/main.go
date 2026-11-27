@@ -15,10 +15,12 @@ import (
 
 	"github.com/JustinTDCT/CineVault/internal/config"
 	"github.com/JustinTDCT/CineVault/internal/db"
+	"github.com/JustinTDCT/CineVault/internal/match"
 	"github.com/JustinTDCT/CineVault/internal/mediainfo"
 	"github.com/JustinTDCT/CineVault/internal/probe"
 	"github.com/JustinTDCT/CineVault/internal/scan"
 	"github.com/JustinTDCT/CineVault/internal/server"
+	"github.com/JustinTDCT/CineVault/internal/tmdb"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -66,6 +68,14 @@ func run(log *slog.Logger) error {
 		Prober: mediainfo.FFprobe{Path: cfg.FFprobePath, Run: probe.ExecRunner},
 	}
 
+	var matchFn func(context.Context, int64) (match.Result, error)
+	if cfg.TMDbToken != "" {
+		matchFn = match.Matcher{Store: database, Source: tmdb.New(cfg.TMDbToken)}.MatchLibrary
+		log.Info("metadata", "source", "TMDb")
+	} else {
+		log.Warn("metadata: CINEVAULT_TMDB_TOKEN not set; titles won't be matched to TMDb")
+	}
+
 	api := server.New(server.Options{
 		Version:       version,
 		DBAddr:        dbAddr,
@@ -75,6 +85,7 @@ func run(log *slog.Logger) error {
 		EditionTypes:  database.EditionTypes,
 		Libraries:     database,
 		Scan:          scanner.Scan,
+		Match:         matchFn,
 		Log:           log,
 	})
 	srv := &http.Server{

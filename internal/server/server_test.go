@@ -49,7 +49,7 @@ func TestHealthOK(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &h); err != nil {
 		t.Fatal(err)
 	}
-	if code != http.StatusOK || h.Status != "ok" || !h.Database.Reachable || h.Database.SchemaVersion != 1 {
+	if code != http.StatusOK || h.Status != "ok" || !h.Database.Reachable || h.Database.SchemaVersion != 1 || h.Metadata.TMDbConfigured {
 		t.Errorf("code=%d health=%+v", code, h)
 	}
 }

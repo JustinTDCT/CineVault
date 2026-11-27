@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
+	"github.com/JustinTDCT/CineVault/internal/match"
 	"github.com/JustinTDCT/CineVault/internal/scan"
 )
 
@@ -111,6 +112,14 @@ type scanResponse struct {
 	Library    catalog.Library `json:"library"`
 	DurationMS int64           `json:"duration_ms"`
 	scan.Result
+	// Match is the TMDb matching run after the scan; nil when TMDb isn't configured.
+	Match *matchSummary `json:"match"`
+}
+
+type matchSummary struct {
+	match.Result
+	// Error is set when matching stopped early, e.g. a rejected TMDb token.
+	Error string `json:"error,omitempty"`
 }
 
 // scanLibrary scans a library now and returns the summary. Only one scan runs
@@ -135,7 +144,46 @@ func (s *Server) scanLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 	s.opt.Log.Info("scan finished", "library", lib.Name, "seen", res.FilesSeen, "added", res.Added,
 		"updated", res.Updated, "unchanged", res.Unchanged, "missing", res.Missing, "errors", len(res.Errors))
-	writeJSON(w, http.StatusOK, scanResponse{Library: lib, DurationMS: time.Since(start).Milliseconds(), Result: res})
+
+	resp := scanResponse{Library: lib, Result: res}
+	if s.opt.Match != nil {
+		resp.Match = s.runMatch(r, lib)
+	}
+	resp.DurationMS = time.Since(start).Milliseconds()
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// matchLibrary matches unmatched titles to TMDb without scanning files.
+func (s *Server) matchLibrary(w http.ResponseWriter, r *http.Request) {
+	lib, ok := s.library(w, r)
+	if !ok {
+		return
+	}
+	if s.opt.Match == nil {
+		writeError(w, http.StatusServiceUnavailable, "TMDb isn't configured; set CINEVAULT_TMDB_TOKEN")
+		return
+	}
+	if !s.scanning.TryLock() {
+		writeError(w, http.StatusConflict, "a scan is already running; try again when it finishes")
+		return
+	}
+	defer s.scanning.Unlock()
+	writeJSON(w, http.StatusOK, s.runMatch(r, lib))
+}
+
+func (s *Server) runMatch(r *http.Request, lib catalog.Library) *matchSummary {
+	res, err := s.opt.Match(r.Context(), lib.ID)
+	out := &matchSummary{Result: res}
+	if out.Messages == nil {
+		out.Messages = []string{}
+	}
+	if err != nil {
+		out.Error = err.Error()
+		s.opt.Log.Error("match failed", "library", lib.Name, "error", err)
+	} else {
+		s.opt.Log.Info("match finished", "library", lib.Name, "matched", res.Matched, "not_found", res.NotFound, "errors", res.Errors)
+	}
+	return out
 }
 
 func (s *Server) internalError(w http.ResponseWriter, what string, err error) {

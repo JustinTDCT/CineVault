@@ -61,14 +61,34 @@ type Library struct {
 
 // Title is one work (a movie, show, album...) with its editions.
 type Title struct {
-	ID        int64     `json:"id"`
-	LibraryID int64     `json:"library_id"`
-	MediaType string    `json:"media_type"`
-	Name      string    `json:"name"`
-	SortName  string    `json:"sort_name"`
-	Year      int       `json:"year,omitempty"`
-	TMDbID    int       `json:"tmdb_id,omitempty"`
-	Editions  []Edition `json:"editions"`
+	ID        int64  `json:"id"`
+	LibraryID int64  `json:"library_id"`
+	MediaType string `json:"media_type"`
+	Name      string `json:"name"`
+	SortName  string `json:"sort_name"`
+	Year      int    `json:"year,omitempty"`
+	TMDbID    int    `json:"tmdb_id,omitempty"`
+
+	// Metadata from TMDb, filled in once the title is matched.
+	OriginalTitle  string   `json:"original_title,omitempty"`
+	Overview       string   `json:"overview,omitempty"`
+	Tagline        string   `json:"tagline,omitempty"`
+	ReleaseDate    string   `json:"release_date,omitempty"` // YYYY-MM-DD
+	RuntimeMinutes int      `json:"runtime_minutes,omitempty"`
+	PosterPath     string   `json:"poster_path,omitempty"`
+	BackdropPath   string   `json:"backdrop_path,omitempty"`
+	PosterURL      string   `json:"poster_url,omitempty"`
+	BackdropURL    string   `json:"backdrop_url,omitempty"`
+	IMDbID         string   `json:"imdb_id,omitempty"`
+	Genres         []string `json:"genres"`
+	Rating         float64  `json:"rating,omitempty"`
+	CollectionID   int      `json:"collection_tmdb_id,omitempty"`
+	CollectionName string   `json:"collection_name,omitempty"`
+	// MatchStatus is unmatched, matched, not_found or error.
+	MatchStatus string `json:"match_status"`
+	MatchError  string `json:"match_error,omitempty"`
+
+	Editions []Edition `json:"editions"`
 }
 
 // Edition is one cut of a title, such as the Director's Cut, with its files.

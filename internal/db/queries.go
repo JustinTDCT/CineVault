@@ -26,18 +26,20 @@ const (
 		JOIN titles t ON t.id = e.title_id
 		WHERE t.library_id = $1`
 
-	// $4 year and $6 tmdb_id: 0 means unknown.
+	// Titles are found by the name read from files, not the (possibly renamed)
+	// display name. Year 0 means unknown.
 	sqlFindTitle = `
 		SELECT id FROM titles
 		WHERE library_id = $1
-		  AND lower(name) = lower($2)
+		  AND lower(file_title) = lower($2)
 		  AND year IS NOT DISTINCT FROM NULLIF($3::integer, 0)
 		ORDER BY id
 		LIMIT 1`
 
+	// $5 year and $6 tmdb_id: 0 means unknown.
 	sqlInsertTitle = `
-		INSERT INTO titles (library_id, media_type, name, sort_name, year, tmdb_id)
-		VALUES ($1, $2, $3, $4, NULLIF($5::integer, 0), NULLIF($6::integer, 0))
+		INSERT INTO titles (library_id, media_type, name, file_title, sort_name, year, tmdb_id)
+		VALUES ($1, $2, $3, $3, $4, NULLIF($5::integer, 0), NULLIF($6::integer, 0))
 		RETURNING id`
 
 	// Keeps an existing runtime; fills it in if it was empty.
@@ -81,10 +83,53 @@ const (
 		UPDATE versions SET missing_since = NULL
 		WHERE id = ANY($1::bigint[]) AND missing_since IS NOT NULL`
 
+	sqlTitlesToMatch = `
+		SELECT id, file_title, COALESCE(year, 0), COALESCE(tmdb_id, 0)
+		FROM titles
+		WHERE library_id = $1 AND match_status IN ('unmatched', 'error')
+		ORDER BY sort_name, id`
+
+	// Fields named in locked_fields (edited by hand) are never overwritten.
+	// The year stays as read from files, so later scans still find the title;
+	// TMDb's full date is kept in release_date.
+	sqlSaveMatch = `
+		UPDATE titles SET
+		    tmdb_id            = $2,
+		    imdb_id            = NULLIF($3, ''),
+		    name               = CASE WHEN 'name' = ANY(locked_fields) THEN name ELSE $4 END,
+		    sort_name          = CASE WHEN 'name' = ANY(locked_fields) THEN sort_name ELSE $5 END,
+		    original_title     = NULLIF($6, ''),
+		    overview           = CASE WHEN 'overview' = ANY(locked_fields) THEN overview ELSE NULLIF($7, '') END,
+		    tagline            = NULLIF($8, ''),
+		    release_date       = NULLIF($9::text, '')::date,
+		    year               = COALESCE(year, NULLIF($10::integer, 0)),
+		    runtime_minutes    = NULLIF($11::integer, 0),
+		    poster_path        = CASE WHEN 'poster' = ANY(locked_fields) THEN poster_path ELSE NULLIF($12, '') END,
+		    backdrop_path      = NULLIF($13, ''),
+		    genres             = $14::text[],
+		    rating             = NULLIF($15::float8, 0)::numeric(3, 1),
+		    collection_tmdb_id = NULLIF($16::integer, 0),
+		    collection_name    = NULLIF($17, ''),
+		    match_status       = 'matched',
+		    match_error        = NULL,
+		    matched_at         = now(),
+		    updated_at         = now()
+		WHERE id = $1`
+
+	sqlSaveMatchFailure = `
+		UPDATE titles SET match_status = $2, match_error = $3, updated_at = now()
+		WHERE id = $1`
+
 	// One row per version (or per edition with no versions), in display order.
 	sqlLibraryTitles = `
 		SELECT t.id, t.library_id, t.media_type, t.name, t.sort_name,
 		       COALESCE(t.year, 0), COALESCE(t.tmdb_id, 0),
+		       COALESCE(t.original_title, ''), COALESCE(t.overview, ''), COALESCE(t.tagline, ''),
+		       COALESCE(to_char(t.release_date, 'YYYY-MM-DD'), ''), COALESCE(t.runtime_minutes, 0),
+		       COALESCE(t.poster_path, ''), COALESCE(t.backdrop_path, ''), COALESCE(t.imdb_id, ''),
+		       t.genres, COALESCE(t.rating, 0)::float8,
+		       COALESCE(t.collection_tmdb_id, 0), COALESCE(t.collection_name, ''),
+		       t.match_status, COALESCE(t.match_error, ''),
 		       e.id, e.edition_type_id, et.display_name, et.short_label,
 		       COALESCE(e.runtime_seconds, 0),
 		       COALESCE(v.id, 0), COALESCE(v.path, ''), COALESCE(v.size_bytes, 0),

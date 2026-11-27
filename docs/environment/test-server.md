@@ -138,6 +138,14 @@ docker run -d --name cinevault-db --restart unless-stopped \
   postgres:18
 ```
 
+**TMDb token** (for matching titles) is in `~/.config/cinevault/tmdb.env` (mode 600) as `CINEVAULT_TMDB_TOKEN=…`. `make run` loads it if the file exists. To create or replace it without the token entering shell history:
+
+```bash
+read -rsp 'TMDb read access token: ' T; echo
+printf 'CINEVAULT_TMDB_TOKEN=%s\n' "$T" > ~/.config/cinevault/tmdb.env; unset T
+chmod 600 ~/.config/cinevault/tmdb.env
+```
+
 **Backups:** Hyper-V checkpoints don't work while the GPU is assigned. Use an offline copy of the VM's disk instead: stop the VM, copy its `.vhdx`, then start it again.
 
 ## To do

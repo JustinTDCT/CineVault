@@ -9,6 +9,7 @@ import (
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
 	"github.com/JustinTDCT/CineVault/internal/scan"
+	"github.com/JustinTDCT/CineVault/internal/tmdb"
 )
 
 // The DB is the scanner's store.
@@ -68,6 +69,9 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 		var v catalog.Version
 		if err := rows.Scan(
 			&t.ID, &t.LibraryID, &t.MediaType, &t.Name, &t.SortName, &t.Year, &t.TMDbID,
+			&t.OriginalTitle, &t.Overview, &t.Tagline, &t.ReleaseDate, &t.RuntimeMinutes,
+			&t.PosterPath, &t.BackdropPath, &t.IMDbID, &t.Genres, &t.Rating,
+			&t.CollectionID, &t.CollectionName, &t.MatchStatus, &t.MatchError,
 			&e.ID, &e.EditionTypeID, &e.DisplayName, &e.ShortLabel, &e.RuntimeSeconds,
 			&v.ID, &v.Path, &v.SizeBytes, &v.Label, &v.Container, &v.VideoCodec,
 			&v.Width, &v.Height, &v.HDR, &v.AudioCodec, &v.AudioChannels,
@@ -78,6 +82,15 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 		// Rows arrive grouped by title, then edition; fold them into a tree.
 		if n := len(out); n == 0 || out[n-1].ID != t.ID {
 			t.Editions = []catalog.Edition{}
+			if t.Genres == nil {
+				t.Genres = []string{}
+			}
+			if t.PosterPath != "" {
+				t.PosterURL = tmdb.ImageBaseURL + "w500" + t.PosterPath
+			}
+			if t.BackdropPath != "" {
+				t.BackdropURL = tmdb.ImageBaseURL + "w1280" + t.BackdropPath
+			}
 			out = append(out, t)
 		}
 		title := &out[len(out)-1]

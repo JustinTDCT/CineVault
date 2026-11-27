@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
+	"github.com/JustinTDCT/CineVault/internal/match"
 	"github.com/JustinTDCT/CineVault/internal/probe"
 	"github.com/JustinTDCT/CineVault/internal/scan"
 )
@@ -38,6 +39,8 @@ type Options struct {
 	Libraries LibraryStore
 	// Scan scans one library.
 	Scan func(ctx context.Context, lib catalog.Library) (scan.Result, error)
+	// Match matches a library's titles to TMDb; nil when no TMDb token is set.
+	Match func(ctx context.Context, libraryID int64) (match.Result, error)
 	// IsDir checks that a library folder exists; defaults to os.Stat.
 	IsDir func(path string) bool
 	Log   *slog.Logger
@@ -81,6 +84,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/libraries", s.createLibrary)
 	mux.HandleFunc("GET /api/libraries/{id}/titles", s.libraryTitles)
 	mux.HandleFunc("POST /api/libraries/{id}/scan", s.scanLibrary)
+	mux.HandleFunc("POST /api/libraries/{id}/match", s.matchLibrary)
 	return mux
 }
 
@@ -90,12 +94,18 @@ type dbStatus struct {
 	Error         string `json:"error,omitempty"`
 }
 
+type metadataStatus struct {
+	// TMDbConfigured is true when a TMDb token is set, so titles get matched.
+	TMDbConfigured bool `json:"tmdb_configured"`
+}
+
 type healthResponse struct {
-	Status    string       `json:"status"`
-	Version   string       `json:"version"`
-	Time      time.Time    `json:"time"`
-	Database  dbStatus     `json:"database"`
-	Transcode Capabilities `json:"transcode"`
+	Status    string         `json:"status"`
+	Version   string         `json:"version"`
+	Time      time.Time      `json:"time"`
+	Database  dbStatus       `json:"database"`
+	Metadata  metadataStatus `json:"metadata"`
+	Transcode Capabilities   `json:"transcode"`
 }
 
 // health reports "ok" when the database is reachable and FFmpeg was found,
@@ -110,6 +120,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		Time:      time.Now().UTC(),
 		Transcode: s.opt.Caps,
 		Database:  dbStatus{SchemaVersion: s.opt.SchemaVersion},
+		Metadata:  metadataStatus{TMDbConfigured: s.opt.Match != nil},
 	}
 	if err := s.opt.PingDB(ctx); err != nil {
 		resp.Database.Error = "cannot connect to " + s.opt.DBAddr
