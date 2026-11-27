@@ -9,7 +9,7 @@ This is a fresh start (November 2026). Earlier work is preserved on these branch
 
 ## Development quick start
 
-Requires Go 1.24 or newer, FFmpeg, and the development PostgreSQL container described in [`docs/environment/test-server.md`](docs/environment/test-server.md). That container's credentials live in `~/.config/cinevault/db.env`.
+Requires Go 1.25 or newer, FFmpeg, and the development PostgreSQL container described in [`docs/environment/test-server.md`](docs/environment/test-server.md). That container's credentials live in `~/.config/cinevault/db.env`.
 
 ```bash
 make test     # unit tests (no database needed)

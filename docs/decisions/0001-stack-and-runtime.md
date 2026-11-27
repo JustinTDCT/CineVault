@@ -6,7 +6,7 @@ Date: 26 Nov 2026 · Status: Accepted
 
 | Area | Choice |
 |---|---|
-| Server language | **Go** (module `github.com/JustinTDCT/CineVault`, minimum Go 1.24; the test server runs 1.27) |
+| Server language | **Go** (module `github.com/JustinTDCT/CineVault`, minimum Go 1.25, required by the pgx driver; the test server runs 1.27) |
 | Database | **PostgreSQL** (18 on the test server) |
 | Transcoding | **FFmpeg as a separate process** that CineVault runs and controls |
 | Web interface | **TypeScript** single-page app served by the Go server. React or Svelte, to be decided when UI work starts. |
