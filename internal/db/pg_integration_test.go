@@ -160,8 +160,8 @@ func TestIntegrationAliensExample(t *testing.T) {
 		}
 	}
 	q(&libID, `INSERT INTO libraries (name, media_type, paths) VALUES ('Movies', 'movie', '{/media/movies}') RETURNING id`)
-	q(&titleID, `INSERT INTO titles (library_id, media_type, name, sort_name, year, tmdb_id)
-	             VALUES ($1, 'movie', 'Aliens', 'aliens', 1986, 679) RETURNING id`, libID)
+	q(&titleID, `INSERT INTO titles (library_id, media_type, name, file_title, sort_name, year, tmdb_id)
+	             VALUES ($1, 'movie', 'Aliens', 'Aliens', 'aliens', 1986, 679) RETURNING id`, libID)
 	q(&theatrical, `INSERT INTO editions (title_id, edition_type_id, runtime_seconds) VALUES ($1, 'theatrical', 8220) RETURNING id`, titleID)
 	q(&special, `INSERT INTO editions (title_id, edition_type_id, runtime_seconds) VALUES ($1, 'special_edition', 9240) RETURNING id`, titleID)
 
