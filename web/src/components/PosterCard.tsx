@@ -29,27 +29,35 @@ export function PosterCard({ title }: { title: Title }) {
   const owned = ownedEditions(title);
   const multi = owned.length > 1;
   const { shown, hidden } = editionListing(owned, expanded);
+  const shape =
+    title.media_type === "musicvideo"
+      ? " cv-card__art--still"
+      : title.media_type === "music" || title.media_type === "audiobook"
+        ? " cv-card__art--square"
+        : "";
+  const meta =
+    title.media_type === "tv"
+      ? [title.year, showCounts(title)].filter(Boolean).join(" · ")
+      : title.media_type === "comic"
+        ? [title.year, title.track_count ? `${title.track_count} ${title.track_count === 1 ? "issue" : "issues"}` : ""].filter(Boolean).join(" · ")
+        : (title.media_type === "audiobook" || title.media_type === "book") && title.series
+          ? title.series_index
+            ? `Book ${title.series_index}`
+            : String(title.year ?? "")
+          : String(title.year ?? "");
 
   return (
-    <article className="card">
-      <a className="card-poster" {...linkTo(href)} aria-label={`${title.name}${title.year ? ` (${title.year})` : ""}`}>
+    <article className="cv-card">
+      <a className={`cv-card__art${shape}`} {...linkTo(href)} aria-label={`${title.name}${title.year ? ` (${title.year})` : ""}`}>
         <Poster title={title} />
         {badge ? <span className="badge">{badge}</span> : null}
       </a>
-      <h3 className="card-title">
-        <a {...linkTo(href)}>{title.name}</a>
+      <h3 className="cv-card__title">
+        <a {...linkTo(href)}>
+          {title.name}
+        </a>
       </h3>
-      {title.media_type === "tv" ? (
-        <p className="card-year">{[title.year, showCounts(title)].filter(Boolean).join("   ")}</p>
-      ) : title.media_type === "comic" ? (
-        <p className="card-year">
-          {[title.year, title.track_count ? `${title.track_count} ${title.track_count === 1 ? "issue" : "issues"}` : ""].filter(Boolean).join("   ")}
-        </p>
-      ) : (title.media_type === "audiobook" || title.media_type === "book") && title.series ? (
-        <p className="card-year">{title.series_index ? `Book ${title.series_index}` : title.year}</p>
-      ) : title.year ? (
-        <p className="card-year">{title.year}</p>
-      ) : null}
+      {meta ? <p className="cv-card__meta">{meta}</p> : null}
       {multi ? (
         <p className="card-editions" aria-label="Editions you have">
           {shown.map((e, i) => (
@@ -64,7 +72,7 @@ export function PosterCard({ title }: { title: Title }) {
             </span>
           ))}
           {hidden > 0 || expanded ? (
-            <button className="linkish" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
+            <button className="cv-linkish" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
               {expanded ? "Show fewer" : `Show all (${owned.length})`}
             </button>
           ) : null}

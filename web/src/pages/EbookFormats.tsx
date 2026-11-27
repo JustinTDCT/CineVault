@@ -22,7 +22,7 @@ export function EbookFormats({ title }: { title: Title }) {
   // EPUB first: it reads best in the browser.
   const order = ["epub", "azw3", "mobi", "fb2", "pdf"];
   files.sort((a, b) => order.indexOf(a.container ?? "") - order.indexOf(b.container ?? ""));
-  if (files.length === 0) return <p className="page-sub">The files for this book are missing. Scan the library again.</p>;
+  if (files.length === 0) return <p className="cv-sub">The files for this book are missing. Scan the library again.</p>;
 
   const open = (v: Version) => {
     if (!READABLE.has(v.container ?? "")) {
@@ -45,13 +45,13 @@ export function EbookFormats({ title }: { title: Title }) {
   return (
     <section className="album" aria-label="Read">
       <div className="book-actions">
-        <button className="btn btn-primary" onClick={() => open(main)}>
+        <button className="cv-btn cv-btn--primary" onClick={() => open(main)}>
           {main === savedFile && pct > 0 && pct < 100 ? `Continue reading · ${pct}%` : "Read"}
         </button>
-        {main === savedFile && pct > 0 && pct < 100 ? <span className="hint">in the {(main.label ?? "").toLowerCase() || "book"} copy</span> : null}
+        {main === savedFile && pct > 0 && pct < 100 ? <span className="cv-hint">in the {(main.label ?? "").toLowerCase() || "book"} copy</span> : null}
       </div>
 
-      <h2 className="section-title">{files.length === 1 ? "Your copy" : `${files.length} formats`}</h2>
+      <h2 className="cv-section-title">{files.length === 1 ? "Your copy" : `${files.length} formats`}</h2>
       <ul className="versions">
         {files.map((v) => (
           <li key={v.id} className="version">
@@ -64,10 +64,10 @@ export function EbookFormats({ title }: { title: Title }) {
                 {fileName(v.path)}
               </span>
               <span className="version-size">{formatSize(v.size_bytes)}</span>
-              <button className="linkish" onClick={() => open(v)}>
+              <button className="cv-linkish" onClick={() => open(v)}>
                 {READABLE.has(v.container ?? "") ? "Read" : "Open"}
               </button>
-              <a className="linkish" href={`/api/versions/${v.id}/file`} download={fileName(v.path)}>
+              <a className="cv-linkish" href={`/api/versions/${v.id}/file`} download={fileName(v.path)}>
                 Download
               </a>
             </div>

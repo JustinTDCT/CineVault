@@ -29,6 +29,8 @@ export default defineConfig({
   },
   server: {
     host: true,
+    // The design system lives in ../pkg/theme, shared with the CineVault Cache.
+    fs: { allow: [".", "../pkg/theme"] },
     proxy: { "/api": "http://localhost:8456" },
   },
 });

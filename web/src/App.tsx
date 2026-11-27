@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Library } from "./api";
 import { linkTo, navigate, useRoute } from "./router";
+import { HomePage } from "./pages/HomePage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { TitlePage } from "./pages/TitlePage";
 import { SetupPage } from "./pages/SetupPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AudioProvider } from "./components/AudioPlayer";
+import { Icon } from "./components/Icon";
 
 export function App() {
   const route = useRoute();
@@ -25,77 +27,94 @@ export function App() {
     loadLibraries();
   }, [loadLibraries]);
 
-  // The home page opens the first library, or setup when there are none.
+  // With no libraries yet, Home is setup.
   useEffect(() => {
-    if (route.page !== "home" || libraries === null) return;
-    navigate(libraries.length > 0 ? `/libraries/${libraries[0].id}` : "/setup", true);
+    if (route.page === "home" && libraries !== null && libraries.length === 0) navigate("/setup", true);
   }, [route, libraries]);
 
   const currentLibraryId = route.page === "library" || route.page === "title" ? route.libraryId : null;
+  const current = (yes: boolean) => (yes ? { "aria-current": "page" as const, className: "cv-nav-item is-current" } : { className: "cv-nav-item" });
 
   return (
     <AudioProvider>
-      <div className="shell">
-        <header className="topbar">
-          <a className="wordmark" {...linkTo("/")}>
-            CineVault
+      <div className="cv-app">
+        <nav className="cv-sidebar" aria-label="Main">
+          <a className="cv-brand" {...linkTo("/")}>
+            CINE<span className="cv-wordmark-bar" aria-hidden="true"></span>VAULT
           </a>
-          <nav className="libnav" aria-label="Libraries">
-            {libraries?.map((l) => (
-              <a key={l.id} {...linkTo(`/libraries/${l.id}`)} aria-current={l.id === currentLibraryId ? "page" : undefined}>
-                {l.name}
-              </a>
-            ))}
-            <a {...linkTo("/setup")} aria-current={route.page === "setup" ? "page" : undefined} className="libnav-add">
-              Add library
+          <a {...linkTo("/")} {...current(route.page === "home")}>
+            <Icon name="home" />
+            Home
+          </a>
+          {libraries?.length ? <div className="cv-nav-label">Libraries</div> : null}
+          {libraries?.map((l) => (
+            <a key={l.id} {...linkTo(`/libraries/${l.id}`)} {...current(l.id === currentLibraryId)}>
+              <Icon name={l.media_type} />
+              {l.name}
             </a>
-          </nav>
-          <a className="topbar-settings" {...linkTo("/settings")} aria-current={route.page === "settings" ? "page" : undefined}>
+          ))}
+          <a {...linkTo("/setup")} {...current(route.page === "setup")}>
+            <Icon name="plus" />
+            <span className="cv-nav-add">Add library</span>
+          </a>
+          <div className="cv-sidebar__spacer" />
+          <a {...linkTo("/settings")} {...current(route.page === "settings")}>
+            <Icon name="settings" />
             Settings
           </a>
-        </header>
+        </nav>
 
-        <main className="content">
+        <main className="cv-main">
           {error ? (
-            <div className="notice notice-error" role="alert">
-              <p>{error}</p>
-              <button className="btn" onClick={loadLibraries}>
-                Try again
-              </button>
+            <div className="content-error">
+              <div className="cv-notice cv-notice--error" role="alert">
+                <p>{error}</p>
+                <button className="cv-btn" onClick={loadLibraries}>
+                  Try again
+                </button>
+              </div>
             </div>
+          ) : route.page === "home" ? (
+            <HomePage libraries={libraries} />
           ) : route.page === "setup" ? (
-            <SetupPage
-              hasLibraries={(libraries?.length ?? 0) > 0}
-              onCreated={async (lib) => {
-                await loadLibraries();
-                navigate(`/libraries/${lib.id}?scan=1`);
-              }}
-            />
+            <div className="cv-page">
+              <SetupPage
+                hasLibraries={(libraries?.length ?? 0) > 0}
+                onCreated={async (lib) => {
+                  await loadLibraries();
+                  navigate(`/libraries/${lib.id}?scan=1`);
+                }}
+              />
+            </div>
           ) : route.page === "settings" ? (
-            <SettingsPage />
+            <div className="cv-page">
+              <SettingsPage />
+            </div>
           ) : route.page === "library" ? (
-            <LibraryPage key={route.libraryId} library={libraries?.find((l) => l.id === route.libraryId)} libraryId={route.libraryId} />
+            <div className="cv-page">
+              <LibraryPage key={route.libraryId} library={libraries?.find((l) => l.id === route.libraryId)} libraryId={route.libraryId} />
+            </div>
           ) : route.page === "title" ? (
             <TitlePage key={route.titleId} libraryId={route.libraryId} titleId={route.titleId} />
           ) : route.page === "notFound" ? (
-            <div className="notice">
-              <p>There's no page at this address.</p>
-              <a className="btn" {...linkTo("/")}>
-                Go to your library
-              </a>
+            <div className="cv-page">
+              <div className="cv-notice">
+                <p>There's no page at this address.</p>
+                <a className="cv-btn" {...linkTo("/")}>
+                  Go home
+                </a>
+              </div>
             </div>
           ) : null}
-        </main>
 
-        <footer className="footer">
-          <span>
+          <footer className="cv-footer">
             Movie and TV information and images from{" "}
             <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer">
               TMDb
             </a>
             . This product uses the TMDB API but is not endorsed or certified by TMDB.
-          </span>
-        </footer>
+          </footer>
+        </main>
       </div>
     </AudioProvider>
   );

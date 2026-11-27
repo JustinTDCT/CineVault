@@ -1,9 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "@fontsource-variable/big-shoulders-display";
-import "@fontsource/atkinson-hyperlegible-next/400.css";
-import "@fontsource/atkinson-hyperlegible-next/400-italic.css";
-import "@fontsource/atkinson-hyperlegible-next/600.css";
+// The design system "CineVault", shared with the CineVault Cache (pkg/theme).
+import "../../pkg/theme/fonts.css";
+import "../../pkg/theme/tokens.css";
+import "../../pkg/theme/cinevault.css";
 import "./styles.css";
 import { App } from "./App";
 

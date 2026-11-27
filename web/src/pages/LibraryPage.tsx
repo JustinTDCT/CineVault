@@ -58,23 +58,23 @@ export function LibraryPage({ library, libraryId }: { library?: Library; library
 
   return (
     <section>
-      <div className="page-head">
+      <div className="cv-page-head">
         <div>
-          <h1 className="page-title">{library?.name ?? "Library"}</h1>
+          <h1 className="cv-page-title">{library?.name ?? "Library"}</h1>
           {titles ? (
-            <p className="page-sub">
+            <p className="cv-sub">
               {titles.length} {itemNoun(library?.media_type, titles.length)}
               {library ? <> in {library.paths.join(", ")}</> : null}
             </p>
           ) : null}
         </div>
-        <button className="btn btn-primary" onClick={scan} disabled={scanning}>
+        <button className="cv-btn cv-btn--primary" onClick={scan} disabled={scanning}>
           {scanning ? "Scanning…" : "Scan library"}
         </button>
       </div>
 
       {scanResult ? (
-        <div className={`notice ${problems.length ? "notice-warn" : ""}`} role="status">
+        <div className={`cv-notice ${problems.length ? "cv-notice--warn" : ""}`} role="status">
           <p>{scanSummary(scanResult)}</p>
           {problems.length ? (
             <ul className="problems">
@@ -87,11 +87,11 @@ export function LibraryPage({ library, libraryId }: { library?: Library; library
       ) : null}
 
       {error ? (
-        <div className="notice notice-error" role="alert">
+        <div className="cv-notice cv-notice--error" role="alert">
           <p>{error}</p>
         </div>
       ) : titles === null ? (
-        <p className="page-sub">Loading…</p>
+        <p className="cv-sub">Loading…</p>
       ) : titles.length === 0 ? (
         <div className="empty">
           <p>No {itemNoun(library?.media_type, 2)} here yet. Scan the library to find the files in its folders.</p>
@@ -102,8 +102,8 @@ export function LibraryPage({ library, libraryId }: { library?: Library; library
         library?.media_type === "book" ? (
         groupByArtist(titles).map((g) => (
           <section key={g.artist} className="artist-group" aria-label={g.artist}>
-            <h2 className="artist-name">{g.artist}</h2>
-            <div className={library.media_type === "musicvideo" ? "grid grid-wide" : "grid"}>
+            <h2 className="artist-name cv-section-title">{g.artist}</h2>
+            <div className={library.media_type === "musicvideo" ? "cv-grid cv-grid--wide" : "cv-grid"}>
               {g.titles.map((t) => (
                 <PosterCard key={t.id} title={t} />
               ))}
@@ -111,7 +111,7 @@ export function LibraryPage({ library, libraryId }: { library?: Library; library
           </section>
         ))
       ) : (
-        <div className="grid">
+        <div className="cv-grid">
           {titles.map((t) => (
             <PosterCard key={t.id} title={t} />
           ))}

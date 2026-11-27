@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { api, type Edition, type ReportField, type Title } from "../api";
 import { Poster } from "../components/PosterCard";
 import { Player, type PlayTarget } from "../components/Player";
@@ -23,6 +23,7 @@ import { BookChapters } from "./BookChapters";
 import { EbookFormats } from "./EbookFormats";
 import { ComicIssues } from "./ComicIssues";
 import { linkTo } from "../router";
+import { Icon } from "../components/Icon";
 
 export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: number }) {
   const [title, setTitle] = useState<Title | null | undefined>(undefined);
@@ -36,24 +37,31 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
       .then((all) => {
         const t = all.find((x) => x.id === titleId) ?? null;
         setTitle(t);
-        if (t) setEditionId(defaultEdition(t)?.id ?? null);
+        const first = t ? defaultEdition(t) : undefined;
+        if (first) setEditionId(first.id);
+        // Home's spotlight links here with ?play=1.
+        if (new URLSearchParams(location.search).get("play") === "1") {
+          history.replaceState(null, "", location.pathname);
+          const v = first?.versions.find((x) => !x.missing);
+          if (t && first && v) setPlaying({ versionId: v.id, heading: ownedEditions(t).length > 1 ? `${t.name} · ${first.display_name}` : t.name });
+        }
       })
       .catch((e: Error) => setError(e.message));
   }, [libraryId, titleId]);
 
   if (error) {
     return (
-      <div className="notice notice-error" role="alert">
+      <div className="cv-notice cv-notice--error" role="alert">
         <p>{error}</p>
       </div>
     );
   }
-  if (title === undefined) return <p className="page-sub">Loading…</p>;
+  if (title === undefined) return <p className="cv-sub">Loading…</p>;
   if (title === null) {
     return (
-      <div className="notice">
+      <div className="cv-notice">
         <p>This title isn't in the library any more.</p>
-        <a className="btn" {...linkTo(`/libraries/${libraryId}`)}>
+        <a className="cv-btn" {...linkTo(`/libraries/${libraryId}`)}>
           Back to the library
         </a>
       </div>
@@ -67,53 +75,78 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
   const isBook = title.media_type === "audiobook";
   const isEbook = title.media_type === "book";
   const isComic = title.media_type === "comic";
+  const isMovie = !isShow && !isAlbum && !isBook && !isEbook && !isComic;
   const facts = (
     isShow
-      ? [title.year, showCounts(title), title.genres.join(", ")]
+      ? [title.year, showCounts(title), title.genres.join(" · ")]
       : isComic
         ? [title.year, title.track_count ? `${title.track_count} ${title.track_count === 1 ? "issue" : "issues"}` : ""]
         : isAlbum || isBook || isEbook
-          ? [title.artist, title.year, title.genres.filter((g) => !/^(audio ?books?|speech|spoken word)$/i.test(g)).join(", ")]
-          : [title.artist, title.year, runtime ? formatRuntime(runtime) : "", title.genres.join(", ")]
+          ? [title.artist, title.year, title.genres.filter((g) => !/^(audio ?books?|speech|spoken word)$/i.test(g)).join(" · ")]
+          : [title.artist, title.year, runtime ? formatRuntime(runtime) : "", title.genres.join(" · ")]
   ).filter(Boolean);
+  const owned = ownedEditions(title);
+  const best = edition && !isUnowned(edition) ? edition.versions.find((v) => !v.missing) : undefined;
+  const heading = owned.length === 1 && edition && !isUnowned(edition) ? title.name : `${title.name} · ${edition?.display_name ?? ""}`;
+  const eyebrow = title.collection_name || (isMovie && owned.length > 1 ? `${owned.length} editions in your library` : "");
 
   return (
     <article className="title-page">
-      {title.backdrop_url ? <div className="backdrop" style={{ backgroundImage: `url(${title.backdrop_url})` }} aria-hidden="true" /> : null}
-
-      <a className="back" {...linkTo(`/libraries/${libraryId}`)}>
-        All {itemNoun(title.media_type, 2)}
-      </a>
-
-      <div className="title-head">
-        <Poster title={title} size="large" />
-        <div className="title-info">
-          <h1 className="title-name">{title.name}</h1>
-          {facts.length ? <p className="title-facts">{facts.join("   ")}</p> : null}
-          {(isBook || isEbook) && (title.series || title.narrator) ? (
-            <p className="tagline">{[seriesLabel(title), title.narrator ? `Read by ${title.narrator}` : ""].filter(Boolean).join(". ")}</p>
-          ) : null}
-          {title.tagline ? <p className="tagline">{title.tagline}</p> : null}
-          {title.overview ? <p className="overview">{title.overview}</p> : null}
-          <MatchNote title={title} />
-          <CacheNote title={title} />
-          {title.collection_name ? <p className="collection">Part of the {title.collection_name}</p> : null}
+      <section className="cv-hero" style={title.backdrop_url ? { backgroundImage: `url(${title.backdrop_url})` } : undefined}>
+        <a className="back" {...linkTo(`/libraries/${libraryId}`)}>
+          All {itemNoun(title.media_type, 2)}
+        </a>
+        <div className="cv-hero__body">
+          <Poster title={title} size="large" />
+          <div className="cv-hero__text">
+            {eyebrow ? <div className="cv-eyebrow">{eyebrow}</div> : null}
+            <h1 className="cv-hero-title">{title.name}</h1>
+            {facts.length ? (
+              <div className="cv-meta">
+                {facts.map((f) => (
+                  <span key={String(f)}>{f}</span>
+                ))}
+              </div>
+            ) : null}
+            {(isBook || isEbook) && (title.series || title.narrator) ? (
+              <p className="tagline">{[seriesLabel(title), title.narrator ? `Read by ${title.narrator}` : ""].filter(Boolean).join(". ")}</p>
+            ) : null}
+            {title.tagline ? <p className="tagline">{title.tagline}</p> : null}
+            {title.overview ? <p className="overview">{title.overview}</p> : null}
+            {isMovie && edition ? (
+              <div className="cv-actions">
+                {isUnowned(edition) ? (
+                  <span className="cv-caption">You don't have this edition. Choose one you have to play.</span>
+                ) : (
+                  <button className="cv-btn cv-btn--primary" disabled={!best} onClick={() => best && setPlaying({ versionId: best.id, heading })}>
+                    <Icon name="play" filled />
+                    Play{owned.length > 1 ? ` ${edition.cache?.display_name || edition.display_name}` : ""}
+                  </button>
+                )}
+                {edition && !isUnowned(edition) && !best ? <span className="cv-hint">The files for this edition are missing.</span> : null}
+              </div>
+            ) : null}
+            <MatchNote title={title} />
+            <CacheNote title={title} />
+          </div>
         </div>
-      </div>
+      </section>
 
-      {isComic ? (
-        <ComicIssues title={title} />
-      ) : isEbook ? (
-        <EbookFormats title={title} />
-      ) : isBook ? (
-        <BookChapters title={title} />
-      ) : isAlbum ? (
-        <AlbumTracks title={title} />
-      ) : isShow ? (
-        <ShowEpisodes title={title} />
-      ) : (
-        <EditionTabs title={title} selected={edition} onSelect={setEditionId} onPlay={setPlaying} />
-      )}
+      <div className="title-body">
+        {isComic ? (
+          <ComicIssues title={title} />
+        ) : isEbook ? (
+          <EbookFormats title={title} />
+        ) : isBook ? (
+          <BookChapters title={title} />
+        ) : isAlbum ? (
+          <AlbumTracks title={title} />
+        ) : isShow ? (
+          <ShowEpisodes title={title} />
+        ) : (
+          <Editions title={title} selected={edition} onSelect={setEditionId} onPlay={setPlaying} />
+        )}
+      </div>
       {playing ? <Player target={playing} onClose={() => setPlaying(null)} /> : null}
     </article>
   );
@@ -142,7 +175,7 @@ function CacheNote({ title }: { title: Title }) {
   return null;
 }
 
-function EditionTabs({
+function Editions({
   title,
   selected,
   onSelect,
@@ -156,58 +189,51 @@ function EditionTabs({
   if (!selected) return null;
   const owned = ownedEditions(title);
   const unowned = title.editions.filter(isUnowned);
+  const all = [...owned, ...unowned];
   const single = title.editions.length === 1;
   const missing = isUnowned(selected);
   const heading = owned.length === 1 && !missing ? title.name : `${title.name} · ${selected.display_name}`;
-  // Play the highest-resolution file that's present; versions arrive tallest first.
-  const best = selected.versions.find((v) => !v.missing);
-  const sectionTitle = single
-    ? "Your copy"
-    : owned.length === 1
-      ? `1 edition in your library${unowned.length ? `, ${unowned.length} more known` : ""}`
-      : `${owned.length} editions in your library${unowned.length ? `, ${unowned.length} more known` : ""}`;
+  // Bar length: this edition's runtime over the longest one's.
+  const runtimeOf = (e: Edition) => editionRuntime(e) || (e.cache?.runtime_min ?? 0) * 60;
+  const longest = Math.max(1, ...all.map(runtimeOf));
+  const sectionTitle = single ? "Your copy" : "Editions";
+  const sectionNote = `${owned.length} in your library${unowned.length ? `, ${unowned.length} more known` : ""} · bar = running time`;
+  const short = (sec: number) => `${Math.round(sec / 60)} m`;
 
   return (
     <section className="editions" aria-label="Editions">
-      <h2 className="section-title">{sectionTitle}</h2>
-      {single ? null : (
-        <div className="edition-tabs" role="tablist">
-          {[...owned, ...unowned].map((e) => (
-            <button
-              key={e.id}
-              role="tab"
-              id={`edition-tab-${e.id}`}
-              aria-selected={e.id === selected.id}
-              aria-controls="edition-panel"
-              className={isUnowned(e) ? "edition-tab edition-tab-unowned" : "edition-tab"}
-              onClick={() => onSelect(e.id)}
-            >
-              <span className="edition-tab-name">{e.cache?.display_name || e.display_name}</span>
-              <span className="edition-tab-runtime">
-                {isUnowned(e) ? "Not in library" : formatRuntime(editionRuntime(e)) || "Runtime unknown"}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div
-        className="edition-panel"
-        id="edition-panel"
-        role={single ? undefined : "tabpanel"}
-        aria-labelledby={single ? undefined : `edition-tab-${selected.id}`}
-      >
-        {missing ? (
-          <p className="edition-unowned-note">You don't have this edition. The CineVault Cache knows it exists.</p>
-        ) : (
-          <div className="edition-actions">
-            <button className="btn btn-primary" disabled={!best} onClick={() => best && onPlay({ versionId: best.id, heading })}>
-              Play {owned.length === 1 && !unowned.length ? "" : selected.display_name}
-            </button>
-            {best ? null : <span className="hint">The files for this edition are missing.</span>}
+      <div className="editions-main">
+        <h2 className="cv-section-title">
+          {sectionTitle}
+          {single ? null : <span className="editions-hint">{sectionNote}</span>}
+        </h2>
+        {single ? null : (
+          <div className="cv-editions" role="radiogroup" aria-label="Edition">
+            {all.map((e) => {
+              const rt = runtimeOf(e);
+              const best = e.versions.find((v) => !v.missing);
+              const info = isUnowned(e)
+                ? [rt ? short(rt) : "", "not owned"].filter(Boolean).join(" · ")
+                : [rt ? short(rt) : "", best ? resolution(best) : ""].filter(Boolean).join(" · ") || "Runtime unknown";
+              return (
+                <button
+                  key={e.id}
+                  role="radio"
+                  aria-checked={e.id === selected.id}
+                  className={`cv-edition${e.id === selected.id ? " is-selected" : ""}${isUnowned(e) ? " is-missing" : ""}`}
+                  onClick={() => onSelect(e.id)}
+                >
+                  <span className="cv-edition__name">{e.cache?.display_name || e.display_name}</span>
+                  <span className="cv-edition__bar">
+                    <span style={{ width: `${rt ? Math.max(4, Math.round((rt / longest) * 100)) : 0}%` }} />
+                  </span>
+                  <span className="cv-edition__info">{info}</span>
+                </button>
+              );
+            })}
           </div>
         )}
-        <EditionCacheInfo title={title} edition={selected} />
+        {missing ? <p className="edition-unowned-note">You don't have this edition. The CineVault Cache knows it exists.</p> : null}
         {missing ? null : (
           <ul className="versions">
             {selected.versions.map((v) => (
@@ -224,15 +250,7 @@ function EditionTabs({
                   {v.missing ? (
                     <span className="version-flag">File missing</span>
                   ) : selected.versions.length > 1 ? (
-                    <button
-                      className="linkish"
-                      onClick={() =>
-                        onPlay({
-                          versionId: v.id,
-                          heading: `${heading} (${resolution(v)})`,
-                        })
-                      }
-                    >
+                    <button className="cv-linkish" onClick={() => onPlay({ versionId: v.id, heading: `${heading} (${resolution(v)})` })}>
                       Play this file
                     </button>
                   ) : null}
@@ -242,16 +260,20 @@ function EditionTabs({
           </ul>
         )}
       </div>
+      <div className="editions-side">
+        <EditionCacheInfo title={title} edition={selected} />
+      </div>
     </section>
   );
 }
 
-const CHANGE_WORD: Record<string, string> = {
-  added: "Added",
-  removed: "Removed",
-  changed: "Changed",
-  extended: "Longer",
-  shortened: "Shorter",
+/** How each kind of change is written: words and a sign, never colour alone. */
+const CHANGE_WORD: Record<string, { word: string; cls: string }> = {
+  added: { word: "+ Added", cls: "is-added" },
+  removed: { word: "− Cut", cls: "is-removed" },
+  changed: { word: "~ Changed", cls: "is-changed" },
+  extended: { word: "+ Longer", cls: "is-added" },
+  shortened: { word: "− Shorter", cls: "is-removed" },
 };
 
 /** What the CineVault Cache says about the edition: how it differs, with sources. */
@@ -275,54 +297,54 @@ function EditionCacheInfo({ title, edition }: { title: Title; edition: Edition }
           </a>
         </span>
       ));
+  const allSources = [...new Set([...(c.runtime_sources ?? []), ...full.flatMap((d) => d.sources)])];
 
   return (
-    <div className={withdrawn ? "cache-info cache-info-withdrawn" : "cache-info"}>
-      {withdrawn ? <p className="cache-flag">No longer verified. The CineVault Cache withdrew this information, so it may be wrong.</p> : null}
-      {c.difference_short ? <p className="cache-short">{c.difference_short}</p> : null}
-      {full.length ? (
-        <details className="cache-full">
-          <summary>What's different in this cut</summary>
-          <ul>
-            {full.map((d, i) => (
-              <li key={i}>
-                <span className={`cache-change cache-change-${d.change}`}>{CHANGE_WORD[d.change] ?? d.change}</span> {d.text}
-                {d.sources.length ? <span className="cache-cite"> ({cites(d.sources)})</span> : null}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-      <p className="cache-meta">
-        {c.runtime_min ? (
-          <>
-            Runtime {formatRuntime(c.runtime_min * 60)}
-            {c.runtime_sources?.length ? <> from {cites(c.runtime_sources)}</> : null}.{" "}
-          </>
-        ) : null}
-        From the CineVault Cache.
+    <section className={withdrawn ? "cv-panel cache-info cache-info-withdrawn" : "cv-panel cache-info"} aria-label="What's different in this cut">
+      <div className="cv-panel__head">
+        <h3 className="cv-card-title">
+          {full.length || c.difference_short ? "What's different in this cut" : "From the CineVault Cache"}
+        </h3>
         {c.confidence === "medium" && !withdrawn ? (
-          <>
-            {" "}
-            <span
-              className="cache-confidence"
-              title="Published automatically from one independent source. It's raised to high when a second source agrees."
-            >
-              Medium confidence
-            </span>
-          </>
+          <span className="cv-chip cv-chip--caution" title="Published automatically from one independent source. It's raised to high when a second source agrees.">
+            Medium confidence
+          </span>
         ) : null}
+        {withdrawn ? <span className="cv-chip cv-chip--removed">No longer verified</span> : null}
+      </div>
+      {withdrawn ? <p className="cache-flag">The CineVault Cache withdrew this information, so it may be wrong.</p> : null}
+      {c.difference_short ? <p className="cv-lead">{c.difference_short}</p> : null}
+      {full.length ? (
+        <dl className="cv-diff">
+          {full.map((d, i) => {
+            const w = CHANGE_WORD[d.change] ?? { word: d.change, cls: "" };
+            return (
+              <Fragment key={i}>
+                <dt className={w.cls}>{w.word}</dt>
+                <dd>
+                  {d.text}
+                  {d.sources.length ? <span className="cache-cite"> ({cites(d.sources)})</span> : null}
+                </dd>
+              </Fragment>
+            );
+          })}
+        </dl>
+      ) : null}
+      <p className="cv-hint cache-meta">
+        {c.runtime_min ? <>Runtime {formatRuntime(c.runtime_min * 60)}. </> : null}
+        {allSources.length ? <>Sources: {cites(allSources)} · </> : null}
+        CineVault Cache
         {canReport && !reporting ? (
           <>
-            {" "}
-            <button className="linkish" onClick={() => setReporting(true)}>
+            {" · "}
+            <button className="cv-linkish" onClick={() => setReporting(true)}>
               Report a mistake
             </button>
           </>
         ) : null}
       </p>
       {reporting ? <ReportForm title={title} edition={edition} onDone={() => setReporting(false)} /> : null}
-    </div>
+    </section>
   );
 }
 
@@ -357,7 +379,7 @@ function ReportForm({ title, edition, onDone }: { title: Title; edition: Edition
     return (
       <p className="report-sent" role="status">
         Report sent. Thanks: the cache will check it again.{" "}
-        <button className="linkish" onClick={onDone}>
+        <button className="cv-linkish" onClick={onDone}>
           Close
         </button>
       </p>
@@ -389,10 +411,10 @@ function ReportForm({ title, edition, onDone }: { title: Title; edition: Edition
         </p>
       ) : null}
       <div className="report-actions">
-        <button className="btn btn-primary" type="submit" disabled={state === "sending" || !message.trim()}>
+        <button className="cv-btn cv-btn--primary" type="submit" disabled={state === "sending" || !message.trim()}>
           {state === "sending" ? "Sending…" : "Send report"}
         </button>
-        <button className="btn" type="button" onClick={onDone}>
+        <button className="cv-btn" type="button" onClick={onDone}>
           Cancel
         </button>
       </div>

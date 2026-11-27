@@ -166,6 +166,7 @@ A comic library holds one folder per series, with one file per issue: `Aliens - 
 | `internal/cachesync` | The CineVault Cache client: lookups after matching, the scheduled update check, and the daily share of titles |
 | `internal/comic`, `internal/ebook`, `internal/thumb` | Comic archives (pages), ebook metadata and covers, video stills and cover images |
 | `pkg/editionlist` | The built-in Edition List as Go data, shared with the CineVault Cache service; a database test keeps it in step with the migrations |
+| `pkg/theme` | The design system "CineVault" (look D · Widescreen): tokens, the shared stylesheet and the bundled fonts, used by the web app and by the CineVault Cache's review UI |
 | `pkg/cacheapi` | The CineVault Cache API contract (v1): JSON types, validation rules, a client, and golden files in `testdata/` that pin the wire format |
 
 ## Design docs

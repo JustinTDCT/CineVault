@@ -28,14 +28,14 @@ export function ComicIssues({ title }: { title: Title }) {
 
   if (error) {
     return (
-      <div className="notice notice-error" role="alert">
+      <div className="cv-notice cv-notice--error" role="alert">
         <p>{error}</p>
       </div>
     );
   }
-  if (!editions) return <p className="page-sub">Loading issues…</p>;
+  if (!editions) return <p className="cv-sub">Loading issues…</p>;
   const tracks = (editions[0]?.tracks ?? []).filter((t) => trackFile(t));
-  if (tracks.length === 0) return <p className="page-sub">The files for this series are missing. Scan the library again.</p>;
+  if (tracks.length === 0) return <p className="cv-sub">The files for this series are missing. Scan the library again.</p>;
 
   const issues: ComicIssue[] = tracks.map((t) => {
     const f = trackFile(t)!;
@@ -56,27 +56,27 @@ export function ComicIssues({ title }: { title: Title }) {
       <div className="book-actions">
         {cont ? (
           <>
-            <button className="btn btn-primary" onClick={() => setOpen(cont)}>
+            <button className="cv-btn cv-btn--primary" onClick={() => setOpen(cont)}>
               Continue {issues[cont.start].name}
               {cont.page > 0 ? `, page ${cont.page + 1}` : ""}
             </button>
-            <button className="btn" onClick={() => setOpen({ start: 0, page: 0 })}>
+            <button className="cv-btn" onClick={() => setOpen({ start: 0, page: 0 })}>
               Start from the first issue
             </button>
           </>
         ) : (
-          <button className="btn btn-primary" onClick={() => setOpen({ start: 0, page: 0 })}>
+          <button className="cv-btn cv-btn--primary" onClick={() => setOpen({ start: 0, page: 0 })}>
             Read from the first issue
           </button>
         )}
       </div>
 
-      <h2 className="section-title">{issues.length === 1 ? "1 issue" : `${issues.length} issues`}</h2>
-      <ol className="grid comic-grid">
+      <h2 className="cv-section-title">{issues.length === 1 ? "1 issue" : `${issues.length} issues`}</h2>
+      <ol className="cv-grid comic-grid">
         {issues.map((iss, i) => (
-          <li key={iss.versionId} className="card">
+          <li key={iss.versionId} className="cv-card">
             <button
-              className="card-poster comic-cover"
+              className="cv-card__art comic-cover"
               aria-label={`Read ${iss.name}`}
               onClick={() => setOpen({ start: i, page: i === savedIdx && savedPage < iss.pages - 1 ? savedPage : 0 })}
             >
@@ -85,8 +85,8 @@ export function ComicIssues({ title }: { title: Title }) {
                 <span className="comic-progress" style={{ width: `${Math.min(100, ((savedPage + 1) / iss.pages) * 100)}%` }} aria-hidden="true" />
               ) : null}
             </button>
-            <h3 className="card-title">{iss.name}</h3>
-            <p className="card-year">{iss.pages} pages</p>
+            <h3 className="cv-card__title">{iss.name}</h3>
+            <p className="cv-card__meta">{iss.pages} pages</p>
           </li>
         ))}
       </ol>

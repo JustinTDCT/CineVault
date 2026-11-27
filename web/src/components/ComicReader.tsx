@@ -133,17 +133,17 @@ export function ComicReader({
           <p className="player-status">{error || issue.name}</p>
         </div>
         <div className="reader-tools">
-          <button className="btn comic-opt" aria-pressed={spread} onClick={() => setSpread(!spread)}>
+          <button className="cv-btn comic-opt" aria-pressed={spread} onClick={() => setSpread(!spread)}>
             Two pages
           </button>
           <button
-            className="btn"
+            className="cv-btn"
             onClick={() => setFit(fit === "page" ? "width" : "page")}
             aria-label={fit === "page" ? "Fit to width" : "Fit whole page"}
           >
             {fit === "page" ? "Fit width" : "Fit page"}
           </button>
-          <button className="btn" onClick={onClose}>
+          <button className="cv-btn" onClick={onClose}>
             Close
           </button>
         </div>
@@ -162,7 +162,7 @@ export function ComicReader({
         </div>
         <button className="comic-zone comic-zone-next" onClick={next} aria-label="Next page" tabIndex={-1} />
         {atEnd && nextIssue ? (
-          <button className="btn btn-primary comic-next-issue" onClick={() => go(last + 1)}>
+          <button className="cv-btn cv-btn--primary comic-next-issue" onClick={() => go(last + 1)}>
             Next: {nextIssue.name}
           </button>
         ) : null}

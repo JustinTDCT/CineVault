@@ -1,65 +1,34 @@
-/* CineVault web — "darkened auditorium".
-   Blue-graphite house lights down, text the colour of projected light, and one
-   tungsten "projector lamp" accent reserved for the main action and the
-   selected edition. Titles use marquee lettering; everything else uses
-   Atkinson Hyperlegible Next, readable from a sofa. */
+/* CineVault web: page-specific styles.
+   The look itself (colours, type, spacing, buttons, cards, editions, panels, the shell)
+   comes from the design system "CineVault" in pkg/theme (fonts.css, tokens.css,
+   cinevault.css), shared with the CineVault Cache's review UI. This file only lays out
+   what is particular to this app's pages, and uses the theme's tokens for every value. */
 
+/* The names earlier pages were written with, kept as aliases of the theme's tokens so
+   the players, readers and lists follow the design system without being rewritten. */
 :root {
-  --auditorium: #10161b; /* page */
-  --stage: #19222a; /* raised surfaces */
-  --seat: #222d36; /* hover / inputs */
-  --rule: #2c3842; /* hairlines */
-  --light: #ebe6da; /* primary text: projected light */
-  --dim: #929ca5; /* secondary text */
-  --lamp: #f2b84b; /* accent: projector lamp */
-  --lamp-ink: #1a1408; /* text on the accent */
-  --alert: #e9806b;
-  --warn: #e7c46a;
-
-  --f-marquee: "Big Shoulders Display Variable", "Arial Narrow", "Roboto Condensed", sans-serif;
-  --f-text: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
-
-  /* Type scale (1.25) */
+  --auditorium: var(--bg);
+  --stage: var(--surface);
+  --seat: var(--raised);
+  --rule: var(--line);
+  --light: var(--ink);
+  --dim: var(--ink-3);
+  --lamp: var(--accent);
+  --lamp-ink: var(--accent-ink);
+  --alert: var(--removed);
+  --warn: var(--caution);
+  --f-marquee: var(--font-display);
+  --f-text: var(--font-text);
   --t-sm: 0.875rem;
   --t-base: 1rem;
   --t-md: 1.125rem;
   --t-lg: 1.5rem;
   --t-xl: 2.5rem;
   --t-xxl: clamp(2.75rem, 6vw, 4.5rem);
-
-  --gutter: clamp(16px, 4vw, 48px);
-  --max: 1600px;
-  /* Side padding that keeps header, content and footer on one centred column. */
-  --inline: max(var(--gutter), calc((100% - var(--max)) / 2 + var(--gutter)));
-  color-scheme: dark;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  background: var(--auditorium);
 }
 
 body {
-  margin: 0;
-  background: var(--auditorium);
-  color: var(--light);
-  font-family: var(--f-text);
-  font-size: var(--t-base);
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-}
-
-a {
-  color: inherit;
-}
-
-:focus-visible {
-  outline: 2px solid var(--lamp);
-  outline-offset: 3px;
-  border-radius: 4px;
+  background: var(--bg);
 }
 
 img {
@@ -68,542 +37,302 @@ img {
 
 /* ---------- Shell ---------- */
 
-.shell {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow-x: clip; /* the full-bleed backdrop is 100vw wide */
+.cv-sidebar .cv-nav-add {
+  color: var(--ink-3);
 }
 
-.topbar {
-  display: flex;
-  align-items: baseline;
-  gap: 2.5rem;
-  flex-wrap: wrap;
-  padding: 1.25rem var(--inline) 1rem;
-  border-bottom: 1px solid var(--rule);
+.content-error {
+  padding: var(--space-5) var(--space-6) 0;
 }
 
-.wordmark {
-  font-family: var(--f-marquee);
-  font-weight: 800;
-  font-size: 1.9rem;
-  line-height: 1;
-  letter-spacing: 0.01em;
-  text-decoration: none;
-  color: var(--light);
+/* ---------- Home ---------- */
+
+.home {
+  padding-top: 24px;
 }
 
-.libnav {
-  display: flex;
-  gap: 1.5rem;
-  flex-wrap: wrap;
+.home-spotlight {
+  padding: 0 var(--space-6);
 }
 
-.libnav a {
-  text-decoration: none;
-  color: var(--dim);
-  padding-bottom: 0.35rem;
-  border-bottom: 2px solid transparent;
+.spotlight-line {
+  margin: 0 0 18px;
+  max-width: 60ch;
+  color: var(--ink-2);
 }
 
-.topbar-settings {
-  margin-left: auto;
-  text-decoration: none;
-  color: var(--dim);
-  padding-bottom: 0.35rem;
-  border-bottom: 2px solid transparent;
+.library-tile-name {
+  font-family: var(--font-display);
+  font-size: 28px;
+  letter-spacing: 1px;
+  line-height: 1.1;
 }
 
-.topbar-settings:hover,
-.topbar-settings[aria-current="page"] {
-  color: var(--light);
-}
+/* ---------- Cards and posters ---------- */
 
-.topbar-settings[aria-current="page"] {
-  border-bottom-color: var(--lamp);
-}
-
-.libnav a:hover {
-  color: var(--light);
-}
-
-.libnav a[aria-current="page"] {
-  color: var(--light);
-  border-bottom-color: var(--lamp);
-}
-
-.content {
-  flex: 1;
-  padding: 2rem var(--inline) 4rem;
-  width: 100%;
-}
-
-.footer {
-  padding: 1.5rem var(--inline);
-  border-top: 1px solid var(--rule);
-  color: var(--dim);
-  font-size: var(--t-sm);
-}
-
-/* ---------- Common ---------- */
-
-.page-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 2rem;
-}
-
-.page-title {
-  font-family: var(--f-marquee);
-  font-weight: 700;
-  font-size: var(--t-xl);
-  line-height: 1.05;
-  margin: 0;
-  text-wrap: balance;
-}
-
-.page-sub {
-  color: var(--dim);
-  margin: 0.4rem 0 0;
-  max-width: 68ch;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font: inherit;
-  font-weight: 600;
-  color: var(--light);
-  background: var(--seat);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  padding: 0.6rem 1.1rem;
-  cursor: pointer;
-  text-decoration: none;
-}
-
-.btn:hover:not(:disabled) {
-  border-color: var(--dim);
-}
-
-.btn-primary {
-  background: var(--lamp);
-  border-color: var(--lamp);
-  color: var(--lamp-ink);
-}
-
-.btn-primary:hover:not(:disabled) {
-  border-color: var(--light);
-}
-
-.btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.linkish {
-  font: inherit;
-  color: var(--dim);
-  background: none;
-  border: none;
-  padding: 0;
-  margin-left: 0.5rem;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-
-.linkish:hover {
-  color: var(--light);
-}
-
-.hint {
-  color: var(--dim);
-  font-size: var(--t-sm);
-}
-
-.notice {
-  background: var(--stage);
-  border-left: 3px solid var(--dim);
-  padding: 0.9rem 1.1rem;
-  margin-bottom: 2rem;
-  max-width: 80ch;
-}
-
-.notice p {
-  margin: 0;
-}
-
-.notice .btn {
-  margin-top: 0.9rem;
-}
-
-.notice-error {
-  border-left-color: var(--alert);
-}
-
-.notice-warn {
-  border-left-color: var(--warn);
-}
-
-.problems {
-  margin: 0.6rem 0 0;
-  padding-left: 1.2rem;
-  color: var(--dim);
-  font-size: var(--t-sm);
-  overflow-wrap: anywhere;
-}
-
-.empty {
-  color: var(--dim);
-  padding: 3rem 0;
-}
-
-/* ---------- Library grid ---------- */
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(168px, 42vw), 1fr));
-  gap: 2.25rem 1.5rem;
-}
-
-.card {
-  min-width: 0;
-}
-
-.card-poster {
-  position: relative;
-  display: block;
-  text-decoration: none;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.card-poster:hover .poster,
-.card-poster:focus-visible .poster {
-  filter: brightness(1.08);
-}
-
-.poster {
+.cv-card__art .poster {
   display: block;
   width: 100%;
-  aspect-ratio: 2 / 3;
+  height: 100%;
   object-fit: cover;
-  background: var(--stage);
 }
 
-.poster-wide {
-  aspect-ratio: 16 / 9;
+.cv-card__art--square {
+  aspect-ratio: 1;
 }
 
-.poster-square {
-  aspect-ratio: 1 / 1;
-}
-
-.poster-large.poster-square {
-  width: min(320px, 76vw);
-}
-
-.poster-large.poster-wide {
-  width: min(480px, 88vw);
-}
-
-.poster-wide.poster-blank span {
-  font-size: 1.1rem;
-}
-
-.poster-large {
-  width: min(300px, 70vw);
-  border-radius: 8px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+.cv-app .cv-card:hover .cv-card__art {
+  filter: brightness(1.08);
 }
 
 .poster-blank {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 1rem;
-  border: 1px solid var(--rule);
-  font-family: var(--f-marquee);
-  font-weight: 700;
-  font-size: 1.6rem;
+  height: 100%;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: inherit;
+  font-family: var(--font-display);
+  font-size: 26px;
+  letter-spacing: 1px;
   line-height: 1;
-  color: var(--light);
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 
 .poster-blank-year {
-  font-size: 1rem;
-  color: var(--dim);
-  margin-top: 0.4rem;
+  margin-top: 6px;
+  font-family: var(--font-text);
+  font-size: 13px;
+  letter-spacing: 0;
+  color: var(--ink-3);
 }
 
-/* "2 editions · 4K" — Editions spec §7 */
 .badge {
   position: absolute;
-  left: 0.5rem;
-  bottom: 0.5rem;
-  background: rgba(16, 22, 27, 0.86);
-  color: var(--light);
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.2rem 0.55rem;
-  border-radius: 4px;
-  backdrop-filter: blur(4px);
-}
-
-/* Music videos: one row of 16:9 stills per artist, the artist set in marquee lettering. */
-.artist-group + .artist-group {
-  margin-top: 2.75rem;
-}
-
-.artist-name {
-  font-family: var(--f-marquee);
+  left: 8px;
+  bottom: 8px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(7, 9, 12, 0.85);
+  color: var(--ink);
+  font-size: 12px;
   font-weight: 700;
-  font-size: 1.6rem;
-  letter-spacing: 0.01em;
-  margin: 0 0 1rem;
-  padding-bottom: 0.4rem;
-  border-bottom: 1px solid var(--rule);
-}
-
-.grid-wide {
-  grid-template-columns: repeat(auto-fill, minmax(min(260px, 80vw), 1fr));
-  gap: 1.75rem 1.5rem;
-}
-
-.card-title {
-  font-size: var(--t-base);
-  font-weight: 600;
-  line-height: 1.3;
-  margin: 0.75rem 0 0;
-}
-
-.card-title a {
-  text-decoration: none;
-}
-
-.card-title a:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.card-year {
-  color: var(--dim);
-  font-size: var(--t-sm);
-  margin: 0.1rem 0 0;
 }
 
 .card-editions {
-  margin: 0.35rem 0 0;
-  font-size: var(--t-sm);
-  color: var(--lamp);
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--accent);
 }
 
 .card-editions .sep {
-  color: var(--dim);
+  color: var(--ink-4);
+}
+
+.artist-group + .artist-group {
+  margin-top: 40px;
+}
+
+.artist-name {
+  margin: 0 0 14px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.problems {
+  margin: 10px 0 0;
+  padding-left: 1.2rem;
+  color: var(--ink-3);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  padding: 48px 0;
+  color: var(--ink-3);
 }
 
 /* ---------- Title page ---------- */
 
-.title-page {
-  position: relative;
-}
-
-/* Full-bleed: spans the whole window, whatever the content width. */
-.backdrop {
-  position: absolute;
-  top: -2rem;
-  left: 50%;
-  width: 100vw;
-  transform: translateX(-50%);
-  height: 520px;
-  background-size: cover;
+.cv-hero {
   background-position: center 20%;
-  opacity: 0.32;
-  mask-image: linear-gradient(to bottom, black 30%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black 30%, transparent 100%);
-  pointer-events: none;
 }
 
 .back {
   position: relative;
   display: inline-block;
-  color: var(--dim);
+  padding: 24px var(--space-6) 0;
+  color: var(--ink-3);
   text-decoration: none;
-  margin-bottom: 1.5rem;
+  font-size: 14px;
 }
 
 .back::before {
   content: "‹ ";
 }
 
-.back:hover {
-  color: var(--light);
+.poster-large {
+  width: 220px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-art);
 }
 
-.title-head {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: clamp(1.5rem, 4vw, 3.5rem);
-  align-items: end;
+.poster-large.poster-square {
+  width: 260px;
+  aspect-ratio: 1;
 }
 
-.title-name {
-  font-family: var(--f-marquee);
-  font-weight: 800;
-  font-size: var(--t-xxl);
-  line-height: 0.95;
-  margin: 0;
-  text-wrap: balance;
+.poster-large.poster-wide {
+  width: min(420px, 88vw);
+  aspect-ratio: 16 / 9;
 }
 
-.title-facts {
-  color: var(--dim);
-  margin: 0.9rem 0 0;
-  white-space: pre-wrap;
+.poster-large:not(.poster-square):not(.poster-wide) {
+  aspect-ratio: 2 / 3;
+}
+
+.poster-large.poster-blank {
+  font-size: 40px;
 }
 
 .tagline {
-  font-style: italic;
-  font-size: var(--t-md);
-  margin: 1.25rem 0 0;
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .overview {
-  margin: 0.75rem 0 0;
+  margin: 0 0 20px;
   max-width: 66ch;
-}
-
-.collection {
-  color: var(--dim);
-  margin: 1rem 0 0;
+  color: var(--ink-2);
 }
 
 .match-note {
-  color: var(--warn);
-  margin: 1rem 0 0;
+  margin: 12px 0 0;
   max-width: 66ch;
+  color: var(--caution);
 }
 
-/* ---------- Editions: the one bold element ---------- */
+.cv-hero .cv-meta {
+  margin-bottom: 14px;
+}
+
+.cache-meta .cv-linkish {
+  margin-left: 0;
+}
+
+.title-body {
+  padding: 8px var(--space-6) 0;
+}
+
+.title-hero-progress {
+  margin-top: 12px;
+  max-width: 420px;
+}
+
+/* ---------- Editions ---------- */
 
 .editions {
-  position: relative;
-  margin-top: 3.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
 }
 
-.section-title {
-  font-size: var(--t-md);
-  font-weight: 600;
-  color: var(--dim);
-  margin: 0 0 1rem;
+.editions-main {
+  flex: 1 1 440px;
+  min-width: 0;
 }
+
+.editions-side {
+  flex: 1 1 380px;
+  min-width: 0;
+  align-self: flex-start;
+}
+
+.editions .cv-section-title {
+  margin-bottom: 10px;
+}
+
+.editions-hint {
+  margin-left: 8px;
+  font-family: var(--font-text);
+  font-size: 13px;
+  letter-spacing: 0;
+  color: var(--ink-4);
+}
+
+.edition-unowned-note {
+  margin: 14px 0 0;
+  color: var(--ink-3);
+}
+
+.edition-actions {
+  margin-top: 16px;
+}
+
+/* ---------- Season and album tabs ---------- */
 
 .edition-tabs {
   display: flex;
-  gap: 0.75rem;
   flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
-/* Each edition reads like the label on a film can: the cut in marquee
-   lettering, its running time beneath. */
 .edition-tab {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  min-width: 12rem;
+  min-width: 10rem;
+  min-height: 48px;
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink-2);
   font: inherit;
   text-align: left;
-  color: var(--dim);
-  background: var(--stage);
-  border: 1px solid var(--rule);
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  padding: 0.85rem 1.25rem 0.9rem;
   cursor: pointer;
 }
 
 .edition-tab:hover {
-  color: var(--light);
+  color: var(--ink);
+  border-color: var(--line-strong);
 }
 
 .edition-tab[aria-selected="true"] {
-  color: var(--lamp-ink);
-  background: var(--lamp);
-  border-color: var(--lamp);
+  background: var(--selected);
+  border-color: var(--accent);
+  color: var(--ink);
 }
 
 .edition-tab-name {
-  font-family: var(--f-marquee);
-  font-weight: 700;
-  font-size: 1.55rem;
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 1px;
   line-height: 1.05;
 }
 
 .edition-tab-runtime {
-  font-size: var(--t-sm);
-  margin-top: 0.15rem;
+  font-size: 13px;
+  color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
 
-/* Editions the library doesn't have: an empty can, outlined and dashed. */
-.edition-tab-unowned {
-  background: transparent;
-  border-style: dashed;
-  border-bottom: none;
-  opacity: 0.8;
+.edition-panel {
+  margin-top: 4px;
 }
 
-.edition-tab-unowned[aria-selected="true"] {
-  color: var(--light);
-  background: var(--seat);
-  border-color: var(--lamp);
-  opacity: 1;
-}
-
-.edition-unowned-note {
-  margin: 0;
-  color: var(--dim);
-}
-
-.cache-info {
-  margin-top: 1.25rem;
-  max-width: 72ch;
-}
-
-.edition-unowned-note + .cache-info {
-  margin-top: 0.75rem;
-}
-
-.cache-short {
-  margin: 0;
-  font-size: var(--t-md);
-  color: var(--light);
-}
-
-.cache-confidence {
-  display: inline-block;
-  padding: 0 0.4em;
-  border: 1px solid currentColor;
-  border-radius: 4px;
-  font-size: 0.85em;
-  opacity: 0.8;
-  cursor: help;
-}
+/* ---------- What's different (cache) and versions ---------- */
 
 .cache-flag {
   margin: 0 0 0.75rem;
   color: var(--warn);
 }
 
-.cache-info-withdrawn .cache-short,
+.cache-info-withdrawn .cv-lead,
 .cache-info-withdrawn .cache-full {
   color: var(--dim);
 }
@@ -623,11 +352,8 @@ img {
   outline-offset: 3px;
 }
 
-.cache-full ul {
-  margin: 0.75rem 0 0;
-  padding-left: 1.1rem;
-  display: grid;
-  gap: 0.5rem;
+.cache-full summary {
+  color: var(--ink-2);
 }
 
 .cache-change {
@@ -665,19 +391,7 @@ img {
   color: var(--light);
 }
 
-.edition-panel {
-  background: var(--stage);
-  border: 1px solid var(--rule);
-  border-top: 3px solid var(--lamp);
-  padding: 1.5rem;
-}
 
-.edition-actions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
 
 .versions {
   list-style: none;
@@ -704,7 +418,7 @@ img {
 
 .version-res {
   font-family: var(--f-marquee);
-  font-weight: 700;
+  font-weight: 400;
   font-size: 1.35rem;
   line-height: 1;
 }
@@ -771,7 +485,7 @@ img {
 
 .player-title {
   font-family: var(--f-marquee);
-  font-weight: 700;
+  font-weight: 400;
   font-size: 1.5rem;
   line-height: 1.1;
   margin: 0;
@@ -805,7 +519,7 @@ img {
   margin-bottom: 1rem;
 }
 
-.episodes-head .section-title {
+.episodes-head .cv-section-title {
   margin: 0;
 }
 
@@ -846,7 +560,7 @@ img {
   display: grid;
   place-items: center;
   font-family: var(--f-marquee);
-  font-weight: 800;
+  font-weight: 400;
   font-size: 2.5rem;
   color: var(--rule);
 }
@@ -913,7 +627,7 @@ img {
 .episode-number {
   display: block;
   font-family: var(--f-marquee);
-  font-weight: 700;
+  font-weight: 400;
   font-size: 1.05rem;
   color: var(--lamp);
   margin-bottom: 0.15rem;
@@ -968,7 +682,7 @@ img {
   min-width: 0;
 }
 
-.player-actions .btn:first-child:not(:last-child) {
+.player-actions .cv-btn:first-child:not(:last-child) {
   max-width: 22rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -987,7 +701,7 @@ img {
 
 .disc-name {
   font-family: var(--f-marquee);
-  font-weight: 700;
+  font-weight: 400;
   font-size: 1.2rem;
   color: var(--dim);
   margin: 0.5rem 0;
@@ -1030,7 +744,7 @@ img {
 
 .track-no {
   font-family: var(--f-marquee);
-  font-weight: 700;
+  font-weight: 400;
   font-size: 1.15rem;
   color: var(--dim);
   text-align: right;
@@ -1540,7 +1254,7 @@ img {
   accent-color: var(--lamp);
 }
 
-.hint code {
+.cv-hint code {
   font-size: 0.95em;
   color: var(--light);
 }
@@ -1566,7 +1280,7 @@ img {
 .settings-heading {
   font-family: var(--f-marquee);
   font-size: var(--t-lg);
-  font-weight: 700;
+  font-weight: 400;
   margin: 0;
 }
 
@@ -1673,11 +1387,11 @@ img {
   border-color: var(--lamp);
 }
 
-.form .hint {
+.form .cv-hint {
   margin: 0;
 }
 
-.form .btn {
+.form .cv-btn {
   justify-self: start;
   margin-top: 1rem;
 }
@@ -1690,21 +1404,11 @@ img {
 /* ---------- Small screens ---------- */
 
 @media (max-width: 720px) {
-  .topbar {
-    gap: 1rem;
-  }
-  .title-head {
-    grid-template-columns: 1fr;
-  }
   .poster-large {
-    width: min(220px, 60vw);
+    width: min(180px, 50vw);
   }
   .version {
     grid-template-columns: 1fr;
-  }
-  .edition-tab {
-    min-width: 0;
-    flex: 1 1 10rem;
   }
   .nowplaying {
     grid-template-columns: minmax(0, 1fr) auto auto;
@@ -1729,7 +1433,7 @@ img {
   .comic-opt {
     display: none;
   }
-  .reader-tools .btn {
+  .reader-tools .cv-btn {
     padding-inline: 0.7rem;
   }
   .episode {

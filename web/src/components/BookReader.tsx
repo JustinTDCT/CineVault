@@ -147,18 +147,18 @@ export function BookReader({ target, onClose }: { target: ReadTarget; onClose: (
           <p className="player-status">{status || where.chapter || " "}</p>
         </div>
         <div className="reader-tools">
-          <button className="btn" aria-expanded={panel === "toc"} onClick={() => setPanel(panel === "toc" ? "" : "toc")} disabled={toc.length === 0}>
+          <button className="cv-btn" aria-expanded={panel === "toc"} onClick={() => setPanel(panel === "toc" ? "" : "toc")} disabled={toc.length === 0}>
             Contents
           </button>
           <button
-            className="btn"
+            className="cv-btn"
             aria-expanded={panel === "text"}
             onClick={() => setPanel(panel === "text" ? "" : "text")}
             aria-label="Text size and colours"
           >
             Aa
           </button>
-          <button className="btn" onClick={onClose}>
+          <button className="cv-btn" onClick={onClose}>
             Close
           </button>
         </div>
@@ -171,7 +171,7 @@ export function BookReader({ target, onClose }: { target: ReadTarget; onClose: (
           <div className="reader-panel reader-text">
             <div className="reader-row" role="group" aria-label="Text size">
               <button
-                className="btn"
+                className="cv-btn"
                 onClick={() => setSize(SIZES[Math.max(0, SIZES.indexOf(size) - 1)] ?? 100)}
                 disabled={size <= SIZES[0]}
                 aria-label="Smaller text"
@@ -180,7 +180,7 @@ export function BookReader({ target, onClose }: { target: ReadTarget; onClose: (
               </button>
               <span className="reader-size">{size}%</span>
               <button
-                className="btn"
+                className="cv-btn"
                 onClick={() => setSize(SIZES[Math.min(SIZES.length - 1, SIZES.indexOf(size) + 1)] ?? 100)}
                 disabled={size >= SIZES[SIZES.length - 1]}
                 aria-label="Larger text"
@@ -240,7 +240,7 @@ function TocList({ items, onPick, current }: { items: FoliateTocItem[]; onPick: 
     <ul>
       {items.map((it, i) => (
         <li key={`${it.href}-${i}`}>
-          <button className="linkish" onClick={() => onPick(it.href)} aria-current={it.label.trim() === current ? "true" : undefined}>
+          <button className="cv-linkish" onClick={() => onPick(it.href)} aria-current={it.label.trim() === current ? "true" : undefined}>
             {it.label.trim()}
           </button>
           {it.subitems?.length ? <TocList items={it.subitems} onPick={onPick} current={current} /> : null}

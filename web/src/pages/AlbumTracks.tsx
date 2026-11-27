@@ -22,13 +22,13 @@ export function AlbumTracks({ title }: { title: Title }) {
 
   if (error) {
     return (
-      <div className="notice notice-error" role="alert">
+      <div className="cv-notice cv-notice--error" role="alert">
         <p>{error}</p>
       </div>
     );
   }
-  if (!editions) return <p className="page-sub">Loading songs…</p>;
-  if (editions.length === 0) return <p className="page-sub">No songs found. Scan the library again.</p>;
+  if (!editions) return <p className="cv-sub">Loading songs…</p>;
+  if (editions.length === 0) return <p className="cv-sub">No songs found. Scan the library again.</p>;
 
   const edition = editions.find((e) => e.edition_id === editionId) ?? editions[0];
   const nameOf = (id: number) => title.editions.find((e) => e.id === id)?.display_name ?? "Edition";
@@ -48,8 +48,8 @@ export function AlbumTracks({ title }: { title: Title }) {
   return (
     <section className="album" aria-label="Songs">
       <div className="episodes-head">
-        <h2 className="section-title">{albumSummary(edition.tracks)}</h2>
-        <button className="btn btn-primary" disabled={queue.length === 0} onClick={() => audio.play(queue, 0)}>
+        <h2 className="cv-section-title">{albumSummary(edition.tracks)}</h2>
+        <button className="cv-btn cv-btn--primary" disabled={queue.length === 0} onClick={() => audio.play(queue, 0)}>
           Play album
         </button>
       </div>

@@ -13,7 +13,7 @@ const INTERVALS: { value: CacheSettings["check_interval"]; label: string }[] = [
 export function SettingsPage() {
   return (
     <section className="settings">
-      <h1 className="page-title">Settings</h1>
+      <h1 className="cv-page-title">Settings</h1>
       <CacheSettingsSection />
     </section>
   );
@@ -87,14 +87,14 @@ function CacheSettingsSection() {
         title in their library.
       </p>
       {error ? (
-        <div className="notice notice-error" role="alert">
+        <div className="cv-notice cv-notice--error" role="alert">
           <p>{error}</p>
-          <button className="btn" onClick={load}>
+          <button className="cv-btn" onClick={load}>
             Try again
           </button>
         </div>
       ) : !status ? (
-        <p className="page-sub">Loading…</p>
+        <p className="cv-sub">Loading…</p>
       ) : (
         <>
           <Subscription status={status} />
@@ -117,7 +117,7 @@ function CacheSettingsSection() {
                 ))}
               </select>
               <div className="settings-check">
-                <button className="btn" onClick={checkNow} disabled={status.checking || checkRequested}>
+                <button className="cv-btn" onClick={checkNow} disabled={status.checking || checkRequested}>
                   {status.checking || checkRequested ? "Checking…" : "Check now"}
                 </button>
                 <span className="settings-note" role="status">

@@ -24,14 +24,14 @@ export function BookChapters({ title }: { title: Title }) {
 
   if (error) {
     return (
-      <div className="notice notice-error" role="alert">
+      <div className="cv-notice cv-notice--error" role="alert">
         <p>{error}</p>
       </div>
     );
   }
-  if (!editions) return <p className="page-sub">Loading chapters…</p>;
+  if (!editions) return <p className="cv-sub">Loading chapters…</p>;
   const parts = editions[0]?.tracks.filter((t) => trackFile(t)) ?? [];
-  if (parts.length === 0) return <p className="page-sub">The files for this book are missing. Scan the library again.</p>;
+  if (parts.length === 0) return <p className="cv-sub">The files for this book are missing. Scan the library again.</p>;
 
   const item = (t: Track, startAt = 0): QueueItem => {
     const f = trackFile(t)!;
@@ -77,20 +77,20 @@ export function BookChapters({ title }: { title: Title }) {
       <div className="book-actions">
         {canResume ? (
           <>
-            <button className="btn btn-primary" onClick={() => playFrom(savedPart, resumeAt)}>
+            <button className="cv-btn cv-btn--primary" onClick={() => playFrom(savedPart, resumeAt)}>
               Resume{resumeChapter ? ` ${resumeChapter.name}` : ""} at {formatClock(resumeAt)}
             </button>
-            <span className="hint">{timeLeft(total, before + resumeAt)}</span>
-            <button className="btn" onClick={() => playFrom(0, 0)}>
+            <span className="cv-hint">{timeLeft(total, before + resumeAt)}</span>
+            <button className="cv-btn" onClick={() => playFrom(0, 0)}>
               Start from the beginning
             </button>
           </>
         ) : (
           <>
-            <button className="btn btn-primary" onClick={() => playFrom(0, 0)}>
+            <button className="cv-btn cv-btn--primary" onClick={() => playFrom(0, 0)}>
               {finished ? "Listen again" : "Play"}
             </button>
-            <span className="hint">{formatRuntime(total)}</span>
+            <span className="cv-hint">{formatRuntime(total)}</span>
           </>
         )}
       </div>
@@ -101,7 +101,7 @@ export function BookChapters({ title }: { title: Title }) {
         const current = f.id === playingVersion && nowAt !== undefined ? chapterAt(chapters, nowAt) : undefined;
         return (
           <div key={t.id} className="disc">
-            {parts.length > 1 ? <h3 className="disc-name">{t.name}</h3> : <h2 className="section-title">{chapters.length} chapters</h2>}
+            {parts.length > 1 ? <h3 className="disc-name">{t.name}</h3> : <h2 className="cv-section-title">{chapters.length} chapters</h2>}
             <ol className="tracklist">
               {chapters.map((c, ci) => {
                 const now = current === c;

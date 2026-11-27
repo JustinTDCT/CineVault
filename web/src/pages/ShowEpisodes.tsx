@@ -24,13 +24,13 @@ export function ShowEpisodes({ title }: { title: Title }) {
 
   if (error) {
     return (
-      <div className="notice notice-error" role="alert">
+      <div className="cv-notice cv-notice--error" role="alert">
         <p>{error}</p>
       </div>
     );
   }
-  if (!seasons) return <p className="page-sub">Loading episodes…</p>;
-  if (seasons.length === 0) return <p className="page-sub">No episodes found. Scan the library again.</p>;
+  if (!seasons) return <p className="cv-sub">Loading episodes…</p>;
+  if (seasons.length === 0) return <p className="cv-sub">No episodes found. Scan the library again.</p>;
 
   const season = seasons.find((s) => s.number === seasonNumber) ?? seasons[0];
   const first = playableEpisodes(seasons)[0];
@@ -43,9 +43,9 @@ export function ShowEpisodes({ title }: { title: Title }) {
   return (
     <section className="episodes" aria-label="Episodes">
       <div className="episodes-head">
-        <h2 className="section-title">{seasons.length === 1 ? seasonLabel(season) : "Episodes"}</h2>
+        <h2 className="cv-section-title">{seasons.length === 1 ? seasonLabel(season) : "Episodes"}</h2>
         {first ? (
-          <button className="btn btn-primary" onClick={() => setPlaying(first)}>
+          <button className="cv-btn cv-btn--primary" onClick={() => setPlaying(first)}>
             Play {episodeCode(first.season, first.number)}
           </button>
         ) : null}

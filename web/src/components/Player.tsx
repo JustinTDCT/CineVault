@@ -101,11 +101,11 @@ export function Player({
         </div>
         <div className="player-actions">
           {upNext && onEnded ? (
-            <button className="btn" onClick={onEnded} title={`Play ${upNext}`}>
+            <button className="cv-btn" onClick={onEnded} title={`Play ${upNext}`}>
               Next: {upNext}
             </button>
           ) : null}
-          <button className="btn" onClick={onClose} autoFocus>
+          <button className="cv-btn" onClick={onClose} autoFocus>
             Close
           </button>
         </div>

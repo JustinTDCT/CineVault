@@ -49,8 +49,8 @@ export function SetupPage({ hasLibraries, onCreated }: { hasLibraries: boolean; 
 
   return (
     <section className="setup">
-      <h1 className="page-title">{hasLibraries ? "Add a library" : "Add your first library"}</h1>
-      <p className="page-sub">
+      <h1 className="cv-page-title">{hasLibraries ? "Add a library" : "Add your first library"}</h1>
+      <p className="cv-sub">
         Point CineVault at a folder of video files on this server. It works out each title from the file and folder names, and fetches posters and
         details from TMDb.
       </p>
@@ -76,7 +76,7 @@ export function SetupPage({ hasLibraries, onCreated }: { hasLibraries: boolean; 
           autoComplete="off"
           spellCheck={false}
         />
-        <p className="hint">
+        <p className="cv-hint">
           Use the full path, starting with /. Files named like <code>{current.naming}</code> work best.
         </p>
         {cache && (kind === "movie" || kind === "tv") ? (
@@ -96,7 +96,7 @@ export function SetupPage({ hasLibraries, onCreated }: { hasLibraries: boolean; 
             {error}
           </p>
         ) : null}
-        <button className="btn btn-primary" type="submit" disabled={busy}>
+        <button className="cv-btn cv-btn--primary" type="submit" disabled={busy}>
           {busy ? "Adding…" : "Add and scan"}
         </button>
       </form>
