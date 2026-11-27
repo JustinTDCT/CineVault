@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type Episode, type Season, type Title } from "../api";
 import { Player, type PlayTarget } from "../components/Player";
-import { episodeCode, formatDate, nextEpisode, playableEpisodes, playableVersion, resolution, seasonLabel } from "../format";
+import { episodeCode, formatDate, isPlaceholderName, isUpcoming, nextEpisode, playableEpisodes, playableVersion, resolution, seasonLabel } from "../format";
 
 /** A show's seasons as tabs, each listing every episode, with or without a file. */
 export function ShowEpisodes({ title }: { title: Title }) {
@@ -43,7 +43,7 @@ export function ShowEpisodes({ title }: { title: Title }) {
   return (
     <section className="episodes" aria-label="Episodes">
       <div className="episodes-head">
-        <h2 className="section-title">{seasons.length === 1 ? seasonLabel(season) : `${seasons.length} seasons`}</h2>
+        <h2 className="section-title">{seasons.length === 1 ? seasonLabel(season) : "Episodes"}</h2>
         {first ? (
           <button className="btn btn-primary" onClick={() => setPlaying(first)}>
             Play {episodeCode(first.season, first.number)}
@@ -55,6 +55,14 @@ export function ShowEpisodes({ title }: { title: Title }) {
         <div className="edition-tabs" role="tablist">
           {seasons.map((s) => {
             const owned = s.episodes.filter((e) => e.versions.length > 0 || e.part_of).length;
+            const aired = s.episodes.filter((e) => !isUpcoming(e.air_date));
+            const firstAir = s.episodes.map((e) => e.air_date).find(Boolean);
+            const count =
+              owned === 0 && aired.length === 0 && firstAir
+                ? `Airs ${formatDate(firstAir)}`
+                : owned === s.episodes.length
+                  ? `${owned} episodes`
+                  : `${owned} of ${s.episodes.length} episodes`;
             return (
               <button
                 key={s.number}
@@ -67,7 +75,7 @@ export function ShowEpisodes({ title }: { title: Title }) {
               >
                 <span className="edition-tab-name">{seasonLabel(s)}</span>
                 <span className="edition-tab-runtime">
-                  {owned === s.episodes.length ? `${owned} episodes` : `${owned} of ${s.episodes.length} episodes`}
+                  {count}
                 </span>
               </button>
             );
@@ -104,11 +112,13 @@ export function ShowEpisodes({ title }: { title: Title }) {
 function EpisodeRow({ episode: e, onPlay }: { episode: Episode; onPlay: () => void }) {
   const v = playableVersion(e);
   const owned = e.versions.length > 0;
-  const facts = [formatDate(e.air_date), e.runtime_minutes ? `${e.runtime_minutes} min` : "", v ? resolution(v) : ""].filter(Boolean);
+  const facts = [isUpcoming(e.air_date) ? "" : formatDate(e.air_date), e.runtime_minutes ? `${e.runtime_minutes} min` : "", v ? resolution(v) : ""].filter(Boolean);
   const label = `Play episode ${e.number}${e.name ? `, ${e.name}` : ""}`;
 
+  const upcoming = isUpcoming(e.air_date);
   let status: ReactNode = null;
   if (e.part_of) status = <span className="episode-note">In the episode {e.part_of} file</span>;
+  else if (!owned && upcoming) status = <span className="episode-note">Airs {formatDate(e.air_date)}</span>;
   else if (!owned) status = <span className="episode-note">Not in your library</span>;
   else if (!v) status = <span className="episode-note episode-note-alert">File missing</span>;
 
@@ -125,7 +135,7 @@ function EpisodeRow({ episode: e, onPlay }: { episode: Episode; onPlay: () => vo
       <div className="episode-body">
         <h3 className="episode-title">
           <span className="episode-number">{e.season === 0 ? "Special" : "Episode"} {v?.last_episode ? `${e.number}–${v.last_episode}` : e.number}</span>
-          {e.name || "Untitled"}
+          {isPlaceholderName(e.name, e.number) ? null : e.name}
         </h3>
         {facts.length ? <p className="episode-facts">{facts.join("   ")}</p> : null}
         {e.overview ? <p className="episode-overview">{e.overview}</p> : null}

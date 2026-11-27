@@ -136,3 +136,15 @@ export function formatDate(iso?: string): string {
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
+
+/** True when an episode's air date is after today (it hasn't aired yet). */
+export function isUpcoming(airDate: string | undefined, today = new Date()): boolean {
+  if (!airDate) return false;
+  const d = new Date(`${airDate}T00:00:00`);
+  return !Number.isNaN(d.getTime()) && d > today;
+}
+
+/** TMDb's placeholder names like "Episode 3" add nothing next to the number. */
+export function isPlaceholderName(name: string | undefined, number: number): boolean {
+  return !name || name.trim().toLowerCase() === `episode ${number}`;
+}

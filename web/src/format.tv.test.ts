@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Episode, Season } from "./api";
-import { episodeCode, nextEpisode, playableEpisodes, seasonLabel, showCounts } from "./format";
+import { isPlaceholderName, isUpcoming, episodeCode, nextEpisode, playableEpisodes, seasonLabel, showCounts } from "./format";
 
 const ep = (id: number, season: number, number: number, files: { missing?: boolean }[] = [{}]): Episode => ({
   id,
@@ -37,5 +37,13 @@ describe("tv", () => {
     expect(showCounts({ season_count: 1, episode_count: 8 })).toBe("1 season · 8 episodes");
     expect(showCounts({ season_count: 2, episode_count: 1 })).toBe("2 seasons · 1 episode");
     expect(showCounts({})).toBe("");
+  });
+  it("spots episodes that haven't aired and placeholder names", () => {
+    const today = new Date("2026-11-26T12:00:00");
+    expect(isUpcoming("2027-01-14", today)).toBe(true);
+    expect(isUpcoming("2024-03-21", today)).toBe(false);
+    expect(isUpcoming(undefined, today)).toBe(false);
+    expect(isPlaceholderName("Episode 3", 3)).toBe(true);
+    expect(isPlaceholderName("Countdown", 1)).toBe(false);
   });
 });
