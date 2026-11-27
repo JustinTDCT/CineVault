@@ -16,8 +16,8 @@ func TestLoadDefaults(t *testing.T) {
 	if c.Listen != DefaultListen {
 		t.Errorf("Listen = %q, want %q", c.Listen, DefaultListen)
 	}
-	if c.FFmpegPath != "ffmpeg" {
-		t.Errorf("FFmpegPath = %q, want ffmpeg", c.FFmpegPath)
+	if c.FFmpegPath != "ffmpeg" || c.FFprobePath != "ffprobe" {
+		t.Errorf("FFmpegPath = %q, FFprobePath = %q", c.FFmpegPath, c.FFprobePath)
 	}
 }
 

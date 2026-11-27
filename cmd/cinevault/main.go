@@ -15,7 +15,9 @@ import (
 
 	"github.com/JustinTDCT/CineVault/internal/config"
 	"github.com/JustinTDCT/CineVault/internal/db"
+	"github.com/JustinTDCT/CineVault/internal/mediainfo"
 	"github.com/JustinTDCT/CineVault/internal/probe"
+	"github.com/JustinTDCT/CineVault/internal/scan"
 	"github.com/JustinTDCT/CineVault/internal/server"
 )
 
@@ -59,6 +61,11 @@ func run(log *slog.Logger) error {
 	caps := probeCapabilities(cfg)
 	logCapabilities(log, caps)
 
+	scanner := scan.Scanner{
+		Store:  database,
+		Prober: mediainfo.FFprobe{Path: cfg.FFprobePath, Run: probe.ExecRunner},
+	}
+
 	api := server.New(server.Options{
 		Version:       version,
 		DBAddr:        dbAddr,
@@ -66,6 +73,8 @@ func run(log *slog.Logger) error {
 		SchemaVersion: mig.Current,
 		PingDB:        database.Ping,
 		EditionTypes:  database.EditionTypes,
+		Libraries:     database,
+		Scan:          scanner.Scan,
 		Log:           log,
 	})
 	srv := &http.Server{

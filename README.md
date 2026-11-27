@@ -30,6 +30,10 @@ curl -s 'http://localhost:8456/api/edition-types?media_type=movie'
 |---|---|
 | `GET /api/health` | Server, database and transcoding status |
 | `GET /api/edition-types` | The Edition List. Optional `media_type` (`movie`, `tv`, `music`, `audiobook`, `book`) and `include_hidden=true`. |
+| `GET /api/libraries` | All libraries |
+| `POST /api/libraries` | Add a library: `{"name": "Movies", "media_type": "movie", "paths": ["/media/movies"]}` |
+| `POST /api/libraries/{id}/scan` | Scan a library now and return a summary (movie libraries only, for now) |
+| `GET /api/libraries/{id}/titles` | Titles with their editions and versions |
 
 The health check reports:
 - `status`: `ok`, or `degraded` with HTTP 503 when the database can't be reached or FFmpeg is missing
@@ -47,6 +51,7 @@ Settings come from environment variables:
 | `CINEVAULT_DATABASE_URL` | none, required | PostgreSQL URL, for example `postgres://user:pass@127.0.0.1:5432/cinevault` |
 | `CINEVAULT_LISTEN` | `:8456` | HTTP listen address |
 | `CINEVAULT_FFMPEG` | `ffmpeg` | Path to the FFmpeg binary |
+| `CINEVAULT_FFPROBE` | `ffprobe` | Path to ffprobe, used to read media files |
 
 ## Project layout
 
@@ -56,7 +61,9 @@ Settings come from environment variables:
 | `internal/catalog` | Library data types shared by the database and the API |
 | `internal/config` | Settings from environment variables |
 | `internal/db` | PostgreSQL connection, migrations and queries |
+| `internal/mediainfo` | Reads codecs, resolution, HDR and audio with ffprobe |
 | `internal/probe` | FFmpeg, GPU and hardware-encoder detection |
+| `internal/scan` | Library scanner and file-name parser (title, year, edition) |
 | `internal/server` | HTTP API |
 
 ## Design docs

@@ -6,10 +6,13 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
 	"github.com/JustinTDCT/CineVault/internal/probe"
+	"github.com/JustinTDCT/CineVault/internal/scan"
 )
 
 // Capabilities is what the host can do for transcoding, probed at startup.
@@ -31,18 +34,40 @@ type Options struct {
 	PingDB func(ctx context.Context) error
 	// EditionTypes returns the whole Edition List.
 	EditionTypes func(ctx context.Context) ([]catalog.EditionType, error)
-	Log          *slog.Logger
+	// Libraries stores libraries and reads their titles.
+	Libraries LibraryStore
+	// Scan scans one library.
+	Scan func(ctx context.Context, lib catalog.Library) (scan.Result, error)
+	// IsDir checks that a library folder exists; defaults to os.Stat.
+	IsDir func(path string) bool
+	Log   *slog.Logger
+}
+
+// LibraryStore is what the library endpoints need from the database.
+type LibraryStore interface {
+	CreateLibrary(ctx context.Context, lib catalog.Library) (catalog.Library, error)
+	Libraries(ctx context.Context) ([]catalog.Library, error)
+	Library(ctx context.Context, id int64) (catalog.Library, error)
+	LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Title, error)
 }
 
 // Server serves the CineVault API.
 type Server struct {
 	opt Options
+	// scanning allows one scan at a time.
+	scanning sync.Mutex
 }
 
 // New creates a Server.
 func New(opt Options) *Server {
 	if opt.Log == nil {
 		opt.Log = slog.Default()
+	}
+	if opt.IsDir == nil {
+		opt.IsDir = func(path string) bool {
+			st, err := os.Stat(path)
+			return err == nil && st.IsDir()
+		}
 	}
 	return &Server{opt: opt}
 }
@@ -52,6 +77,10 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/edition-types", s.editionTypes)
+	mux.HandleFunc("GET /api/libraries", s.listLibraries)
+	mux.HandleFunc("POST /api/libraries", s.createLibrary)
+	mux.HandleFunc("GET /api/libraries/{id}/titles", s.libraryTitles)
+	mux.HandleFunc("POST /api/libraries/{id}/scan", s.scanLibrary)
 	return mux
 }
 

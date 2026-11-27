@@ -17,6 +17,8 @@ type Config struct {
 	DatabaseURL string
 	// FFmpegPath is the ffmpeg binary to run.
 	FFmpegPath string
+	// FFprobePath is the ffprobe binary used to read media files.
+	FFprobePath string
 	// ProbeTimeout bounds each capability check at startup.
 	ProbeTimeout time.Duration
 }
@@ -34,6 +36,7 @@ func load(getenv func(string) string) (Config, error) {
 		Listen:       getenv("CINEVAULT_LISTEN"),
 		DatabaseURL:  getenv("CINEVAULT_DATABASE_URL"),
 		FFmpegPath:   getenv("CINEVAULT_FFMPEG"),
+		FFprobePath:  getenv("CINEVAULT_FFPROBE"),
 		ProbeTimeout: 15 * time.Second,
 	}
 	if c.Listen == "" {
@@ -41,6 +44,9 @@ func load(getenv func(string) string) (Config, error) {
 	}
 	if c.FFmpegPath == "" {
 		c.FFmpegPath = "ffmpeg"
+	}
+	if c.FFprobePath == "" {
+		c.FFprobePath = "ffprobe"
 	}
 	if c.DatabaseURL == "" {
 		return c, fmt.Errorf("CINEVAULT_DATABASE_URL is not set")

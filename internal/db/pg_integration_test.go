@@ -2,12 +2,18 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/JustinTDCT/CineVault/internal/catalog"
+	"github.com/JustinTDCT/CineVault/internal/mediainfo"
+	"github.com/JustinTDCT/CineVault/internal/scan"
 )
 
 // testDatabase creates a fresh, empty database for one test and drops it
@@ -191,5 +197,78 @@ func TestIntegrationAliensExample(t *testing.T) {
 	q(&versions, `SELECT count(*) FROM versions`)
 	if versions != 0 {
 		t.Errorf("%d versions left after deleting the title", versions)
+	}
+}
+
+type stubProber struct{}
+
+func (stubProber) Probe(_ context.Context, path string) (mediainfo.Info, error) {
+	return mediainfo.Info{Container: "mkv", VideoCodec: "hevc", Width: 1920, Height: 800,
+		AudioCodec: "eac3", AudioChannels: 6, DurationSeconds: 7020.4, Bitrate: 2220000}, nil
+}
+
+func TestIntegrationScanAlien(t *testing.T) {
+	d := testDatabase(t)
+	ctx := context.Background()
+	if _, err := d.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	remastered := filepath.Join(dir, "Alien - Remastered (1979) [Bluray-1080p x265].mkv")
+	dc := filepath.Join(dir, "Alien {edition-Director's Cut} (1979) [1080p-MP4].mkv")
+	for _, p := range []string{remastered, dc} {
+		if err := os.WriteFile(p, []byte(p), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	lib, err := d.CreateLibrary(ctx, catalog.Library{Name: "Movies", MediaType: "movie", Paths: []string{dir}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.CreateLibrary(ctx, catalog.Library{Name: "Movies", MediaType: "movie", Paths: []string{dir}}); !errors.Is(err, catalog.ErrConflict) {
+		t.Errorf("duplicate library name: err = %v, want ErrConflict", err)
+	}
+	if _, err := d.Library(ctx, lib.ID+1000); !errors.Is(err, catalog.ErrNotFound) {
+		t.Errorf("unknown library: err = %v, want ErrNotFound", err)
+	}
+
+	s := scan.Scanner{Store: d, Prober: stubProber{}}
+	res, err := s.Scan(ctx, lib)
+	if err != nil || res.Added != 2 || len(res.Errors) != 0 {
+		t.Fatalf("scan: %+v err=%v", res, err)
+	}
+
+	titles, err := d.LibraryTitles(ctx, lib.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(titles) != 1 || titles[0].Name != "Alien" || titles[0].Year != 1979 || len(titles[0].Editions) != 2 {
+		t.Fatalf("titles = %+v", titles)
+	}
+	eds := titles[0].Editions
+	if eds[0].EditionTypeID != "directors_cut" || eds[1].EditionTypeID != "remastered" {
+		t.Errorf("edition order = %s, %s", eds[0].EditionTypeID, eds[1].EditionTypeID)
+	}
+	v := eds[1].Versions[0]
+	if v.Path != remastered || v.Label != "1080p · HEVC · E-AC-3 5.1" || v.DurationSeconds != 7020.4 || eds[1].RuntimeSeconds != 7020 {
+		t.Errorf("version = %+v runtime=%d", v, eds[1].RuntimeSeconds)
+	}
+
+	res, err = s.Scan(ctx, lib)
+	if err != nil || res.Unchanged != 2 {
+		t.Errorf("rescan: %+v err=%v", res, err)
+	}
+
+	if err := os.Remove(dc); err != nil {
+		t.Fatal(err)
+	}
+	if res, err = s.Scan(ctx, lib); err != nil || res.Missing != 1 {
+		t.Fatalf("after delete: %+v err=%v", res, err)
+	}
+	titles, _ = d.LibraryTitles(ctx, lib.ID)
+	if !titles[0].Editions[0].Versions[0].Missing || titles[0].Editions[1].Versions[0].Missing {
+		t.Errorf("missing flags wrong: %+v", titles[0].Editions)
 	}
 }
