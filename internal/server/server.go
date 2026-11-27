@@ -4,10 +4,11 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"net"
+	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/JustinTDCT/CineVault/internal/catalog"
 	"github.com/JustinTDCT/CineVault/internal/probe"
 )
 
@@ -17,30 +18,47 @@ type Capabilities struct {
 	GPUs   []probe.GPU      `json:"gpus"`
 }
 
+// Options configures a Server. The function fields keep this package free of
+// any database driver, so it can be tested with fakes.
+type Options struct {
+	Version string
+	// DBAddr is shown in health errors; it never includes credentials.
+	DBAddr string
+	Caps   Capabilities
+	// SchemaVersion is the database schema version after startup migrations.
+	SchemaVersion int
+	// PingDB checks the database is reachable.
+	PingDB func(ctx context.Context) error
+	// EditionTypes returns the whole Edition List.
+	EditionTypes func(ctx context.Context) ([]catalog.EditionType, error)
+	Log          *slog.Logger
+}
+
 // Server serves the CineVault API.
 type Server struct {
-	version string
-	dbAddr  string
-	caps    Capabilities
-	// dial checks the database is reachable; replaceable in tests.
-	dial func(ctx context.Context, addr string) error
+	opt Options
 }
 
 // New creates a Server.
-func New(version, dbAddr string, caps Capabilities) *Server {
-	return &Server{version: version, dbAddr: dbAddr, caps: caps, dial: tcpDial}
+func New(opt Options) *Server {
+	if opt.Log == nil {
+		opt.Log = slog.Default()
+	}
+	return &Server{opt: opt}
 }
 
 // Handler returns the HTTP routes.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
+	mux.HandleFunc("GET /api/edition-types", s.editionTypes)
 	return mux
 }
 
 type dbStatus struct {
-	Reachable bool   `json:"reachable"`
-	Error     string `json:"error,omitempty"`
+	Reachable     bool   `json:"reachable"`
+	SchemaVersion int    `json:"schema_version"`
+	Error         string `json:"error,omitempty"`
 }
 
 type healthResponse struct {
@@ -59,34 +77,61 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 
 	resp := healthResponse{
 		Status:    "ok",
-		Version:   s.version,
+		Version:   s.opt.Version,
 		Time:      time.Now().UTC(),
-		Transcode: s.caps,
+		Transcode: s.opt.Caps,
+		Database:  dbStatus{SchemaVersion: s.opt.SchemaVersion},
 	}
-	if err := s.dial(ctx, s.dbAddr); err != nil {
-		resp.Database = dbStatus{Error: "cannot connect to " + s.dbAddr}
+	if err := s.opt.PingDB(ctx); err != nil {
+		resp.Database.Error = "cannot connect to " + s.opt.DBAddr
 		resp.Status = "degraded"
 	} else {
-		resp.Database = dbStatus{Reachable: true}
+		resp.Database.Reachable = true
 	}
-	if !s.caps.FFmpeg.Found {
+	if !s.opt.Caps.FFmpeg.Found {
 		resp.Status = "degraded"
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	code := http.StatusOK
 	if resp.Status != "ok" {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		code = http.StatusServiceUnavailable
 	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(resp)
+	writeJSON(w, code, resp)
 }
 
-func tcpDial(ctx context.Context, addr string) error {
-	var d net.Dialer
-	conn, err := d.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return err
+// editionTypes lists the Edition List. Optional query parameters:
+// media_type (movie, tv, music, audiobook, book) and include_hidden=true.
+func (s *Server) editionTypes(w http.ResponseWriter, r *http.Request) {
+	media := r.URL.Query().Get("media_type")
+	if media != "" && !catalog.ValidMediaType(media) {
+		writeError(w, http.StatusBadRequest, "media_type must be one of movie, tv, music, audiobook, book")
+		return
 	}
-	return conn.Close()
+	includeHidden := r.URL.Query().Get("include_hidden") == "true"
+
+	all, err := s.opt.EditionTypes(r.Context())
+	if err != nil {
+		s.opt.Log.Error("list edition types", "error", err)
+		writeError(w, http.StatusInternalServerError, "could not read the Edition List")
+		return
+	}
+	out := []catalog.EditionType{}
+	for _, e := range all {
+		if (media == "" || e.AppliesTo(media)) && (includeHidden || !e.Hidden) {
+			out = append(out, e)
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func writeError(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg})
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(v)
 }

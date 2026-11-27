@@ -12,19 +12,28 @@ This is a fresh start (November 2026). Earlier work is preserved on these branch
 Requires Go 1.24 or newer, FFmpeg, and the development PostgreSQL container described in [`docs/environment/test-server.md`](docs/environment/test-server.md). That container's credentials live in `~/.config/cinevault/db.env`.
 
 ```bash
-make test    # run the tests
-make run     # build and start the server against the dev database
+make test     # unit tests (no database needed)
+make test-db  # all tests, including database tests on temporary databases
+make run      # build and start the server against the dev database
 ```
 
-Then check the server from another terminal:
+On startup the server connects to PostgreSQL and applies any pending schema migrations (`internal/db/migrations`), then starts the API. Check it from another terminal:
 
 ```bash
 curl -s http://localhost:8456/api/health
+curl -s 'http://localhost:8456/api/edition-types?media_type=movie'
 ```
+
+### API
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/health` | Server, database and transcoding status |
+| `GET /api/edition-types` | The Edition List. Optional `media_type` (`movie`, `tv`, `music`, `audiobook`, `book`) and `include_hidden=true`. |
 
 The health check reports:
 - `status`: `ok`, or `degraded` with HTTP 503 when the database can't be reached or FFmpeg is missing
-- whether the database is reachable
+- whether the database is reachable, and its schema version
 - the FFmpeg version and hardware acceleration methods
 - each NVIDIA encoder, and whether it worked in a real test encode
 - the GPUs found
@@ -44,7 +53,9 @@ Settings come from environment variables:
 | Path | Contents |
 |---|---|
 | `cmd/cinevault` | Server entry point |
+| `internal/catalog` | Library data types shared by the database and the API |
 | `internal/config` | Settings from environment variables |
+| `internal/db` | PostgreSQL connection, migrations and queries |
 | `internal/probe` | FFmpeg, GPU and hardware-encoder detection |
 | `internal/server` | HTTP API |
 

@@ -33,4 +33,5 @@ Date: 26 Nov 2026 · Status: Accepted
 
 - **GPU encoders are tested, not assumed.** At startup CineVault runs a two-frame test encode for each NVENC encoder FFmpeg lists (`internal/probe`). FFmpeg lists encoders the hardware may lack (the A2 lists `av1_nvenc` but can't encode AV1), and listed encoders fail when driver libraries are missing.
 - **Containers that transcode** need `NVIDIA_DRIVER_CAPABILITIES` to include `video`, as well as `compute,utility`, or NVENC and NVDEC won't be available inside the container.
-- **The first skeleton uses only Go's standard library.** The PostgreSQL driver (pgx) is added in the first database-schema step. Until then, the health check tests only that the database's port can be reached.
+- **PostgreSQL driver: pgx v5** (`github.com/jackc/pgx/v5`), added with the first schema. Only `internal/db` imports it. The API and other packages depend on plain Go types (`internal/catalog`) and functions, so they can be tested without a database.
+- **Schema changes are numbered migrations** (`internal/db/migrations/NNNN_name.sql`), embedded in the binary and applied at startup inside a transaction. A PostgreSQL advisory lock stops two servers applying the same migration at once, and migrations are never edited after release.

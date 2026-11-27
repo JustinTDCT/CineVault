@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/JustinTDCT/CineVault/internal/config"
+	"github.com/JustinTDCT/CineVault/internal/db"
 	"github.com/JustinTDCT/CineVault/internal/probe"
 	"github.com/JustinTDCT/CineVault/internal/server"
 )
@@ -37,12 +39,38 @@ func run(log *slog.Logger) error {
 
 	log.Info("starting cinevault", "version", version, "listen", cfg.Listen)
 
+	startCtx, cancelStart := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelStart()
+	database, err := db.Open(startCtx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("database at %s: %w", dbAddr, err)
+	}
+	defer database.Close()
+
+	mig, err := database.Migrate(startCtx)
+	if err != nil {
+		return err
+	}
+	for _, m := range mig.Applied {
+		log.Info("applied database migration", "version", m.Version, "name", m.Name)
+	}
+	log.Info("database ready", "address", dbAddr, "schema_version", mig.Current)
+
 	caps := probeCapabilities(cfg)
 	logCapabilities(log, caps)
 
+	api := server.New(server.Options{
+		Version:       version,
+		DBAddr:        dbAddr,
+		Caps:          caps,
+		SchemaVersion: mig.Current,
+		PingDB:        database.Ping,
+		EditionTypes:  database.EditionTypes,
+		Log:           log,
+	})
 	srv := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           server.New(version, dbAddr, caps).Handler(),
+		Handler:           api.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
