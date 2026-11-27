@@ -11,3 +11,4 @@ This is a fresh start (November 2026). Earlier work is preserved on these branch
 
 - Feature specs: [`docs/specs`](docs/specs/README.md)
 - Feature research (Plex, Emby, Jellyfin and user requests): [`docs/research/feature-master-list.md`](docs/research/feature-master-list.md)
+- Test server setup (Hyper-V VM with NVIDIA A2): [`docs/environment/test-server.md`](docs/environment/test-server.md)
