@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
+	"github.com/JustinTDCT/CineVault/internal/ebook"
 	"github.com/JustinTDCT/CineVault/internal/mediainfo"
 )
 
@@ -44,6 +45,49 @@ func TestParseBook(t *testing.T) {
 		b, ok := ParseBook(root, c.path, c.info, bookTypes, "unabridged")
 		got := []any{b.Book.Title, b.Book.Artist, b.Series, b.SeriesIndex, b.Book.Year, b.Part, b.PartName, b.Narrator, b.Book.EditionTypeID}
 		want := []any{c.book, c.author, c.series, c.index, c.year, c.part, c.partName, c.narrator, c.edit}
+		for i := range got {
+			if got[i] != want[i] || !ok {
+				t.Errorf("%s:\n got %v\nwant %v", c.name, got, want)
+				break
+			}
+		}
+	}
+}
+
+func TestParseEbook(t *testing.T) {
+	root := "/home/jdube/ebooks"
+	dir := root + "/J.R.R. Tolkien/"
+	types := []catalog.EditionType{{ID: "original", DisplayName: "Original", IsDefault: true}}
+	cases := []struct {
+		name   string
+		file   string
+		meta   ebook.Meta
+		title  string
+		author string
+		series string
+		index  float64
+	}{
+		{"series in the name, no metadata", "J.R.R. Tolkien - [The Lord of the Rings 05] - The Silmarillion.epub", ebook.Meta{},
+			"The Silmarillion", "J.R.R. Tolkien", "The Lord of the Rings", 5},
+		{"spaced initials match the folder author", "J R R Tolkien - The Story of Kullervo (epub).epub", ebook.Meta{},
+			"The Story of Kullervo", "J.R.R. Tolkien", "", 0},
+		{"stand-alone isn't a series", "J.R.R. Tolkien - [Stand-Alone 01] - The Legend of Sigurd & Gudrun.epub", ebook.Meta{},
+			"The Legend of Sigurd & Gudrun", "J.R.R. Tolkien", "", 0},
+		{"half numbers", "J.R.R. Tolkien - [The Lord of the Rings 4.50] - Bilbo's Last Song.epub", ebook.Meta{},
+			"Bilbo's Last Song", "J.R.R. Tolkien", "The Lord of the Rings", 4.5},
+		{"metadata wins", "J R R Tolkien - Beowulf- A Translation and Commentary (azw3).azw3",
+			ebook.Meta{Title: "Beowulf: A Translation and Commentary", Authors: []string{"J.R.R. Tolkien"}},
+			"Beowulf: A Translation and Commentary", "J.R.R. Tolkien", "", 0},
+		{"no metadata, junk removed", "J R R Tolkien - The Fall of Gondolin Christopher Tolkien (ed) (retail) (azw3).azw3", ebook.Meta{},
+			"The Fall of Gondolin Christopher Tolkien", "J.R.R. Tolkien", "", 0},
+		{"series from the book's own metadata", "x.epub",
+			ebook.Meta{Title: "The Two Towers", Authors: []string{"J.R.R. Tolkien"}, Series: "The Lord of the Rings", SeriesIndex: 2},
+			"The Two Towers", "J.R.R. Tolkien", "The Lord of the Rings", 2},
+	}
+	for _, c := range cases {
+		b, ok := ParseEbook(root, dir+c.file, c.meta, types, "original")
+		got := []any{b.Book.Title, b.Book.Artist, b.Series, b.SeriesIndex}
+		want := []any{c.title, c.author, c.series, c.index}
 		for i := range got {
 			if got[i] != want[i] || !ok {
 				t.Errorf("%s:\n got %v\nwant %v", c.name, got, want)

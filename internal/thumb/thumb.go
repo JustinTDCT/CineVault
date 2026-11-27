@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/JustinTDCT/CineVault/internal/ebook"
 )
 
 // Maker creates and caches thumbnails. The zero value isn't usable; set
@@ -86,6 +88,11 @@ var coverNames = []string{"cover", "folder", "front", "album", "albumart"}
 // (cover.jpg, folder.jpg, front.png...) or, failing that, the art embedded in
 // the file, extracted once and cached.
 func (m *Maker) Cover(ctx context.Context, src Source) (string, error) {
+	// A book carries its own cover; a cover.jpg in its folder would be the
+	// author's or the series', shared by every book there.
+	if _, ok := ebook.Formats[strings.ToLower(filepath.Ext(src.Path))]; ok {
+		return m.bookCover(src)
+	}
 	if p := FolderCover(filepath.Dir(src.Path)); p != "" {
 		return p, nil
 	}
@@ -117,6 +124,32 @@ func (m *Maker) Cover(ctx context.Context, src Source) (string, error) {
 		return "", ErrFailed
 	}
 	return out, os.Rename(tmp, out)
+}
+
+// bookCover extracts an ebook's cover image into the cache.
+func (m *Maker) bookCover(src Source) (string, error) {
+	base := filepath.Join(m.Dir, fmt.Sprintf("b%d-%d", src.VersionID, src.SizeBytes))
+	for _, ext := range []string{".jpg", ".png", ".gif"} {
+		if st, err := os.Stat(base + ext); err == nil && st.Size() > 0 {
+			return base + ext, nil
+		}
+	}
+	img, mime, err := ebook.Cover(src.Path)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrFailed, err)
+	}
+	ext := map[string]string{"image/png": ".png", "image/gif": ".gif"}[mime]
+	if ext == "" {
+		ext = ".jpg"
+	}
+	if err := os.MkdirAll(m.Dir, 0o755); err != nil {
+		return "", err
+	}
+	out := base + ext
+	if err := os.WriteFile(out+".tmp", img, 0o644); err != nil {
+		return "", err
+	}
+	return out, os.Rename(out+".tmp", out)
 }
 
 // FolderCover finds a cover image in dir, matching names without regard to case.

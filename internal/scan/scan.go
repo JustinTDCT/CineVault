@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
+	"github.com/JustinTDCT/CineVault/internal/ebook"
 	"github.com/JustinTDCT/CineVault/internal/mediainfo"
 )
 
@@ -103,6 +104,11 @@ func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) 
 	case "movie", "tv", "musicvideo":
 	case "music", "audiobook":
 		exts = AudioExtensions
+	case "book":
+		exts = map[string]bool{}
+		for ext := range ebook.Formats {
+			exts[ext] = true
+		}
 	default:
 		return res, fmt.Errorf("scanning %s libraries isn't supported yet", lib.MediaType)
 	}
@@ -178,6 +184,8 @@ func (s Scanner) Scan(ctx context.Context, lib catalog.Library) (Result, error) 
 				add = s.addTrackFile
 			case "audiobook":
 				add = s.addBookFile
+			case "book":
+				add = s.addEbookFile
 			}
 			if err := add(ctx, lib, root, types, defaultEdition, path, info.Size()); err != nil {
 				if ctx.Err() != nil {
@@ -343,6 +351,37 @@ func (s Scanner) addBookFile(ctx context.Context, lib catalog.Library, root stri
 	}
 	if err := s.Store.SaveChapters(ctx, path, info.Chapters); err != nil {
 		return fmt.Errorf("save chapters: %w", err)
+	}
+	return nil
+}
+
+// addEbookFile records an ebook. The book's own metadata (EPUB package,
+// AZW3 header) comes first; the file name and folders fill the gaps. A file
+// whose metadata can't be read is still listed, by its name.
+func (s Scanner) addEbookFile(ctx context.Context, lib catalog.Library, root string, types []catalog.EditionType, defaultEdition, path string, size int64) error {
+	meta, _ := ebook.Read(path)
+	b, ok := ParseEbook(root, path, meta, types, defaultEdition)
+	if !ok {
+		return errors.New("could not work out the book's title from its file name")
+	}
+	fp, err := Fingerprint(path)
+	if err != nil {
+		return fmt.Errorf("fingerprint: %w", describeErr(err))
+	}
+	titleID, err := s.Store.FindOrCreateTitle(ctx, lib.ID, lib.MediaType, b.Book)
+	if err != nil {
+		return fmt.Errorf("save book: %w", err)
+	}
+	if err := s.Store.SetBookInfo(ctx, titleID, b.Series, b.SeriesIndex, "", b.Overview); err != nil {
+		return fmt.Errorf("save book details: %w", err)
+	}
+	editionID, err := s.Store.FindOrCreateEdition(ctx, titleID, b.Book.EditionTypeID, 0)
+	if err != nil {
+		return fmt.Errorf("save edition: %w", err)
+	}
+	info := mediainfo.Info{Container: meta.Format}
+	if err := s.Store.UpsertVersion(ctx, editionID, NewVersion{Path: path, SizeBytes: size, Fingerprint: fp, Info: info}); err != nil {
+		return fmt.Errorf("save file: %w", err)
 	}
 	return nil
 }

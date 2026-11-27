@@ -552,3 +552,45 @@ func TestIntegrationAudiobook(t *testing.T) {
 		t.Errorf("someone else's file: %v", err)
 	}
 }
+
+func TestIntegrationEbooks(t *testing.T) {
+	d := testDatabase(t)
+	ctx := context.Background()
+	if _, err := d.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "J.R.R. Tolkien")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"J R R Tolkien - The Story of Kullervo (epub).epub", "J R R Tolkien - The Story of Kullervo (azw3).azw3"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(n), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lib, err := d.CreateLibrary(ctx, catalog.Library{Name: "Ebooks", MediaType: "book", Paths: []string{filepath.Dir(dir)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, err := (scan.Scanner{Store: d, Prober: stubProber{}}).Scan(ctx, lib); err != nil || res.Added != 2 {
+		t.Fatalf("scan: %+v err=%v", res, err)
+	}
+	titles, err := d.LibraryTitles(ctx, lib.ID)
+	if err != nil || len(titles) != 1 {
+		t.Fatalf("titles: %v %v", titles, err)
+	}
+	b := titles[0]
+	if b.Name != "The Story of Kullervo" || b.Artist != "J.R.R. Tolkien" || len(b.Editions[0].Versions) != 2 || b.CoverVersionID == 0 {
+		t.Errorf("book = %+v", b)
+	}
+	v := b.Editions[0].Versions[0]
+	if v.Label != "EPUB" && v.Label != "AZW3" {
+		t.Errorf("label = %q", v.Label)
+	}
+	if _, err := d.SaveProgress(ctx, b.ID, catalog.Progress{VersionID: v.ID, PositionSeconds: 0.42, Locator: "epubcfi(/6/14!/4/2/1:0)"}); err != nil {
+		t.Fatal(err)
+	}
+	if p, ok, err := d.Progress(ctx, b.ID); err != nil || !ok || p.Locator != "epubcfi(/6/14!/4/2/1:0)" || p.PositionSeconds != 0.42 {
+		t.Errorf("progress = %+v %v %v", p, ok, err)
+	}
+}

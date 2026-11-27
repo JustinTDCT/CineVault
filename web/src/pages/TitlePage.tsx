@@ -17,6 +17,7 @@ import {
 import { ShowEpisodes } from "./ShowEpisodes";
 import { AlbumTracks } from "./AlbumTracks";
 import { BookChapters } from "./BookChapters";
+import { EbookFormats } from "./EbookFormats";
 import { linkTo } from "../router";
 
 export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: number }) {
@@ -60,10 +61,11 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
   const runtime = title.runtime_minutes ? title.runtime_minutes * 60 : (edition?.runtime_seconds ?? 0);
   const isAlbum = title.media_type === "music";
   const isBook = title.media_type === "audiobook";
+  const isEbook = title.media_type === "book";
   const facts = (
     isShow
       ? [title.year, showCounts(title), title.genres.join(", ")]
-      : isAlbum || isBook
+      : isAlbum || isBook || isEbook
         ? [title.artist, title.year, title.genres.filter((g) => !/^(audio ?books?|speech|spoken word)$/i.test(g)).join(", ")]
         : [title.artist, title.year, runtime ? formatRuntime(runtime) : "", title.genres.join(", ")]
   ).filter(Boolean);
@@ -81,7 +83,7 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
         <div className="title-info">
           <h1 className="title-name">{title.name}</h1>
           {facts.length ? <p className="title-facts">{facts.join("   ")}</p> : null}
-          {isBook && (title.series || title.narrator) ? (
+          {(isBook || isEbook) && (title.series || title.narrator) ? (
             <p className="tagline">{[seriesLabel(title), title.narrator ? `Read by ${title.narrator}` : ""].filter(Boolean).join(". ")}</p>
           ) : null}
           {title.tagline ? <p className="tagline">{title.tagline}</p> : null}
@@ -91,7 +93,9 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
         </div>
       </div>
 
-      {isBook ? (
+      {isEbook ? (
+        <EbookFormats title={title} />
+      ) : isBook ? (
         <BookChapters title={title} />
       ) : isAlbum ? (
         <AlbumTracks title={title} />

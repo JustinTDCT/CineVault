@@ -117,6 +117,10 @@ Brandon Sanderson/Mistborn/The Final Empire/01 - ….mp3   (author / series / bo
 J.R.R. Tolkien - [The Lord of the Rings 02] - The Fellowship of the Ring.m4b   (series and number)
 ```
 
+### Ebooks
+
+EPUB, AZW3, MOBI and FB2 read in the browser (with [foliate-js](https://github.com/johnfactotum/foliate-js)); PDFs open in the browser's own viewer. Title, author, series and cover come from the book file itself (the EPUB package, the AZW3 header), then from names like `Author/Author - [Series 05] - Title.epub`. Copies of one book in several formats are listed together, and the reading position is saved per book.
+
 ## Project layout
 
 | Path | Contents |

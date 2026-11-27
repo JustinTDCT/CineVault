@@ -48,6 +48,7 @@ func (f *fakeStore) EditionTypes(context.Context) ([]catalog.EditionType, error)
 	for i := range types[1:] {
 		types[i+1].MediaTypes = []string{"movie"}
 	}
+	types = append(types, catalog.EditionType{ID: "original", DisplayName: "Original", MediaTypes: []string{"book"}, IsDefault: true})
 	types = append(types, catalog.EditionType{ID: "unabridged", DisplayName: "Unabridged", MediaTypes: []string{"audiobook"}, IsDefault: true})
 	types = append(types, catalog.EditionType{ID: "original", DisplayName: "Original", MediaTypes: []string{"music"}, IsDefault: true},
 		catalog.EditionType{ID: "deluxe", DisplayName: "Deluxe/Expanded", MediaTypes: []string{"music"}, Aliases: []string{"deluxe edition", "deluxe"}})
@@ -283,8 +284,8 @@ func TestScanReportsBadFilesAndFolders(t *testing.T) {
 
 func TestScanRejectsUnsupportedLibraries(t *testing.T) {
 	s := Scanner{Store: newFakeStore(), Prober: &fakeProber{}}
-	if _, err := s.Scan(context.Background(), catalog.Library{MediaType: "book"}); err == nil {
-		t.Error("book libraries should be rejected for now")
+	if _, err := s.Scan(context.Background(), catalog.Library{MediaType: "comic"}); err == nil {
+		t.Error("comic libraries should be rejected for now")
 	}
 }
 
@@ -450,5 +451,26 @@ func TestScanAudiobooks(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(store.books, ","), "|The John Matherson Series|") {
 		t.Errorf("series = %v", store.books)
+	}
+}
+
+func TestScanEbooks(t *testing.T) {
+	dir := t.TempDir()
+	tolkien := filepath.Join(dir, "J.R.R. Tolkien")
+	write(t, filepath.Join(tolkien, "J.R.R. Tolkien - [The Lord of the Rings 05] - The Silmarillion.epub"), "not really a zip")
+	write(t, filepath.Join(tolkien, "J R R Tolkien - The Story of Kullervo (epub).epub"), "x")
+	write(t, filepath.Join(tolkien, "J R R Tolkien - The Story of Kullervo (retail) (azw3).azw3"), "y") // same book, second format
+	write(t, filepath.Join(tolkien, "notes.txt"), "skipped")
+	store := newFakeStore()
+	pr := &fakeProber{}
+	res, err := Scanner{Store: store, Prober: pr}.Scan(context.Background(), catalog.Library{ID: 6, MediaType: "book", Paths: []string{dir}})
+	if err != nil || res.Added != 3 || res.FilesSeen != 3 || len(res.Errors) != 0 {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	if pr.calls != 0 {
+		t.Error("ebooks shouldn't be run through ffprobe")
+	}
+	if len(store.titles) != 2 || store.titles["the story of kullervo|0|j.r.r. tolkien"] == 0 {
+		t.Errorf("titles = %v", store.titles)
 	}
 }

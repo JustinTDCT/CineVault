@@ -52,7 +52,9 @@ export function LibraryPage({ library, libraryId }: { library?: Library; library
     }
   }, [load, scan]);
 
-  const problems = scanResult ? [...scanResult.errors.map((e) => `${e.path}: ${e.error}`), ...(scanResult.match?.error ? [`TMDb: ${scanResult.match.error}`] : [])] : [];
+  const problems = scanResult
+    ? [...scanResult.errors.map((e) => `${e.path}: ${e.error}`), ...(scanResult.match?.error ? [`TMDb: ${scanResult.match.error}`] : [])]
+    : [];
 
   return (
     <section>
@@ -94,25 +96,26 @@ export function LibraryPage({ library, libraryId }: { library?: Library; library
         <div className="empty">
           <p>No {itemNoun(library?.media_type, 2)} here yet. Scan the library to find the files in its folders.</p>
         </div>
+      ) : library?.media_type === "musicvideo" ||
+        library?.media_type === "music" ||
+        library?.media_type === "audiobook" ||
+        library?.media_type === "book" ? (
+        groupByArtist(titles).map((g) => (
+          <section key={g.artist} className="artist-group" aria-label={g.artist}>
+            <h2 className="artist-name">{g.artist}</h2>
+            <div className={library.media_type === "musicvideo" ? "grid grid-wide" : "grid"}>
+              {g.titles.map((t) => (
+                <PosterCard key={t.id} title={t} />
+              ))}
+            </div>
+          </section>
+        ))
       ) : (
-        library?.media_type === "musicvideo" || library?.media_type === "music" || library?.media_type === "audiobook" ? (
-          groupByArtist(titles).map((g) => (
-            <section key={g.artist} className="artist-group" aria-label={g.artist}>
-              <h2 className="artist-name">{g.artist}</h2>
-              <div className={library.media_type === "musicvideo" ? "grid grid-wide" : "grid"}>
-                {g.titles.map((t) => (
-                  <PosterCard key={t.id} title={t} />
-                ))}
-              </div>
-            </section>
-          ))
-        ) : (
         <div className="grid">
           {titles.map((t) => (
             <PosterCard key={t.id} title={t} />
           ))}
         </div>
-        )
       )}
     </section>
   );

@@ -369,7 +369,7 @@ func (d *DB) SaveChapters(ctx context.Context, path string, chapters []mediainfo
 // hasn't been played.
 func (d *DB) Progress(ctx context.Context, titleID int64) (catalog.Progress, bool, error) {
 	var p catalog.Progress
-	err := d.Pool.QueryRow(ctx, sqlGetProgress, titleID).Scan(&p.VersionID, &p.PositionSeconds, &p.UpdatedAt)
+	err := d.Pool.QueryRow(ctx, sqlGetProgress, titleID).Scan(&p.VersionID, &p.PositionSeconds, &p.Locator, &p.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, false, nil
 	}
@@ -379,7 +379,7 @@ func (d *DB) Progress(ctx context.Context, titleID int64) (catalog.Progress, boo
 // SaveProgress records where playback of a title stopped. It returns
 // catalog.ErrNotFound when the file isn't one of the title's.
 func (d *DB) SaveProgress(ctx context.Context, titleID int64, p catalog.Progress) (catalog.Progress, error) {
-	err := d.Pool.QueryRow(ctx, sqlSaveProgress, titleID, p.VersionID, p.PositionSeconds).Scan(&p.UpdatedAt)
+	err := d.Pool.QueryRow(ctx, sqlSaveProgress, titleID, p.VersionID, p.PositionSeconds, p.Locator).Scan(&p.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return p, catalog.ErrNotFound
 	}

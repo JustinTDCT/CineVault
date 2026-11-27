@@ -286,6 +286,9 @@ func (i Info) Label() string {
 			parts = append(parts, q)
 		}
 	}
+	if len(parts) == 0 && i.Container != "" { // books: "EPUB", "AZW3", "PDF"
+		return strings.ToUpper(i.Container)
+	}
 	return strings.Join(parts, " · ")
 }
 

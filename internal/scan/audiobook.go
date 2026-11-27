@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/JustinTDCT/CineVault/internal/catalog"
+	"github.com/JustinTDCT/CineVault/internal/ebook"
 	"github.com/JustinTDCT/CineVault/internal/mediainfo"
 )
 
@@ -33,6 +34,9 @@ var (
 	reBookNumber = regexp.MustCompile(`(?i)(?:\bbook\s+|#)(\d{1,3}(?:\.\d{1,2})?)\b`)
 	// A folder named for a series: "The John Matherson Series", "Dune Saga".
 	reSeriesDir = regexp.MustCompile(`(?i)\b(series|saga|trilogy|chronicles|cycle|quartet|duology)$`)
+	// Download leftovers: "(retail)", "(epub)", "(azw3)".
+	reFileJunk   = regexp.MustCompile(`(?i)\s*\((?:retail|epub|azw3?|mobi|pdf|ebook|kindle|ed)\)`)
+	reStandAlone = regexp.MustCompile(`(?i)^(?:stand[- ]?alones?|standalones?|novels?|books?)$`)
 	// " - - " left behind when a bracketed tag is taken out of "A - [x] - B".
 	reEmptyDash = regexp.MustCompile(`(?:\s+-)+\s+-\s+`)
 )
@@ -41,6 +45,24 @@ var (
 // file. Tags come first, then the folders: Author/[Series/]Book/part files,
 // or Author-or-Series/Book.m4b.
 func ParseBook(root, path string, info mediainfo.Info, types []catalog.EditionType, defaultEdition string) (ParsedBook, bool) {
+	whole := strings.EqualFold(filepath.Ext(path), ".m4b") || len(info.Chapters) > 1
+	return parseBook(root, path, info, types, defaultEdition, whole)
+}
+
+// ParseEbook works out an ebook's title, author and series from what the file
+// says about itself (meta) and its path, the same way as audiobooks.
+func ParseEbook(root, path string, meta ebook.Meta, types []catalog.EditionType, defaultEdition string) (ParsedBook, bool) {
+	info := mediainfo.Info{Tags: map[string]string{
+		"title": meta.Title, "artist": strings.Join(meta.Authors, " & "), "description": meta.Description,
+		"date": meta.Date, "series": meta.Series,
+	}}
+	if meta.SeriesIndex > 0 {
+		info.Tags["series_index"] = strconv.FormatFloat(meta.SeriesIndex, 'f', -1, 64)
+	}
+	return parseBook(root, path, info, types, defaultEdition, true)
+}
+
+func parseBook(root, path string, info mediainfo.Info, types []catalog.EditionType, defaultEdition string, whole bool) (ParsedBook, bool) {
 	var b ParsedBook
 	b.Book = ParsedName{EditionTypeID: defaultEdition, EditionSource: EditionDefault}
 
@@ -49,7 +71,7 @@ func ParseBook(root, path string, info mediainfo.Info, types []catalog.EditionTy
 		dirs = strings.Split(filepath.ToSlash(rel), "/")
 	}
 	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	whole := strings.EqualFold(filepath.Ext(path), ".m4b") || len(info.Chapters) > 1 || len(dirs) == 0
+	whole = whole || len(dirs) == 0
 
 	// The folders above the book: the nearest may be a series, the next the author.
 	var above []string
@@ -80,14 +102,39 @@ func ParseBook(root, path string, info mediainfo.Info, types []catalog.EditionTy
 	}
 	title = reSeriesTag.ReplaceAllString(title, "")
 	title, _ = extractBrackets(title)
+	title = reFileJunk.ReplaceAllString(title, "")
 	title = reEmptyDash.ReplaceAllString(reSpaces.ReplaceAllString(title, " "), " - ")
 	title = strings.Trim(strings.TrimSpace(title), "- ")
 
+	// Series and author from the folders above the book: the top one is the
+	// author and the one nearest the book a series ("Author/Series/Book").
+	// A single folder is a series only if it's named like one.
+	folderAuthor := ""
+	switch len(above) {
+	case 0:
+	case 1:
+		if d := strings.TrimSpace(above[0]); reSeriesDir.MatchString(d) {
+			if b.Series == "" {
+				b.Series = d
+			}
+		} else {
+			folderAuthor = d
+		}
+	default:
+		folderAuthor = strings.TrimSpace(above[0])
+		if b.Series == "" {
+			b.Series = strings.TrimSpace(above[len(above)-1])
+		}
+	}
+
+	// The author: tags, then the folder, then "Author - Title" in the name.
 	author := info.Tag("album_artist", "artist", "author")
-	// "Author - Title" when nothing says who wrote it.
+	if author == "" {
+		author = folderAuthor
+	}
 	if i := strings.Index(title, " - "); i > 0 {
 		left, right := strings.TrimSpace(title[:i]), strings.TrimSpace(title[i+3:])
-		if author == "" || strings.EqualFold(normalizeKey(left), normalizeKey(author)) {
+		if author == "" || normalizeKey(left) == normalizeKey(author) || normalizeKey(left) == normalizeKey(folderAuthor) {
 			if author == "" {
 				author = left
 			}
@@ -98,34 +145,15 @@ func ParseBook(root, path string, info mediainfo.Info, types []catalog.EditionTy
 	if edition != "" {
 		b.Book.EditionTypeID, b.Book.EditionSource = edition, EditionAlias
 	}
-
-	// Series and author from the folders above the book: the top one is the
-	// author and the one nearest the book a series ("Author/Series/Book").
-	// A single folder is a series only if it's named like one.
-	switch len(above) {
-	case 0:
-	case 1:
-		if d := strings.TrimSpace(above[0]); reSeriesDir.MatchString(d) {
-			if b.Series == "" {
-				b.Series = d
-			}
-		} else if author == "" {
-			author = d
-		}
-	default:
-		if author == "" {
-			author = strings.TrimSpace(above[0])
-		}
-		if b.Series == "" {
-			b.Series = strings.TrimSpace(above[len(above)-1])
-		}
-	}
 	if author == "" {
 		author = "Unknown author"
 	}
 
 	if b.Series == "" {
 		b.Series = info.Tag("series", "mvnm", "movementname", "grouping")
+	}
+	if reStandAlone.MatchString(b.Series) { // "[Stand-Alone 01]" isn't a series
+		b.Series, b.SeriesIndex = "", 0
 	}
 	if b.SeriesIndex == 0 {
 		if n, err := strconv.ParseFloat(strings.TrimSpace(info.Tag("series-part", "series_index", "mvin", "movement")), 64); err == nil {

@@ -177,7 +177,8 @@ type Chapter struct {
 // Progress is where playback of a title stopped.
 type Progress struct {
 	VersionID       int64     `json:"version_id"`
-	PositionSeconds float64   `json:"position_seconds"`
+	PositionSeconds float64   `json:"position_seconds"`  // for books, the fraction read (0 to 1)
+	Locator         string    `json:"locator,omitempty"` // for books, the exact spot (an EPUB CFI)
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 

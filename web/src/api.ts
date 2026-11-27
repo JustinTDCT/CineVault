@@ -42,6 +42,8 @@ export interface Chapter {
 export interface Progress {
   version_id: number;
   position_seconds: number;
+  /** Books: the exact spot (an EPUB CFI). */
+  locator?: string;
   updated_at: string;
 }
 
@@ -197,6 +199,15 @@ export const api = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ version_id: versionId, position_seconds: Math.max(0, seconds) }),
+      keepalive: true,
+    }).catch(() => {});
+  },
+  /** Saves a reading position: the fraction read and the exact spot. */
+  saveReading: (titleId: number, versionId: number, fraction: number, locator: string) => {
+    fetch(`/api/titles/${titleId}/progress`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version_id: versionId, position_seconds: Math.min(1, Math.max(0, fraction || 0)), locator }),
       keepalive: true,
     }).catch(() => {});
   },

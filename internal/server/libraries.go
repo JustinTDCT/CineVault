@@ -172,7 +172,7 @@ func (s *Server) putProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var p catalog.Progress
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&p); err != nil || p.VersionID <= 0 || p.PositionSeconds < 0 {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&p); err != nil || p.VersionID <= 0 || p.PositionSeconds < 0 || len(p.Locator) > 4096 {
 		writeError(w, http.StatusBadRequest, `send {"version_id": <file id>, "position_seconds": <seconds>}`)
 		return
 	}
