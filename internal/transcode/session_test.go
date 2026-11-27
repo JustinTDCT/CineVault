@@ -172,7 +172,14 @@ func TestThrottlePausesResumesAndCleansUp(t *testing.T) {
 		paused, pid := s.proc.paused, s.proc.cmd.Process.Pid
 		s.mu.Unlock()
 		if paused {
-			if st := procState(t, pid); st != "T" && st != "t" {
+			// SIGSTOP reaches every thread of a busy process within moments,
+			// not instantly, so allow a little time.
+			st := procState(t, pid)
+			for wait := time.Now().Add(2 * time.Second); st != "T" && st != "t" && time.Now().Before(wait); {
+				time.Sleep(20 * time.Millisecond)
+				st = procState(t, pid)
+			}
+			if st != "T" && st != "t" {
 				t.Errorf("paused FFmpeg has state %q, want T", st)
 			}
 			break
