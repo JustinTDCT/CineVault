@@ -255,3 +255,41 @@ type ErrorDetail struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
+
+// Limits on a contribution (CineVault Cache spec §5a).
+const (
+	MaxContributeItems = 1000 // items in one contribute request
+	MaxRuntimeMin      = 1000 // largest runtime a contribution may report
+)
+
+// ContributeRequest shares which titles a CineVault server has, with the
+// edition IDs from its file names and each edition's measured runtime. Any
+// server may send it, subscribed or not; it needs no token.
+type ContributeRequest struct {
+	// Install is a random ID the server made once (32 random bytes,
+	// base32). It isn't tied to an account or a token.
+	Install string           `json:"install"`
+	Items   []ContributeItem `json:"items"`
+}
+
+// ContributeItem is one title the server has.
+type ContributeItem struct {
+	Kind     string              `json:"kind"`
+	TMDbID   int                 `json:"tmdb_id"`
+	Editions []ContributeEdition `json:"editions,omitempty"`
+}
+
+// Key returns the item's key.
+func (i ContributeItem) Key() Key { return Key{Kind: i.Kind, TMDbID: i.TMDbID} }
+
+// ContributeEdition is an edition the server has a file for.
+type ContributeEdition struct {
+	Edition    string `json:"edition"`               // built-in Edition List ID
+	RuntimeMin int    `json:"runtime_min,omitempty"` // the file's duration, rounded; 0 when unknown
+}
+
+// ContributeResponse acknowledges a contribution. Free servers get nothing
+// else back.
+type ContributeResponse struct {
+	Accepted int `json:"accepted"`
+}

@@ -88,6 +88,18 @@ func fakeCache(t *testing.T) (*Client, *[]*http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		w.Write(golden("report_response.json"))
 	}))
+	mux.HandleFunc("POST /v1/contribute", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r)
+		mu.Unlock()
+		var req ContributeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Validate() != nil {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(ContributeResponse{Accepted: len(req.Items)})
+	})
 	mux.HandleFunc("GET /v1/subscription", authed(func(w http.ResponseWriter, r *http.Request) {
 		w.Write(golden("subscription.json"))
 	}))
@@ -199,5 +211,28 @@ func TestNetworkErrorIsRetryable(t *testing.T) {
 	_, err := c.Status(context.Background())
 	if err == nil || !IsRetryable(err) || IsAuth(err) {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestContributeIsAnonymousAndBatched(t *testing.T) {
+	c, seen := fakeCache(t)
+	items := make([]ContributeItem, MaxContributeItems+5)
+	for i := range items {
+		items[i] = ContributeItem{Kind: "movie", TMDbID: i + 1, Editions: []ContributeEdition{{Edition: "theatrical", RuntimeMin: 120}}}
+	}
+	n, err := c.Contribute(context.Background(), "K3VQ7TZ2MXN4P6RBYC5HWJ8DLE9FGA2S", items)
+	if err != nil || n != len(items) {
+		t.Fatalf("accepted %d, err %v", n, err)
+	}
+	if len(*seen) != 2 {
+		t.Fatalf("requests = %d, want 2 batches", len(*seen))
+	}
+	for _, r := range *seen {
+		if r.Header.Get("Authorization") != "" {
+			t.Error("a contribution must not carry the subscriber's token")
+		}
+	}
+	if _, err := c.Contribute(context.Background(), "short", items[:1]); err == nil {
+		t.Error("a short install ID should be refused before sending")
 	}
 }

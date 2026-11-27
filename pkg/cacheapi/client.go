@@ -193,6 +193,29 @@ func (c *Client) Report(ctx context.Context, r Report) (ReportResponse, error) {
 	return out, c.call(ctx, http.MethodPost, "/reports", r, &out)
 }
 
+// Contribute shares which titles this server has (spec §5a). It needs no
+// token, so free servers can call it; a client with a token doesn't send it,
+// so a contribution can't be tied to a subscriber. Larger lists are sent in
+// batches of MaxContributeItems; the result is the total accepted.
+func (c *Client) Contribute(ctx context.Context, install string, items []ContributeItem) (int, error) {
+	anon := *c
+	anon.Token = ""
+	total := 0
+	for start := 0; start < len(items); start += MaxContributeItems {
+		end := min(start+MaxContributeItems, len(items))
+		req := ContributeRequest{Install: install, Items: items[start:end]}
+		if err := req.Validate(); err != nil {
+			return total, err
+		}
+		var out ContributeResponse
+		if err := anon.call(ctx, http.MethodPost, "/contribute", req, &out); err != nil {
+			return total, err
+		}
+		total += out.Accepted
+	}
+	return total, nil
+}
+
 // Subscription returns the token's subscription status. It is also the
 // "Test token" check in Settings.
 func (c *Client) Subscription(ctx context.Context) (Subscription, error) {

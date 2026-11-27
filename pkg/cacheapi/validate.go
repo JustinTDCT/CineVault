@@ -209,3 +209,33 @@ func (r Report) Validate() error {
 	}
 	return nil
 }
+
+// Validate checks a contribution before it's sent: an install ID, at most
+// MaxContributeItems valid keys, and runtimes within range. Edition IDs aren't
+// checked here; the service drops ones it doesn't know, so a server with an
+// older or newer Edition List never fails a whole batch.
+func (r ContributeRequest) Validate() error {
+	if len(r.Install) < 16 || len(r.Install) > 128 {
+		return errors.New("contribution needs an install ID of 16 to 128 characters")
+	}
+	if len(r.Items) == 0 || len(r.Items) > MaxContributeItems {
+		return fmt.Errorf("contribution needs 1 to %d items, got %d", MaxContributeItems, len(r.Items))
+	}
+	for _, it := range r.Items {
+		if err := it.Key().Validate(); err != nil {
+			return err
+		}
+		if len(it.Editions) > MaxLookupEditions {
+			return fmt.Errorf("%s: at most %d editions", it.Key(), MaxLookupEditions)
+		}
+		for _, e := range it.Editions {
+			if e.Edition == "" {
+				return fmt.Errorf("%s: an edition needs an ID", it.Key())
+			}
+			if e.RuntimeMin < 0 || e.RuntimeMin > MaxRuntimeMin {
+				return fmt.Errorf("%s: runtime %d is out of range", it.Key(), e.RuntimeMin)
+			}
+		}
+	}
+	return nil
+}

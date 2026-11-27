@@ -24,6 +24,8 @@ func TestGoldenFilesRoundTrip(t *testing.T) {
 		"error_token_revoked.json": func() any { return new(ErrorBody) },
 		"subscription.json":        func() any { return new(Subscription) },
 		"status.json":              func() any { return new(ServiceStatus) },
+		"contribute_request.json":  func() any { return new(ContributeRequest) },
+		"contribute_response.json": func() any { return new(ContributeResponse) },
 	}
 	files, err := filepath.Glob("testdata/*.json")
 	if err != nil {
