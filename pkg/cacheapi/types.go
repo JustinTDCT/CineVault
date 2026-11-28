@@ -24,26 +24,40 @@ const (
 )
 
 // Kinds of title. A key's kind decides its ID space: movies and shows use
-// TMDb IDs (movie 679 and TV show 679 are different works), music videos use
-// MusicBrainz recording IDs.
+// TMDb IDs (movie 679 and TV show 679 are different works), music videos
+// MusicBrainz recording IDs, albums MusicBrainz release group IDs, books and
+// audiobooks Open Library work IDs, and comic series Comic Vine volume IDs.
 const (
 	KindMovie      = "movie"
 	KindTV         = "tv"
 	KindMusicVideo = "musicvideo"
+	KindAlbum      = "album"
+	KindBook       = "book"
+	KindAudiobook  = "audiobook"
+	KindComic      = "comic"
 )
+
+// Kinds lists every kind, in Edition List media type order.
+var Kinds = []string{KindMovie, KindTV, KindAlbum, KindMusicVideo, KindAudiobook, KindBook, KindComic}
 
 // Providers a key's ID comes from.
 const (
 	ProviderTMDb        = "tmdb"
 	ProviderMusicBrainz = "musicbrainz"
+	ProviderOpenLibrary = "openlibrary"
+	ProviderComicVine   = "comicvine"
 )
 
-// Key identifies a title in the cache: a movie or show by TMDb ID, a music
-// video by MusicBrainz recording ID (a lowercase UUID).
+// Key identifies a title in the cache. Exactly one ID is set, the one its
+// kind uses: TMDbID (movie, tv), MBID (musicvideo: a recording; album: a
+// release group; both lowercase UUIDs), OLID (book, audiobook: an Open
+// Library work such as "OL45883W") or CVID (comic: a Comic Vine volume).
 type Key struct {
 	Kind   string `json:"kind"`
 	TMDbID int    `json:"tmdb_id,omitempty"`
 	MBID   string `json:"mbid,omitempty"`
+	OLID   string `json:"olid,omitempty"`
+	CVID   int    `json:"cvid,omitempty"`
 }
 
 // Record statuses.
@@ -204,11 +218,20 @@ type SyncItem struct {
 	Kind        string `json:"kind"`
 	TMDbID      int    `json:"tmdb_id,omitempty"`
 	MBID        string `json:"mbid,omitempty"`
+	OLID        string `json:"olid,omitempty"`
+	CVID        int    `json:"cvid,omitempty"`
 	HaveVersion int    `json:"have_version"` // 0: no record yet
 }
 
 // Key returns the item's key.
-func (i SyncItem) Key() Key { return Key{Kind: i.Kind, TMDbID: i.TMDbID, MBID: i.MBID} }
+func (i SyncItem) Key() Key {
+	return Key{Kind: i.Kind, TMDbID: i.TMDbID, MBID: i.MBID, OLID: i.OLID, CVID: i.CVID}
+}
+
+// SyncItemFor returns a sync item for a key.
+func SyncItemFor(k Key, haveVersion int) SyncItem {
+	return SyncItem{Kind: k.Kind, TMDbID: k.TMDbID, MBID: k.MBID, OLID: k.OLID, CVID: k.CVID, HaveVersion: haveVersion}
+}
 
 // SyncResponse says which titles to fetch with the records call.
 type SyncResponse struct {
@@ -224,11 +247,20 @@ type Changed struct {
 	Kind          string `json:"kind"`
 	TMDbID        int    `json:"tmdb_id,omitempty"`
 	MBID          string `json:"mbid,omitempty"`
+	OLID          string `json:"olid,omitempty"`
+	CVID          int    `json:"cvid,omitempty"`
 	RecordVersion int    `json:"record_version"`
 }
 
 // Key returns the changed title's key.
-func (c Changed) Key() Key { return Key{Kind: c.Kind, TMDbID: c.TMDbID, MBID: c.MBID} }
+func (c Changed) Key() Key {
+	return Key{Kind: c.Kind, TMDbID: c.TMDbID, MBID: c.MBID, OLID: c.OLID, CVID: c.CVID}
+}
+
+// ChangedFor returns a changed entry for a key.
+func ChangedFor(k Key, version int) Changed {
+	return Changed{Kind: k.Kind, TMDbID: k.TMDbID, MBID: k.MBID, OLID: k.OLID, CVID: k.CVID, RecordVersion: version}
+}
 
 // RecordsRequest fetches up to MaxRecordKeys records.
 type RecordsRequest struct {
@@ -320,11 +352,20 @@ type ContributeItem struct {
 	Kind     string              `json:"kind"`
 	TMDbID   int                 `json:"tmdb_id,omitempty"`
 	MBID     string              `json:"mbid,omitempty"`
+	OLID     string              `json:"olid,omitempty"`
+	CVID     int                 `json:"cvid,omitempty"`
 	Editions []ContributeEdition `json:"editions,omitempty"`
 }
 
 // Key returns the item's key.
-func (i ContributeItem) Key() Key { return Key{Kind: i.Kind, TMDbID: i.TMDbID, MBID: i.MBID} }
+func (i ContributeItem) Key() Key {
+	return Key{Kind: i.Kind, TMDbID: i.TMDbID, MBID: i.MBID, OLID: i.OLID, CVID: i.CVID}
+}
+
+// ContributeItemFor returns a contribute item for a key.
+func ContributeItemFor(k Key, editions []ContributeEdition) ContributeItem {
+	return ContributeItem{Kind: k.Kind, TMDbID: k.TMDbID, MBID: k.MBID, OLID: k.OLID, CVID: k.CVID, Editions: editions}
+}
 
 // ContributeEdition is an edition the server has a file for.
 type ContributeEdition struct {

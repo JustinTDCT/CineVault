@@ -188,3 +188,53 @@ func TestCreditsValidation(t *testing.T) {
 		t.Errorf("MusicBrainz facts only: %v", err)
 	}
 }
+
+func TestNewKindKeys(t *testing.T) {
+	const rg = "1d0e3a7f-6c2b-4e8a-9f1d-2b3c4d5e6f70"
+	for _, c := range []struct {
+		key                       Key
+		path, provider, mediaType string
+	}{
+		{Key{Kind: KindAlbum, MBID: rg}, "album/mb/" + rg, ProviderMusicBrainz, "music"},
+		{Key{Kind: KindBook, OLID: "OL45883W"}, "book/ol/OL45883W", ProviderOpenLibrary, "book"},
+		{Key{Kind: KindAudiobook, OLID: "OL45883W"}, "audiobook/ol/OL45883W", ProviderOpenLibrary, "audiobook"},
+		{Key{Kind: KindComic, CVID: 18166}, "comic/cv/18166", ProviderComicVine, "comic"},
+	} {
+		k := c.key
+		if err := k.Validate(); err != nil {
+			t.Errorf("%+v: %v", k, err)
+		}
+		if k.Path() != c.path || k.Provider() != c.provider || k.MediaType() != c.mediaType {
+			t.Errorf("%+v: path %q provider %q media type %q", k, k.Path(), k.Provider(), k.MediaType())
+		}
+		if KeyFor(k.Kind, k.ProviderID()) != k {
+			t.Errorf("%+v: KeyFor doesn't invert ProviderID", k)
+		}
+		if KindForMediaType(c.mediaType) != k.Kind && k.Kind != KindAudiobook {
+			t.Errorf("%s: KindForMediaType gave %q", c.mediaType, KindForMediaType(c.mediaType))
+		}
+		if SyncItemFor(k, 2).Key() != k || ChangedFor(k, 2).Key() != k || ContributeItemFor(k, nil).Key() != k {
+			t.Errorf("%+v: item constructors lose the key", k)
+		}
+	}
+	if KindForMediaType("audiobook") != KindAudiobook || KindForMediaType("music") != KindAlbum || KindForMediaType("x") != "" {
+		t.Error("KindForMediaType")
+	}
+	for _, bad := range []Key{
+		{Kind: KindAlbum},
+		{Kind: KindAlbum, MBID: rg, OLID: "OL1W"},
+		{Kind: KindBook, OLID: "OL45883M"}, // an edition, not a work
+		{Kind: KindBook, OLID: "45883W"},
+		{Kind: KindBook, OLID: "OLW"},
+		{Kind: KindAudiobook, OLID: "OL1W", TMDbID: 3},
+		{Kind: KindComic},
+		{Kind: KindComic, CVID: -4},
+		{Kind: KindComic, CVID: 4, MBID: rg},
+		{Kind: KindMovie, TMDbID: 679, CVID: 2},
+		{Kind: "podcast", TMDbID: 1},
+	} {
+		if bad.Validate() == nil {
+			t.Errorf("%+v passed", bad)
+		}
+	}
+}

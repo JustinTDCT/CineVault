@@ -9,19 +9,48 @@ import (
 	"github.com/JustinTDCT/CineVault/pkg/editionlist"
 )
 
-// Provider returns where the key's ID comes from: ProviderTMDb or
-// ProviderMusicBrainz.
-func (k Key) Provider() string {
-	if k.Kind == KindMusicVideo {
+// Provider returns where the key's ID comes from: ProviderTMDb,
+// ProviderMusicBrainz, ProviderOpenLibrary or ProviderComicVine.
+func (k Key) Provider() string { return ProviderFor(k.Kind) }
+
+// ProviderFor returns the provider a kind's IDs come from; "" for an unknown kind.
+func ProviderFor(kind string) string {
+	switch kind {
+	case KindMovie, KindTV:
+		return ProviderTMDb
+	case KindMusicVideo, KindAlbum:
 		return ProviderMusicBrainz
+	case KindBook, KindAudiobook:
+		return ProviderOpenLibrary
+	case KindComic:
+		return ProviderComicVine
 	}
-	return ProviderTMDb
+	return ""
 }
 
-// ProviderID returns the key's ID as text: "679", or a MusicBrainz UUID.
+// providerSegment is the provider's short name in a lookup path.
+func providerSegment(kind string) string {
+	switch ProviderFor(kind) {
+	case ProviderMusicBrainz:
+		return "mb"
+	case ProviderOpenLibrary:
+		return "ol"
+	case ProviderComicVine:
+		return "cv"
+	}
+	return "tmdb"
+}
+
+// ProviderID returns the key's ID as text: "679", a MusicBrainz UUID, an
+// Open Library work ID ("OL45883W") or a Comic Vine volume ID ("18166").
 func (k Key) ProviderID() string {
-	if k.Kind == KindMusicVideo {
+	switch k.Provider() {
+	case ProviderMusicBrainz:
 		return k.MBID
+	case ProviderOpenLibrary:
+		return k.OLID
+	case ProviderComicVine:
+		return strconv.Itoa(k.CVID)
 	}
 	return strconv.Itoa(k.TMDbID)
 }
@@ -29,53 +58,107 @@ func (k Key) ProviderID() string {
 // KeyFor builds a key from a kind and a provider ID as text, the reverse of
 // ProviderID. The result still needs Validate.
 func KeyFor(kind, providerID string) Key {
-	if kind == KindMusicVideo {
+	switch ProviderFor(kind) {
+	case ProviderMusicBrainz:
 		return Key{Kind: kind, MBID: providerID}
+	case ProviderOpenLibrary:
+		return Key{Kind: kind, OLID: providerID}
+	case ProviderComicVine:
+		id, _ := strconv.Atoi(providerID)
+		return Key{Kind: kind, CVID: id}
 	}
 	id, _ := strconv.Atoi(providerID)
 	return Key{Kind: kind, TMDbID: id}
 }
 
-// Path returns the key as used in a lookup path: "movie/tmdb/679", or
-// "musicvideo/mb/<recording ID>".
+// Path returns the key as used in a lookup path: "movie/tmdb/679",
+// "musicvideo/mb/<recording>", "album/mb/<release group>",
+// "book/ol/OL45883W" or "comic/cv/18166".
 func (k Key) Path() string {
-	if k.Kind == KindMusicVideo {
-		return k.Kind + "/mb/" + k.MBID
-	}
-	return k.Kind + "/tmdb/" + strconv.Itoa(k.TMDbID)
+	return k.Kind + "/" + providerSegment(k.Kind) + "/" + k.ProviderID()
 }
 
-// String returns the key as "movie:679" or "musicvideo:<recording ID>".
+// String returns the key as "movie:679" or "album:<release group ID>".
 func (k Key) String() string { return k.Kind + ":" + k.ProviderID() }
 
 // MediaType returns the Edition List media type for the key's kind.
-func (k Key) MediaType() string {
-	switch k.Kind {
+func (k Key) MediaType() string { return MediaTypeFor(k.Kind) }
+
+// MediaTypeFor returns the Edition List media type for a kind: an album's is
+// "music"; the others share their kind's name. "" for an unknown kind.
+func MediaTypeFor(kind string) string {
+	switch kind {
 	case KindMovie:
 		return editionlist.Movie
 	case KindTV:
 		return editionlist.TV
 	case KindMusicVideo:
 		return editionlist.MusicVideo
+	case KindAlbum:
+		return editionlist.Music
+	case KindBook:
+		return editionlist.Book
+	case KindAudiobook:
+		return editionlist.Audiobook
+	case KindComic:
+		return editionlist.Comic
 	}
 	return ""
 }
 
-// Validate checks the key's kind and ID.
+// KindForMediaType returns the kind for a library media type ("music" is
+// "album"); "" when the media type has no kind.
+func KindForMediaType(mediaType string) string {
+	for _, k := range Kinds {
+		if MediaTypeFor(k) == mediaType {
+			return k
+		}
+	}
+	return ""
+}
+
+// Validate checks the key's kind and that exactly the ID its kind uses is set.
 func (k Key) Validate() error {
 	if k.MediaType() == "" {
 		return fmt.Errorf("unknown kind %q", k.Kind)
 	}
-	if k.Kind == KindMusicVideo {
-		if !IsMBID(k.MBID) || k.TMDbID != 0 {
-			return fmt.Errorf("%s: needs a MusicBrainz recording ID (a lowercase UUID) and no TMDb ID", k.Kind)
+	others := func(tmdb int, mb, ol string, cv int) bool { return tmdb != 0 || mb != "" || ol != "" || cv != 0 }
+	switch k.Provider() {
+	case ProviderMusicBrainz:
+		what := "recording"
+		if k.Kind == KindAlbum {
+			what = "release group"
 		}
-		return nil
-	}
-	if k.TMDbID <= 0 || k.MBID != "" {
-		return fmt.Errorf("%s: TMDb ID must be positive", k.Kind)
+		if !IsMBID(k.MBID) || others(k.TMDbID, "", k.OLID, k.CVID) {
+			return fmt.Errorf("%s: needs a MusicBrainz %s ID (a lowercase UUID) and no other ID", k.Kind, what)
+		}
+	case ProviderOpenLibrary:
+		if !IsOLID(k.OLID) || others(k.TMDbID, k.MBID, "", k.CVID) {
+			return fmt.Errorf("%s: needs an Open Library work ID such as OL45883W and no other ID", k.Kind)
+		}
+	case ProviderComicVine:
+		if k.CVID <= 0 || others(k.TMDbID, k.MBID, k.OLID, 0) {
+			return fmt.Errorf("%s: needs a positive Comic Vine volume ID and no other ID", k.Kind)
+		}
+	default:
+		if k.TMDbID <= 0 || others(0, k.MBID, k.OLID, k.CVID) {
+			return fmt.Errorf("%s: TMDb ID must be positive", k.Kind)
+		}
 	}
 	return nil
+}
+
+// IsOLID reports whether s is an Open Library work ID: "OL", digits, "W".
+func IsOLID(s string) bool {
+	if len(s) < 4 || !strings.HasPrefix(s, "OL") || s[len(s)-1] != 'W' {
+		return false
+	}
+	for _, r := range s[2 : len(s)-1] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // IsMBID reports whether s is a MusicBrainz ID: a lowercase UUID.

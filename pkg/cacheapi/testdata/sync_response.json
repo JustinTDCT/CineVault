@@ -2,9 +2,11 @@
   "changed": [
     { "kind": "movie", "tmdb_id": 679, "record_version": 4 },
     { "kind": "tv", "tmdb_id": 1399, "record_version": 7 },
-    { "kind": "musicvideo", "mbid": "4a1b6c7e-2d3f-4e5a-9b8c-7d6e5f4a3b2c", "record_version": 2 }
+    { "kind": "musicvideo", "mbid": "4a1b6c7e-2d3f-4e5a-9b8c-7d6e5f4a3b2c", "record_version": 2 },
+    { "kind": "comic", "cvid": 18166, "record_version": 2 }
   ],
-  "pending": [ { "kind": "movie", "tmdb_id": 348 } ],
+  "pending": [ { "kind": "movie", "tmdb_id": 348 }, { "kind": "album", "mbid": "1d0e3a7f-6c2b-4e8a-9f1d-2b3c4d5e6f70" },
+               { "kind": "audiobook", "olid": "OL45883W" } ],
   "not_found": [],
   "unchanged": 0
 }

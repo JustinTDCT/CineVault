@@ -6,6 +6,11 @@
     { "kind": "tv", "tmdb_id": 108545, "editions": [ { "edition": "broadcast" } ] },
     { "kind": "movie", "tmdb_id": 679 },
     { "kind": "musicvideo", "mbid": "4a1b6c7e-2d3f-4e5a-9b8c-7d6e5f4a3b2c",
-      "editions": [ { "edition": "official_video", "runtime_min": 4 } ] }
+      "editions": [ { "edition": "official_video", "runtime_min": 4 } ] },
+    { "kind": "album", "mbid": "1d0e3a7f-6c2b-4e8a-9f1d-2b3c4d5e6f70",
+      "editions": [ { "edition": "original", "runtime_min": 48 }, { "edition": "deluxe", "runtime_min": 71 } ] },
+    { "kind": "book", "olid": "OL45883W", "editions": [ { "edition": "original" } ] },
+    { "kind": "audiobook", "olid": "OL45883W", "editions": [ { "edition": "unabridged", "runtime_min": 662 } ] },
+    { "kind": "comic", "cvid": 18166, "editions": [ { "edition": "original" } ] }
   ]
 }
