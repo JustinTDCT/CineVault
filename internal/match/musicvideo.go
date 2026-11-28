@@ -66,6 +66,15 @@ func (m MusicVideoMatcher) MatchLibrary(ctx context.Context, libraryID int64) (R
 		if v.Artist != "" {
 			label = v.Artist + " – " + v.Song
 		}
+		if Normalize(v.Artist) == "" {
+			// A song title alone is a guess: many artists share titles.
+			res.NotFound++
+			res.Messages = append(res.Messages, label+`: no artist in the file name; name it "Artist - Song"`)
+			if serr := m.Store.SaveMatchFailure(ctx, v.ID, "not_found", "no artist in the file name"); serr != nil {
+				return res, serr
+			}
+			continue
+		}
 		recs, err := m.Source.SearchRecordings(ctx, v.Artist, v.Song)
 		if err != nil {
 			res.Errors++
@@ -104,17 +113,21 @@ func (m MusicVideoMatcher) MatchLibrary(ctx context.Context, libraryID int64) (R
 
 // PickRecording chooses the recording for a music video: a search result
 // scoring at least minScore whose title is the song and whose artist credit
-// names the artist. Among those, one on an official studio album wins (it
+// names the artist. Without an artist on both sides there is no match.
+// Among those, one on an official studio album wins (it
 // gives the album to show), then the higher score, then the earlier release.
 func PickRecording(v MusicVideo, recs []musicbrainz.Recording) (musicbrainz.Recording, bool) {
 	song, artist := Normalize(v.Song), Normalize(v.Artist)
+	if song == "" || artist == "" {
+		return musicbrainz.Recording{}, false
+	}
 	var ok []musicbrainz.Recording
 	for _, r := range recs {
 		if r.Score < minScore || r.ID == "" || Normalize(r.Title) != song {
 			continue
 		}
 		credit := Normalize(r.Artist)
-		if artist != "" && !strings.Contains(credit, artist) && !strings.Contains(artist, credit) {
+		if credit == "" || (!strings.Contains(credit, artist) && !strings.Contains(artist, credit)) {
 			continue
 		}
 		ok = append(ok, r)

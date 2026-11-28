@@ -41,6 +41,13 @@ func TestPickRecording(t *testing.T) {
 		[]musicbrainz.Recording{rec("up", "Under Pressure", "Queen & David Bowie", 100, studio)}); !ok || got.ID != "up" {
 		t.Errorf("joint credit: %+v %v", got, ok)
 	}
+	// No artist on either side is never a match: song titles repeat.
+	if _, ok := PickRecording(MusicVideo{Song: "Take On Me"}, []musicbrainz.Recording{rec("a", "Take On Me", "a-ha", 100, studio)}); ok {
+		t.Error("matched without an artist")
+	}
+	if _, ok := PickRecording(v, []musicbrainz.Recording{rec("b", "Take On Me", "", 100, studio)}); ok {
+		t.Error("matched a recording with no artist credit")
+	}
 }
 
 type fakeMV struct {
@@ -74,17 +81,17 @@ func (fakeMB) SearchRecordings(_ context.Context, artist, title string) ([]music
 }
 
 func TestMusicVideoMatcher(t *testing.T) {
-	st := &fakeMV{videos: []MusicVideo{{ID: 1, Artist: "a-ha", Song: "Take On Me"}, {ID: 2, Artist: "Nobody", Song: "Unknown Song"}, {ID: 3, Artist: "x", Song: "Broken"}},
+	st := &fakeMV{videos: []MusicVideo{{ID: 1, Artist: "a-ha", Song: "Take On Me"}, {ID: 2, Artist: "Nobody", Song: "Unknown Song"}, {ID: 3, Artist: "x", Song: "Broken"}, {ID: 4, Song: "Take On Me"}},
 		matches: map[int64]MusicVideoMatch{}, failures: map[int64]string{}}
 	res, err := MusicVideoMatcher{Store: st, Source: fakeMB{}}.MatchLibrary(context.Background(), 1)
-	if err != nil || res.Matched != 1 || res.NotFound != 1 || res.Errors != 1 {
+	if err != nil || res.Matched != 1 || res.NotFound != 2 || res.Errors != 1 {
 		t.Fatalf("result %+v %v", res, err)
 	}
 	m := st.matches[1]
 	if m.RecordingID != "4a1b6c7e-2d3f-4e5a-9b8c-7d6e5f4a3b2c" || m.Album != "Hunting High and Low" || m.Year != 1985 || m.Artist != "a-ha" {
 		t.Errorf("match %+v", m)
 	}
-	if st.failures[2] != "not_found" || st.failures[3] != "error" {
+	if st.failures[2] != "not_found" || st.failures[3] != "error" || st.failures[4] != "not_found" {
 		t.Errorf("failures %v", st.failures)
 	}
 }
