@@ -1,18 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { creditLines, creditsShowing } from "./components/MusicVideoCredits";
+import { creditLines, creditsPlacement, creditsShowing, pictureBox } from "./components/MusicVideoCredits";
 import { rematchSummary } from "./pages/LibraryPage";
 
 describe("music video credits", () => {
-  it("show shortly after the start and again before the end", () => {
-    expect(creditsShowing(2, 240)).toBe(false);
-    expect(creditsShowing(5, 240)).toBe(true);
-    expect(creditsShowing(12.9, 240)).toBe(true);
-    expect(creditsShowing(13, 240)).toBe(false);
+  it("show from 0:01 for 10 seconds, and for the last 10 seconds", () => {
+    expect(creditsShowing(0.5, 240)).toBe(false);
+    expect(creditsShowing(1, 240)).toBe(true);
+    expect(creditsShowing(10.9, 240)).toBe(true);
+    expect(creditsShowing(11, 240)).toBe(false);
     expect(creditsShowing(120, 240)).toBe(false);
-    expect(creditsShowing(225, 240)).toBe(true); // 15 s before the end, for 8 s
-    expect(creditsShowing(233, 240)).toBe(false);
-    expect(creditsShowing(50, 55)).toBe(false); // a short video shows them once
+    expect(creditsShowing(229.9, 240)).toBe(false);
+    expect(creditsShowing(230, 240)).toBe(true); // held to the end
+    expect(creditsShowing(240, 240)).toBe(true);
+    expect(creditsShowing(20, 24)).toBe(false); // too short for two showings: once
     expect(creditsShowing(6, NaN)).toBe(true);
+  });
+  it("sit in the picture's corner, not the player's", () => {
+    // 4:3 video in a 16:9 player: black bars left and right.
+    expect(pictureBox(1600, 900, 640, 480)).toEqual({ left: 200, top: 0, width: 1200, height: 900 });
+    const pillar = creditsPlacement(1600, 900, 640, 480);
+    expect(pillar.right).toBe(200 + 48); // the bar, then 4% of the picture
+    expect(pillar.bottom).toBe(88); // the picture reaches the bottom: clear the controls
+    expect(pillar.pictureWidth).toBe(1200);
+    // A wide film in a tall player: bars above and below; the bar clears the controls.
+    const letter = creditsPlacement(1000, 1000, 1920, 800);
+    expect(letter.right).toBe(40);
+    expect(letter.bottom).toBe(Math.round((1000 - 1000 * (800 / 1920)) / 2 + 40));
+    // Before the video's size is known, the whole element is the picture.
+    expect(creditsPlacement(800, 450, 0, 0)).toEqual({ right: 32, bottom: 88, pictureWidth: 800 });
   });
   it("write the lines MTV style", () => {
     expect(

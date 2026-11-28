@@ -516,13 +516,14 @@ img {
   background: #000;
 }
 
-/* Music video credits, MTV style: bottom right, white type with a shadow,
-   fading in near the start and again before the end. */
+/* Music video credits, MTV style: in the picture's bottom-right corner
+   (the player sets right, bottom and --mv-w, the picture's width), white
+   type with a shadow, from 0:01 for 10 s and again for the last 10 s. */
 .mv-credits {
   position: absolute;
   right: clamp(16px, 4vw, 56px);
   bottom: clamp(64px, 12vh, 120px);
-  max-width: min(46ch, 70vw);
+  max-width: min(46ch, calc(var(--mv-w, 100vw) * 0.6));
   color: #fff;
   font-family: var(--font-text);
   line-height: 1.25;
@@ -539,17 +540,17 @@ img {
 }
 
 .mv-credits__artist {
-  font-size: clamp(16px, 2.2vw, 30px);
+  font-size: clamp(16px, calc(var(--mv-w, 100vw) * 0.022), 34px);
   font-weight: 800;
 }
 
 .mv-credits__song {
-  font-size: clamp(15px, 2vw, 26px);
+  font-size: clamp(15px, calc(var(--mv-w, 100vw) * 0.02), 30px);
   font-weight: 600;
 }
 
 .mv-credits__line {
-  font-size: clamp(12px, 1.4vw, 18px);
+  font-size: clamp(12px, calc(var(--mv-w, 100vw) * 0.014), 20px);
   font-weight: 500;
   opacity: 0.92;
 }

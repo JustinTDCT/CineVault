@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type Hls from "hls.js";
 import { api, type PlayResponse, type TitleCredits } from "../api";
-import { MusicVideoCredits, creditsShowing } from "./MusicVideoCredits";
+import { MusicVideoCredits, creditsPlacement, creditsShowing } from "./MusicVideoCredits";
 import { detectCaps } from "../caps";
 
 export interface PlayTarget {
@@ -39,6 +39,38 @@ export function Player({
   const lastSave = useRef(0);
   const frame = useRef<HTMLDivElement>(null);
   const [showCredits, setShowCredits] = useState(false);
+  const [creditsPlace, setCreditsPlace] = useState<ReturnType<typeof creditsPlacement>>();
+
+  // Keep the credits in the picture's corner as the player resizes, goes
+  // full screen or learns the video's size.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!target.credits || !v) return;
+    const place = () => {
+      const p = creditsPlacement(v.clientWidth, v.clientHeight, v.videoWidth, v.videoHeight);
+      const fr = frame.current;
+      if (fr) {
+        // The offsets are from the video element; add any gap between it and the frame.
+        const fb = fr.getBoundingClientRect();
+        const vb = v.getBoundingClientRect();
+        p.right += Math.round(fb.right - vb.right);
+        p.bottom += Math.round(fb.bottom - vb.bottom);
+      }
+      setCreditsPlace(p);
+    };
+    place();
+    v.addEventListener("loadedmetadata", place);
+    v.addEventListener("resize", place); // the video's own size changed (adaptive streams)
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(place) : null;
+    ro?.observe(v);
+    document.addEventListener("fullscreenchange", place);
+    return () => {
+      v.removeEventListener("loadedmetadata", place);
+      v.removeEventListener("resize", place);
+      ro?.disconnect();
+      document.removeEventListener("fullscreenchange", place);
+    };
+  }, [target.credits]);
 
   // The credits sit over the video, so going full screen takes the whole
   // player, not the <video> alone (which nothing can draw over).
@@ -172,7 +204,7 @@ export function Player({
           onEnded?.();
         }}
       />
-      {target.credits ? <MusicVideoCredits credits={target.credits} visible={showCredits} /> : null}
+      {target.credits ? <MusicVideoCredits credits={target.credits} visible={showCredits} place={creditsPlace} /> : null}
       </div>
     </div>
   );
