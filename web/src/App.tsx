@@ -88,7 +88,7 @@ export function App() {
             </div>
           ) : route.page === "settings" ? (
             <div className="cv-page">
-              <SettingsPage />
+              <SettingsPage section={route.section} libraries={libraries} />
             </div>
           ) : route.page === "library" ? (
             <div className="cv-page">

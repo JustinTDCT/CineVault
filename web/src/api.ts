@@ -82,14 +82,32 @@ export interface CacheSource {
 export type CacheState = "none" | "pending" | "cached" | "not_found" | "error";
 
 export interface CacheSettings {
+  /** The master switch: off, the server never contacts the cache. */
+  enabled: boolean;
   check_interval: "1h" | "6h" | "24h" | "168h" | "manual";
   share: boolean;
 }
 
+/** GET /api/health: what this server is running and can do. */
+export interface Health {
+  status: "ok" | "degraded";
+  version: string;
+  database: { reachable: boolean; schema_version: number; error?: string };
+  metadata: { tmdb_configured: boolean };
+  playback: { ready: boolean; encoder?: string; device?: string; note?: string };
+  transcode: {
+    ffmpeg: { found: boolean; path: string; version?: string; hwaccels: string[]; encoders: { name: string; codec: string; kind: string; device_name?: string; usable: boolean; error?: string }[]; error?: string };
+    gpus: { index: number; name: string; driver: string; memory_mib: number }[] | null;
+  };
+}
+
 export interface CacheStatus {
-  /** A subscriber token is set. */
+  /** The cache is on and a subscriber token is set. */
   configured: boolean;
   url: string;
+  /** Where the token comes from; its last characters. The token itself is never sent. */
+  token_source?: "environment" | "saved";
+  token_hint?: string;
   subscription?: { status: "active" | "lapsed" | "cancelled"; server_label?: string; expires_at?: string };
   /** Why the subscription couldn't be checked. */
   problem?: string;
@@ -292,6 +310,10 @@ export const api = {
   cache: () => request<CacheStatus>("GET", "/api/cache"),
   saveCacheSettings: (s: CacheSettings) => request<CacheSettings>("PUT", "/api/cache/settings", s),
   checkCache: () => request<{ started: boolean }>("POST", "/api/cache/check"),
+  /** Checks and saves a subscriber token; note is set when it couldn't be checked. */
+  saveCacheToken: (token: string) => request<{ note: string }>("PUT", "/api/cache/token", { token }),
+  clearCacheToken: () => request<null>("DELETE", "/api/cache/token"),
+  health: () => request<Health>("GET", "/api/health"),
   report: (titleId: number, edition: string, field: ReportField, message: string) =>
     request<{ report_id: string }>("POST", `/api/titles/${titleId}/report`, { edition, field, message }),
   episodes: (titleId: number) => request<Season[]>("GET", `/api/titles/${titleId}/episodes`),

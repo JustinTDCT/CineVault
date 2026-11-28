@@ -14,6 +14,10 @@ const paths: Record<string, string> = {
   settings: "M12 15a3 3 0 100-6 3 3 0 000 6zM12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2",
   plus: "M12 5v14M5 12h14",
   play: "M7 4l13 8-13 8z",
+  server: "M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01",
+  folders: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z",
+  playback: "M3 5h18v14H3zM10 9l5 3-5 3z",
+  cache: "M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7zM9 12l2 2 4-4",
 };
 
 export function Icon({ name, filled = false }: { name: MediaType | keyof typeof paths; filled?: boolean }) {

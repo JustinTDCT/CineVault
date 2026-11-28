@@ -147,7 +147,7 @@ printf 'CINEVAULT_TMDB_TOKEN=%s\n' "$T" > ~/.config/cinevault/tmdb.env; unset T
 chmod 600 ~/.config/cinevault/tmdb.env
 ```
 
-**CineVault Cache** URL and subscription token are in `~/.config/cinevault/cache.env` (mode 600) as `CINEVAULT_CACHE_URL=…` and `CINEVAULT_CACHE_TOKEN=…`. `make run` loads it if the file exists. Without a token the server still shares its titles with the cache (Settings, "Help build the CineVault Cache").
+**CineVault Cache** URL and subscription token are in `~/.config/cinevault/cache.env` (mode 600) as `CINEVAULT_CACHE_URL=…` and `CINEVAULT_CACHE_TOKEN=…`. `make run` loads it if the file exists. Since 27 Nov 2026 the token can be saved in Settings → CineVault Cache instead; the variable, when set, wins. Without a token the server still shares its titles with the cache (Settings, "Help build the CineVault Cache").
 
 **Backups:** Hyper-V checkpoints don't work while the GPU is assigned. Use an offline copy of the VM's disk instead: stop the VM, copy its `.vhdx`, then start it again.
 

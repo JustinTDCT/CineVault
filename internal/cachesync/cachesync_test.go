@@ -3,12 +3,14 @@ package cachesync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -159,6 +161,14 @@ func (fc *fakeCache) server(t *testing.T) *httptest.Server {
 		}
 		json.NewEncoder(w).Encode(out)
 	})
+	mux.HandleFunc("GET /v1/subscription", func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Authorization"), "BAD") {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":{"code":"token_invalid","message":"This token isn't valid."}}`))
+			return
+		}
+		w.Write([]byte(`{"status":"active","server_label":"Test"}`))
+	})
 	mux.HandleFunc("POST /v1/contribute", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "" {
 			t.Error("contribution carried a token")
@@ -303,16 +313,16 @@ func TestSettingsDefaultsAndValidation(t *testing.T) {
 	s, _, _ := newService(t, newStore(), "")
 	ctx := context.Background()
 	got, err := s.LoadSettings(ctx)
-	if err != nil || got != (Settings{CheckInterval: "24h", Share: true}) {
+	if err != nil || got != (Settings{Enabled: true, CheckInterval: "24h", Share: true}) {
 		t.Errorf("defaults = %+v, %v", got, err)
 	}
 	if err := s.SaveSettings(ctx, Settings{CheckInterval: "2h"}); err == nil {
 		t.Error("2h accepted")
 	}
-	if err := s.SaveSettings(ctx, Settings{CheckInterval: "manual", Share: false}); err != nil {
+	if err := s.SaveSettings(ctx, Settings{Enabled: true, CheckInterval: "manual", Share: false}); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := s.LoadSettings(ctx); got != (Settings{CheckInterval: "manual", Share: false}) {
+	if got, _ := s.LoadSettings(ctx); got != (Settings{Enabled: true, CheckInterval: "manual", Share: false}) {
 		t.Errorf("saved = %+v", got)
 	}
 }
@@ -357,5 +367,101 @@ func TestTickChecksOnScheduleAndSharesDaily(t *testing.T) {
 	s.tick(ctx, &backoff)
 	if fc.syncs != 3 || backoff != 0 {
 		t.Errorf("after 6 minutes: syncs %d, backoff %d", fc.syncs, backoff)
+	}
+}
+
+const goodToken = "cvc_ABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQR"
+
+func TestTokenSavedInSettings(t *testing.T) {
+	st := newStore(movie(1, 679))
+	s, fc, _ := newService(t, st, "")
+	ctx := context.Background()
+	if err := s.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if s.Subscribed() {
+		t.Fatal("subscribed with no token")
+	}
+
+	if _, err := s.SetToken(ctx, "hello"); !errors.Is(err, ErrTokenShape) {
+		t.Errorf("bad shape: %v", err)
+	}
+	if _, err := s.SetToken(ctx, "cvc_BADBADBADBADBADBADBADBADBAD"); !errors.Is(err, ErrTokenRejected) {
+		t.Errorf("refused token: %v", err)
+	}
+	if s.Subscribed() {
+		t.Fatal("a refused token was used")
+	}
+	note, err := s.SetToken(ctx, "  "+goodToken+"\n")
+	if err != nil || note != "" || !s.Subscribed() {
+		t.Fatalf("set: %q %v", note, err)
+	}
+	// The status names where the token came from and its end, never the token.
+	stat, _ := s.Status(ctx)
+	b, _ := json.Marshal(stat)
+	if stat.TokenSource != TokenSaved || stat.TokenHint != "…OPQR" || strings.Contains(string(b), goodToken) {
+		t.Errorf("status = %s", b)
+	}
+	// Lookups use it.
+	if _, err := s.Check(ctx); err != nil || len(fc.lookups) != 1 {
+		t.Errorf("check: %v, %d lookups", err, len(fc.lookups))
+	}
+
+	// A restart reads it back.
+	s2, _, _ := newService(t, st, "")
+	if err := s2.Init(ctx); err != nil || !s2.Subscribed() {
+		t.Errorf("after restart: subscribed=%v %v", s2.Subscribed(), err)
+	}
+	if err := s2.ClearToken(ctx); err != nil || s2.Subscribed() {
+		t.Errorf("clear: %v", err)
+	}
+}
+
+func TestEnvironmentTokenWins(t *testing.T) {
+	st := newStore()
+	st.SaveSetting(context.Background(), keyToken, goodToken)
+	s, _, _ := newService(t, st, "cvc_FROMENVIRONMENTFROMENVIRONMENT")
+	ctx := context.Background()
+	if err := s.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if s.conn().client.Token != "cvc_FROMENVIRONMENTFROMENVIRONMENT" || s.conn().source != TokenFromEnvironment {
+		t.Errorf("token from %s", s.conn().source)
+	}
+	if _, err := s.SetToken(ctx, goodToken); !errors.Is(err, ErrTokenFromEnvironment) {
+		t.Errorf("set over the environment: %v", err)
+	}
+	if err := s.ClearToken(ctx); !errors.Is(err, ErrTokenFromEnvironment) {
+		t.Errorf("clear over the environment: %v", err)
+	}
+}
+
+func TestMasterSwitchOff(t *testing.T) {
+	st := newStore(movie(1, 679, cacheapi.ContributeEdition{Edition: "theatrical", RuntimeMin: 137}))
+	s, fc, _ := newService(t, st, goodToken)
+	ctx := context.Background()
+	if err := s.SaveSettings(ctx, Settings{Enabled: false, CheckInterval: "24h", Share: true}); err != nil {
+		t.Fatal(err)
+	}
+	if s.Subscribed() || s.Enabled() {
+		t.Fatal("still on")
+	}
+	st.SaveSetting(ctx, keyShareAt, 11*60)
+	backoff := 0
+	s.tick(ctx, &backoff)
+	s.LookupNew(ctx)
+	if _, err := s.Share(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Report(ctx, cacheapi.Key{Kind: "movie", TMDbID: 679}, cacheapi.Report{Edition: "theatrical", Field: "runtime", Message: "x"}); err == nil {
+		t.Error("report sent while off")
+	}
+	if len(fc.lookups)+fc.syncs+len(fc.contribute) != 0 {
+		t.Errorf("contacted the cache while off: %d lookups, %d syncs, %d shares", len(fc.lookups), fc.syncs, len(fc.contribute))
+	}
+	// A restart keeps it off.
+	s2, _, _ := newService(t, st, goodToken)
+	if err := s2.Init(ctx); err != nil || s2.Enabled() {
+		t.Errorf("after restart: enabled=%v %v", s2.Enabled(), err)
 	}
 }

@@ -15,6 +15,7 @@ This is a fresh start (November 2026). Earlier work is preserved on these branch
 - Music, music videos, audiobooks (chapters, resume, speed), ebooks (EPUB/MOBI/AZW3 reader, PDF in the browser) and comics (CBZ natively; CBR/CB7/CBT need `libarchive-tools`; comics haven't been tested on the server yet)
 
 **Built 27 Nov 2026, not yet tested on the server:**
+- Settings in groups down the side, as in Plex and Jellyfin: General (version, database, TMDb), Libraries (scan, add), Playback (converting, FFmpeg, GPUs) and CineVault Cache. The Cache group has a master on/off switch (off: the server never contacts the cache) and a token field: the token is checked with the cache, saved in the database, and never shown again (only its last 4 characters)
 - Movies and episodes save where you stopped and offer **Resume** (or Start over); a finished episode resumes at the next one
 - Home: a spotlight that cycles through up to 5 titles (several editions, a cut the cache knows, new or half-watched first; the order changes daily), **Continue** across every kind of title, and **Recently added**
 - **Cast** with photos and "Directed by" (a show's "Created by") on title pages, from TMDb credits. Migration 0010 adds them; titles matched earlier get them at the next scan or match
@@ -75,8 +76,9 @@ npm run dev    # serves on port 5173 and forwards /api to the Go server on 8456
 | `GET /api/versions/{id}/cover` | Album cover for a music file: `cover.jpg`/`folder.jpg` next to it, or the art embedded in the file |
 | `GET /api/versions/{id}/pages/{n}` | Page n (from 0) of a comic, as an image |
 | `GET /api/versions/{id}/file` | The original file, with range requests for seeking |
-| `GET /api/cache` | CineVault Cache status for Settings: subscription, settings, last check and share, titles per cache state |
-| `PUT /api/cache/settings` | `{"check_interval": "24h", "share": true}`; intervals are `1h`, `6h`, `24h`, `168h` or `manual` |
+| `GET /api/cache` | CineVault Cache status for Settings: subscription, settings, where the token comes from (`token_source`: `environment` or `saved`) and its last 4 characters (`token_hint`; never the token), last check and share, titles per cache state |
+| `PUT /api/cache/settings` | `{"enabled": true, "check_interval": "24h", "share": true}`; fields left out keep their value. `enabled` is the master switch. Intervals are `1h`, `6h`, `24h`, `168h` or `manual` |
+| `PUT /api/cache/token`, `DELETE …` | Save a subscriber token, `{"token": "cvc_…"}`: checked with the cache first (422 if refused; saved with a `note` if the cache can't be reached), then a check starts. 409 when `CINEVAULT_CACHE_TOKEN` is set |
 | `POST /api/cache/check` | "Check now": starts a check in the background (202); `GET /api/cache` shows `checking` until it ends |
 | `POST /api/titles/{id}/report` | Report a mistake in the cache's information: `{"edition": "directors_cut", "field": "runtime", "message": "…"}` |
 
@@ -105,7 +107,7 @@ Settings come from environment variables:
 | `CINEVAULT_TRANSCODE_RESUME_AHEAD` | `90s` | Resume it when the lead drops to this; must be less than the pause setting |
 | `CINEVAULT_TRANSCODE_KEEP_BEHIND` | `3m` | Keep this much already-watched video for quick rewinds; older segments are deleted |
 | `CINEVAULT_CACHE_URL` | `https://cache.cine-vault.tv` | The CineVault Cache service |
-| `CINEVAULT_CACHE_TOKEN` | none | A CineVault Cache subscription token. Without it the server only shares titles with the cache (if sharing is on in Settings). `make run` reads both from `~/.config/cinevault/cache.env`. |
+| `CINEVAULT_CACHE_TOKEN` | none | A CineVault Cache subscription token. Optional: the token can instead be saved in Settings → CineVault Cache, which checks it with the cache first. When this variable is set it wins, and Settings shows it read-only. Without any token the server only shares titles with the cache (if sharing is on). `make run` reads both from `~/.config/cinevault/cache.env`. |
 | `CINEVAULT_TMDB_TOKEN` | none | TMDb API read access token. Without it, titles aren't matched to TMDb. `make run` reads it from `~/.config/cinevault/tmdb.env`. |
 
 ### TV file names

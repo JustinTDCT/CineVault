@@ -111,10 +111,19 @@ func run(log *slog.Logger) error {
 		},
 		Log: log,
 	}
-	if cache.Subscribed() {
+	initCtx, cancelInit := context.WithTimeout(context.Background(), 5*time.Second)
+	err = cache.Init(initCtx)
+	cancelInit()
+	if err != nil {
+		return fmt.Errorf("cache settings: %w", err)
+	}
+	switch {
+	case !cache.Enabled():
+		log.Info("cinevault cache", "url", cfg.CacheURL, "enabled", false, "note", "turned off in Settings")
+	case cache.Subscribed():
 		log.Info("cinevault cache", "url", cfg.CacheURL, "subscribed", true)
-	} else {
-		log.Info("cinevault cache", "url", cfg.CacheURL, "subscribed", false, "note", "no CINEVAULT_CACHE_TOKEN; titles are only shared with the cache, if sharing is on")
+	default:
+		log.Info("cinevault cache", "url", cfg.CacheURL, "subscribed", false, "note", "no token in Settings or CINEVAULT_CACHE_TOKEN; titles are only shared with the cache, if sharing is on")
 	}
 
 	var matchFn func(context.Context, int64) (match.Result, error)

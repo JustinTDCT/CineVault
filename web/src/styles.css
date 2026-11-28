@@ -1280,73 +1280,39 @@ img {
 
 /* ---------- Settings ---------- */
 
-.settings {
-  max-width: 720px;
+/* Settings: the layout and rows are cv-settings in the theme; these are this app's extras. */
+.settings-blurb {
+  margin: 4px 0 0;
 }
 
-.settings-group {
-  margin-top: 2rem;
-}
-
-.settings-heading {
-  font-family: var(--f-marquee);
-  font-size: var(--t-lg);
-  font-weight: 400;
-  margin: 0;
-}
-
-.settings-intro {
-  color: var(--dim);
-  margin: 0.5rem 0 0;
-  max-width: 66ch;
-}
-
-.settings-row {
-  padding: 1.25rem 0;
-  border-bottom: 1px solid var(--rule);
-  display: grid;
-  gap: 0.5rem;
-  justify-items: start;
-}
-
-.settings-label {
-  font-weight: 600;
-  margin: 0;
+.settings-result {
   display: block;
+  margin-top: 4px;
+  color: var(--ink-2);
 }
 
-.settings-note {
-  color: var(--dim);
-  margin: 0;
-  max-width: 66ch;
-  display: block;
+.settings-result.is-problem {
+  color: var(--caution);
 }
 
-.settings-problem {
-  color: var(--warn);
-}
-
-.settings-select {
-  font: inherit;
-  color: var(--light);
-  background: var(--seat);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  padding: 0.55rem 0.7rem;
-}
-
-.settings-select:focus-visible {
-  border-color: var(--lamp);
-}
-
-.settings-check {
+.settings-token {
   display: flex;
-  align-items: center;
-  gap: 1rem;
   flex-wrap: wrap;
-  margin-top: 0.5rem;
+  gap: 8px;
+  align-items: center;
 }
 
+.settings-token .cv-input {
+  width: min(22rem, 70vw);
+}
+
+.settings-lib-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The share checkbox on Setup. */
 .settings-toggle {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -1359,15 +1325,23 @@ img {
   width: 1.15rem;
   height: 1.15rem;
   margin: 0.2rem 0 0;
-  accent-color: var(--lamp);
+  accent-color: var(--accent);
 }
 
-.settings-toggle .settings-note {
+.settings-label {
+  display: block;
+  font-weight: 600;
+}
+
+.settings-note {
+  display: block;
   margin-top: 0.25rem;
+  max-width: 66ch;
+  color: var(--ink-3);
 }
 
-.settings-indent {
-  padding-left: 1.9rem;
+.settings-footnote {
+  margin: 16px 0 0;
 }
 
 .form {

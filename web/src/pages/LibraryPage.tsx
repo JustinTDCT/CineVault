@@ -3,7 +3,7 @@ import { api, type Library, type ScanResult, type Title } from "../api";
 import { PosterCard } from "../components/PosterCard";
 import { groupByArtist, itemNoun } from "../format";
 
-function scanSummary(r: ScanResult): string {
+export function scanSummary(r: ScanResult): string {
   const parts: string[] = [];
   if (r.added) parts.push(`${r.added} new`);
   if (r.updated) parts.push(`${r.updated} changed`);

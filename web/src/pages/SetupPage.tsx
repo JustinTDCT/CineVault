@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type CacheSettings, type Library, type MediaType } from "../api";
 
-const KINDS: { type: MediaType; label: string; name: string; folder: string; naming: string }[] = [
+export const KINDS: { type: MediaType; label: string; name: string; folder: string; naming: string }[] = [
   { type: "movie", label: "Movies", name: "Movies", folder: "/media/movies", naming: "Alien (1979).mkv" },
   { type: "tv", label: "TV shows", name: "TV Shows", folder: "/media/tv", naming: "3 Body Problem/Season 1/3 Body Problem - S01E01.mkv" },
   { type: "music", label: "Music", name: "Music", folder: "/media/music", naming: "3 Doors Down/Away From the Sun (2002)/01 - When I'm Gone.flac" },

@@ -5,16 +5,23 @@ import { useEffect, useState, type MouseEvent } from "react";
 export type Route =
   | { page: "home" }
   | { page: "setup" }
-  | { page: "settings" }
+  | { page: "settings"; section: SettingsSection }
   | { page: "library"; libraryId: number }
   | { page: "title"; libraryId: number; titleId: number }
   | { page: "notFound" };
+
+/** The groups of Settings, each its own page (as in Plex and Jellyfin). */
+export const SETTINGS_SECTIONS = ["general", "libraries", "playback", "cache"] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export function parseRoute(path: string): Route {
   const parts = path.split("/").filter(Boolean);
   if (parts.length === 0) return { page: "home" };
   if (parts[0] === "setup" && parts.length === 1) return { page: "setup" };
-  if (parts[0] === "settings" && parts.length === 1) return { page: "settings" };
+  if (parts[0] === "settings" && parts.length === 1) return { page: "settings", section: "general" };
+  if (parts[0] === "settings" && parts.length === 2 && (SETTINGS_SECTIONS as readonly string[]).includes(parts[1])) {
+    return { page: "settings", section: parts[1] as SettingsSection };
+  }
   if (parts[0] === "libraries") {
     const libraryId = Number(parts[1]);
     if (!Number.isInteger(libraryId) || libraryId <= 0) return { page: "notFound" };

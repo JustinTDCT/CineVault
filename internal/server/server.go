@@ -23,6 +23,8 @@ type CacheService interface {
 	Status(ctx context.Context) (cachesync.Status, error)
 	LoadSettings(ctx context.Context) (cachesync.Settings, error)
 	SaveSettings(ctx context.Context, st cachesync.Settings) error
+	SetToken(ctx context.Context, token string) (string, error)
+	ClearToken(ctx context.Context) error
 	Check(ctx context.Context) (cachesync.CheckResult, error)
 	Report(ctx context.Context, key cacheapi.Key, r cacheapi.Report) (cacheapi.ReportResponse, error)
 }
@@ -124,6 +126,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/titles/{id}/progress", s.putProgress)
 	mux.HandleFunc("GET /api/cache", s.cacheStatus)
 	mux.HandleFunc("PUT /api/cache/settings", s.cacheSettings)
+	mux.HandleFunc("PUT /api/cache/token", s.cacheSetToken)
+	mux.HandleFunc("DELETE /api/cache/token", s.cacheClearToken)
 	mux.HandleFunc("POST /api/cache/check", s.cacheCheck)
 	mux.HandleFunc("POST /api/titles/{id}/report", s.cacheReport)
 	if s.opt.UI != nil {

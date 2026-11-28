@@ -171,6 +171,37 @@ body { margin: 0; }
 }
 .cv-textarea { width: 100%; min-height: 96px; }
 
+/* ---------- Settings: groups down the side, rows of label + control ---------- */
+.cv-settings { display: grid; grid-template-columns: 220px minmax(0, 1fr); grid-template-areas: "head head" "nav panel"; gap: 8px var(--space-5); max-width: 1100px; }
+.cv-settings__head { grid-area: head; }
+.cv-settings-nav { grid-area: nav; display: flex; flex-direction: column; gap: 2px; align-self: start; position: sticky; top: 16px; }
+.cv-settings-nav__item { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 12px; border-radius: var(--radius-md); color: var(--ink-2); text-decoration: none; }
+.cv-app .cv-settings-nav__item:hover { background: var(--raised); color: var(--ink); }
+.cv-settings-nav__item.is-current { background: var(--selected); color: var(--ink); font-weight: 700; box-shadow: inset 3px 0 0 var(--accent); }
+.cv-settings-nav__item svg { width: 18px; height: 18px; flex: none; }
+.cv-settings__panel { grid-area: panel; min-width: 0; }
+.cv-settings-group { margin-top: 12px; border-top: 1px solid var(--line); }
+.cv-settings-subhead { margin: 28px 0 0; padding-bottom: 6px; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-4); border-bottom: 1px solid var(--line); }
+.cv-setting { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px var(--space-4); padding: 16px 0; border-bottom: 1px solid var(--line); }
+.cv-setting__text { flex: 1 1 320px; min-width: 0; }
+.cv-setting__label { font-weight: 700; }
+.cv-setting__note { margin-top: 2px; max-width: 66ch; font-size: 14px; line-height: 1.5; color: var(--ink-3); }
+.cv-setting__note.is-problem, .cv-setting__note .is-problem { color: var(--caution); }
+/* A row whose control is a switch keeps it beside the text, even on phones. */
+.cv-setting:has(> .cv-setting__control > .cv-switch:only-child) { flex-wrap: nowrap; }
+.cv-setting:has(> .cv-setting__control > .cv-switch:only-child) .cv-setting__text { flex-basis: auto; }
+.cv-setting__control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cv-setting__value { font-family: var(--font-text); font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.cv-settings-footer { padding: 16px 0; }
+
+/* An on/off switch: <button role="switch" aria-checked> with a thumb. */
+.cv-switch { position: relative; flex: none; width: 46px; height: 26px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-pill); background: var(--raised); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.cv-switch__thumb { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--ink-3); transition: transform 0.15s, background 0.15s; }
+.cv-switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+.cv-switch[aria-checked="true"] .cv-switch__thumb { transform: translateX(20px); background: var(--accent-ink); }
+.cv-switch:disabled { opacity: 0.5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .cv-switch, .cv-switch__thumb { transition: none; } }
+
 /* ---------- Review (cache review UI) ---------- */
 .cv-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
 .cv-stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 16px 18px; }
@@ -224,4 +255,8 @@ body { margin: 0; }
   .cv-edition__info { grid-column: 1 / -1; text-align: left; }
   .cv-review-card { grid-template-columns: minmax(0, 1fr); }
   .cv-review-card__thumb { display: none; }
+  .cv-settings { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "nav" "panel"; }
+  .cv-settings-nav { position: static; flex-direction: row; overflow-x: auto; gap: 4px; }
+  .cv-settings-nav__item { flex: none; }
+  .cv-settings-nav__item.is-current { box-shadow: inset 0 -3px 0 var(--accent); }
 }

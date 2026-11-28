@@ -16,7 +16,9 @@ import (
 	"log/slog"
 	"math"
 	mrand "math/rand/v2"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/JustinTDCT/CineVault/pkg/cacheapi"
@@ -34,6 +36,8 @@ const (
 
 // Setting keys.
 const (
+	keyEnabled        = "cache.enabled"
+	keyToken          = "cache.token" // saved in Settings; never returned by the API
 	keyInterval       = "cache.check_interval"
 	keyShare          = "cache.share"
 	keyInstall        = "cache.install_id"
@@ -74,8 +78,9 @@ type Store interface {
 	SaveSetting(ctx context.Context, key string, v any) error
 }
 
-// Service runs the cache client. Client may have no token: then only
-// sharing works (free servers).
+// Service runs the cache client. Client holds the service address and, when
+// CINEVAULT_CACHE_TOKEN is set, its token; otherwise a token saved in
+// Settings is used. With no token only sharing works (free servers).
 type Service struct {
 	Store  Store
 	Client *cacheapi.Client
@@ -85,10 +90,150 @@ type Service struct {
 
 	mu      sync.Mutex // one check at a time
 	running bool
+
+	cur atomic.Pointer[connection]
 }
 
-// Subscribed reports whether a token is set.
-func (s *Service) Subscribed() bool { return s.Client != nil && s.Client.Token != "" }
+// connection is the client in use and whether the cache is turned on. It is
+// replaced whole when Settings change, so running calls keep the one they
+// started with.
+type connection struct {
+	client  *cacheapi.Client // nil when the service has no address
+	enabled bool
+	source  string // where the token came from: TokenFromEnvironment, TokenSaved or ""
+}
+
+// Where a token came from.
+const (
+	TokenFromEnvironment = "environment"
+	TokenSaved           = "saved"
+)
+
+// ErrTokenFromEnvironment means the token is set by CINEVAULT_CACHE_TOKEN and
+// can't be changed in Settings.
+var ErrTokenFromEnvironment = errors.New("the token is set by CINEVAULT_CACHE_TOKEN; remove it there to manage it in Settings")
+
+// ErrTokenShape means a token doesn't look like one the cache makes.
+var ErrTokenShape = errors.New("a CineVault Cache token starts with cvc_ and is about 56 characters long")
+
+// ErrTokenRejected means the cache didn't accept a token.
+var ErrTokenRejected = errors.New("the CineVault Cache didn't accept this token")
+
+// Init reads the master switch and any saved token. Call it once at startup;
+// until then the service uses Client as given, turned on.
+func (s *Service) Init(ctx context.Context) error {
+	enabled := true
+	if _, err := s.Store.Setting(ctx, keyEnabled, &enabled); err != nil {
+		return err
+	}
+	var saved string
+	if _, err := s.Store.Setting(ctx, keyToken, &saved); err != nil {
+		return err
+	}
+	s.connect(enabled, saved)
+	return nil
+}
+
+// connect builds the connection: the environment's token wins over a saved one.
+func (s *Service) connect(enabled bool, saved string) {
+	c := &connection{enabled: enabled}
+	if s.Client != nil {
+		cl := *s.Client
+		switch {
+		case cl.Token != "":
+			c.source = TokenFromEnvironment
+		case saved != "":
+			cl.Token, c.source = saved, TokenSaved
+		}
+		c.client = &cl
+	}
+	s.cur.Store(c)
+}
+
+func (s *Service) conn() *connection {
+	if c := s.cur.Load(); c != nil {
+		return c
+	}
+	c := &connection{client: s.Client, enabled: true}
+	if s.Client != nil && s.Client.Token != "" {
+		c.source = TokenFromEnvironment
+	}
+	return c
+}
+
+// Enabled reports whether the cache is turned on in Settings.
+func (s *Service) Enabled() bool { return s.conn().enabled }
+
+// Subscribed reports whether the cache is on and a token is set.
+func (s *Service) Subscribed() bool {
+	c := s.conn()
+	return c.enabled && c.client != nil && c.client.Token != ""
+}
+
+// SetToken checks a token with the cache and saves it. A token the cache
+// refuses isn't saved; when the cache can't be reached the token is saved
+// anyway and the returned note says it wasn't checked.
+func (s *Service) SetToken(ctx context.Context, token string) (string, error) {
+	if s.conn().source == TokenFromEnvironment {
+		return "", ErrTokenFromEnvironment
+	}
+	token = strings.TrimSpace(token)
+	if !validToken(token) {
+		return "", ErrTokenShape
+	}
+	note := ""
+	if s.Client != nil {
+		try := *s.Client
+		try.Token = token
+		c, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, err := try.Subscription(c)
+		cancel()
+		switch {
+		case cacheapi.IsAuth(err):
+			return "", ErrTokenRejected
+		case err != nil && !cacheapi.IsInactive(err):
+			note = "Saved, but not checked: " + describe(err) + "."
+		}
+	}
+	if err := s.Store.SaveSetting(ctx, keyToken, token); err != nil {
+		return "", err
+	}
+	s.connect(s.Enabled(), token)
+	return note, nil
+}
+
+// ClearToken removes a saved token.
+func (s *Service) ClearToken(ctx context.Context) error {
+	if s.conn().source == TokenFromEnvironment {
+		return ErrTokenFromEnvironment
+	}
+	if err := s.Store.SaveSetting(ctx, keyToken, ""); err != nil {
+		return err
+	}
+	s.connect(s.Enabled(), "")
+	return nil
+}
+
+// validToken checks a token's shape: "cvc_" and base32, as the cache makes them.
+func validToken(t string) bool {
+	if !strings.HasPrefix(t, "cvc_") || len(t) < 20 || len(t) > 200 {
+		return false
+	}
+	for _, r := range t[4:] {
+		if !(r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '=' || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// tokenHint is the end of the token, to recognise it by: "…X7QF".
+func tokenHint(t string) string {
+	if len(t) < 8 {
+		return ""
+	}
+	return "…" + t[len(t)-4:]
+}
 
 func (s *Service) now() time.Time {
 	if s.Now != nil {
@@ -99,13 +244,19 @@ func (s *Service) now() time.Time {
 
 // Settings are the user's choices for the cache.
 type Settings struct {
+	// Enabled is the master switch: off, the server never contacts the
+	// cache (no lookups, checks, reports or sharing).
+	Enabled       bool   `json:"enabled"`
 	CheckInterval string `json:"check_interval"` // a key of Intervals
 	Share         bool   `json:"share"`          // "Help build the CineVault Cache"
 }
 
-// LoadSettings reads the settings, with the defaults: Daily, sharing on.
+// LoadSettings reads the settings, with the defaults: on, Daily, sharing on.
 func (s *Service) LoadSettings(ctx context.Context) (Settings, error) {
-	out := Settings{CheckInterval: DefaultInterval, Share: true}
+	out := Settings{Enabled: true, CheckInterval: DefaultInterval, Share: true}
+	if _, err := s.Store.Setting(ctx, keyEnabled, &out.Enabled); err != nil {
+		return out, err
+	}
 	if _, err := s.Store.Setting(ctx, keyInterval, &out.CheckInterval); err != nil {
 		return out, err
 	}
@@ -126,7 +277,18 @@ func (s *Service) SaveSettings(ctx context.Context, st Settings) error {
 	if err := s.Store.SaveSetting(ctx, keyInterval, st.CheckInterval); err != nil {
 		return err
 	}
-	return s.Store.SaveSetting(ctx, keyShare, st.Share)
+	if err := s.Store.SaveSetting(ctx, keyShare, st.Share); err != nil {
+		return err
+	}
+	if err := s.Store.SaveSetting(ctx, keyEnabled, st.Enabled); err != nil {
+		return err
+	}
+	saved := ""
+	if c := s.conn(); c.source == TokenSaved {
+		saved = c.client.Token
+	}
+	s.connect(st.Enabled, saved)
+	return nil
 }
 
 // CheckResult summarises one check.
@@ -202,7 +364,7 @@ func (s *Service) check(ctx context.Context, res *CheckResult) error {
 	if len(sync) == 0 {
 		return nil
 	}
-	resp, err := s.Client.SyncAll(ctx, sync)
+	resp, err := s.conn().client.SyncAll(ctx, sync)
 	if err != nil {
 		return err
 	}
@@ -226,7 +388,7 @@ func (s *Service) check(ctx context.Context, res *CheckResult) error {
 	if len(keys) == 0 {
 		return nil
 	}
-	recs, err := s.Client.Records(ctx, keys)
+	recs, err := s.conn().client.Records(ctx, keys)
 	if err != nil {
 		return err
 	}
@@ -276,7 +438,7 @@ func (s *Service) lookup(ctx context.Context, it Item, res *CheckResult) error {
 	for _, e := range it.Owned {
 		editions = append(editions, e.Edition)
 	}
-	r, err := s.Client.Lookup(ctx, it.Key, editions...)
+	r, err := s.conn().client.Lookup(ctx, it.Key, editions...)
 	switch {
 	case err == nil:
 	case cacheapi.IsAuth(err) || cacheapi.IsInactive(err):
@@ -322,7 +484,8 @@ type ShareResult struct {
 func (s *Service) Share(ctx context.Context) (ShareResult, error) {
 	var res ShareResult
 	st, err := s.LoadSettings(ctx)
-	if err != nil || !st.Share || s.Client == nil {
+	c := s.conn()
+	if err != nil || !st.Share || !c.enabled || c.client == nil {
 		return res, err
 	}
 	install, err := s.installID(ctx)
@@ -352,7 +515,7 @@ func (s *Service) Share(ctx context.Context) (ShareResult, error) {
 		return res, nil
 	}
 	res.Sent = len(out)
-	res.Accepted, err = s.Client.Contribute(ctx, install, out)
+	res.Accepted, err = c.client.Contribute(ctx, install, out)
 	if err != nil {
 		_ = s.Store.SaveSetting(ctx, keyLastShareError, describe(err))
 		return res, err
@@ -446,8 +609,13 @@ func (s *Service) tick(ctx context.Context, backoff *int) {
 
 // Status is what Settings shows.
 type Status struct {
-	Configured     bool                   `json:"configured"`
-	URL            string                 `json:"url"`
+	// Configured: the cache is on and a token is set.
+	Configured bool   `json:"configured"`
+	URL        string `json:"url"`
+	// TokenSource is "environment", "saved" or "" (none); TokenHint is its
+	// last characters. The token itself is never sent.
+	TokenSource    string                 `json:"token_source,omitempty"`
+	TokenHint      string                 `json:"token_hint,omitempty"`
 	Subscription   *cacheapi.Subscription `json:"subscription,omitempty"`
 	Problem        string                 `json:"problem,omitempty"`
 	Settings       Settings               `json:"settings"`
@@ -461,12 +629,14 @@ type Status struct {
 
 // Status reports the connection, the subscription and the item counts.
 func (s *Service) Status(ctx context.Context) (Status, error) {
-	st := Status{Configured: s.Subscribed(), Counts: map[string]int{}}
+	conn := s.conn()
+	st := Status{Configured: s.Subscribed(), TokenSource: conn.source, Counts: map[string]int{}}
 	s.mu.Lock()
 	st.Checking = s.running
 	s.mu.Unlock()
-	if s.Client != nil {
-		st.URL = s.Client.BaseURL
+	if conn.client != nil {
+		st.URL = conn.client.BaseURL
+		st.TokenHint = tokenHint(conn.client.Token)
 	}
 	var err error
 	if st.Settings, err = s.LoadSettings(ctx); err != nil {
@@ -492,7 +662,7 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	if st.Configured {
 		c, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		sub, err := s.Client.Subscription(c)
+		sub, err := conn.client.Subscription(c)
 		if err != nil {
 			st.Problem = describe(err)
 		} else {
@@ -505,13 +675,13 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 // Report sends "Report a mistake" for one of the title's editions.
 func (s *Service) Report(ctx context.Context, key cacheapi.Key, r cacheapi.Report) (cacheapi.ReportResponse, error) {
 	if !s.Subscribed() {
-		return cacheapi.ReportResponse{}, errors.New("reports need a CineVault Cache subscription")
+		return cacheapi.ReportResponse{}, errors.New("reports need the CineVault Cache turned on and a subscription")
 	}
 	r.Key = key
 	if err := r.Validate(); err != nil {
 		return cacheapi.ReportResponse{}, err
 	}
-	return s.Client.Report(ctx, r)
+	return s.conn().client.Report(ctx, r)
 }
 
 // describe turns a cache error into a sentence for Settings and logs.
