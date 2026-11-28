@@ -161,6 +161,19 @@ func firstLast(s string) string {
 	return strings.TrimSpace(first) + " " + strings.TrimSpace(last)
 }
 
+// searchTitles are the titles to search a book by: its main title, before
+// a subtitle or a bracket, and then the whole name when they differ.
+func searchTitles(name string) []string {
+	main := name
+	if i := strings.IndexAny(name, ":("); i > 0 {
+		main = strings.TrimSpace(name[:i])
+	}
+	if main == name {
+		return []string{name}
+	}
+	return []string{main, name}
+}
+
 // mainTitle is a book title without its subtitle: "Dune: Deluxe Edition"
 // and "Dune" compare equal.
 func mainTitle(s string) string {
@@ -270,11 +283,19 @@ func (BookFinder) Source() string    { return "Open Library" }
 func (BookFinder) NeedsArtist() bool { return true }
 
 func (f BookFinder) Find(ctx context.Context, it LookupItem) (Found, bool, error) {
-	works, err := f.OL.Search(ctx, it.Name, it.Artist)
-	if err != nil {
-		return Found{}, false, err
+	// Search by the main title first ("Beowulf", not "Beowulf: A Translation
+	// and Commentary, together with Sellic Spell"), then by the whole name.
+	var w openlibrary.Work
+	ok := false
+	for _, q := range searchTitles(it.Name) {
+		works, err := f.OL.Search(ctx, q, it.Artist)
+		if err != nil {
+			return Found{}, false, err
+		}
+		if w, ok = PickWork(it, works); ok {
+			break
+		}
 	}
-	w, ok := PickWork(it, works)
 	if !ok {
 		return Found{}, false, nil
 	}

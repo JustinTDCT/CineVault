@@ -295,7 +295,7 @@ func Pick(t Title, results []tmdb.SearchResult) (tmdb.SearchResult, bool) {
 // removed, and a leading "the" dropped. "Mission: Impossible - Fallout" and
 // "Mission Impossible Fallout" normalize the same.
 func Normalize(s string) string {
-	s = strings.ReplaceAll(strings.ToLower(s), "&", " and ")
+	s = foldAccents(strings.ReplaceAll(strings.ToLower(s), "&", " and "))
 	var b strings.Builder
 	space := true
 	for _, r := range s {
@@ -322,3 +322,19 @@ func label(t Title) string {
 	}
 	return t.Name
 }
+
+// accents maps accented Latin letters to plain ones, so "Húrin" and "Hurin"
+// or "Beyoncé" and "Beyonce" compare equal. Input is already lowercase.
+var accents = strings.NewReplacer(
+	"à", "a", "á", "a", "â", "a", "ã", "a", "ä", "a", "å", "a", "ā", "a", "ă", "a", "ą", "a",
+	"ç", "c", "ć", "c", "č", "c", "ď", "d", "đ", "d", "ð", "d",
+	"è", "e", "é", "e", "ê", "e", "ë", "e", "ē", "e", "ė", "e", "ę", "e", "ě", "e",
+	"ì", "i", "í", "i", "î", "i", "ï", "i", "ī", "i", "į", "i", "ı", "i",
+	"ł", "l", "ľ", "l", "ñ", "n", "ń", "n", "ň", "n",
+	"ò", "o", "ó", "o", "ô", "o", "õ", "o", "ö", "o", "ø", "o", "ō", "o", "ő", "o",
+	"ř", "r", "ś", "s", "š", "s", "ş", "s", "ß", "ss", "ť", "t", "þ", "th",
+	"ù", "u", "ú", "u", "û", "u", "ü", "u", "ū", "u", "ů", "u", "ű", "u",
+	"ý", "y", "ÿ", "y", "ź", "z", "ż", "z", "ž", "z", "æ", "ae", "œ", "oe",
+)
+
+func foldAccents(s string) string { return accents.Replace(s) }

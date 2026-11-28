@@ -65,6 +65,21 @@ func TestPickWork(t *testing.T) {
 	if !ok || got.ID != "OL893415W" {
 		t.Fatalf("picked %+v %v", got, ok)
 	}
+	// Accents and "Last, First" authors from the VM test (28 Nov 2026).
+	hurin := []openlibrary.Work{{ID: "OL27513W", Title: "The Children of Húrin", Authors: []string{"J.R.R. Tolkien"}, EditionCount: 60}}
+	if got, ok := PickWork(LookupItem{Name: "The Children of Hurin", Artist: "J.R.R. Tolkien"}, hurin); !ok || got.ID != "OL27513W" {
+		t.Errorf("Húrin: %+v %v", got, ok)
+	}
+	beowulf := []openlibrary.Work{{ID: "OL1W", Title: "Beowulf", Authors: []string{"J.R.R. Tolkien"}, EditionCount: 12}}
+	if _, ok := PickWork(LookupItem{Name: "Beowulf: A Translation and Commentary, together with Sellic Spell", Artist: "Tolkien, J. R. R."}, beowulf); !ok {
+		t.Error("Beowulf with its subtitle")
+	}
+	if got := searchTitles("Five Years After: A John Matherson Novel, Book 4"); len(got) != 2 || got[0] != "Five Years After" {
+		t.Errorf("search titles %q", got)
+	}
+	if got := searchTitles("Dune"); len(got) != 1 {
+		t.Errorf("search titles %q", got)
+	}
 	if _, ok := PickWork(LookupItem{Name: "Dune", Artist: "Brian Herbert"}, works[:2]); ok {
 		t.Error("matched without the author")
 	}
