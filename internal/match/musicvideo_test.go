@@ -99,6 +99,25 @@ func TestMusicVideoMatcher(t *testing.T) {
 // From MusicBrainz's answer for Ace of Base "Beautiful Life" (2026-11-28):
 // every compilation's copy is its own recording, all scoring 100, and the
 // album recording isn't first.
+// From MusicBrainz's answer for 3 Doors Down "It's Not My Time"
+// (2026-11-28): a one-song EP named after the song, months before the album.
+func TestPickRecordingSkipsSongNamedEP(t *testing.T) {
+	own := func(title, status, primary, date string, secondary ...string) musicbrainz.Release {
+		return musicbrainz.Release{Title: title, Status: status, PrimaryType: primary, SecondaryTypes: secondary, Date: date, Artist: "3 Doors Down"}
+	}
+	recs := []musicbrainz.Recording{
+		rec("ep", "It’s Not My Time", "3 Doors Down", 100, own("It’s Not My Time", "Official", "EP", "2008-01-01")),
+		rec("promo", "It’s Not My Time", "3 Doors Down", 100, own("It’s Not My Time", "Promotion", "Single", "2007")),
+		rec("single", "It's Not My Time", "3 Doors Down", 100, own("It's Not My Time", "Official", "Single", "2008-05-09")),
+		rec("hits", "It's Not My Time", "3 Doors Down", 100, own("The Greatest Hits", "Official", "Album", "2012", "Compilation")),
+		rec("album", "It's Not My Time", "3 Doors Down", 100, own("3 Doors Down", "Official", "Album", "2008-05-20")),
+	}
+	got, ok := PickRecording(MusicVideo{Artist: "3 Doors Down", Song: "It's Not My Time"}, recs)
+	if !ok || got.ID != "album" {
+		t.Fatalf("picked %+v", got)
+	}
+}
+
 func TestPickRecordingAmongCompilations(t *testing.T) {
 	va := func(id, title, date string, secondary ...string) musicbrainz.Recording {
 		return rec(id, "Beautiful Life", "Ace of Base", 100, musicbrainz.Release{Title: title, Status: "Official",

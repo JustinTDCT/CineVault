@@ -157,7 +157,7 @@ func PickRecording(v MusicVideo, recs []musicbrainz.Recording) (musicbrainz.Reco
 	for _, r := range ok {
 		c := cand{rec: r, rank: 99, date: "9999"}
 		if a, has := r.Album(); has {
-			c.rank, c.date = musicbrainz.AlbumRank(a, r.Artist), musicbrainz.AlbumDate(a)
+			c.rank, c.date = musicbrainz.AlbumRank(a, r.Artist, r.Title), musicbrainz.AlbumDate(a)
 		}
 		cs = append(cs, c)
 	}

@@ -91,6 +91,17 @@ func TestAlbumRule(t *testing.T) {
 			t.Errorf("%q: %q", in, got)
 		}
 	}
+	// An album named after the song still beats singles: "Black Sabbath".
+	bs := Recording{Title: "Black Sabbath", Artist: "Black Sabbath", Releases: []Release{
+		{Title: "Black Sabbath", Status: "Official", PrimaryType: "Single", GroupDate: "1970-03-01", Artist: "Black Sabbath"},
+		{Title: "Black Sabbath", Status: "Official", PrimaryType: "Album", GroupDate: "1970-02-13", Artist: "Black Sabbath"},
+	}}
+	if a, _ := bs.Album(); a.PrimaryType != "Album" {
+		t.Errorf("self-titled: %+v", a)
+	}
+	if !sameTitle("It’s Not My Time", "it's not my time") || sameTitle("", "") {
+		t.Error("sameTitle")
+	}
 	if !SameArtist("Queen & David Bowie", "queen") || SameArtist("Various Artists", "Queen") || SameArtist("", "") {
 		t.Error("SameArtist")
 	}

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // Client searches MusicBrainz. One Client is shared, so its limiter keeps
@@ -123,7 +124,7 @@ func (r Recording) Album() (Release, bool) {
 	}
 	rels := append([]Release(nil), r.Releases...)
 	sort.SliceStable(rels, func(i, j int) bool {
-		if a, b := AlbumRank(rels[i], r.Artist), AlbumRank(rels[j], r.Artist); a != b {
+		if a, b := AlbumRank(rels[i], r.Artist, r.Title), AlbumRank(rels[j], r.Artist, r.Title); a != b {
 			return a < b
 		}
 		return AlbumDate(rels[i]) < AlbumDate(rels[j])
@@ -131,8 +132,11 @@ func (r Recording) Album() (Release, bool) {
 	return rels[0], true
 }
 
-// AlbumRank orders releases for naming a song's album; lower is better.
-func AlbumRank(rel Release, artist string) int {
+// AlbumRank orders releases for naming a song's album; lower is better. An
+// album or EP named after the song itself counts as a single: MusicBrainz
+// often types a one-song release as an EP (3 Doors Down's "It's Not My
+// Time" EP, January 2008, months before the album).
+func AlbumRank(rel Release, artist, song string) int {
 	n := 0
 	if rel.Artist != "" && !SameArtist(rel.Artist, artist) {
 		n += 20
@@ -142,8 +146,11 @@ func AlbumRank(rel Release, artist string) int {
 	}
 	switch rel.PrimaryType {
 	case "Album", "EP":
-		if len(rel.SecondaryTypes) > 0 { // compilation, live, soundtrack…
+		switch {
+		case len(rel.SecondaryTypes) > 0: // compilation, live, soundtrack…
 			n += 2
+		case song != "" && sameTitle(rel.Title, song):
+			n++
 		}
 	case "Single":
 		n++
@@ -170,6 +177,21 @@ func AlbumDate(rel Release) string {
 		return d
 	}
 	return "9999"
+}
+
+// sameTitle compares titles ignoring case, punctuation and typographic
+// apostrophes ("It’s Not My Time" and "It's not my time").
+func sameTitle(a, b string) bool {
+	key := func(s string) string {
+		var out strings.Builder
+		for _, r := range strings.ToLower(s) {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				out.WriteRune(r)
+			}
+		}
+		return out.String()
+	}
+	return key(a) != "" && key(a) == key(b)
 }
 
 // SameArtist reports whether two artist credits name the same act, allowing
