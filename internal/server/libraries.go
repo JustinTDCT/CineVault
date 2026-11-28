@@ -242,7 +242,8 @@ func (s *Server) scanLibrary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// matchLibrary matches unmatched titles to TMDb without scanning files.
+// matchLibrary matches unmatched titles (to TMDb, MusicBrainz, Open Library
+// or Comic Vine) without scanning files.
 func (s *Server) matchLibrary(w http.ResponseWriter, r *http.Request) {
 	lib, ok := s.library(w, r)
 	if !ok {
@@ -253,7 +254,11 @@ func (s *Server) matchLibrary(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusServiceUnavailable, "TMDb isn't configured; set CINEVAULT_TMDB_TOKEN")
 			return
 		}
-		writeError(w, http.StatusBadRequest, "only movie, TV and music video libraries are matched")
+		if lib.MediaType == "comic" {
+			writeError(w, http.StatusServiceUnavailable, "Comic Vine isn't configured; set CINEVAULT_COMICVINE_KEY")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "This library's titles aren't matched to an outside source")
 		return
 	}
 	if !s.scanning.TryLock() {
@@ -264,15 +269,21 @@ func (s *Server) matchLibrary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.runMatch(r, lib))
 }
 
-// rematchLibrary matches every music video in a library again, matched or
-// not. Movies and shows are matched once; a wrong TMDb match is fixed by hand.
+// rematchLibrary matches every title in a music video, music, book,
+// audiobook or comic library again, matched or not (locked titles are left
+// alone). Movies and shows are matched once; a wrong TMDb match is fixed by
+// hand.
 func (s *Server) rematchLibrary(w http.ResponseWriter, r *http.Request) {
 	lib, ok := s.library(w, r)
 	if !ok {
 		return
 	}
-	if lib.MediaType != "musicvideo" || s.opt.RematchMusicVideos == nil {
-		writeError(w, http.StatusBadRequest, "Only music video libraries can be matched again")
+	rematch := s.opt.Lookups[lib.MediaType].Rematch
+	if lib.MediaType == "musicvideo" {
+		rematch = s.opt.RematchMusicVideos
+	}
+	if rematch == nil {
+		writeError(w, http.StatusBadRequest, "This library can't be matched again; movies and shows are matched once")
 		return
 	}
 	if !s.scanning.TryLock() {
@@ -280,7 +291,7 @@ func (s *Server) rematchLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.scanning.Unlock()
-	res, err := s.opt.RematchMusicVideos(r.Context(), lib.ID)
+	res, err := rematch(r.Context(), lib.ID)
 	out := &matchSummary{Result: res}
 	if out.Messages == nil {
 		out.Messages = []string{}
@@ -306,7 +317,7 @@ func (s *Server) matcherFor(mediaType string) func(context.Context, int64) (matc
 	case mediaType == "musicvideo":
 		return s.opt.MatchMusicVideos
 	}
-	return nil
+	return s.opt.Lookups[mediaType].Match
 }
 
 func (s *Server) runMatch(r *http.Request, lib catalog.Library) *matchSummary {

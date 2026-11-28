@@ -122,3 +122,42 @@ func TestSearchReadsReleaseArtists(t *testing.T) {
 		t.Fatalf("%+v %v limit %s", recs, err, limit)
 	}
 }
+
+func TestReleaseGroupsGenresAndCoverArt(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/release-group" && r.URL.Query().Get("query") == `releasegroup:"The Bridge" AND artist:"Ace of Base"`:
+			w.Write([]byte(`{"release-groups":[{"id":"rg1","title":"The Bridge","score":100,"primary-type":"Album",
+				"first-release-date":"1995-11-13","artist-credit":[{"name":"Ace of Base","joinphrase":""}]}]}`))
+		case r.URL.Path == "/release-group/rg1" && r.URL.Query().Get("inc") == "genres":
+			w.Write([]byte(`{"genres":[{"name":"pop","count":3},{"name":"eurodance","count":7},{"name":"UK garage","count":1}]}`))
+		case r.URL.Path == "/caa/release-group/rg1":
+			w.Write([]byte(`{"images":[{"front":false},{"front":true}]}`))
+		case r.URL.Path == "/caa/release-group/rg2":
+			http.NotFound(w, r)
+		default:
+			t.Errorf("unexpected %s", r.URL)
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, CoverArtBase: srv.URL + "/caa", UserAgent: "t", Every: time.Millisecond}
+	ctx := context.Background()
+	gs, err := c.SearchReleaseGroups(ctx, "Ace of Base", "The Bridge")
+	if err != nil || len(gs) != 1 || gs[0].Artist != "Ace of Base" || gs[0].PrimaryType != "Album" {
+		t.Fatalf("%+v %v", gs, err)
+	}
+	genres, err := c.ReleaseGroupGenres(ctx, "rg1", 2)
+	if err != nil || len(genres) != 2 || genres[0] != "Eurodance" || genres[1] != "Pop" {
+		t.Errorf("genres %q %v", genres, err)
+	}
+	if u, err := c.CoverArtURL(ctx, "rg1"); err != nil || u != "https://coverartarchive.org/release-group/rg1/front-500" {
+		t.Errorf("cover %q %v", u, err)
+	}
+	if u, err := c.CoverArtURL(ctx, "rg2"); err != nil || u != "" {
+		t.Errorf("no cover: %q %v", u, err)
+	}
+	if titleCase("UK garage") != "UK Garage" || titleCase("hard rock") != "Hard Rock" {
+		t.Error(titleCase("UK garage"))
+	}
+}

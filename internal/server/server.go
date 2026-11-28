@@ -61,6 +61,9 @@ type Options struct {
 	MatchMusicVideos func(ctx context.Context, libraryID int64) (match.Result, error)
 	// RematchMusicVideos matches every music video in a library again.
 	RematchMusicVideos func(ctx context.Context, libraryID int64) (match.Result, error)
+	// Lookups match the other media types: "music" (MusicBrainz), "book" and
+	// "audiobook" (Open Library), "comic" (Comic Vine, only with a key).
+	Lookups map[string]Lookup
 	// IsDir checks that a library folder exists; defaults to os.Stat.
 	IsDir func(path string) bool
 	// UI serves the web app for every other GET request; nil for none.
@@ -93,6 +96,14 @@ type LibraryStore interface {
 	SetTitleLocks(ctx context.Context, titleID int64, l catalog.TitleLocks) (catalog.TitleLocks, error)
 	// SetPreferLocalMetadata sets whether a library's files win over lookups.
 	SetPreferLocalMetadata(ctx context.Context, libraryID int64, prefer bool) (catalog.Library, error)
+}
+
+// Lookup matches one media type's libraries to an outside source.
+type Lookup struct {
+	// Match matches unmatched titles.
+	Match func(ctx context.Context, libraryID int64) (match.Result, error)
+	// Rematch matches every title again (locked ones excepted).
+	Rematch func(ctx context.Context, libraryID int64) (match.Result, error)
 }
 
 // Server serves the CineVault API.
@@ -171,6 +182,9 @@ type playbackStatus struct {
 type metadataStatus struct {
 	// TMDbConfigured is true when a TMDb token is set, so titles get matched.
 	TMDbConfigured bool `json:"tmdb_configured"`
+	// ComicVineConfigured is true when a Comic Vine key is set, so comic
+	// series get matched.
+	ComicVineConfigured bool `json:"comicvine_configured"`
 }
 
 type healthResponse struct {
@@ -195,7 +209,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		Time:      time.Now().UTC(),
 		Transcode: s.opt.Caps,
 		Database:  dbStatus{SchemaVersion: s.opt.SchemaVersion},
-		Metadata:  metadataStatus{TMDbConfigured: s.opt.Match != nil},
+		Metadata:  metadataStatus{TMDbConfigured: s.opt.Match != nil, ComicVineConfigured: s.opt.Lookups["comic"].Match != nil},
 	}
 	if pb := s.opt.Playback; pb != nil {
 		resp.Playback = playbackStatus{Ready: pb.EncoderOK, Note: pb.Note}

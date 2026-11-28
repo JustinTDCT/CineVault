@@ -334,7 +334,7 @@ type ErrorDetail struct {
 // Limits on a contribution (CineVault Cache spec §5a).
 const (
 	MaxContributeItems = 1000 // items in one contribute request
-	MaxRuntimeMin      = 1000 // largest runtime a contribution may report
+	MaxRuntimeMin      = 6000 // largest runtime a contribution may report (100 h: long audiobooks)
 )
 
 // ContributeRequest shares which titles a CineVault server has, with the

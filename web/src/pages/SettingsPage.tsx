@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api, type CacheSettings, type CacheStatus, type Health, type Library, type ScanResult } from "../api";
-import { formatDate, itemNoun, timeAgo } from "../format";
+import { formatDate, itemNoun, timeAgo, canRematch, matchSource } from "../format";
 import { Icon } from "../components/Icon";
 import { linkTo, type SettingsSection } from "../router";
 import { rematchSummary, scanSummary } from "./LibraryPage";
@@ -121,6 +121,19 @@ function GeneralSettings() {
       >
         <StatusChip ok={health.metadata.tmdb_configured} okText="TMDb" badText="Not set up" />
       </Row>
+      <Row label="Music, book and audiobook information" note="Albums are looked up on MusicBrainz (with covers from the Cover Art Archive), books and audiobooks on Open Library. Neither needs a key.">
+        <StatusChip ok okText="On" badText="" />
+      </Row>
+      <Row
+        label="Comic information"
+        note={
+          health.metadata.comicvine_configured
+            ? "Comic series are looked up on Comic Vine for covers, publishers and descriptions."
+            : "No Comic Vine key: comics keep what ComicInfo.xml and file names say. Get a free key at comicvine.gamespot.com/api, put CINEVAULT_COMICVINE_KEY in ~/.config/cinevault/comicvine.env and restart."
+        }
+      >
+        <StatusChip ok={health.metadata.comicvine_configured} okText="Comic Vine" badText="Not set up" />
+      </Row>
     </div>
   );
 }
@@ -132,13 +145,25 @@ function StatusChip({ ok, okText, badText }: { ok: boolean; okText: string; badT
 function LibrarySettings({ libraries }: { libraries: Library[] | null }) {
   const [busy, setBusy] = useState<{ id: number; what: "scan" | "rematch" } | null>(null);
   const [results, setResults] = useState<Record<number, { text: string; problem?: boolean }>>({});
+  const [preferLocal, setPreferLocal] = useState<Record<number, boolean>>({});
   if (!libraries) return <p className="cv-caption">Loading…</p>;
+
+  async function setPrefer(lib: Library, on: boolean) {
+    setPreferLocal((x) => ({ ...x, [lib.id]: on }));
+    try {
+      const saved = await api.updateLibrary(lib.id, { prefer_local_metadata: on });
+      setPreferLocal((x) => ({ ...x, [lib.id]: saved.prefer_local_metadata }));
+    } catch (e) {
+      setPreferLocal((x) => ({ ...x, [lib.id]: !on }));
+      setResults((x) => ({ ...x, [lib.id]: { text: (e as Error).message, problem: true } }));
+    }
+  }
 
   async function rematch(lib: Library) {
     setBusy({ id: lib.id, what: "rematch" });
     try {
       const r = await api.rematch(lib.id);
-      setResults((x) => ({ ...x, [lib.id]: { text: rematchSummary(r), problem: !!r.error } }));
+      setResults((x) => ({ ...x, [lib.id]: { text: rematchSummary(r, lib.media_type), problem: !!r.error } }));
     } catch (e) {
       setResults((x) => ({ ...x, [lib.id]: { text: (e as Error).message, problem: true } }));
     } finally {
@@ -163,7 +188,7 @@ function LibrarySettings({ libraries }: { libraries: Library[] | null }) {
       {libraries.map((lib) => {
         const kind = KINDS.find((k) => k.type === lib.media_type);
         const res = results[lib.id];
-        return (
+        return [
           <Row
             key={lib.id}
             label={
@@ -181,12 +206,12 @@ function LibrarySettings({ libraries }: { libraries: Library[] | null }) {
             <a className="cv-btn cv-btn--small" {...linkTo(`/libraries/${lib.id}`)}>
               Open
             </a>
-            {lib.media_type === "musicvideo" ? (
+            {canRematch(lib.media_type) ? (
               <button
                 className="cv-btn cv-btn--small"
                 onClick={() => rematch(lib)}
                 disabled={busy !== null}
-                title="Match every video to MusicBrainz again, for example after a wrong album"
+                title={`Look every title up on ${matchSource(lib.media_type)} again (locked titles are left alone)`}
               >
                 {busy?.id === lib.id && busy.what === "rematch" ? "Matching…" : "Match again"}
               </button>
@@ -194,8 +219,25 @@ function LibrarySettings({ libraries }: { libraries: Library[] | null }) {
             <button className="cv-btn cv-btn--small" onClick={() => scan(lib)} disabled={busy !== null}>
               {busy?.id === lib.id && busy.what === "scan" ? "Scanning…" : "Scan now"}
             </button>
-          </Row>
-        );
+          </Row>,
+          <div key={`${lib.id}-local`} className="cv-setting settings-sub">
+            <div className="cv-setting__text">
+              <div className="cv-setting__label">Prefer what the files say</div>
+              <div className="cv-setting__note">
+                {(preferLocal[lib.id] ?? lib.prefer_local_metadata)
+                  ? `Tags, embedded details and file names win${matchSource(lib.media_type) ? `; ${matchSource(lib.media_type)} only fills in what's missing` : ""}.`
+                  : `${matchSource(lib.media_type) || "Looked-up details"} win${matchSource(lib.media_type) ? "s" : ""} over the files. Fields you edit by hand are always kept.`}
+              </div>
+            </div>
+            <div className="cv-setting__control">
+              <Switch
+                on={preferLocal[lib.id] ?? lib.prefer_local_metadata}
+                label={`Prefer what the files say in ${lib.name}`}
+                onChange={(v) => setPrefer(lib, v)}
+              />
+            </div>
+          </div>,
+        ];
       })}
       <div className="cv-settings-footer">
         <a className="cv-btn" {...linkTo("/setup")}>

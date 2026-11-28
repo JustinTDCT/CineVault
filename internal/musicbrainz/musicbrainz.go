@@ -25,6 +25,9 @@ type Client struct {
 	UserAgent string
 	HTTP      *http.Client
 	Every     time.Duration // default 1.1 s
+	// CoverArtBase is the Cover Art Archive's address; default
+	// https://coverartarchive.org (tests point it at a fake).
+	CoverArtBase string
 	// Backoff is the first wait after a 503, MusicBrainz's "slow down"; it
 	// doubles on each retry. Default 2 s.
 	Backoff time.Duration
@@ -303,4 +306,135 @@ func retryAfter(h string) time.Duration {
 		n = 30
 	}
 	return time.Duration(n) * time.Second
+}
+
+// ReleaseGroup is an album (or EP, single...) as a search result: every
+// release of it (original, deluxe, remaster) belongs to the group.
+type ReleaseGroup struct {
+	ID               string
+	Title            string
+	Artist           string // as credited, with join phrases
+	Score            int
+	PrimaryType      string // Album, EP, Single…
+	SecondaryTypes   []string
+	FirstReleaseDate string
+}
+
+// SearchReleaseGroups looks an album up by title and artist.
+func (c *Client) SearchReleaseGroups(ctx context.Context, artist, album string) ([]ReleaseGroup, error) {
+	q := fmt.Sprintf(`releasegroup:"%s"`, escape(album))
+	if artist != "" {
+		q += fmt.Sprintf(` AND artist:"%s"`, escape(artist))
+	}
+	var out struct {
+		ReleaseGroups []struct {
+			ID               string   `json:"id"`
+			Title            string   `json:"title"`
+			Score            int      `json:"score"`
+			PrimaryType      string   `json:"primary-type"`
+			SecondaryTypes   []string `json:"secondary-types"`
+			FirstReleaseDate string   `json:"first-release-date"`
+			ArtistCredit     []struct {
+				Name       string `json:"name"`
+				JoinPhrase string `json:"joinphrase"`
+			} `json:"artist-credit"`
+		} `json:"release-groups"`
+	}
+	if err := c.get(ctx, "/release-group", url.Values{"query": {q}, "limit": {"25"}}, &out); err != nil {
+		return nil, err
+	}
+	groups := make([]ReleaseGroup, 0, len(out.ReleaseGroups))
+	for _, g := range out.ReleaseGroups {
+		var b strings.Builder
+		for _, a := range g.ArtistCredit {
+			b.WriteString(a.Name + a.JoinPhrase)
+		}
+		groups = append(groups, ReleaseGroup{ID: g.ID, Title: g.Title, Artist: strings.TrimSpace(b.String()), Score: g.Score,
+			PrimaryType: g.PrimaryType, SecondaryTypes: g.SecondaryTypes, FirstReleaseDate: g.FirstReleaseDate})
+	}
+	return groups, nil
+}
+
+// ReleaseGroupGenres returns an album's genres as MusicBrainz users voted
+// them, most votes first, at most max.
+func (c *Client) ReleaseGroupGenres(ctx context.Context, id string, max int) ([]string, error) {
+	var out struct {
+		Genres []struct {
+			Name  string `json:"name"`
+			Count int    `json:"count"`
+		} `json:"genres"`
+	}
+	if err := c.get(ctx, "/release-group/"+url.PathEscape(id), url.Values{"inc": {"genres"}}, &out); err != nil {
+		return nil, err
+	}
+	sort.SliceStable(out.Genres, func(i, j int) bool { return out.Genres[i].Count > out.Genres[j].Count })
+	var genres []string
+	for _, g := range out.Genres {
+		if len(genres) == max {
+			break
+		}
+		genres = append(genres, titleCase(g.Name))
+	}
+	return genres, nil
+}
+
+// CoverArtURL returns the front cover of an album from the Cover Art Archive
+// (coverartarchive.org, run with MusicBrainz), 500 px, or "" when it has
+// none. The URL redirects to the image on archive.org.
+func (c *Client) CoverArtURL(ctx context.Context, releaseGroupID string) (string, error) {
+	base := c.CoverArtBase
+	if base == "" {
+		base = "https://coverartarchive.org"
+	}
+	u := strings.TrimRight(base, "/") + "/release-group/" + url.PathEscape(releaseGroupID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", c.UserAgent)
+	req.Header.Set("Accept", "application/json")
+	hc := c.HTTP
+	if hc == nil {
+		hc = &http.Client{Timeout: 30 * time.Second}
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Cover Art Archive: %w", err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound:
+		return "", nil
+	default:
+		return "", fmt.Errorf("Cover Art Archive answered %d", resp.StatusCode)
+	}
+	var out struct {
+		Images []struct {
+			Front bool `json:"front"`
+		} `json:"images"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
+		return "", fmt.Errorf("Cover Art Archive: %w", err)
+	}
+	for _, im := range out.Images {
+		if im.Front {
+			return "https://coverartarchive.org/release-group/" + releaseGroupID + "/front-500", nil
+		}
+	}
+	return "", nil
+}
+
+// titleCase capitalises each word of a MusicBrainz genre ("hard rock" →
+// "Hard Rock"), leaving words with capitals as they are ("UK garage").
+func titleCase(s string) string {
+	words := strings.Fields(s)
+	for i, w := range words {
+		if w == strings.ToLower(w) {
+			r := []rune(w)
+			r[0] = unicode.ToUpper(r[0])
+			words[i] = string(r)
+		}
+	}
+	return strings.Join(words, " ")
 }

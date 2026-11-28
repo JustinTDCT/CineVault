@@ -37,6 +37,9 @@ type Config struct {
 	// TMDbToken is a TMDb API read access token. Without it, titles aren't
 	// matched to TMDb.
 	TMDbToken string
+	// ComicVineKey is a Comic Vine API key. Without it, comic series aren't
+	// matched (they keep what ComicInfo.xml and file names say).
+	ComicVineKey string
 	// CacheURL is the CineVault Cache service; CacheToken is a subscriber's
 	// token (empty on free servers, which only share titles with it).
 	CacheURL   string
@@ -63,6 +66,7 @@ func load(getenv func(string) string) (Config, error) {
 		FFmpegPath:    getenv("CINEVAULT_FFMPEG"),
 		FFprobePath:   getenv("CINEVAULT_FFPROBE"),
 		TMDbToken:     getenv("CINEVAULT_TMDB_TOKEN"),
+		ComicVineKey:  getenv("CINEVAULT_COMICVINE_KEY"),
 		TranscodeMode: getenv("CINEVAULT_TRANSCODE"),
 		TranscodeGPU:  getenv("CINEVAULT_TRANSCODE_GPU"),
 		TranscodeDir:  getenv("CINEVAULT_TRANSCODE_DIR"),

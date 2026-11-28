@@ -40,7 +40,7 @@ export function BookChapters({ title }: { title: Title }) {
       title: title.name,
       artist: title.artist ?? "",
       album: parts.length > 1 ? t.name : "",
-      coverUrl: coverUrl(title),
+      coverUrl: title.poster_url ?? coverUrl(title),
       href: `/libraries/${title.library_id}/titles/${title.id}`,
       book: { titleId: title.id, chapters: f.chapters ?? [], startAt },
     };

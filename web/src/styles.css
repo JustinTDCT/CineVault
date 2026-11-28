@@ -1499,3 +1499,84 @@ img {
     animation: none;
   }
 }
+
+/* Edit details and locks, under a title's description. */
+.title-locks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 8px) 12px;
+  margin-top: 16px;
+}
+
+.title-locks .cv-btn.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.title-editor {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px 16px;
+  max-width: 760px;
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 12px);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.title-editor > .cv-caption,
+.title-editor > .cv-hint,
+.title-editor > .cv-actions,
+.title-editor__field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.title-editor__field {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.title-editor__field input,
+.title-editor__field textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md, 8px);
+  background: var(--raised);
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 15px;
+}
+
+.title-editor__field textarea {
+  resize: vertical;
+  line-height: 1.45;
+}
+
+/* A library's own setting, under its row in Settings → Libraries. */
+.settings-sub {
+  padding-left: 36px;
+  border-top: 0;
+}
+
+.settings-sub .cv-setting__label {
+  font-size: 14px;
+}

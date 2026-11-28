@@ -183,9 +183,67 @@ export function isPlaceholderName(name: string | undefined, number: number): boo
 
 // ---------- Music videos ----------
 
-/** Movies and TV are matched to TMDb; other libraries describe themselves. */
+/** Movies and TV are matched to TMDb. */
 export function usesTMDb(t: Pick<Title, "media_type">): boolean {
   return t.media_type === "movie" || t.media_type === "tv";
+}
+
+/** Where a library's titles are looked up. */
+export function matchSource(mediaType: string): string {
+  switch (mediaType) {
+    case "movie":
+    case "tv":
+      return "TMDb";
+    case "music":
+    case "musicvideo":
+      return "MusicBrainz";
+    case "book":
+    case "audiobook":
+      return "Open Library";
+    case "comic":
+      return "Comic Vine";
+  }
+  return "";
+}
+
+/** Whether "Match again" is offered: every lookup but TMDb's. */
+export function canRematch(mediaType: string): boolean {
+  return matchSource(mediaType) !== "" && mediaType !== "movie" && mediaType !== "tv";
+}
+
+/** Names of the fields a person can edit and lock, as the title page shows them. */
+export function fieldLabel(field: string, mediaType: string): string {
+  switch (field) {
+    case "name":
+      return mediaType === "comic" ? "Series" : "Title";
+    case "artist":
+      return mediaType === "book" || mediaType === "audiobook" ? "Author" : "Artist";
+    case "overview":
+      return "Description";
+    case "series_index":
+      return "Number in series";
+    case "poster":
+      return "Artwork";
+  }
+  return field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, " ");
+}
+
+/** The fields each media type's edit form offers, in order. */
+export function editableFields(mediaType: string): string[] {
+  switch (mediaType) {
+    case "music":
+      return ["name", "artist", "year", "genres", "overview"];
+    case "musicvideo":
+      return ["name", "artist", "year", "genres"];
+    case "book":
+    case "audiobook":
+      return mediaType === "audiobook"
+        ? ["name", "artist", "narrator", "series", "series_index", "year", "genres", "overview"]
+        : ["name", "artist", "series", "series_index", "year", "genres", "overview"];
+    case "comic":
+      return ["name", "publisher", "year", "genres", "overview"];
+  }
+  return ["name", "year", "genres", "overview"];
 }
 
 /** A still from the title's first present file, for titles without artwork. */

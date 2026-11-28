@@ -17,11 +17,13 @@ import (
 
 	"github.com/JustinTDCT/CineVault/internal/cachesync"
 	"github.com/JustinTDCT/CineVault/internal/comic"
+	"github.com/JustinTDCT/CineVault/internal/comicvine"
 	"github.com/JustinTDCT/CineVault/internal/config"
 	"github.com/JustinTDCT/CineVault/internal/db"
 	"github.com/JustinTDCT/CineVault/internal/match"
 	"github.com/JustinTDCT/CineVault/internal/mediainfo"
 	"github.com/JustinTDCT/CineVault/internal/musicbrainz"
+	"github.com/JustinTDCT/CineVault/internal/openlibrary"
 	"github.com/JustinTDCT/CineVault/internal/probe"
 	"github.com/JustinTDCT/CineVault/internal/scan"
 	"github.com/JustinTDCT/CineVault/internal/server"
@@ -149,8 +151,8 @@ func run(log *slog.Logger) error {
 
 	// Music videos are matched to MusicBrainz (no key needed), which gives
 	// the CineVault Cache its key for them (cache decision 11).
-	mvMatcher := match.MusicVideoMatcher{Store: database, Source: &musicbrainz.Client{
-		UserAgent: "CineVault/" + version + " ( https://github.com/JustinTDCT/CineVault )"}}
+	mbClient := &musicbrainz.Client{UserAgent: "CineVault/" + version + " ( https://github.com/JustinTDCT/CineVault )"}
+	mvMatcher := match.MusicVideoMatcher{Store: database, Source: mbClient}
 	lookupAfter := func(res match.Result, err error) (match.Result, error) {
 		if err == nil && res.Matched > 0 {
 			go func() {
@@ -168,6 +170,32 @@ func run(log *slog.Logger) error {
 		return lookupAfter(mvMatcher.RematchLibrary(ctx, libraryID))
 	}
 
+	// Albums (MusicBrainz, sharing the music video client's limiter), books
+	// and audiobooks (Open Library), comic series (Comic Vine, with a key).
+	agent := "CineVault/" + version + " ( https://github.com/JustinTDCT/CineVault )"
+	lookups := map[string]server.Lookup{}
+	addLookup := func(mediaType string, f match.Finder) {
+		m := match.LookupMatcher{Store: database, Finder: f}
+		lookups[mediaType] = server.Lookup{
+			Match: func(ctx context.Context, id int64) (match.Result, error) {
+				return lookupAfter(m.MatchLibrary(ctx, id))
+			},
+			Rematch: func(ctx context.Context, id int64) (match.Result, error) {
+				return lookupAfter(m.RematchLibrary(ctx, id))
+			},
+		}
+	}
+	addLookup("music", match.AlbumFinder{MB: mbClient})
+	books := match.BookFinder{OL: &openlibrary.Client{UserAgent: agent}}
+	addLookup("book", books)
+	addLookup("audiobook", books)
+	if cfg.ComicVineKey != "" {
+		addLookup("comic", match.ComicFinder{CV: &comicvine.Client{APIKey: cfg.ComicVineKey, UserAgent: agent}})
+		log.Info("metadata", "source", "Comic Vine")
+	} else {
+		log.Info("metadata: CINEVAULT_COMICVINE_KEY not set; comic series aren't matched to Comic Vine")
+	}
+
 	api := server.New(server.Options{
 		Version:            version,
 		DBAddr:             dbAddr,
@@ -180,6 +208,7 @@ func run(log *slog.Logger) error {
 		Match:              matchFn,
 		MatchMusicVideos:   matchMusicVideos,
 		RematchMusicVideos: rematchMusicVideos,
+		Lookups:            lookups,
 		UI:                 webui.Handler(),
 		Playback: &server.Playback{
 			Versions: database, Streamer: streamer,

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { api, type CastMember, type Edition, type Progress, type ReportField, type Title } from "../api";
 import { Poster } from "../components/PosterCard";
+import { TitleEditor } from "../components/TitleEditor";
 import { Player, type PlayTarget } from "../components/Player";
 import {
   defaultEdition,
@@ -16,6 +17,7 @@ import {
   seriesLabel,
   showCounts,
   timeLeft,
+  matchSource,
   usesTMDb,
 } from "../format";
 import { ShowEpisodes } from "./ShowEpisodes";
@@ -34,6 +36,7 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
   const [progress, setProgress] = useState<Progress | undefined>(undefined);
   // Home's Play and Continue link here with ?play=1.
   const [autoplay] = useState(() => new URLSearchParams(location.search).get("play") === "1");
+  const [reloads, setReloads] = useState(0);
 
   useEffect(() => {
     api
@@ -60,7 +63,7 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
         }
       })
       .catch((e: Error) => setError(e.message));
-  }, [libraryId, titleId, autoplay]);
+  }, [libraryId, titleId, autoplay, reloads]);
 
   if (error) {
     return (
@@ -93,7 +96,7 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
     isShow
       ? [title.year, showCounts(title), title.genres.join(" · ")]
       : isComic
-        ? [title.year, title.track_count ? `${title.track_count} ${title.track_count === 1 ? "issue" : "issues"}` : ""]
+        ? [title.publisher, title.year, title.track_count ? `${title.track_count} ${title.track_count === 1 ? "issue" : "issues"}` : ""]
         : isAlbum || isBook || isEbook
           ? [title.artist, title.year, title.genres.filter((g) => !/^(audio ?books?|speech|spoken word)$/i.test(g)).join(" · ")]
           : [
@@ -168,6 +171,7 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
             ) : null}
             <MatchNote title={title} />
             <CacheNote title={title} />
+            <TitleEditor key={`${title.id}-${reloads}`} title={title} onChanged={() => setReloads((n) => n + 1)} />
           </div>
         </div>
       </section>
@@ -244,15 +248,19 @@ function initials(name: string): string {
 }
 
 function MatchNote({ title }: { title: Title }) {
-  if (title.match_status === "matched" || !usesTMDb(title)) return null;
+  const source = matchSource(title.media_type);
+  if (title.match_status === "matched" || !source || title.locked) return null;
+  if (title.media_type === "comic" && title.match_status === "unmatched") return null; // no Comic Vine key, or not scanned since
   const text =
     title.match_status === "not_found"
-      ? title.media_type === "tv"
-        ? "TMDb has no show with this name, so there are no posters or episode details. Check the show's folder name."
-        : "TMDb has no movie with this name and year, so there's no poster or description. Check the file name."
+      ? usesTMDb(title)
+        ? title.media_type === "tv"
+          ? "TMDb has no show with this name, so there are no posters or episode details. Check the show's folder name."
+          : "TMDb has no movie with this name and year, so there's no poster or description. Check the file name."
+        : `${source} has no match${title.match_error ? ` (${title.match_error})` : ""}. Check the name and artist or author, or fix them with Edit details and use Match again.`
       : title.match_status === "error"
-        ? `Matching with TMDb failed: ${title.match_error ?? "unknown error"}. It will be retried on the next scan.`
-        : "Not matched with TMDb yet. It will be matched on the next scan.";
+        ? `Matching with ${source} failed: ${title.match_error ?? "unknown error"}. It will be retried on the next scan.`
+        : `Not matched with ${source} yet. It will be matched on the next scan.`;
   return <p className="match-note">{text}</p>;
 }
 

@@ -38,7 +38,7 @@ export function AlbumTracks({ title }: { title: Title }) {
     title: t.name,
     artist: t.artist || title.artist || "",
     album: title.name,
-    coverUrl: coverUrl(title),
+    coverUrl: title.poster_url ?? coverUrl(title),
     href: `/libraries/${title.library_id}/titles/${title.id}`,
   }));
   const playFrom = (t: Track) => audio.play(queue, Math.max(0, playable.indexOf(t)));

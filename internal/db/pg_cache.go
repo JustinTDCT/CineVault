@@ -15,28 +15,6 @@ import (
 )
 
 const (
-	// Matched movies, shows and music videos: everything the cache can know about.
-	sqlCacheItems = `
-		SELECT t.id, t.media_type, COALESCE(t.tmdb_id, 0), COALESCE(t.mb_recording_id, ''), t.name, t.cache_state, t.cache_version,
-		       COALESCE(t.cache_retry_at, 'epoch'::timestamptz), COALESCE(t.contributed_hash, '')
-		FROM titles t
-		WHERE t.match_status = 'matched' AND (
-		      (t.media_type IN ('movie', 'tv') AND t.tmdb_id IS NOT NULL)
-		   OR (t.media_type = 'musicvideo' AND t.mb_recording_id IS NOT NULL))
-		ORDER BY t.id`
-
-	// Editions with a file present, longest file first, in Edition List order.
-	sqlCacheOwned = `
-		SELECT e.title_id, e.edition_type_id, COALESCE(max(v.duration_seconds), 0)::float8
-		FROM editions e
-		JOIN titles t ON t.id = e.title_id
-		JOIN edition_types et ON et.id = e.edition_type_id
-		JOIN versions v ON v.edition_id = e.id AND v.missing_since IS NULL
-		WHERE (t.media_type IN ('movie', 'tv') AND t.tmdb_id IS NOT NULL)
-		   OR (t.media_type = 'musicvideo' AND t.mb_recording_id IS NOT NULL)
-		GROUP BY e.title_id, e.edition_type_id, et.sort_order
-		ORDER BY e.title_id, et.sort_order`
-
 	sqlSetCacheState = `
 		UPDATE titles SET cache_state = $2, cache_retry_at = $3, cache_error = NULLIF($4, ''),
 		       cache_checked_at = now()
@@ -72,9 +50,49 @@ const (
 	sqlSaveSetting = `
 		INSERT INTO settings (key, value) VALUES ($1, $2)
 		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`
-
-	sqlTitleCacheKey = `SELECT media_type, COALESCE(tmdb_id, 0) FROM titles WHERE id = $1`
 )
+
+// sqlCacheKind is a title's cache kind: its media type, except that an
+// album's kind is "album" (cacheapi.KindForMediaType).
+const sqlCacheKind = `CASE t.media_type WHEN 'music' THEN 'album' ELSE t.media_type END`
+
+// sqlProviderID is a title's ID with the provider its kind uses
+// (cacheapi.ProviderFor), as text; NULL when the title has none.
+const sqlProviderID = `CASE
+		WHEN t.media_type IN ('movie', 'tv') THEN t.tmdb_id::text
+		WHEN t.media_type = 'musicvideo' THEN t.mb_recording_id
+		WHEN t.media_type = 'music' THEN t.mb_release_group_id
+		WHEN t.media_type IN ('book', 'audiobook') THEN t.ol_work_id
+		WHEN t.media_type = 'comic' THEN t.comicvine_id::text
+	END`
+
+// Matched titles of every kind with a provider ID: everything the cache can
+// know about.
+var sqlCacheItems = `
+	SELECT t.id, ` + sqlCacheKind + `, ` + sqlProviderID + `, t.name, t.cache_state, t.cache_version,
+	       COALESCE(t.cache_retry_at, 'epoch'::timestamptz), COALESCE(t.contributed_hash, '')
+	FROM titles t
+	WHERE t.match_status = 'matched' AND ` + sqlProviderID + ` IS NOT NULL
+	ORDER BY t.id`
+
+// Editions with a file present, in Edition List order, with the longest file
+// (a movie's runtime) and the total of their tracks or parts (an album's or
+// an audiobook's length; formats of one track count once).
+var sqlCacheOwned = `
+	SELECT e.title_id, e.edition_type_id, COALESCE(max(x.secs), 0)::float8, COALESCE(sum(x.secs), 0)::float8
+	FROM editions e
+	JOIN titles t ON t.id = e.title_id
+	JOIN edition_types et ON et.id = e.edition_type_id
+	JOIN LATERAL (
+	    SELECT COALESCE(v.track_id, -v.id) AS unit, max(v.duration_seconds) AS secs
+	    FROM versions v
+	    WHERE v.edition_id = e.id AND v.missing_since IS NULL
+	    GROUP BY 1) x ON true
+	WHERE ` + sqlProviderID + ` IS NOT NULL
+	GROUP BY e.title_id, e.edition_type_id, et.sort_order
+	ORDER BY e.title_id, et.sort_order`
+
+var sqlTitleCacheKey = `SELECT ` + sqlCacheKind + `, COALESCE(` + sqlProviderID + `, '') FROM titles t WHERE t.id = $1`
 
 // CacheItems implements cachesync.Store.
 func (d *DB) CacheItems(ctx context.Context) ([]cachesync.Item, error) {
@@ -86,9 +104,13 @@ func (d *DB) CacheItems(ctx context.Context) ([]cachesync.Item, error) {
 	index := map[int64]int{}
 	for rows.Next() {
 		var it cachesync.Item
-		if err := rows.Scan(&it.TitleID, &it.Key.Kind, &it.Key.TMDbID, &it.Key.MBID, &it.Name, &it.State, &it.Version, &it.RetryAt, &it.ContributedHash); err != nil {
+		var kind, providerID string
+		if err := rows.Scan(&it.TitleID, &kind, &providerID, &it.Name, &it.State, &it.Version, &it.RetryAt, &it.ContributedHash); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		if it.Key = cacheapi.KeyFor(kind, providerID); it.Key.Validate() != nil {
+			continue // an ID the cache wouldn't accept (hand-edited, say)
 		}
 		index[it.TitleID] = len(items)
 		items = append(items, it)
@@ -105,17 +127,22 @@ func (d *DB) CacheItems(ctx context.Context) ([]cachesync.Item, error) {
 	for rows.Next() {
 		var id int64
 		var e cacheapi.ContributeEdition
-		var secs float64
-		if err := rows.Scan(&id, &e.Edition, &secs); err != nil {
+		var longest, total float64
+		if err := rows.Scan(&id, &e.Edition, &longest, &total); err != nil {
 			return nil, err
 		}
 		i, ok := index[id]
 		if !ok {
 			continue
 		}
-		// A show's edition holds many episodes; a movie or a music video has one runtime.
-		if items[i].Key.Kind == cacheapi.KindMovie || items[i].Key.Kind == cacheapi.KindMusicVideo {
-			e.RuntimeMin = min(cacheapi.MaxRuntimeMin, int(math.Round(secs/60)))
+		// A movie or a music video runs as long as its file; an album or an
+		// audiobook as its tracks or parts together. A show's edition holds
+		// many episodes, and books and comics have no running time.
+		switch items[i].Key.Kind {
+		case cacheapi.KindMovie, cacheapi.KindMusicVideo:
+			e.RuntimeMin = min(cacheapi.MaxRuntimeMin, int(math.Round(longest/60)))
+		case cacheapi.KindAlbum, cacheapi.KindAudiobook:
+			e.RuntimeMin = min(cacheapi.MaxRuntimeMin, int(math.Round(total/60)))
 		}
 		items[i].Owned = append(items[i].Owned, e)
 	}
@@ -218,13 +245,14 @@ func (d *DB) SaveSetting(ctx context.Context, key string, v any) error {
 // TitleCacheKey returns the cache key of a matched movie or show, or
 // catalog-style not found when the title has none.
 func (d *DB) TitleCacheKey(ctx context.Context, titleID int64) (cacheapi.Key, bool, error) {
-	var k cacheapi.Key
-	err := d.Pool.QueryRow(ctx, sqlTitleCacheKey, titleID).Scan(&k.Kind, &k.TMDbID)
+	var kind, providerID string
+	err := d.Pool.QueryRow(ctx, sqlTitleCacheKey, titleID).Scan(&kind, &providerID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return k, false, nil
+		return cacheapi.Key{}, false, nil
 	}
 	if err != nil {
-		return k, false, err
+		return cacheapi.Key{}, false, err
 	}
-	return k, (k.Kind == cacheapi.KindMovie || k.Kind == cacheapi.KindTV) && k.TMDbID > 0, nil
+	k := cacheapi.KeyFor(kind, providerID)
+	return k, providerID != "" && k.Validate() == nil, nil
 }

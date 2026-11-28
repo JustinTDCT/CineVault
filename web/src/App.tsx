@@ -112,9 +112,21 @@ export function App() {
             <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer">
               TMDb
             </a>
-            . This product uses the TMDB API but is not endorsed or certified by TMDB. Music video information from{" "}
+            . This product uses the TMDB API but is not endorsed or certified by TMDB. Music and music video information from{" "}
             <a href="https://musicbrainz.org" target="_blank" rel="noreferrer">
               MusicBrainz
+            </a>
+            , album covers from the{" "}
+            <a href="https://coverartarchive.org" target="_blank" rel="noreferrer">
+              Cover Art Archive
+            </a>
+            . Book information from{" "}
+            <a href="https://openlibrary.org" target="_blank" rel="noreferrer">
+              Open Library
+            </a>
+            . Comic information from{" "}
+            <a href="https://comicvine.gamespot.com" target="_blank" rel="noreferrer">
+              Comic Vine
             </a>
             .
           </footer>

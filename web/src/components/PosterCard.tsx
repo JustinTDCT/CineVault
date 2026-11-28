@@ -4,14 +4,26 @@ import { coverUrl, editionListing, ownedEditions, posterBadge, showCounts, thumb
 import { linkTo } from "../router";
 
 export function Poster({ title, size = "card" }: { title: Title; size?: "card" | "large" }) {
-  const [failed, setFailed] = useState(false);
+  // Each candidate is tried in turn; one that fails to load is skipped.
+  const [failed, setFailed] = useState(0);
   // Music videos have no posters: a still from the video, in 16:9.
   const wide = title.media_type === "musicvideo";
   const square = title.media_type === "music" || title.media_type === "audiobook";
   const shape = wide ? " poster-wide" : square ? " poster-square" : "";
-  const src = wide ? thumbUrl(title) : square || title.media_type === "book" || title.media_type === "comic" ? coverUrl(title) : title.poster_url;
-  if (src && !failed) {
-    return <img className={`poster poster-${size}${shape}`} src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
+  const src = artCandidates(title)[failed];
+  if (src) {
+    return (
+      <img
+        key={src}
+        className={`poster poster-${size}${shape}`}
+        src={src}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed((n) => n + 1)}
+      />
+    );
   }
   // No artwork yet: a title card in marquee lettering.
   return (
@@ -20,6 +32,15 @@ export function Poster({ title, size = "card" }: { title: Title; size?: "card" |
       {title.year ? <span className="poster-blank-year">{title.year}</span> : null}
     </div>
   );
+}
+
+/** Art to show, best first: a still for music videos; for albums, books,
+ *  audiobooks and comics the looked-up cover (the server leaves it out when
+ *  the library prefers its files), then the file's own; a movie's poster. */
+export function artCandidates(title: Title): string[] {
+  if (title.media_type === "musicvideo") return [thumbUrl(title)].filter(Boolean) as string[];
+  const fileCover = ["music", "audiobook", "book", "comic"].includes(title.media_type) ? coverUrl(title) : undefined;
+  return [title.poster_url, fileCover].filter(Boolean) as string[];
 }
 
 export function PosterCard({

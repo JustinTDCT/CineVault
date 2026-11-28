@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Library, type ScanResult, type Title, type MatchResult } from "../api";
 import { PosterCard } from "../components/PosterCard";
-import { groupByArtist, itemNoun } from "../format";
+import { groupByArtist, itemNoun, matchSource } from "../format";
 
 export function scanSummary(r: ScanResult, mediaType?: string): string {
   const parts: string[] = [];
@@ -10,15 +10,15 @@ export function scanSummary(r: ScanResult, mediaType?: string): string {
   if (r.missing) parts.push(`${r.missing} missing`);
   const files = `${r.files_seen} ${r.files_seen === 1 ? "file" : "files"}`;
   let text = parts.length ? `Scanned ${files}: ${parts.join(", ")}.` : `Scanned ${files}. Nothing changed.`;
-  if (r.match && r.match.matched) text += ` Matched ${r.match.matched} to ${mediaType === "musicvideo" ? "MusicBrainz" : "TMDb"}.`;
+  if (r.match && r.match.matched) text += ` Matched ${r.match.matched} to ${matchSource(mediaType ?? "movie") || "TMDb"}.`;
   if (r.match?.episodes) text += ` Fetched details for ${r.match.episodes} episodes.`;
   return text;
 }
 
 /** What a music video re-match did, for Settings → Libraries. */
-export function rematchSummary(r: MatchResult): string {
+export function rematchSummary(r: MatchResult, mediaType = "musicvideo"): string {
   if (r.error) return `Matching stopped: ${r.error}`;
-  const parts = [`Matched ${r.matched} to MusicBrainz`];
+  const parts = [`Matched ${r.matched} to ${matchSource(mediaType)}`];
   if (r.not_found) parts.push(`${r.not_found} not found`);
   if (r.errors) parts.push(`${r.errors} failed (try again in a minute)`);
   return parts.join(", ") + ".";
@@ -62,7 +62,7 @@ export function LibraryPage({ library, libraryId }: { library?: Library; library
   }, [load, scan]);
 
   const problems = scanResult
-    ? [...scanResult.errors.map((e) => `${e.path}: ${e.error}`), ...(scanResult.match?.error ? [`TMDb: ${scanResult.match.error}`] : [])]
+    ? [...scanResult.errors.map((e) => `${e.path}: ${e.error}`), ...(scanResult.match?.error ? [`${matchSource(library?.media_type ?? "movie")}: ${scanResult.match.error}`] : [])]
     : [];
 
   return (

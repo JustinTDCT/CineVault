@@ -8,6 +8,8 @@ export interface Library {
   media_type: MediaType;
   paths: string[];
   created_at: string;
+  /** What the files say wins over lookups, which then only fill gaps. */
+  prefer_local_metadata: boolean;
 }
 
 export interface Version {
@@ -93,7 +95,7 @@ export interface Health {
   status: "ok" | "degraded";
   version: string;
   database: { reachable: boolean; schema_version: number; error?: string };
-  metadata: { tmdb_configured: boolean };
+  metadata: { tmdb_configured: boolean; comicvine_configured: boolean };
   playback: { ready: boolean; encoder?: string; device?: string; note?: string };
   transcode: {
     ffmpeg: { found: boolean; path: string; version?: string; hwaccels: string[]; encoders: { name: string; codec: string; kind: string; device_name?: string; usable: boolean; error?: string }[]; error?: string };
@@ -173,7 +175,34 @@ export interface Title {
   album?: string;
   album_year?: number;
   credits?: TitleCredits;
+  /** Albums: MusicBrainz release group; books, audiobooks: Open Library work; comics: Comic Vine volume. */
+  mb_release_group_id?: string;
+  ol_work_id?: string;
+  comicvine_id?: number;
+  publisher?: string;
+  /** No lookup or cache record changes a locked title. */
+  locked?: boolean;
+  /** Fields edited by hand, kept as they are. */
+  locked_fields?: string[];
   editions: Edition[];
+}
+
+/** A change to a title's details; every field sent is locked. */
+export interface TitleEdit {
+  name?: string;
+  year?: number;
+  artist?: string;
+  overview?: string;
+  genres?: string[];
+  series?: string;
+  series_index?: number;
+  narrator?: string;
+  publisher?: string;
+}
+
+export interface TitleLocks {
+  locked: boolean;
+  fields: string[];
 }
 
 /** A music video's on-screen credits from the CineVault Cache. */
@@ -340,6 +369,10 @@ export const api = {
   saveCacheToken: (token: string) => request<{ note: string }>("PUT", "/api/cache/token", { token }),
   clearCacheToken: () => request<null>("DELETE", "/api/cache/token"),
   health: () => request<Health>("GET", "/api/health"),
+  editTitle: (titleId: number, e: TitleEdit) => request<null>("PATCH", `/api/titles/${titleId}`, e),
+  setLocks: (titleId: number, l: TitleLocks) => request<TitleLocks>("PUT", `/api/titles/${titleId}/locks`, l),
+  updateLibrary: (libraryId: number, s: { prefer_local_metadata: boolean }) =>
+    request<Library>("PATCH", `/api/libraries/${libraryId}`, s),
   report: (titleId: number, edition: string, field: ReportField, message: string) =>
     request<{ report_id: string }>("POST", `/api/titles/${titleId}/report`, { edition, field, message }),
   episodes: (titleId: number) => request<Season[]>("GET", `/api/titles/${titleId}/episodes`),
