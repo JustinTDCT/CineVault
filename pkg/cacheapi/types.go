@@ -23,17 +23,27 @@ const (
 	MaxLookupEditions = 20   // edition IDs passed with one lookup
 )
 
-// Kinds of title. A key's kind decides which TMDb ID space it uses: movie 679
-// and TV show 679 are different works.
+// Kinds of title. A key's kind decides its ID space: movies and shows use
+// TMDb IDs (movie 679 and TV show 679 are different works), music videos use
+// MusicBrainz recording IDs.
 const (
-	KindMovie = "movie"
-	KindTV    = "tv"
+	KindMovie      = "movie"
+	KindTV         = "tv"
+	KindMusicVideo = "musicvideo"
 )
 
-// Key identifies a title in the cache.
+// Providers a key's ID comes from.
+const (
+	ProviderTMDb        = "tmdb"
+	ProviderMusicBrainz = "musicbrainz"
+)
+
+// Key identifies a title in the cache: a movie or show by TMDb ID, a music
+// video by MusicBrainz recording ID (a lowercase UUID).
 type Key struct {
 	Kind   string `json:"kind"`
-	TMDbID int    `json:"tmdb_id"`
+	TMDbID int    `json:"tmdb_id,omitempty"`
+	MBID   string `json:"mbid,omitempty"`
 }
 
 // Record statuses.
@@ -80,7 +90,38 @@ type Record struct {
 
 	// Editions are in Edition List order. A withdrawn record has none.
 	Editions []Edition `json:"editions,omitempty"`
-	Sources  []Source  `json:"sources,omitempty"`
+
+	// Credits are a music video's on-screen credits (music videos only).
+	Credits *Credits `json:"credits,omitempty"`
+
+	Sources []Source `json:"sources,omitempty"`
+}
+
+// Credit fields, the keys of Credits.Sources.
+const (
+	CreditSong     = "song"
+	CreditArtist   = "artist"
+	CreditAlbum    = "album"
+	CreditYear     = "year"
+	CreditLabel    = "label"
+	CreditDirector = "director"
+)
+
+// Credits are what a music channel shows in the corner of a music video:
+// artist, "song", album (year), label and director. Every value names its
+// sources in Sources, keyed by field; a value without a source is never sent.
+type Credits struct {
+	Song     string `json:"song"`
+	Artist   string `json:"artist"`
+	Album    string `json:"album,omitempty"`
+	Year     int    `json:"year,omitempty"` // the album's (or the song's first) release year
+	Label    string `json:"label,omitempty"`
+	Director string `json:"director,omitempty"` // the video's director; several are joined with " & "
+
+	Sources map[string][]string `json:"sources"`
+	// Confidence is for the researched fields (director, label); the rest
+	// come from MusicBrainz.
+	Confidence string `json:"confidence,omitempty"`
 }
 
 // Base is provider metadata for the title, served only where licensed.
@@ -161,12 +202,13 @@ type SyncRequest struct {
 // SyncItem is one title in a sync request.
 type SyncItem struct {
 	Kind        string `json:"kind"`
-	TMDbID      int    `json:"tmdb_id"`
+	TMDbID      int    `json:"tmdb_id,omitempty"`
+	MBID        string `json:"mbid,omitempty"`
 	HaveVersion int    `json:"have_version"` // 0: no record yet
 }
 
 // Key returns the item's key.
-func (i SyncItem) Key() Key { return Key{Kind: i.Kind, TMDbID: i.TMDbID} }
+func (i SyncItem) Key() Key { return Key{Kind: i.Kind, TMDbID: i.TMDbID, MBID: i.MBID} }
 
 // SyncResponse says which titles to fetch with the records call.
 type SyncResponse struct {
@@ -180,12 +222,13 @@ type SyncResponse struct {
 // (including newly ready and withdrawn records).
 type Changed struct {
 	Kind          string `json:"kind"`
-	TMDbID        int    `json:"tmdb_id"`
+	TMDbID        int    `json:"tmdb_id,omitempty"`
+	MBID          string `json:"mbid,omitempty"`
 	RecordVersion int    `json:"record_version"`
 }
 
 // Key returns the changed title's key.
-func (c Changed) Key() Key { return Key{Kind: c.Kind, TMDbID: c.TMDbID} }
+func (c Changed) Key() Key { return Key{Kind: c.Kind, TMDbID: c.TMDbID, MBID: c.MBID} }
 
 // RecordsRequest fetches up to MaxRecordKeys records.
 type RecordsRequest struct {
@@ -275,12 +318,13 @@ type ContributeRequest struct {
 // ContributeItem is one title the server has.
 type ContributeItem struct {
 	Kind     string              `json:"kind"`
-	TMDbID   int                 `json:"tmdb_id"`
+	TMDbID   int                 `json:"tmdb_id,omitempty"`
+	MBID     string              `json:"mbid,omitempty"`
 	Editions []ContributeEdition `json:"editions,omitempty"`
 }
 
 // Key returns the item's key.
-func (i ContributeItem) Key() Key { return Key{Kind: i.Kind, TMDbID: i.TMDbID} }
+func (i ContributeItem) Key() Key { return Key{Kind: i.Kind, TMDbID: i.TMDbID, MBID: i.MBID} }
 
 // ContributeEdition is an edition the server has a file for.
 type ContributeEdition struct {

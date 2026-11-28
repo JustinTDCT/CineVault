@@ -1,0 +1,29 @@
+{
+  "key": { "kind": "musicvideo", "mbid": "4a1b6c7e-2d3f-4e5a-9b8c-7d6e5f4a3b2c" },
+  "status": "ready",
+  "record_version": 2,
+  "published_at": "2026-11-28T01:15:00Z",
+  "edition_list_version": 2,
+  "credits": {
+    "song": "Take On Me",
+    "artist": "a-ha",
+    "album": "Hunting High and Low",
+    "year": 1985,
+    "label": "Warner Bros.",
+    "director": "Steve Barron",
+    "sources": {
+      "song": ["s1"],
+      "artist": ["s1"],
+      "album": ["s1"],
+      "year": ["s1"],
+      "label": ["s1"],
+      "director": ["s2", "s3"]
+    },
+    "confidence": "high"
+  },
+  "sources": [
+    { "id": "s1", "name": "MusicBrainz", "url": "https://musicbrainz.org/recording/4a1b6c7e-2d3f-4e5a-9b8c-7d6e5f4a3b2c" },
+    { "id": "s2", "name": "Take On Me - Wikipedia", "url": "https://en.wikipedia.org/wiki/Take_On_Me" },
+    { "id": "s3", "name": "IMVDb", "url": "https://imvdb.com/video/a-ha/take-on-me" }
+  ]
+}

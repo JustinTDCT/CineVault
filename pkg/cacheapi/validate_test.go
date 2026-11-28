@@ -124,3 +124,67 @@ func TestKeyPath(t *testing.T) {
 		t.Errorf("Path %q, String %q", k.Path(), k.String())
 	}
 }
+
+func TestMusicVideoKeys(t *testing.T) {
+	const id = "4a1b6c7e-2d3f-4e5a-9b8c-7d6e5f4a3b2c"
+	k := Key{Kind: KindMusicVideo, MBID: id}
+	if err := k.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if k.Path() != "musicvideo/mb/"+id || k.String() != "musicvideo:"+id || k.Provider() != ProviderMusicBrainz || k.ProviderID() != id {
+		t.Errorf("path %q string %q provider %q", k.Path(), k.String(), k.Provider())
+	}
+	if KeyFor(KindMusicVideo, id) != k || KeyFor(KindMovie, "679") != (Key{Kind: KindMovie, TMDbID: 679}) {
+		t.Error("KeyFor doesn't invert ProviderID")
+	}
+	for _, bad := range []Key{
+		{Kind: KindMusicVideo},
+		{Kind: KindMusicVideo, MBID: "4A1B6C7E-2D3F-4E5A-9B8C-7D6E5F4A3B2C"}, // uppercase
+		{Kind: KindMusicVideo, MBID: id, TMDbID: 5},
+		{Kind: KindMusicVideo, MBID: "not-a-uuid"},
+		{Kind: KindMovie, TMDbID: 679, MBID: id},
+	} {
+		if bad.Validate() == nil {
+			t.Errorf("%+v passed", bad)
+		}
+	}
+}
+
+func TestCreditsValidation(t *testing.T) {
+	var golden Record
+	readGolden(t, "record_musicvideo.json", &golden)
+	clone := func() Record {
+		r := golden
+		c := *golden.Credits
+		c.Sources = map[string][]string{}
+		for k, v := range golden.Credits.Sources {
+			c.Sources[k] = v
+		}
+		r.Credits = &c
+		return r
+	}
+	for name, mod := range map[string]func(*Record){
+		"director without a source": func(r *Record) { delete(r.Credits.Sources, CreditDirector) },
+		"unknown source":            func(r *Record) { r.Credits.Sources[CreditLabel] = []string{"s9"} },
+		"sources for an empty value": func(r *Record) {
+			r.Credits.Label = ""
+		},
+		"no artist":         func(r *Record) { r.Credits.Artist = " " },
+		"credits on a film": func(r *Record) { r.Key = Key{Kind: KindMovie, TMDbID: 679} },
+		"no credits":        func(r *Record) { r.Credits = nil },
+		"bad confidence":    func(r *Record) { r.Credits.Confidence = "certain" },
+	} {
+		r := clone()
+		mod(&r)
+		if r.Validate() == nil {
+			t.Errorf("%s: passed", name)
+		}
+	}
+	r := clone()
+	r.Credits.Director, r.Credits.Label = "", ""
+	delete(r.Credits.Sources, CreditDirector)
+	delete(r.Credits.Sources, CreditLabel)
+	if err := r.Validate(); err != nil {
+		t.Errorf("MusicBrainz facts only: %v", err)
+	}
+}

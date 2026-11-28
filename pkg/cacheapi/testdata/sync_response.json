@@ -1,7 +1,8 @@
 {
   "changed": [
     { "kind": "movie", "tmdb_id": 679, "record_version": 4 },
-    { "kind": "tv", "tmdb_id": 1399, "record_version": 7 }
+    { "kind": "tv", "tmdb_id": 1399, "record_version": 7 },
+    { "kind": "musicvideo", "mbid": "4a1b6c7e-2d3f-4e5a-9b8c-7d6e5f4a3b2c", "record_version": 2 }
   ],
   "pending": [ { "kind": "movie", "tmdb_id": 348 } ],
   "not_found": [],

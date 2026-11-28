@@ -9,11 +9,44 @@ import (
 	"github.com/JustinTDCT/CineVault/pkg/editionlist"
 )
 
-// Path returns the key as used in a lookup path: "movie/tmdb/679".
-func (k Key) Path() string { return k.Kind + "/tmdb/" + strconv.Itoa(k.TMDbID) }
+// Provider returns where the key's ID comes from: ProviderTMDb or
+// ProviderMusicBrainz.
+func (k Key) Provider() string {
+	if k.Kind == KindMusicVideo {
+		return ProviderMusicBrainz
+	}
+	return ProviderTMDb
+}
 
-// String returns the key as "movie:679".
-func (k Key) String() string { return k.Kind + ":" + strconv.Itoa(k.TMDbID) }
+// ProviderID returns the key's ID as text: "679", or a MusicBrainz UUID.
+func (k Key) ProviderID() string {
+	if k.Kind == KindMusicVideo {
+		return k.MBID
+	}
+	return strconv.Itoa(k.TMDbID)
+}
+
+// KeyFor builds a key from a kind and a provider ID as text, the reverse of
+// ProviderID. The result still needs Validate.
+func KeyFor(kind, providerID string) Key {
+	if kind == KindMusicVideo {
+		return Key{Kind: kind, MBID: providerID}
+	}
+	id, _ := strconv.Atoi(providerID)
+	return Key{Kind: kind, TMDbID: id}
+}
+
+// Path returns the key as used in a lookup path: "movie/tmdb/679", or
+// "musicvideo/mb/<recording ID>".
+func (k Key) Path() string {
+	if k.Kind == KindMusicVideo {
+		return k.Kind + "/mb/" + k.MBID
+	}
+	return k.Kind + "/tmdb/" + strconv.Itoa(k.TMDbID)
+}
+
+// String returns the key as "movie:679" or "musicvideo:<recording ID>".
+func (k Key) String() string { return k.Kind + ":" + k.ProviderID() }
 
 // MediaType returns the Edition List media type for the key's kind.
 func (k Key) MediaType() string {
@@ -22,6 +55,8 @@ func (k Key) MediaType() string {
 		return editionlist.Movie
 	case KindTV:
 		return editionlist.TV
+	case KindMusicVideo:
+		return editionlist.MusicVideo
 	}
 	return ""
 }
@@ -31,10 +66,36 @@ func (k Key) Validate() error {
 	if k.MediaType() == "" {
 		return fmt.Errorf("unknown kind %q", k.Kind)
 	}
-	if k.TMDbID <= 0 {
+	if k.Kind == KindMusicVideo {
+		if !IsMBID(k.MBID) || k.TMDbID != 0 {
+			return fmt.Errorf("%s: needs a MusicBrainz recording ID (a lowercase UUID) and no TMDb ID", k.Kind)
+		}
+		return nil
+	}
+	if k.TMDbID <= 0 || k.MBID != "" {
 		return fmt.Errorf("%s: TMDb ID must be positive", k.Kind)
 	}
 	return nil
+}
+
+// IsMBID reports whether s is a MusicBrainz ID: a lowercase UUID.
+func IsMBID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, r := range s {
+		switch i {
+		case 8, 13, 18, 23:
+			if r != '-' {
+				return false
+			}
+		default:
+			if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // Validate checks a record against the rules the service promises:
@@ -55,8 +116,8 @@ func (r Record) Validate() error {
 	switch r.Status {
 	case StatusReady:
 	case StatusWithdrawn:
-		if len(r.Editions) > 0 || r.Base != nil {
-			return errors.New("a withdrawn record has no editions or base metadata")
+		if len(r.Editions) > 0 || r.Base != nil || r.Credits != nil {
+			return errors.New("a withdrawn record has no editions, base metadata or credits")
 		}
 		return nil
 	default:
@@ -64,6 +125,9 @@ func (r Record) Validate() error {
 	}
 	if r.Base != nil && (r.Base.License == "" || r.Base.Title == "") {
 		return errors.New("base metadata needs a license and a title")
+	}
+	if (r.Credits != nil) != (r.Key.Kind == KindMusicVideo) {
+		return errors.New("a music video's record has credits, and only a music video's")
 	}
 
 	sources := map[string]bool{}
@@ -83,6 +147,37 @@ func (r Record) Validate() error {
 			}
 		}
 		return nil
+	}
+
+	if c := r.Credits; c != nil {
+		if strings.TrimSpace(c.Song) == "" || strings.TrimSpace(c.Artist) == "" {
+			return errors.New("credits need a song and an artist")
+		}
+		if c.Year < 0 || c.Year > 9999 {
+			return fmt.Errorf("credits: year %d is out of range", c.Year)
+		}
+		set := map[string]bool{
+			CreditSong: true, CreditArtist: true, CreditAlbum: c.Album != "", CreditYear: c.Year != 0,
+			CreditLabel: c.Label != "", CreditDirector: c.Director != "",
+		}
+		for f, has := range set {
+			if has && len(c.Sources[f]) == 0 {
+				return fmt.Errorf("credits: %s without a source", f)
+			}
+		}
+		for f, ids := range c.Sources {
+			if !set[f] {
+				return fmt.Errorf("credits: sources for %q, which has no value", f)
+			}
+			if err := checkSources("credits "+f, ids); err != nil {
+				return err
+			}
+		}
+		switch c.Confidence {
+		case "", ConfidenceHigh, ConfidenceMedium, ConfidenceLow:
+		default:
+			return fmt.Errorf("credits: unknown confidence %q", c.Confidence)
+		}
 	}
 
 	mediaType := r.Key.MediaType()

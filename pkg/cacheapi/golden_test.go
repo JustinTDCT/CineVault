@@ -15,6 +15,7 @@ func TestGoldenFilesRoundTrip(t *testing.T) {
 	cases := map[string]func() any{
 		"record_aliens.json":       func() any { return new(Record) },
 		"record_withdrawn.json":    func() any { return new(Record) },
+		"record_musicvideo.json":   func() any { return new(Record) },
 		"lookup_pending.json":      func() any { return new(Pending) },
 		"sync_request.json":        func() any { return new(SyncRequest) },
 		"sync_response.json":       func() any { return new(SyncResponse) },
@@ -65,7 +66,7 @@ func TestGoldenFilesRoundTrip(t *testing.T) {
 }
 
 func TestGoldenValuesAreValid(t *testing.T) {
-	for _, name := range []string{"record_aliens.json", "record_withdrawn.json"} {
+	for _, name := range []string{"record_aliens.json", "record_withdrawn.json", "record_musicvideo.json"} {
 		var r Record
 		readGolden(t, name, &r)
 		if err := r.Validate(); err != nil {
