@@ -138,7 +138,7 @@ var _ match.MusicVideoStore = (*DB)(nil)
 
 // sqlNewRecording is true while saving a match whose recording differs from
 // the one the title had (SET expressions see the row as it was).
-const sqlNewRecording = `mb_recording_id IS DISTINCT FROM $2`
+const sqlNewRecording = `t.mb_recording_id IS DISTINCT FROM $2`
 
 // MusicVideosToMatch implements match.MusicVideoStore.
 func (d *DB) MusicVideosToMatch(ctx context.Context, libraryID int64, all bool) ([]match.MusicVideo, error) {
@@ -166,18 +166,25 @@ func (d *DB) MusicVideosToMatch(ctx context.Context, libraryID int64, all bool) 
 // and year. A new recording is a new cache key, so the cache state starts
 // over and the next lookup asks about the new one.
 func (d *DB) SaveMusicVideoMatch(ctx context.Context, titleID int64, m match.MusicVideoMatch) error {
-	_, err := d.Pool.Exec(ctx, `
-		UPDATE titles SET mb_recording_id = $2, album = NULLIF($3, ''), album_year = NULLIF($4::integer, 0),
-		       match_status = 'matched', match_error = NULL, matched_at = now(), updated_at = now(),
-		       cache_state      = CASE WHEN `+sqlNewRecording+` THEN 'none' ELSE cache_state END,
-		       cache_version    = CASE WHEN `+sqlNewRecording+` THEN 0 ELSE cache_version END,
-		       cache_checked_at = CASE WHEN `+sqlNewRecording+` THEN NULL ELSE cache_checked_at END,
-		       cache_retry_at   = CASE WHEN `+sqlNewRecording+` THEN NULL ELSE cache_retry_at END,
-		       cache_error      = CASE WHEN `+sqlNewRecording+` THEN NULL ELSE cache_error END,
-		       cache_withdrawn  = CASE WHEN `+sqlNewRecording+` THEN false ELSE cache_withdrawn END,
-		       cache_sources    = CASE WHEN `+sqlNewRecording+` THEN NULL ELSE cache_sources END,
-		       cache_credits    = CASE WHEN `+sqlNewRecording+` THEN NULL ELSE cache_credits END,
-		       contributed_hash = CASE WHEN `+sqlNewRecording+` THEN NULL ELSE contributed_hash END
-		WHERE id = $1`, titleID, m.RecordingID, m.Album, m.Year)
+	_, err := d.Pool.Exec(ctx, sqlSaveMusicVideoMatch, titleID, m.RecordingID, m.Album, m.Year)
 	return err
 }
+
+// sqlSaveMusicVideoMatch: the album and year respect locks and the library's
+// preference; a new recording resets the cache state (see sqlNewRecording).
+var sqlSaveMusicVideoMatch = automaticUpdate([]set{
+	{"album", "album", "NULLIF($3, '')"},
+	{"album_year", "album", "NULLIF($4::integer, 0)"},
+},
+	"mb_recording_id = $2",
+	"match_status = 'matched'", "match_error = NULL", "matched_at = now()",
+	"cache_state = CASE WHEN "+sqlNewRecording+" THEN 'none' ELSE cache_state END",
+	"cache_version = CASE WHEN "+sqlNewRecording+" THEN 0 ELSE cache_version END",
+	"cache_checked_at = CASE WHEN "+sqlNewRecording+" THEN NULL ELSE cache_checked_at END",
+	"cache_retry_at = CASE WHEN "+sqlNewRecording+" THEN NULL ELSE cache_retry_at END",
+	"cache_error = CASE WHEN "+sqlNewRecording+" THEN NULL ELSE cache_error END",
+	"cache_withdrawn = CASE WHEN "+sqlNewRecording+" THEN false ELSE cache_withdrawn END",
+	"cache_sources = CASE WHEN "+sqlNewRecording+" THEN NULL ELSE cache_sources END",
+	"cache_credits = CASE WHEN "+sqlNewRecording+" THEN NULL ELSE cache_credits END",
+	"contributed_hash = CASE WHEN "+sqlNewRecording+" THEN NULL ELSE contributed_hash END",
+)

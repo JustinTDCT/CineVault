@@ -19,7 +19,7 @@ var _ scan.Store = (*DB)(nil)
 
 // CreateLibrary adds a library. A duplicate name returns catalog.ErrConflict.
 func (d *DB) CreateLibrary(ctx context.Context, lib catalog.Library) (catalog.Library, error) {
-	err := d.Pool.QueryRow(ctx, sqlCreateLibrary, lib.Name, lib.MediaType, lib.Paths).
+	err := d.Pool.QueryRow(ctx, sqlCreateLibrary, lib.Name, lib.MediaType, lib.Paths, lib.PreferLocalMetadata).
 		Scan(&lib.ID, &lib.CreatedAt)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
@@ -38,7 +38,7 @@ func (d *DB) Libraries(ctx context.Context) ([]catalog.Library, error) {
 	out := []catalog.Library{}
 	for rows.Next() {
 		var l catalog.Library
-		if err := rows.Scan(&l.ID, &l.Name, &l.MediaType, &l.Paths, &l.CreatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.Name, &l.MediaType, &l.Paths, &l.CreatedAt, &l.PreferLocalMetadata); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
@@ -49,7 +49,7 @@ func (d *DB) Libraries(ctx context.Context) ([]catalog.Library, error) {
 // Library returns one library, or catalog.ErrNotFound.
 func (d *DB) Library(ctx context.Context, id int64) (catalog.Library, error) {
 	var l catalog.Library
-	err := d.Pool.QueryRow(ctx, sqlLibrary, id).Scan(&l.ID, &l.Name, &l.MediaType, &l.Paths, &l.CreatedAt)
+	err := d.Pool.QueryRow(ctx, sqlLibrary, id).Scan(&l.ID, &l.Name, &l.MediaType, &l.Paths, &l.CreatedAt, &l.PreferLocalMetadata)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return l, catalog.ErrNotFound
 	}
@@ -65,6 +65,8 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 	defer rows.Close()
 
 	out := []catalog.Title{}
+	var coverURL string
+	var preferLocal bool
 	for rows.Next() {
 		var t catalog.Title
 		var e catalog.Edition
@@ -91,6 +93,8 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 			&p.VersionID, &p.PositionSeconds, &p.Locator, &p.UpdatedAt, &p.DurationSeconds, &p.PageCount,
 			&p.SeasonNumber, &p.EpisodeNumber, &p.EpisodeName,
 			&t.MBID, &t.Album, &t.AlbumYear, &creditsJSON,
+			&t.LockedFields, &t.Publisher, &coverURL, &preferLocal,
+			&t.MBReleaseGroupID, &t.OLWorkID, &t.ComicVineID,
 		); err != nil {
 			return nil, err
 		}
@@ -102,7 +106,12 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 			}
 			if t.PosterPath != "" {
 				t.PosterURL = tmdb.ImageBaseURL + "w500" + t.PosterPath
+			} else if coverURL != "" && !(preferLocal && t.CoverVersionID != 0) {
+				// Art a lookup found; a library that prefers its files keeps
+				// the file's own cover when there is one.
+				t.PosterURL = coverURL
 			}
+			t.LockedFields, t.Locked = splitLocks(t.LockedFields)
 			if t.BackdropPath != "" {
 				t.BackdropURL = tmdb.ImageBaseURL + "w1280" + t.BackdropPath
 			}

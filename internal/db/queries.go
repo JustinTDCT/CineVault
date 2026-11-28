@@ -5,17 +5,17 @@ package db
 
 const (
 	sqlCreateLibrary = `
-		INSERT INTO libraries (name, media_type, paths)
-		VALUES ($1, $2, $3)
+		INSERT INTO libraries (name, media_type, paths, prefer_local_metadata)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id, created_at`
 
 	sqlLibraries = `
-		SELECT id, name, media_type, paths, created_at
+		SELECT id, name, media_type, paths, created_at, prefer_local_metadata
 		FROM libraries
 		ORDER BY name`
 
 	sqlLibrary = `
-		SELECT id, name, media_type, paths, created_at
+		SELECT id, name, media_type, paths, created_at, prefer_local_metadata
 		FROM libraries
 		WHERE id = $1`
 
@@ -33,14 +33,14 @@ const (
 		WHERE library_id = $1
 		  AND lower(file_title) = lower($2)
 		  AND file_year IS NOT DISTINCT FROM NULLIF($3::integer, 0)
-		  AND lower(COALESCE(artist, '')) = lower($4)
+		  AND lower(COALESCE(file_artist, '')) = lower($4)
 		ORDER BY id
 		LIMIT 1`
 
 	// $5 year and $6 tmdb_id: 0 means unknown.
 	sqlInsertTitle = `
-		INSERT INTO titles (library_id, media_type, name, file_title, sort_name, year, file_year, tmdb_id, artist)
-		VALUES ($1, $2, $3, $3, $4, NULLIF($5::integer, 0), NULLIF($5::integer, 0), NULLIF($6::integer, 0), NULLIF($7, ''))
+		INSERT INTO titles (library_id, media_type, name, file_title, sort_name, year, file_year, tmdb_id, artist, file_artist)
+		VALUES ($1, $2, $3, $3, $4, NULLIF($5::integer, 0), NULLIF($5::integer, 0), NULLIF($6::integer, 0), NULLIF($7, ''), NULLIF($7, ''))
 		RETURNING id`
 
 	// Keeps an existing runtime; fills it in if it was empty.
@@ -169,35 +169,6 @@ const (
 		WHERE library_id = $1 AND match_status IN ('unmatched', 'error')
 		ORDER BY sort_name, id`
 
-	// Fields named in locked_fields (edited by hand) are never overwritten.
-	// The year stays as read from files, so later scans still find the title;
-	// TMDb's full date is kept in release_date.
-	sqlSaveMatch = `
-		UPDATE titles SET
-		    tmdb_id            = $2,
-		    imdb_id            = NULLIF($3, ''),
-		    name               = CASE WHEN 'name' = ANY(locked_fields) THEN name ELSE $4 END,
-		    sort_name          = CASE WHEN 'name' = ANY(locked_fields) THEN sort_name ELSE $5 END,
-		    original_title     = NULLIF($6, ''),
-		    overview           = CASE WHEN 'overview' = ANY(locked_fields) THEN overview ELSE NULLIF($7, '') END,
-		    tagline            = NULLIF($8, ''),
-		    release_date       = NULLIF($9::text, '')::date,
-		    year               = COALESCE(year, NULLIF($10::integer, 0)),
-		    runtime_minutes    = NULLIF($11::integer, 0),
-		    poster_path        = CASE WHEN 'poster' = ANY(locked_fields) THEN poster_path ELSE NULLIF($12, '') END,
-		    backdrop_path      = NULLIF($13, ''),
-		    genres             = $14::text[],
-		    rating             = NULLIF($15::float8, 0)::numeric(3, 1),
-		    collection_tmdb_id = NULLIF($16::integer, 0),
-		    collection_name    = NULLIF($17, ''),
-		    cast_members       = $18::jsonb,
-		    directors          = $19::text[],
-		    match_status       = 'matched',
-		    match_error        = NULL,
-		    matched_at         = now(),
-		    updated_at         = now()
-		WHERE id = $1`
-
 	// Matched shows with episodes that have no TMDb details yet.
 	sqlShowsNeedingEpisodes = `
 		SELECT t.id, t.name, t.tmdb_id, array_agg(DISTINCT e.season_number ORDER BY e.season_number)
@@ -256,8 +227,6 @@ const (
 		  AND media_type IN ('movie', 'tv') AND cast_members IS NULL
 		ORDER BY sort_name, id`
 
-	sqlSaveCredits = `UPDATE titles SET cast_members = $2::jsonb, directors = $3::text[], updated_at = now() WHERE id = $1`
-
 	sqlSaveMatchFailure = `
 		UPDATE titles SET match_status = $2, match_error = $3, updated_at = now()
 		WHERE id = $1`
@@ -303,8 +272,11 @@ const (
 		       COALESCE(pp.version_id, 0), COALESCE(pp.position_seconds, 0)::float8, COALESCE(pp.locator, ''),
 		       COALESCE(pp.updated_at, 'epoch'), COALESCE(pv.duration_seconds, 0)::float8, COALESCE(pv.page_count, 0),
 		       COALESCE(pe.season_number, 0), COALESCE(pe.episode_number, 0), COALESCE(pe.name, ''),
-		       COALESCE(t.mb_recording_id, ''), COALESCE(t.album, ''), COALESCE(t.album_year, 0), t.cache_credits
+		       COALESCE(t.mb_recording_id, ''), COALESCE(t.album, ''), COALESCE(t.album_year, 0), t.cache_credits,
+		       t.locked_fields, COALESCE(t.publisher, ''), COALESCE(t.cover_url, ''), lib.prefer_local_metadata,
+		       COALESCE(t.mb_release_group_id, ''), COALESCE(t.ol_work_id, ''), COALESCE(t.comicvine_id, 0)
 		FROM titles t
+		JOIN libraries lib ON lib.id = t.library_id
 		JOIN editions e ON e.title_id = t.id
 		JOIN edition_types et ON et.id = e.edition_type_id
 		LEFT JOIN versions v ON v.edition_id = e.id AND v.episode_id IS NULL AND v.track_id IS NULL

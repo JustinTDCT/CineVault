@@ -19,7 +19,8 @@ import (
 )
 
 type fakeLibraries struct {
-	libs []catalog.Library
+	libs     []catalog.Library
+	lastEdit catalog.TitleEdit
 }
 
 func (f *fakeLibraries) CreateLibrary(_ context.Context, l catalog.Library) (catalog.Library, error) {
@@ -274,4 +275,29 @@ func TestMatchWithoutTMDb(t *testing.T) {
 	if code != http.StatusOK || !strings.Contains(body, `"match": null`) {
 		t.Errorf("scan without TMDb: code=%d body=%s", code, body)
 	}
+}
+
+func (f *fakeLibraries) EditTitle(_ context.Context, id int64, e catalog.TitleEdit) error {
+	if id != 1 {
+		return catalog.ErrNotFound
+	}
+	f.lastEdit = e
+	return nil
+}
+
+func (f *fakeLibraries) SetTitleLocks(_ context.Context, id int64, l catalog.TitleLocks) (catalog.TitleLocks, error) {
+	if id != 1 {
+		return l, catalog.ErrNotFound
+	}
+	return l, nil
+}
+
+func (f *fakeLibraries) SetPreferLocalMetadata(_ context.Context, id int64, prefer bool) (catalog.Library, error) {
+	for i := range f.libs {
+		if f.libs[i].ID == id {
+			f.libs[i].PreferLocalMetadata = prefer
+			return f.libs[i], nil
+		}
+	}
+	return catalog.Library{}, catalog.ErrNotFound
 }

@@ -58,6 +58,10 @@ type Library struct {
 	MediaType string    `json:"media_type"`
 	Paths     []string  `json:"paths"`
 	CreatedAt time.Time `json:"created_at"`
+	// PreferLocalMetadata: what the files say (tags, embedded details, file
+	// names) wins over lookups, which then only fill empty fields. Off by
+	// default: lookups win.
+	PreferLocalMetadata bool `json:"prefer_local_metadata"`
 }
 
 // Title is one work (a movie, show, album...) with its editions.
@@ -120,6 +124,19 @@ type Title struct {
 	Album     string        `json:"album,omitempty"`
 	AlbumYear int           `json:"album_year,omitempty"`
 	Credits   *TitleCredits `json:"credits,omitempty"`
+
+	// Albums: the MusicBrainz release group; books and audiobooks: the Open
+	// Library work; comic series: the Comic Vine volume. Publisher is a comic
+	// series' (or a book's) publisher.
+	MBReleaseGroupID string `json:"mb_release_group_id,omitempty"`
+	OLWorkID         string `json:"ol_work_id,omitempty"`
+	ComicVineID      int    `json:"comicvine_id,omitempty"`
+	Publisher        string `json:"publisher,omitempty"`
+
+	// Locked means no lookup or cache record changes the title; LockedFields
+	// are the fields edited by hand, which are kept the same way.
+	Locked       bool     `json:"locked,omitempty"`
+	LockedFields []string `json:"locked_fields"`
 
 	// For TV shows: how many seasons and episodes have files.
 	SeasonCount  int `json:"season_count,omitempty"`
@@ -286,4 +303,39 @@ type Track struct {
 	Name     string    `json:"name"`
 	Artist   string    `json:"artist,omitempty"` // when it differs from the album artist
 	Versions []Version `json:"versions"`
+}
+
+// Editable fields: the names the edit API and locks use.
+const (
+	FieldName        = "name"
+	FieldYear        = "year"
+	FieldArtist      = "artist" // also a book's author
+	FieldOverview    = "overview"
+	FieldGenres      = "genres"
+	FieldSeries      = "series"
+	FieldSeriesIndex = "series_index"
+	FieldNarrator    = "narrator"
+	FieldPublisher   = "publisher"
+	FieldPoster      = "poster"
+)
+
+// TitleEdit is a person's change to a title's details. Each field given is
+// saved and locked, so lookups and cache records leave it alone.
+type TitleEdit struct {
+	Name        *string   `json:"name"`
+	Year        *int      `json:"year"`
+	Artist      *string   `json:"artist"`
+	Overview    *string   `json:"overview"`
+	Genres      *[]string `json:"genres"`
+	Series      *string   `json:"series"`
+	SeriesIndex *float64  `json:"series_index"`
+	Narrator    *string   `json:"narrator"`
+	Publisher   *string   `json:"publisher"`
+}
+
+// TitleLocks is a title's lock state: the whole title, and the fields kept
+// as edited by hand.
+type TitleLocks struct {
+	Locked bool     `json:"locked"`
+	Fields []string `json:"fields"`
 }

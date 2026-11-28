@@ -87,6 +87,12 @@ type LibraryStore interface {
 	// Progress and SaveProgress keep where playback of a title stopped.
 	Progress(ctx context.Context, titleID int64) (catalog.Progress, bool, error)
 	SaveProgress(ctx context.Context, titleID int64, p catalog.Progress) (catalog.Progress, error)
+	// EditTitle saves a person's edit and locks the fields it changes.
+	EditTitle(ctx context.Context, titleID int64, e catalog.TitleEdit) error
+	// SetTitleLocks replaces a title's whole-title and field locks.
+	SetTitleLocks(ctx context.Context, titleID int64, l catalog.TitleLocks) (catalog.TitleLocks, error)
+	// SetPreferLocalMetadata sets whether a library's files win over lookups.
+	SetPreferLocalMetadata(ctx context.Context, libraryID int64, prefer bool) (catalog.Library, error)
 }
 
 // Server serves the CineVault API.
@@ -117,6 +123,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/edition-types", s.editionTypes)
 	mux.HandleFunc("GET /api/libraries", s.listLibraries)
 	mux.HandleFunc("POST /api/libraries", s.createLibrary)
+	mux.HandleFunc("PATCH /api/libraries/{id}", s.updateLibrary)
+	mux.HandleFunc("PATCH /api/titles/{id}", s.editTitle)
+	mux.HandleFunc("PUT /api/titles/{id}/locks", s.setTitleLocks)
 	mux.HandleFunc("GET /api/libraries/{id}/titles", s.libraryTitles)
 	mux.HandleFunc("POST /api/libraries/{id}/scan", s.scanLibrary)
 	mux.HandleFunc("POST /api/libraries/{id}/match", s.matchLibrary)

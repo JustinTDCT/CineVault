@@ -17,9 +17,10 @@ import (
 )
 
 type createLibraryRequest struct {
-	Name      string   `json:"name"`
-	MediaType string   `json:"media_type"`
-	Paths     []string `json:"paths"`
+	Name                string   `json:"name"`
+	MediaType           string   `json:"media_type"`
+	Paths               []string `json:"paths"`
+	PreferLocalMetadata bool     `json:"prefer_local_metadata"`
 }
 
 func (s *Server) listLibraries(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +67,7 @@ func (s *Server) createLibrary(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, p)
 	}
 
-	lib, err := s.opt.Libraries.CreateLibrary(r.Context(), catalog.Library{Name: req.Name, MediaType: req.MediaType, Paths: paths})
+	lib, err := s.opt.Libraries.CreateLibrary(r.Context(), catalog.Library{Name: req.Name, MediaType: req.MediaType, Paths: paths, PreferLocalMetadata: req.PreferLocalMetadata})
 	if errors.Is(err, catalog.ErrConflict) {
 		writeError(w, http.StatusConflict, "a library named "+strconv.Quote(req.Name)+" already exists")
 		return
