@@ -132,3 +132,38 @@ func (d *DB) ShowsNeedingEpisodes(ctx context.Context, libraryID int64) ([]match
 	}
 	return out, rows.Err()
 }
+
+// The DB is the music video matcher's store too.
+var _ match.MusicVideoStore = (*DB)(nil)
+
+// MusicVideosToMatch implements match.MusicVideoStore.
+func (d *DB) MusicVideosToMatch(ctx context.Context, libraryID int64) ([]match.MusicVideo, error) {
+	rows, err := d.Pool.Query(ctx, `
+		SELECT id, COALESCE(artist, ''), name FROM titles
+		WHERE library_id = $1 AND media_type = 'musicvideo' AND match_status IN ('unmatched', 'error')
+		ORDER BY sort_name, id`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []match.MusicVideo{}
+	for rows.Next() {
+		var v match.MusicVideo
+		if err := rows.Scan(&v.ID, &v.Artist, &v.Song); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// SaveMusicVideoMatch implements match.MusicVideoStore. The title keeps the
+// artist and song from its file name; MusicBrainz adds the recording, album
+// and year.
+func (d *DB) SaveMusicVideoMatch(ctx context.Context, titleID int64, m match.MusicVideoMatch) error {
+	_, err := d.Pool.Exec(ctx, `
+		UPDATE titles SET mb_recording_id = $2, album = NULLIF($3, ''), album_year = NULLIF($4::integer, 0),
+		       match_status = 'matched', match_error = NULL, matched_at = now(), updated_at = now()
+		WHERE id = $1`, titleID, m.RecordingID, m.Album, m.Year)
+	return err
+}

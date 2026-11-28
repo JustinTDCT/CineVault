@@ -167,7 +167,24 @@ export interface Title {
   added_at: string;
   /** Where playback or reading stopped; absent when never started. */
   progress?: TitleProgress;
+  /** Music videos: the MusicBrainz match, its album and year, and the cache's
+   *  credits (sent only to subscribed servers) for the MTV-style overlay. */
+  mbid?: string;
+  album?: string;
+  album_year?: number;
+  credits?: TitleCredits;
   editions: Edition[];
+}
+
+/** A music video's on-screen credits from the CineVault Cache. */
+export interface TitleCredits {
+  song: string;
+  artist: string;
+  album?: string;
+  year?: number;
+  label?: string;
+  director?: string;
+  confidence?: string;
 }
 
 export interface CastMember {

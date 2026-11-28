@@ -10,16 +10,19 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/JustinTDCT/CineVault/internal/cachesync"
+	"github.com/JustinTDCT/CineVault/internal/catalog"
 	"github.com/JustinTDCT/CineVault/pkg/cacheapi"
 )
 
 const (
-	// Matched movies and shows: everything the cache can know about.
+	// Matched movies, shows and music videos: everything the cache can know about.
 	sqlCacheItems = `
-		SELECT t.id, t.media_type, t.tmdb_id, t.name, t.cache_state, t.cache_version,
+		SELECT t.id, t.media_type, COALESCE(t.tmdb_id, 0), COALESCE(t.mb_recording_id, ''), t.name, t.cache_state, t.cache_version,
 		       COALESCE(t.cache_retry_at, 'epoch'::timestamptz), COALESCE(t.contributed_hash, '')
 		FROM titles t
-		WHERE t.media_type IN ('movie', 'tv') AND t.tmdb_id IS NOT NULL AND t.match_status = 'matched'
+		WHERE t.match_status = 'matched' AND (
+		      (t.media_type IN ('movie', 'tv') AND t.tmdb_id IS NOT NULL)
+		   OR (t.media_type = 'musicvideo' AND t.mb_recording_id IS NOT NULL))
 		ORDER BY t.id`
 
 	// Editions with a file present, longest file first, in Edition List order.
@@ -29,7 +32,8 @@ const (
 		JOIN titles t ON t.id = e.title_id
 		JOIN edition_types et ON et.id = e.edition_type_id
 		JOIN versions v ON v.edition_id = e.id AND v.missing_since IS NULL
-		WHERE t.media_type IN ('movie', 'tv') AND t.tmdb_id IS NOT NULL
+		WHERE (t.media_type IN ('movie', 'tv') AND t.tmdb_id IS NOT NULL)
+		   OR (t.media_type = 'musicvideo' AND t.mb_recording_id IS NOT NULL)
 		GROUP BY e.title_id, e.edition_type_id, et.sort_order
 		ORDER BY e.title_id, et.sort_order`
 
@@ -40,7 +44,7 @@ const (
 
 	sqlApplyTitle = `
 		UPDATE titles SET cache_state = 'cached', cache_version = $2, cache_withdrawn = $3,
-		       cache_sources = $4, cache_checked_at = now(), cache_retry_at = NULL, cache_error = NULL
+		       cache_sources = $4, cache_credits = $5, cache_checked_at = now(), cache_retry_at = NULL, cache_error = NULL
 		WHERE id = $1`
 
 	// A published edition: update it, or add it as a placeholder ($3) when the
@@ -82,7 +86,7 @@ func (d *DB) CacheItems(ctx context.Context) ([]cachesync.Item, error) {
 	index := map[int64]int{}
 	for rows.Next() {
 		var it cachesync.Item
-		if err := rows.Scan(&it.TitleID, &it.Key.Kind, &it.Key.TMDbID, &it.Name, &it.State, &it.Version, &it.RetryAt, &it.ContributedHash); err != nil {
+		if err := rows.Scan(&it.TitleID, &it.Key.Kind, &it.Key.TMDbID, &it.Key.MBID, &it.Name, &it.State, &it.Version, &it.RetryAt, &it.ContributedHash); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -109,8 +113,8 @@ func (d *DB) CacheItems(ctx context.Context) ([]cachesync.Item, error) {
 		if !ok {
 			continue
 		}
-		// A show's edition holds many episodes; only a movie has one runtime.
-		if items[i].Key.Kind == cacheapi.KindMovie {
+		// A show's edition holds many episodes; a movie or a music video has one runtime.
+		if items[i].Key.Kind == cacheapi.KindMovie || items[i].Key.Kind == cacheapi.KindMusicVideo {
 			e.RuntimeMin = min(cacheapi.MaxRuntimeMin, int(math.Round(secs/60)))
 		}
 		items[i].Owned = append(items[i].Owned, e)
@@ -160,7 +164,14 @@ func (d *DB) ApplyRecord(ctx context.Context, titleID int64, rec cacheapi.Record
 			return err
 		}
 	}
-	if _, err := tx.Exec(ctx, sqlApplyTitle, titleID, rec.RecordVersion, rec.Status == cacheapi.StatusWithdrawn, sources); err != nil {
+	var credits []byte // a music video's credits; NULL for anything else, or once withdrawn
+	if c := rec.Credits; c != nil && rec.Status == cacheapi.StatusReady {
+		if credits, err = json.Marshal(catalog.TitleCredits{Song: c.Song, Artist: c.Artist, Album: c.Album, Year: c.Year,
+			Label: c.Label, Director: c.Director, Confidence: c.Confidence}); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, sqlApplyTitle, titleID, rec.RecordVersion, rec.Status == cacheapi.StatusWithdrawn, sources, credits); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

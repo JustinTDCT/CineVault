@@ -44,7 +44,7 @@ func (f *fakeLibraries) Library(_ context.Context, id int64) (catalog.Library, e
 func (f *fakeLibraries) LibraryTitles(_ context.Context, id int64) ([]catalog.Title, error) {
 	return []catalog.Title{{ID: 1, LibraryID: id, Name: "Alien", Year: 1979, Editions: []catalog.Edition{
 		{EditionTypeID: "directors_cut"}, {EditionTypeID: "remastered"},
-	}}}, nil
+	}, Credits: &catalog.TitleCredits{Song: "Take On Me", Artist: "a-ha", Director: "Steve Barron"}}}, nil
 }
 
 func (f *fakeLibraries) TitleEpisodes(_ context.Context, id int64) ([]catalog.Season, error) {

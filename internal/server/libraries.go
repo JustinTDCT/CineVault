@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -105,6 +106,13 @@ func (s *Server) libraryTitles(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.internalError(w, "list titles", err)
 		return
+	}
+	// The music video overlay is for subscribers: credits are sent only while
+	// the cache is on and a token is set.
+	if s.opt.Cache == nil || !s.opt.Cache.Subscribed() {
+		for i := range titles {
+			titles[i].Credits = nil
+		}
 	}
 	writeJSON(w, http.StatusOK, titles)
 }
@@ -226,7 +234,7 @@ func (s *Server) scanLibrary(w http.ResponseWriter, r *http.Request) {
 		"updated", res.Updated, "unchanged", res.Unchanged, "missing", res.Missing, "errors", len(res.Errors))
 
 	resp := scanResponse{Library: lib, Result: res}
-	if s.opt.Match != nil && usesTMDb(lib.MediaType) {
+	if s.matcherFor(lib.MediaType) != nil {
 		resp.Match = s.runMatch(r, lib)
 	}
 	resp.DurationMS = time.Since(start).Milliseconds()
@@ -239,12 +247,12 @@ func (s *Server) matchLibrary(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if s.opt.Match == nil {
-		writeError(w, http.StatusServiceUnavailable, "TMDb isn't configured; set CINEVAULT_TMDB_TOKEN")
-		return
-	}
-	if !usesTMDb(lib.MediaType) {
-		writeError(w, http.StatusBadRequest, "only movie and TV libraries are matched to TMDb")
+	if s.matcherFor(lib.MediaType) == nil {
+		if usesTMDb(lib.MediaType) {
+			writeError(w, http.StatusServiceUnavailable, "TMDb isn't configured; set CINEVAULT_TMDB_TOKEN")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "only movie, TV and music video libraries are matched")
 		return
 	}
 	if !s.scanning.TryLock() {
@@ -258,8 +266,20 @@ func (s *Server) matchLibrary(w http.ResponseWriter, r *http.Request) {
 // usesTMDb reports whether a library's titles are matched to TMDb.
 func usesTMDb(mediaType string) bool { return mediaType == "movie" || mediaType == "tv" }
 
+// matcherFor returns how a library's titles are matched: TMDb for movies and
+// shows, MusicBrainz for music videos; nil for none.
+func (s *Server) matcherFor(mediaType string) func(context.Context, int64) (match.Result, error) {
+	switch {
+	case usesTMDb(mediaType):
+		return s.opt.Match
+	case mediaType == "musicvideo":
+		return s.opt.MatchMusicVideos
+	}
+	return nil
+}
+
 func (s *Server) runMatch(r *http.Request, lib catalog.Library) *matchSummary {
-	res, err := s.opt.Match(r.Context(), lib.ID)
+	res, err := s.matcherFor(lib.MediaType)(r.Context(), lib.ID)
 	out := &matchSummary{Result: res}
 	if out.Messages == nil {
 		out.Messages = []string{}

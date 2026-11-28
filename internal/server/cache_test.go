@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/JustinTDCT/CineVault/internal/cachesync"
+	"github.com/JustinTDCT/CineVault/internal/catalog"
 	"github.com/JustinTDCT/CineVault/pkg/cacheapi"
 )
 
@@ -45,6 +46,8 @@ func (f *fakeCacheService) SetToken(_ context.Context, t string) (string, error)
 	f.token = t
 	return "", nil
 }
+func (f *fakeCacheService) Subscribed() bool { return f.token != "" }
+
 func (f *fakeCacheService) ClearToken(context.Context) error {
 	if f.env {
 		return cachesync.ErrTokenFromEnvironment
@@ -113,5 +116,19 @@ func TestCacheSettingsKeepsOmittedFields(t *testing.T) {
 	}
 	if rec := sendCache(s, http.MethodPut, "/api/cache/settings", `{"check_interval": "2h"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("2h: %d", rec.Code)
+	}
+}
+
+func TestMusicVideoCreditsAreForSubscribers(t *testing.T) {
+	f := &fakeCacheService{}
+	s, store := libServer(nil)
+	s.opt.Cache = f
+	store.libs = append(store.libs, catalog.Library{ID: 1, Name: "Music Videos", MediaType: "musicvideo"})
+	if _, body := send(t, s, "GET", "/api/libraries/1/titles", ""); strings.Contains(body, "Steve Barron") {
+		t.Errorf("credits sent without a subscription: %s", body)
+	}
+	f.token = "cvc_x"
+	if _, body := send(t, s, "GET", "/api/libraries/1/titles", ""); !strings.Contains(body, "Steve Barron") {
+		t.Errorf("credits missing for a subscriber: %s", body)
 	}
 }

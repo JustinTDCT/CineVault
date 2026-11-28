@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type Hls from "hls.js";
-import { api, type PlayResponse } from "../api";
+import { api, type PlayResponse, type TitleCredits } from "../api";
+import { MusicVideoCredits, creditsShowing } from "./MusicVideoCredits";
 import { detectCaps } from "../caps";
 
 export interface PlayTarget {
@@ -10,6 +11,8 @@ export interface PlayTarget {
   titleId?: number;
   /** Where to start, in seconds (resume). */
   startAt?: number;
+  /** A music video's credits, shown MTV-style in the corner as it plays. */
+  credits?: TitleCredits;
 }
 
 /** How often the position is saved while playing. */
@@ -34,6 +37,22 @@ export function Player({
   const [info, setInfo] = useState<PlayResponse | null>(null);
   const [error, setError] = useState("");
   const lastSave = useRef(0);
+  const frame = useRef<HTMLDivElement>(null);
+  const [showCredits, setShowCredits] = useState(false);
+
+  // The credits sit over the video, so going full screen takes the whole
+  // player, not the <video> alone (which nothing can draw over).
+  useEffect(() => {
+    if (!target.credits) return;
+    const onFull = () => {
+      const v = videoRef.current;
+      if (v && document.fullscreenElement === v && frame.current?.requestFullscreen) {
+        document.exitFullscreen().then(() => frame.current?.requestFullscreen()).catch(() => {});
+      }
+    };
+    document.addEventListener("fullscreenchange", onFull);
+    return () => document.removeEventListener("fullscreenchange", onFull);
+  }, [target.credits]);
 
   // Save the position now; at the end, save the full length so it counts as finished.
   const save = useCallback(
@@ -137,18 +156,24 @@ export function Player({
           </button>
         </div>
       </div>
+      <div className="player-frame" ref={frame}>
       <video
         ref={videoRef}
         className="player-video"
         controls
         playsInline
-        onTimeUpdate={() => Date.now() - lastSave.current > SAVE_EVERY_MS && save()}
+        onTimeUpdate={(e) => {
+          if (Date.now() - lastSave.current > SAVE_EVERY_MS) save();
+          if (target.credits) setShowCredits(creditsShowing(e.currentTarget.currentTime, e.currentTarget.duration));
+        }}
         onPause={() => save()}
         onEnded={() => {
           save(true);
           onEnded?.();
         }}
       />
+      {target.credits ? <MusicVideoCredits credits={target.credits} visible={showCredits} /> : null}
+      </div>
     </div>
   );
 }

@@ -70,7 +70,7 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 		var e catalog.Edition
 		var v catalog.Version
 		var ec catalog.EditionCache
-		var cacheSources, diffFull, castJSON []byte
+		var cacheSources, diffFull, castJSON, creditsJSON []byte
 		var p catalog.TitleProgress
 		if err := rows.Scan(
 			&t.ID, &t.LibraryID, &t.MediaType, &t.Name, &t.SortName, &t.Year, &t.TMDbID,
@@ -90,6 +90,7 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 			&castJSON, &t.Directors, &t.AddedAt,
 			&p.VersionID, &p.PositionSeconds, &p.Locator, &p.UpdatedAt, &p.DurationSeconds, &p.PageCount,
 			&p.SeasonNumber, &p.EpisodeNumber, &p.EpisodeName,
+			&t.MBID, &t.Album, &t.AlbumYear, &creditsJSON,
 		); err != nil {
 			return nil, err
 		}
@@ -106,6 +107,12 @@ func (d *DB) LibraryTitles(ctx context.Context, libraryID int64) ([]catalog.Titl
 				t.BackdropURL = tmdb.ImageBaseURL + "w1280" + t.BackdropPath
 			}
 			t.Cast = castMembers(castJSON)
+			if len(creditsJSON) > 0 {
+				var c catalog.TitleCredits
+				if json.Unmarshal(creditsJSON, &c) == nil && c.Song != "" {
+					t.Credits = &c
+				}
+			}
 			if len(t.Directors) == 0 {
 				t.Directors = nil
 			}

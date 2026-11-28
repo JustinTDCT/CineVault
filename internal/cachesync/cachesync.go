@@ -357,7 +357,7 @@ func (s *Service) check(ctx context.Context, res *CheckResult) error {
 			}
 			continue
 		}
-		sync = append(sync, cacheapi.SyncItem{Kind: it.Key.Kind, TMDbID: it.Key.TMDbID, HaveVersion: it.Version})
+		sync = append(sync, cacheapi.SyncItem{Kind: it.Key.Kind, TMDbID: it.Key.TMDbID, MBID: it.Key.MBID, HaveVersion: it.Version})
 	}
 
 	// Everything else in one batched call.
@@ -499,7 +499,7 @@ func (s *Service) Share(ctx context.Context) (ShareResult, error) {
 	var out []cacheapi.ContributeItem
 	hashes := map[int64]string{}
 	for _, it := range items {
-		ci := cacheapi.ContributeItem{Kind: it.Key.Kind, TMDbID: it.Key.TMDbID, Editions: it.Owned}
+		ci := cacheapi.ContributeItem{Kind: it.Key.Kind, TMDbID: it.Key.TMDbID, MBID: it.Key.MBID, Editions: it.Owned}
 		b, _ := json.Marshal(ci)
 		sum := sha256.Sum256(b)
 		h := hex.EncodeToString(sum[:8])

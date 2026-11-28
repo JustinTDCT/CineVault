@@ -113,6 +113,13 @@ type Title struct {
 	AddedAt time.Time `json:"added_at"`
 	// Progress is where playback or reading stopped; nil when never started.
 	Progress *TitleProgress `json:"progress,omitempty"`
+	// Music videos: the MusicBrainz recording matched, its album and year,
+	// and the CineVault Cache's credits (subscribers only), shown MTV-style
+	// as the video plays.
+	MBID      string        `json:"mbid,omitempty"`
+	Album     string        `json:"album,omitempty"`
+	AlbumYear int           `json:"album_year,omitempty"`
+	Credits   *TitleCredits `json:"credits,omitempty"`
 
 	// For TV shows: how many seasons and episodes have files.
 	SeasonCount  int `json:"season_count,omitempty"`
@@ -205,6 +212,18 @@ type Chapter struct {
 	Start float64 `json:"start"` // seconds
 	End   float64 `json:"end"`
 	Name  string  `json:"name"`
+}
+
+// TitleCredits are a music video's on-screen credits from the CineVault
+// Cache: artist, "song", album (year), label and director.
+type TitleCredits struct {
+	Song       string `json:"song"`
+	Artist     string `json:"artist"`
+	Album      string `json:"album,omitempty"`
+	Year       int    `json:"year,omitempty"`
+	Label      string `json:"label,omitempty"`
+	Director   string `json:"director,omitempty"`
+	Confidence string `json:"confidence,omitempty"`
 }
 
 // CastMember is one actor and their role.

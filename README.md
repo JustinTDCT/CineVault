@@ -15,6 +15,7 @@ This is a fresh start (November 2026). Earlier work is preserved on these branch
 - Music, music videos, audiobooks (chapters, resume, speed), ebooks (EPUB/MOBI/AZW3 reader, PDF in the browser) and comics (CBZ natively; CBR/CB7/CBT need `libarchive-tools`; comics haven't been tested on the server yet)
 
 **Built 27 Nov 2026, not yet tested on the server:**
+- **Music videos with MTV-style credits** (cache decision 11). Each scan matches music videos to MusicBrainz (no key needed, one request a second): the recording, its album and year, shown on the title page. Matched videos are looked up, synced and shared with the CineVault Cache like movies, keyed by the MusicBrainz recording. On subscribed servers, the cache's credits (artist, "song", album (year), label and director) fade in at the bottom right about 5 seconds into the video and again 15 seconds before the end, for 8 seconds each. Without a subscription there's no overlay, but music videos are still shared when sharing is on. Migration 0011
 - Settings in groups down the side, as in Plex and Jellyfin: General (version, database, TMDb), Libraries (scan, add), Playback (converting, FFmpeg, GPUs) and CineVault Cache. The Cache group has a master on/off switch (off: the server never contacts the cache) and a token field: the token is checked with the cache, saved in the database, and never shown again (only its last 4 characters)
 - Movies and episodes save where you stopped and offer **Resume** (or Start over); a finished episode resumes at the next one
 - Home: a spotlight that cycles through up to 5 titles (several editions, a cut the cache knows, new or half-watched first; the order changes daily), **Continue** across every kind of title, and **Recently added**
@@ -64,7 +65,7 @@ npm run dev    # serves on port 5173 and forwards /api to the Go server on 8456
 | `GET /api/libraries` | All libraries |
 | `POST /api/libraries` | Add a library: `{"name": "Movies", "media_type": "movie", "paths": ["/media/movies"]}` |
 | `POST /api/libraries/{id}/scan` | Scan a library now, then match new titles to TMDb, and return a summary. Movie and TV libraries. |
-| `POST /api/libraries/{id}/match` | Match unmatched titles to TMDb without scanning. Titles that failed with an error are retried; ones TMDb didn't find are not. |
+| `POST /api/libraries/{id}/match` (also music video libraries, against MusicBrainz) | Match unmatched titles to TMDb without scanning. Titles that failed with an error are retried; ones TMDb didn't find are not. |
 | `GET /api/libraries/{id}/titles` | Titles with their editions and versions. Shows list their season and episode counts instead of files. |
 | `GET /api/titles/{id}/tracks` | An album's songs (or an audiobook's parts) and their files per edition, with chapter marks |
 | `GET /api/titles/{id}/progress`, `PUT …` | Where playback of a title stopped (movies, episodes and audiobooks resume from it): `{"version_id": 5, "position_seconds": 812.4}`. Library titles also carry it as `progress`, with the file's length, for Home's Continue row |

@@ -112,7 +112,11 @@ export function App() {
             <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer">
               TMDb
             </a>
-            . This product uses the TMDB API but is not endorsed or certified by TMDB.
+            . This product uses the TMDB API but is not endorsed or certified by TMDB. Music video information from{" "}
+            <a href="https://musicbrainz.org" target="_blank" rel="noreferrer">
+              MusicBrainz
+            </a>
+            .
           </footer>
         </main>
       </div>

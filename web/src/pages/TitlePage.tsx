@@ -96,7 +96,12 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
         ? [title.year, title.track_count ? `${title.track_count} ${title.track_count === 1 ? "issue" : "issues"}` : ""]
         : isAlbum || isBook || isEbook
           ? [title.artist, title.year, title.genres.filter((g) => !/^(audio ?books?|speech|spoken word)$/i.test(g)).join(" · ")]
-          : [title.artist, title.year, runtime ? formatRuntime(runtime) : "", title.genres.join(" · ")]
+          : [
+              title.artist,
+              title.media_type === "musicvideo" && title.album ? `${title.album}${title.album_year ? ` (${title.album_year})` : ""}` : title.year,
+              runtime ? formatRuntime(runtime) : "",
+              title.genres.join(" · "),
+            ]
   ).filter(Boolean);
   const owned = ownedEditions(title);
   const best = edition && !isUnowned(edition) ? edition.versions.find((v) => !v.missing) : undefined;
@@ -104,7 +109,8 @@ export function TitlePage({ libraryId, titleId }: { libraryId: number; titleId: 
   const eyebrow = title.collection_name || (isMovie && owned.length > 1 ? `${owned.length} editions in your library` : "");
   const resume = isMovie ? resumeFor(title, progress) : undefined;
   const resumeHere = resume && edition && resume.edition.id === edition.id ? resume : undefined;
-  const play = (t: PlayTarget) => setPlaying({ titleId: title.id, ...t });
+  const play = (t: PlayTarget) =>
+    setPlaying({ titleId: title.id, credits: title.media_type === "musicvideo" ? title.credits : undefined, ...t });
   const closePlayer = () => {
     setPlaying(null);
     // Pick up the position the player just saved.

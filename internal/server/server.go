@@ -24,6 +24,8 @@ type CacheService interface {
 	LoadSettings(ctx context.Context) (cachesync.Settings, error)
 	SaveSettings(ctx context.Context, st cachesync.Settings) error
 	SetToken(ctx context.Context, token string) (string, error)
+	// Subscribed reports whether the cache is on and a token is set.
+	Subscribed() bool
 	ClearToken(ctx context.Context) error
 	Check(ctx context.Context) (cachesync.CheckResult, error)
 	Report(ctx context.Context, key cacheapi.Key, r cacheapi.Report) (cacheapi.ReportResponse, error)
@@ -54,6 +56,9 @@ type Options struct {
 	Scan func(ctx context.Context, lib catalog.Library) (scan.Result, error)
 	// Match matches a library's titles to TMDb; nil when no TMDb token is set.
 	Match func(ctx context.Context, libraryID int64) (match.Result, error)
+	// MatchMusicVideos matches a music video library to MusicBrainz; nil
+	// turns it off.
+	MatchMusicVideos func(ctx context.Context, libraryID int64) (match.Result, error)
 	// IsDir checks that a library folder exists; defaults to os.Stat.
 	IsDir func(path string) bool
 	// UI serves the web app for every other GET request; nil for none.

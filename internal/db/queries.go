@@ -302,7 +302,8 @@ const (
 		                  WHERE xe.title_id = t.id AND x.missing_since IS NULL), t.created_at),
 		       COALESCE(pp.version_id, 0), COALESCE(pp.position_seconds, 0)::float8, COALESCE(pp.locator, ''),
 		       COALESCE(pp.updated_at, 'epoch'), COALESCE(pv.duration_seconds, 0)::float8, COALESCE(pv.page_count, 0),
-		       COALESCE(pe.season_number, 0), COALESCE(pe.episode_number, 0), COALESCE(pe.name, '')
+		       COALESCE(pe.season_number, 0), COALESCE(pe.episode_number, 0), COALESCE(pe.name, ''),
+		       COALESCE(t.mb_recording_id, ''), COALESCE(t.album, ''), COALESCE(t.album_year, 0), t.cache_credits
 		FROM titles t
 		JOIN editions e ON e.title_id = t.id
 		JOIN edition_types et ON et.id = e.edition_type_id
