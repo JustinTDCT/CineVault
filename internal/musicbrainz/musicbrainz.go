@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,9 @@ type Client struct {
 	UserAgent string
 	HTTP      *http.Client
 	Every     time.Duration // default 1.1 s
+	// Backoff is the first wait after a 503, MusicBrainz's "slow down"; it
+	// doubles on each retry. Default 2 s.
+	Backoff time.Duration
 
 	mu   sync.Mutex
 	next time.Time
@@ -167,18 +171,46 @@ func (c *Client) wait(ctx context.Context) error {
 	return nil
 }
 
+// retries is how many times a 503 is retried before the video is marked
+// "error" (the next scan or Match tries it again).
+const retries = 3
+
 func (c *Client) get(ctx context.Context, path string, q url.Values, out any) error {
-	if err := c.wait(ctx); err != nil {
-		return err
-	}
 	base := c.BaseURL
 	if base == "" {
 		base = "https://musicbrainz.org/ws/2"
 	}
 	q.Set("fmt", "json")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+path+"?"+q.Encode(), nil)
+	u := strings.TrimRight(base, "/") + path + "?" + q.Encode()
+	backoff := c.Backoff
+	if backoff == 0 {
+		backoff = 2 * time.Second
+	}
+	for attempt := 0; ; attempt++ {
+		if err := c.wait(ctx); err != nil {
+			return err
+		}
+		wait, err := c.try(ctx, u, out)
+		if wait == 0 || attempt == retries {
+			return err
+		}
+		if wait < 0 {
+			wait = backoff << attempt
+		}
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+// try makes one request. A 503 returns how long to wait before retrying:
+// MusicBrainz's Retry-After (at most 30 s), or -1 for the caller's backoff.
+func (c *Client) try(ctx context.Context, u string, out any) (time.Duration, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	req.Header.Set("User-Agent", c.UserAgent)
 	req.Header.Set("Accept", "application/json")
@@ -188,11 +220,26 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
-		return fmt.Errorf("MusicBrainz: %w", err)
+		return 0, fmt.Errorf("MusicBrainz: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("MusicBrainz answered %d", resp.StatusCode)
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		return retryAfter(resp.Header.Get("Retry-After")), fmt.Errorf("MusicBrainz answered 503 (rate limited)")
 	}
-	return json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(out)
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("MusicBrainz answered %d", resp.StatusCode)
+	}
+	return 0, json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(out)
+}
+
+// retryAfter reads a Retry-After header in seconds; -1 when absent or odd.
+func retryAfter(h string) time.Duration {
+	n, err := strconv.Atoi(strings.TrimSpace(h))
+	if err != nil || n <= 0 {
+		return -1
+	}
+	if n > 30 {
+		n = 30
+	}
+	return time.Duration(n) * time.Second
 }

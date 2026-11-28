@@ -47,3 +47,28 @@ func TestLimiterSpacesRequests(t *testing.T) {
 		t.Errorf("three requests in %v", d)
 	}
 }
+
+func TestRetries503(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls <= 2 {
+			w.Header().Set("Retry-After", "nonsense")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Write([]byte(`{"recordings":[]}`))
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, UserAgent: "t", Every: time.Millisecond, Backoff: time.Millisecond}
+	if _, err := c.SearchRecordings(context.Background(), "a", "b"); err != nil || calls != 3 {
+		t.Fatalf("calls %d err %v", calls, err)
+	}
+	calls = -100 // always 503
+	if _, err := c.SearchRecordings(context.Background(), "a", "b"); err == nil || calls != -100+retries+1 {
+		t.Fatalf("calls %d err %v", calls+100, err)
+	}
+	if retryAfter("5") != 5*time.Second || retryAfter("600") != 30*time.Second || retryAfter("") != -1 {
+		t.Error("retryAfter")
+	}
+}
