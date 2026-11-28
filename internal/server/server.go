@@ -59,6 +59,8 @@ type Options struct {
 	// MatchMusicVideos matches a music video library to MusicBrainz; nil
 	// turns it off.
 	MatchMusicVideos func(ctx context.Context, libraryID int64) (match.Result, error)
+	// RematchMusicVideos matches every music video in a library again.
+	RematchMusicVideos func(ctx context.Context, libraryID int64) (match.Result, error)
 	// IsDir checks that a library folder exists; defaults to os.Stat.
 	IsDir func(path string) bool
 	// UI serves the web app for every other GET request; nil for none.
@@ -118,6 +120,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/libraries/{id}/titles", s.libraryTitles)
 	mux.HandleFunc("POST /api/libraries/{id}/scan", s.scanLibrary)
 	mux.HandleFunc("POST /api/libraries/{id}/match", s.matchLibrary)
+	mux.HandleFunc("POST /api/libraries/{id}/rematch", s.rematchLibrary)
 	mux.HandleFunc("GET /api/titles/{id}/episodes", s.titleEpisodes)
 	mux.HandleFunc("POST /api/playback", s.startPlayback)
 	mux.HandleFunc("GET /api/playback/{session}/{file}", s.playbackFile)

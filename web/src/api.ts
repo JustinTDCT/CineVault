@@ -253,7 +253,16 @@ export interface ScanResult {
   unchanged: number;
   missing: number;
   errors: { path: string; error: string }[];
-  match: { matched: number; not_found: number; errors: number; episodes?: number; messages: string[]; error?: string } | null;
+  match: MatchResult | null;
+}
+
+export interface MatchResult {
+  matched: number;
+  not_found: number;
+  errors: number;
+  episodes?: number;
+  messages: string[];
+  error?: string;
 }
 
 export interface ClientCaps {
@@ -335,6 +344,7 @@ export const api = {
     request<{ report_id: string }>("POST", `/api/titles/${titleId}/report`, { edition, field, message }),
   episodes: (titleId: number) => request<Season[]>("GET", `/api/titles/${titleId}/episodes`),
   scan: (libraryId: number) => request<ScanResult>("POST", `/api/libraries/${libraryId}/scan`),
+  rematch: (libraryId: number) => request<MatchResult>("POST", `/api/libraries/${libraryId}/rematch`),
   play: (versionId: number, caps: ClientCaps) => request<PlayResponse>("POST", "/api/playback", { version_id: versionId, caps }),
   /** Ends a streaming session; keepalive lets it finish while the page closes. */
   stopPlayback: (sessionId: string) => {

@@ -263,6 +263,36 @@ func (s *Server) matchLibrary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.runMatch(r, lib))
 }
 
+// rematchLibrary matches every music video in a library again, matched or
+// not. Movies and shows are matched once; a wrong TMDb match is fixed by hand.
+func (s *Server) rematchLibrary(w http.ResponseWriter, r *http.Request) {
+	lib, ok := s.library(w, r)
+	if !ok {
+		return
+	}
+	if lib.MediaType != "musicvideo" || s.opt.RematchMusicVideos == nil {
+		writeError(w, http.StatusBadRequest, "Only music video libraries can be matched again")
+		return
+	}
+	if !s.scanning.TryLock() {
+		writeError(w, http.StatusConflict, "A scan is already running; try again when it finishes")
+		return
+	}
+	defer s.scanning.Unlock()
+	res, err := s.opt.RematchMusicVideos(r.Context(), lib.ID)
+	out := &matchSummary{Result: res}
+	if out.Messages == nil {
+		out.Messages = []string{}
+	}
+	if err != nil {
+		out.Error = err.Error()
+		s.opt.Log.Error("rematch failed", "library", lib.Name, "error", err)
+	} else {
+		s.opt.Log.Info("rematch finished", "library", lib.Name, "matched", res.Matched, "not_found", res.NotFound, "errors", res.Errors)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // usesTMDb reports whether a library's titles are matched to TMDb.
 func usesTMDb(mediaType string) bool { return mediaType == "movie" || mediaType == "tv" }
 

@@ -72,3 +72,42 @@ func TestRetries503(t *testing.T) {
 		t.Error("retryAfter")
 	}
 }
+
+func TestAlbumRule(t *testing.T) {
+	// An EP counts like an album, and an exact date beats the same year given
+	// alone ("Jar of Flies" before the "Jar of Flies / Sap" set).
+	r := Recording{Artist: "Alice in Chains", Releases: []Release{
+		{Title: "Jar of Flies / Sap", Status: "Official", PrimaryType: "Album", Date: "1994", Artist: "Alice in Chains"},
+		{Title: "Jar of Flies", Status: "Official", PrimaryType: "EP", GroupDate: "1994-01-25", Artist: "Alice in Chains"},
+		{Title: "No Excuses", Status: "Official", PrimaryType: "Single", GroupDate: "1994-01-10", Artist: "Alice in Chains"},
+		{Title: "Greatest Hits", Status: "Official", PrimaryType: "Album", SecondaryTypes: []string{"Compilation"}, Date: "1993", Artist: "Alice in Chains"},
+		{Title: "Grunge Hits", Status: "Official", PrimaryType: "Album", Date: "1993-05-01", Artist: "Various Artists"},
+	}}
+	if a, _ := r.Album(); a.Title != "Jar of Flies" {
+		t.Errorf("album %q", a.Title)
+	}
+	for in, want := range map[string]string{"1994": "1994-99-99", "1994-01": "1994-01-99", "1994-01-25": "1994-01-25", "": "9999"} {
+		if got := AlbumDate(Release{Date: in}); got != want {
+			t.Errorf("%q: %q", in, got)
+		}
+	}
+	if !SameArtist("Queen & David Bowie", "queen") || SameArtist("Various Artists", "Queen") || SameArtist("", "") {
+		t.Error("SameArtist")
+	}
+}
+
+func TestSearchReadsReleaseArtists(t *testing.T) {
+	var limit string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		limit = r.URL.Query().Get("limit")
+		w.Write([]byte(`{"recordings":[{"id":"x","title":"Beautiful Life","score":100,"artist-credit":[{"name":"Ace of Base"}],
+			"releases":[{"title":"Dance Machine 8","status":"Official","date":"1996-03","artist-credit":[{"name":"Various Artists"}],
+			  "release-group":{"primary-type":"Album","secondary-types":["Compilation","DJ-mix"]}}]}]}`))
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, UserAgent: "t", Every: time.Millisecond}
+	recs, err := c.SearchRecordings(context.Background(), "Ace of Base", "Beautiful Life")
+	if err != nil || len(recs) != 1 || recs[0].Releases[0].Artist != "Various Artists" || limit != "100" {
+		t.Fatalf("%+v %v limit %s", recs, err, limit)
+	}
+}

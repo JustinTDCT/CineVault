@@ -56,7 +56,7 @@ type fakeMV struct {
 	failures map[int64]string
 }
 
-func (f *fakeMV) MusicVideosToMatch(context.Context, int64) ([]MusicVideo, error) {
+func (f *fakeMV) MusicVideosToMatch(context.Context, int64, bool) ([]MusicVideo, error) {
 	return f.videos, nil
 }
 func (f *fakeMV) SaveMusicVideoMatch(_ context.Context, id int64, m MusicVideoMatch) error {
@@ -93,5 +93,31 @@ func TestMusicVideoMatcher(t *testing.T) {
 	}
 	if st.failures[2] != "not_found" || st.failures[3] != "error" || st.failures[4] != "not_found" {
 		t.Errorf("failures %v", st.failures)
+	}
+}
+
+// From MusicBrainz's answer for Ace of Base "Beautiful Life" (2026-11-28):
+// every compilation's copy is its own recording, all scoring 100, and the
+// album recording isn't first.
+func TestPickRecordingAmongCompilations(t *testing.T) {
+	va := func(id, title, date string, secondary ...string) musicbrainz.Recording {
+		return rec(id, "Beautiful Life", "Ace of Base", 100, musicbrainz.Release{Title: title, Status: "Official",
+			PrimaryType: "Album", SecondaryTypes: secondary, Date: date, Artist: "Various Artists"})
+	}
+	recs := []musicbrainz.Recording{
+		rec("top", "Beautiful Life", "Ace of Base", 100, musicbrainz.Release{Title: "Top Surprise 3", PrimaryType: "Album", Artist: "Various Artists"}),
+		va("dm8", "Dance Machine 8", "1996-03", "Compilation", "DJ-mix"),
+		va("postens", "Postens landeplager: Brennmanetsommer 2", "1996"), // not marked a compilation
+		va("roxbury", "A Night at the Roxbury", "1998", "Compilation", "Soundtrack"),
+		rec("bridge", "Beautiful Life", "Ace of Base", 100,
+			musicbrainz.Release{Title: "The Bridge", Status: "Official", PrimaryType: "Album", Date: "1995", Artist: "Ace of Base"},
+			musicbrainz.Release{Title: "The Bridge", Status: "Official", PrimaryType: "Album", Artist: "Ace of Base"}),
+	}
+	got, ok := PickRecording(MusicVideo{Artist: "Ace of Base", Song: "Beautiful Life"}, recs)
+	if !ok || got.ID != "bridge" {
+		t.Fatalf("picked %+v", got)
+	}
+	if a, _ := got.Album(); a.Title != "The Bridge" {
+		t.Errorf("album %+v", a)
 	}
 }

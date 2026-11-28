@@ -50,6 +50,7 @@ type Release struct {
 	PrimaryType    string // Album, Single, EP…
 	SecondaryTypes []string
 	GroupDate      string // the release group's first release date
+	Artist         string // the release's artist credit ("Various Artists"); empty when not given
 }
 
 // SearchRecordings looks a song up by title and artist.
@@ -72,6 +73,10 @@ func (c *Client) SearchRecordings(ctx context.Context, artist, title string) ([]
 				Title        string `json:"title"`
 				Status       string `json:"status"`
 				Date         string `json:"date"`
+				ArtistCredit []struct {
+					Name       string `json:"name"`
+					JoinPhrase string `json:"joinphrase"`
+				} `json:"artist-credit"`
 				ReleaseGroup struct {
 					PrimaryType      string   `json:"primary-type"`
 					SecondaryTypes   []string `json:"secondary-types"`
@@ -80,7 +85,10 @@ func (c *Client) SearchRecordings(ctx context.Context, artist, title string) ([]
 			} `json:"releases"`
 		} `json:"recordings"`
 	}
-	if err := c.get(ctx, "/recording", url.Values{"query": {q}, "limit": {"15"}}, &out); err != nil {
+	// Every compilation's copy of a song can be its own recording, all
+	// scoring 100, so ask for as many as MusicBrainz gives: the album
+	// recording has to be among them.
+	if err := c.get(ctx, "/recording", url.Values{"query": {q}, "limit": {"100"}}, &out); err != nil {
 		return nil, err
 	}
 	recs := make([]Recording, 0, len(out.Recordings))
@@ -92,55 +100,86 @@ func (c *Client) SearchRecordings(ctx context.Context, artist, title string) ([]
 		}
 		rec.Artist = strings.TrimSpace(b.String())
 		for _, rel := range r.Releases {
+			var ra strings.Builder
+			for _, a := range rel.ArtistCredit {
+				ra.WriteString(a.Name + a.JoinPhrase)
+			}
 			rec.Releases = append(rec.Releases, Release{Title: rel.Title, Status: rel.Status, Date: rel.Date,
 				PrimaryType: rel.ReleaseGroup.PrimaryType, SecondaryTypes: rel.ReleaseGroup.SecondaryTypes,
-				GroupDate: rel.ReleaseGroup.FirstReleaseDate})
+				GroupDate: rel.ReleaseGroup.FirstReleaseDate, Artist: strings.TrimSpace(ra.String())})
 		}
 		recs = append(recs, rec)
 	}
 	return recs, nil
 }
 
-// Album picks the release to name for a recording: an official studio album
-// first, then a single or EP, then anything; the earliest of the best kind.
-// The same rule as the CineVault Cache's.
+// Album picks the release to name for a recording, by AlbumRank then
+// AlbumDate: the artist's own official album or EP first, then their single,
+// then their compilations; anything by other artists ("Various Artists") or
+// unofficial last. The same rule as the CineVault Cache's.
 func (r Recording) Album() (Release, bool) {
 	if len(r.Releases) == 0 {
 		return Release{}, false
 	}
-	rank := func(x Release) int {
-		n := 0
-		if x.Status != "Official" {
-			n += 10
-		}
-		switch x.PrimaryType {
-		case "Album":
-			if len(x.SecondaryTypes) > 0 {
-				n += 2
-			}
-		case "Single", "EP":
-			n++
-		default:
-			n += 3
-		}
-		return n
-	}
-	date := func(x Release) string {
-		for _, d := range []string{x.GroupDate, x.Date} {
-			if d != "" {
-				return d
-			}
-		}
-		return "9999"
-	}
 	rels := append([]Release(nil), r.Releases...)
 	sort.SliceStable(rels, func(i, j int) bool {
-		if a, b := rank(rels[i]), rank(rels[j]); a != b {
+		if a, b := AlbumRank(rels[i], r.Artist), AlbumRank(rels[j], r.Artist); a != b {
 			return a < b
 		}
-		return date(rels[i]) < date(rels[j])
+		return AlbumDate(rels[i]) < AlbumDate(rels[j])
 	})
 	return rels[0], true
+}
+
+// AlbumRank orders releases for naming a song's album; lower is better.
+func AlbumRank(rel Release, artist string) int {
+	n := 0
+	if rel.Artist != "" && !SameArtist(rel.Artist, artist) {
+		n += 20
+	}
+	if rel.Status != "Official" {
+		n += 10
+	}
+	switch rel.PrimaryType {
+	case "Album", "EP":
+		if len(rel.SecondaryTypes) > 0 { // compilation, live, soundtrack…
+			n += 2
+		}
+	case "Single":
+		n++
+	default:
+		n += 3
+	}
+	return n
+}
+
+// AlbumDate is a release's date for sorting. A date given only as a year
+// or month sorts after the exact dates within it ("1994" after
+// "1994-01-25"), and a missing date sorts last.
+func AlbumDate(rel Release) string {
+	d := rel.GroupDate
+	if d == "" {
+		d = rel.Date
+	}
+	switch len(d) {
+	case 4:
+		return d + "-99-99"
+	case 7:
+		return d + "-99"
+	case 10:
+		return d
+	}
+	return "9999"
+}
+
+// SameArtist reports whether two artist credits name the same act, allowing
+// for joint credits ("Queen" and "Queen & David Bowie").
+func SameArtist(a, b string) bool {
+	a, b = strings.ToLower(strings.TrimSpace(a)), strings.ToLower(strings.TrimSpace(b))
+	if a == "" || b == "" {
+		return false
+	}
+	return strings.Contains(a, b) || strings.Contains(b, a)
 }
 
 // escape quotes a value for MusicBrainz's Lucene search syntax.

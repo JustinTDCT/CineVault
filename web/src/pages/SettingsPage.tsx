@@ -3,7 +3,7 @@ import { api, type CacheSettings, type CacheStatus, type Health, type Library, t
 import { formatDate, itemNoun, timeAgo } from "../format";
 import { Icon } from "../components/Icon";
 import { linkTo, type SettingsSection } from "../router";
-import { scanSummary } from "./LibraryPage";
+import { rematchSummary, scanSummary } from "./LibraryPage";
 import { KINDS } from "./SetupPage";
 
 /** The groups of Settings, listed down the side as in Plex and Jellyfin. */
@@ -130,15 +130,27 @@ function StatusChip({ ok, okText, badText }: { ok: boolean; okText: string; badT
 }
 
 function LibrarySettings({ libraries }: { libraries: Library[] | null }) {
-  const [busy, setBusy] = useState<number | null>(null);
+  const [busy, setBusy] = useState<{ id: number; what: "scan" | "rematch" } | null>(null);
   const [results, setResults] = useState<Record<number, { text: string; problem?: boolean }>>({});
   if (!libraries) return <p className="cv-caption">Loading…</p>;
 
+  async function rematch(lib: Library) {
+    setBusy({ id: lib.id, what: "rematch" });
+    try {
+      const r = await api.rematch(lib.id);
+      setResults((x) => ({ ...x, [lib.id]: { text: rematchSummary(r), problem: !!r.error } }));
+    } catch (e) {
+      setResults((x) => ({ ...x, [lib.id]: { text: (e as Error).message, problem: true } }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function scan(lib: Library) {
-    setBusy(lib.id);
+    setBusy({ id: lib.id, what: "scan" });
     try {
       const r: ScanResult = await api.scan(lib.id);
-      setResults((x) => ({ ...x, [lib.id]: { text: scanSummary(r) } }));
+      setResults((x) => ({ ...x, [lib.id]: { text: scanSummary(r, lib.media_type) } }));
     } catch (e) {
       setResults((x) => ({ ...x, [lib.id]: { text: (e as Error).message, problem: true } }));
     } finally {
@@ -169,8 +181,18 @@ function LibrarySettings({ libraries }: { libraries: Library[] | null }) {
             <a className="cv-btn cv-btn--small" {...linkTo(`/libraries/${lib.id}`)}>
               Open
             </a>
+            {lib.media_type === "musicvideo" ? (
+              <button
+                className="cv-btn cv-btn--small"
+                onClick={() => rematch(lib)}
+                disabled={busy !== null}
+                title="Match every video to MusicBrainz again, for example after a wrong album"
+              >
+                {busy?.id === lib.id && busy.what === "rematch" ? "Matching…" : "Match again"}
+              </button>
+            ) : null}
             <button className="cv-btn cv-btn--small" onClick={() => scan(lib)} disabled={busy !== null}>
-              {busy === lib.id ? "Scanning…" : "Scan now"}
+              {busy?.id === lib.id && busy.what === "scan" ? "Scanning…" : "Scan now"}
             </button>
           </Row>
         );

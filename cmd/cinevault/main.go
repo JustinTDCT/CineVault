@@ -151,8 +151,7 @@ func run(log *slog.Logger) error {
 	// the CineVault Cache its key for them (cache decision 11).
 	mvMatcher := match.MusicVideoMatcher{Store: database, Source: &musicbrainz.Client{
 		UserAgent: "CineVault/" + version + " ( https://github.com/JustinTDCT/CineVault )"}}
-	matchMusicVideos := func(ctx context.Context, libraryID int64) (match.Result, error) {
-		res, err := mvMatcher.MatchLibrary(ctx, libraryID)
+	lookupAfter := func(res match.Result, err error) (match.Result, error) {
 		if err == nil && res.Matched > 0 {
 			go func() {
 				c, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -162,19 +161,26 @@ func run(log *slog.Logger) error {
 		}
 		return res, err
 	}
+	matchMusicVideos := func(ctx context.Context, libraryID int64) (match.Result, error) {
+		return lookupAfter(mvMatcher.MatchLibrary(ctx, libraryID))
+	}
+	rematchMusicVideos := func(ctx context.Context, libraryID int64) (match.Result, error) {
+		return lookupAfter(mvMatcher.RematchLibrary(ctx, libraryID))
+	}
 
 	api := server.New(server.Options{
-		Version:          version,
-		DBAddr:           dbAddr,
-		Caps:             caps,
-		SchemaVersion:    mig.Current,
-		PingDB:           database.Ping,
-		EditionTypes:     database.EditionTypes,
-		Libraries:        database,
-		Scan:             scanner.Scan,
-		Match:            matchFn,
-		MatchMusicVideos: matchMusicVideos,
-		UI:               webui.Handler(),
+		Version:            version,
+		DBAddr:             dbAddr,
+		Caps:               caps,
+		SchemaVersion:      mig.Current,
+		PingDB:             database.Ping,
+		EditionTypes:       database.EditionTypes,
+		Libraries:          database,
+		Scan:               scanner.Scan,
+		Match:              matchFn,
+		MatchMusicVideos:   matchMusicVideos,
+		RematchMusicVideos: rematchMusicVideos,
+		UI:                 webui.Handler(),
 		Playback: &server.Playback{
 			Versions: database, Streamer: streamer,
 			Encoder: enc, EncoderOK: encOK, Note: note, MaxHeight: 1080,

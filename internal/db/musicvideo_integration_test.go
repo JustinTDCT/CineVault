@@ -15,6 +15,8 @@ import (
 
 const takeOnMe = "4a1b6c7e-2d3f-4e5a-9b8c-7d6e5f4a3b2c"
 
+const otherRecording = "0b1c2d3e-4f50-4617-8293-a4b5c6d7e8f9"
+
 type stubMB struct{}
 
 func (stubMB) SearchRecordings(context.Context, string, string) ([]musicbrainz.Recording, error) {
@@ -74,6 +76,27 @@ func TestIntegrationMusicVideoCredits(t *testing.T) {
 	}
 	if c := ti.Credits; c == nil || c.Director != "Steve Barron" || c.Label != "Warner Bros." || c.Year != 1985 || c.Artist != "a-ha" {
 		t.Errorf("credits %+v", ti.Credits)
+	}
+
+	// Re-matching to the same recording keeps the cache state.
+	if res, err := (match.MusicVideoMatcher{Store: d, Source: stubMB{}}).RematchLibrary(ctx, lib.ID); err != nil || res.Matched != 1 {
+		t.Fatalf("rematch %+v %v", res, err)
+	}
+	if titles, _ := d.LibraryTitles(ctx, lib.ID); titles[0].CacheState != "cached" || titles[0].Credits == nil {
+		t.Errorf("same recording reset the cache: %+v", titles[0])
+	}
+	// A different recording starts over: no credits, looked up again.
+	if err := d.SaveMusicVideoMatch(ctx, it.TitleID, match.MusicVideoMatch{RecordingID: otherRecording, Song: "Take On Me", Artist: "a-ha"}); err != nil {
+		t.Fatal(err)
+	}
+	if titles, _ := d.LibraryTitles(ctx, lib.ID); titles[0].CacheState != "none" || titles[0].Credits != nil || titles[0].MBID != otherRecording {
+		t.Errorf("new recording kept the old cache state: %+v", titles[0])
+	}
+	if err := d.SaveMusicVideoMatch(ctx, it.TitleID, match.MusicVideoMatch{RecordingID: takeOnMe, Album: "Hunting High and Low", Year: 1985}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.ApplyRecord(ctx, it.TitleID, rec); err != nil {
+		t.Fatal(err)
 	}
 
 	// A withdrawn record takes the credits away.

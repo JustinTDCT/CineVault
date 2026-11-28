@@ -30,8 +30,8 @@ type MusicVideoMatch struct {
 // MusicVideoStore is what the music video matcher needs from the database.
 type MusicVideoStore interface {
 	// MusicVideosToMatch returns a library's music videos that are unmatched
-	// or failed with an error.
-	MusicVideosToMatch(ctx context.Context, libraryID int64) ([]MusicVideo, error)
+	// or failed with an error; with all, every music video in it.
+	MusicVideosToMatch(ctx context.Context, libraryID int64, all bool) ([]MusicVideo, error)
 	SaveMusicVideoMatch(ctx context.Context, titleID int64, m MusicVideoMatch) error
 	SaveMatchFailure(ctx context.Context, titleID int64, status, message string) error
 }
@@ -53,8 +53,19 @@ const minScore = 80
 
 // MatchLibrary matches every unmatched music video in the library.
 func (m MusicVideoMatcher) MatchLibrary(ctx context.Context, libraryID int64) (Result, error) {
+	return m.match(ctx, libraryID, false)
+}
+
+// RematchLibrary matches every music video in the library again, matched
+// or not, for example after the album rule changed. A video whose recording
+// changes is looked up in the cache afresh.
+func (m MusicVideoMatcher) RematchLibrary(ctx context.Context, libraryID int64) (Result, error) {
+	return m.match(ctx, libraryID, true)
+}
+
+func (m MusicVideoMatcher) match(ctx context.Context, libraryID int64, all bool) (Result, error) {
 	res := Result{Messages: []string{}}
-	videos, err := m.Store.MusicVideosToMatch(ctx, libraryID)
+	videos, err := m.Store.MusicVideosToMatch(ctx, libraryID, all)
 	if err != nil {
 		return res, fmt.Errorf("load music videos to match: %w", err)
 	}
@@ -114,8 +125,7 @@ func (m MusicVideoMatcher) MatchLibrary(ctx context.Context, libraryID int64) (R
 // PickRecording chooses the recording for a music video: a search result
 // scoring at least minScore whose title is the song and whose artist credit
 // names the artist. Without an artist on both sides there is no match.
-// Among those, one on an official studio album wins (it
-// gives the album to show), then the higher score, then the earlier release.
+// Among those, the one whose album is best (see musicbrainz.Album) wins.
 func PickRecording(v MusicVideo, recs []musicbrainz.Recording) (musicbrainz.Recording, bool) {
 	song, artist := Normalize(v.Song), Normalize(v.Artist)
 	if song == "" || artist == "" {
@@ -135,35 +145,33 @@ func PickRecording(v MusicVideo, recs []musicbrainz.Recording) (musicbrainz.Reco
 	if len(ok) == 0 {
 		return musicbrainz.Recording{}, false
 	}
-	albumRank := func(r musicbrainz.Recording) int {
-		a, has := r.Album()
-		switch {
-		case !has:
-			return 3
-		case a.Status == "Official" && a.PrimaryType == "Album" && len(a.SecondaryTypes) == 0:
-			return 0
-		case a.Status == "Official":
-			return 1
-		}
-		return 2
+	// Every compilation's copy of a song can be its own recording, so the
+	// recordings compete by their best album: the artist's own studio album
+	// beats a single beats a compilation, then the earliest, then the score.
+	type cand struct {
+		rec  musicbrainz.Recording
+		rank int
+		date string
 	}
-	first := func(r musicbrainz.Recording) string {
-		if r.FirstReleaseDate == "" {
-			return "9999"
+	cs := make([]cand, 0, len(ok))
+	for _, r := range ok {
+		c := cand{rec: r, rank: 99, date: "9999"}
+		if a, has := r.Album(); has {
+			c.rank, c.date = musicbrainz.AlbumRank(a, r.Artist), musicbrainz.AlbumDate(a)
 		}
-		return r.FirstReleaseDate
+		cs = append(cs, c)
 	}
-	sort.SliceStable(ok, func(i, j int) bool {
-		a, b := ok[i], ok[j]
-		if ra, rb := albumRank(a), albumRank(b); ra != rb {
-			return ra < rb
+	sort.SliceStable(cs, func(i, j int) bool {
+		a, b := cs[i], cs[j]
+		if a.rank != b.rank {
+			return a.rank < b.rank
 		}
-		if a.Score != b.Score {
-			return a.Score > b.Score
+		if a.date != b.date {
+			return a.date < b.date
 		}
-		return first(a) < first(b)
+		return a.rec.Score > b.rec.Score
 	})
-	return ok[0], true
+	return cs[0].rec, true
 }
 
 func yearOf(date string) int {
