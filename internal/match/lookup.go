@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -353,11 +354,21 @@ func (ComicFinder) Source() string    { return "Comic Vine" }
 func (ComicFinder) NeedsArtist() bool { return false }
 
 func (f ComicFinder) Find(ctx context.Context, it LookupItem) (Found, bool, error) {
-	vols, err := f.CV.SearchVolumes(ctx, it.Name)
-	if err != nil {
-		return Found{}, false, err
+	// "Aliens - Book One" is the series "Aliens": try the name as it is,
+	// then without a trailing book or volume number.
+	var v comicvine.Volume
+	ok := false
+	for _, name := range seriesNames(it.Name) {
+		vols, err := f.CV.SearchVolumes(ctx, name)
+		if err != nil {
+			return Found{}, false, err
+		}
+		try := it
+		try.Name = name
+		if v, ok = PickVolume(try, vols); ok {
+			break
+		}
 	}
-	v, ok := PickVolume(it, vols)
 	if !ok {
 		return Found{}, false, nil
 	}
@@ -367,6 +378,20 @@ func (f ComicFinder) Find(ctx context.Context, it LookupItem) (Found, bool, erro
 	}
 	return Found{ComicVineID: v.ID, Name: v.Name, Year: v.StartYear, Publisher: v.Publisher, Overview: overview,
 		CoverURL: v.ImageURL}, true, nil
+}
+
+// reVolumeSuffix is a trailing "- Book One", ": Vol. 2", "Volume 3" or
+// "Book 4" on a comic series' name.
+var reVolumeSuffix = regexp.MustCompile(`(?i)\s*[-:,]?\s*\b(book|vol\.?|volume|part|tpb)\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*$`)
+
+// seriesNames are the names to search a comic series by: the name, then the
+// name without a trailing book or volume number.
+func seriesNames(name string) []string {
+	short := strings.TrimSpace(reVolumeSuffix.ReplaceAllString(name, ""))
+	if short == "" || short == name {
+		return []string{name}
+	}
+	return []string{name, short}
 }
 
 // PickVolume chooses a series' volume: the same name. When the files give a

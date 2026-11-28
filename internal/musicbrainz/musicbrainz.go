@@ -235,9 +235,9 @@ func (c *Client) wait(ctx context.Context) error {
 	return nil
 }
 
-// retries is how many times a 503 is retried before the video is marked
+// retries is how many times a 503 is retried (about a minute in all) before the title is marked
 // "error" (the next scan or Match tries it again).
-const retries = 3
+const retries = 5
 
 func (c *Client) get(ctx context.Context, path string, q url.Values, out any) error {
 	base := c.BaseURL
@@ -259,7 +259,7 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 			return err
 		}
 		if wait < 0 {
-			wait = backoff << attempt
+			wait = min(backoff<<attempt, 30*time.Second) // 2, 4, 8, 16, 30 s: about a minute in all
 		}
 		select {
 		case <-time.After(wait):

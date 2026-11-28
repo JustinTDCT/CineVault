@@ -97,6 +97,14 @@ func TestPickVolume(t *testing.T) {
 	if got, ok := PickVolume(LookupItem{Name: "Saga", Year: 1998}, vols); !ok || got.ID != 2 {
 		t.Errorf("year 1998: %+v", got)
 	}
+	for name, want := range map[string]string{
+		"Aliens - Book One": "Aliens", "Saga: Vol. 2": "Saga", "Fables Volume 3": "Fables", "Book of Fables": "", "Saga": "",
+	} {
+		got := seriesNames(name)
+		if (want == "" && len(got) != 1) || (want != "" && (len(got) != 2 || got[1] != want)) {
+			t.Errorf("seriesNames(%q) = %q", name, got)
+		}
+	}
 	if _, ok := PickVolume(LookupItem{Name: "Saga", Year: 2020}, vols); ok {
 		t.Error("matched a volume from another year")
 	}
