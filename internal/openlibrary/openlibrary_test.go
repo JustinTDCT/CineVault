@@ -44,6 +44,13 @@ func TestSearchAndDetails(t *testing.T) {
 	}
 }
 
+func TestGenresSkipCatalogueTerms(t *testing.T) {
+	got := Genres([]string{"Literary collections", "Middle Earth (Imaginary place)", "English Fantasy literature", "Fantasy fiction", "Fiction"}, 4)
+	if strings.Join(got, "|") != "English Fantasy literature|Fantasy fiction|Fiction" {
+		t.Errorf("genres %q", got)
+	}
+}
+
 func TestPlainDescription(t *testing.T) {
 	var d struct{}
 	_ = d

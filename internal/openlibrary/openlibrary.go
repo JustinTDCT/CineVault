@@ -130,14 +130,18 @@ func CleanDescription(s string) string {
 // library notes ("nyt:…", "Accessible book", "Large type books") and long
 // subject headings.
 func Genres(subjects []string, max int) []string {
-	skip := []string{"accessible book", "protected daisy", "in library", "large type", "open library", "lending library", "reading level", "staff picks", "long now"}
+	skip := []string{"accessible book", "protected daisy", "in library", "large type", "open library", "lending library", "reading level", "staff picks", "long now",
+		"literary collections", "imaginary place", "translations", "criticism", "interpretation", "juvenile", "english literature", "american literature",
+		"history and criticism", "collections", "manuscripts", "bibliography", "readers"}
 	var out []string
 	seen := map[string]bool{}
 outer:
 	for _, s := range subjects {
 		s = strings.TrimSpace(s)
 		l := strings.ToLower(s)
-		if s == "" || len(s) > 30 || strings.ContainsAny(s, ":=,") || strings.Contains(l, " -- ") || seen[l] {
+		// Subject headings with a qualifier ("Middle Earth (Imaginary place)")
+		// or a subdivision ("Fantasy -- Fiction") are catalogue terms, not genres.
+		if s == "" || len(s) > 30 || strings.ContainsAny(s, ":=,()") || strings.Contains(l, " -- ") || seen[l] {
 			continue
 		}
 		for _, k := range skip {
